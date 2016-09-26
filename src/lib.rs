@@ -121,19 +121,19 @@ impl Universe {
     pub fn next(&mut self) -> usize {
         let latest     = self.latest();
         let latest_gen = self.latest_gen();
+        let buffer_cur;
+        let buffer_next;
+        if latest == WhichBuffer::A {
+            buffer_cur  = &mut self.buffer_a;
+            buffer_next = &mut self.buffer_b;
+        } else {
+            buffer_cur  = &mut self.buffer_b;
+            buffer_next = &mut self.buffer_a;
+        }
         for row_idx in 0 .. self.height {
-            let row_n;
-            let row_c;
-            let row_s;
-            if latest == WhichBuffer::A {
-                row_n = &self.buffer_a[(row_idx - 1) % self.height];
-                row_c = &self.buffer_a[ row_idx ];
-                row_s = &self.buffer_a[(row_idx + 1) % self.height];
-            } else {
-                row_n = &self.buffer_b[(row_idx - 1) % self.height];
-                row_c = &self.buffer_b[ row_idx ];
-                row_s = &self.buffer_b[(row_idx + 1) % self.height];
-            }
+            let row_n = &buffer_cur[(row_idx - 1) % self.height];
+            let row_c = &buffer_cur[ row_idx ];
+            let row_s = &buffer_cur[(row_idx + 1) % self.height];
             // These will be shifted over at the beginning of the loop
             let mut nw;
             let mut w;
@@ -158,15 +158,16 @@ impl Universe {
                 let result = Universe::next_single_gen(nw, n, ne, w, cen, e, sw, s, se);
 
                 // assign to the u64 element in the next generation
-                if latest == WhichBuffer::A {
-                    self.buffer_b[row_idx][col_idx] = result;
-                } else {
-                    self.buffer_a[row_idx][col_idx] = result;
-                }
+                buffer_next[row_idx][col_idx] = result;
             }
         }
-        //XXX update generation_a,b
-        self.latest_gen()
+        let new_latest_gen = latest_gen + 1;
+        if latest == WhichBuffer::A {
+            self.generation_b = Some(new_latest_gen);
+        } else {
+            self.generation_a = Some(new_latest_gen);
+        }
+        new_latest_gen
     }
 }
 
