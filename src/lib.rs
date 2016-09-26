@@ -9,6 +9,7 @@ pub struct Universe {
 }
 
 
+#[derive(Eq,PartialEq)]
 enum WhichBuffer { A, B }
 
 
@@ -114,6 +115,58 @@ impl Universe {
 
         let int1 = !y3 & !y4;
         !y1&y6&(y2&int1&y5 | y4&!y5) | y1&int1&(!y2&(y5 | y6) | y2&!y5) | !y1&y4&(y2^y5)
+    }
+
+    /// Compute the next generation. Returns the new latest generation number.
+    pub fn next(&mut self) -> usize {
+        let latest     = self.latest();
+        let latest_gen = self.latest_gen();
+        for row_idx in 0 .. self.height {
+            let row_n;
+            let row_c;
+            let row_s;
+            if latest == WhichBuffer::A {
+                row_n = &self.buffer_a[(row_idx - 1) % self.height];
+                row_c = &self.buffer_a[ row_idx ];
+                row_s = &self.buffer_a[(row_idx + 1) % self.height];
+            } else {
+                row_n = &self.buffer_b[(row_idx - 1) % self.height];
+                row_c = &self.buffer_b[ row_idx ];
+                row_s = &self.buffer_b[(row_idx + 1) % self.height];
+            }
+            // These will be shifted over at the beginning of the loop
+            let mut nw;
+            let mut w;
+            let mut sw;
+            let mut n   = row_n[self.width - 1];
+            let mut cen = row_c[self.width - 1];
+            let mut s   = row_s[self.width - 1];
+            let mut ne  = row_n[0];
+            let mut e   = row_c[0];
+            let mut se  = row_s[0];
+            for col_idx in 0 .. self.width {
+                // shift over
+                nw  = n;
+                n   = ne;
+                w   = cen;
+                cen = e;
+                sw  = s;
+                s   = se;
+                ne  = row_n[(col_idx + 1) % self.width];
+                e   = row_c[(col_idx + 1) % self.width];
+                se  = row_s[(col_idx + 1) % self.width];
+                let result = Universe::next_single_gen(nw, n, ne, w, cen, e, sw, s, se);
+
+                // assign to the u64 element in the next generation
+                if latest == WhichBuffer::A {
+                    self.buffer_b[row_idx][col_idx] = result;
+                } else {
+                    self.buffer_a[row_idx][col_idx] = result;
+                }
+            }
+        }
+        //XXX update generation_a,b
+        self.latest_gen()
     }
 }
 
