@@ -124,10 +124,10 @@ impl Universe {
         let buffer_cur;
         let buffer_next;
         if latest == WhichBuffer::A {
-            buffer_cur  = &mut self.buffer_a;
+            buffer_cur  =     &self.buffer_a;
             buffer_next = &mut self.buffer_b;
         } else {
-            buffer_cur  = &mut self.buffer_b;
+            buffer_cur  =     &self.buffer_b;
             buffer_next = &mut self.buffer_a;
         }
         for row_idx in 0 .. self.height {
