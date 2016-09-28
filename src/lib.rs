@@ -131,7 +131,7 @@ impl Universe {
             buffer_next = &mut self.buffer_a;
         }
         for row_idx in 0 .. self.height {
-            let row_n = &buffer_cur[(row_idx - 1) % self.height];
+            let row_n = &buffer_cur[(row_idx + self.height - 1) % self.height];
             let row_c = &buffer_cur[ row_idx ];
             let row_s = &buffer_cur[(row_idx + 1) % self.height];
             // These will be shifted over at the beginning of the loop
@@ -223,5 +223,19 @@ mod tests {
         let se = 0x0000000000000000;
         let next_center = Universe::next_single_gen(nw, n, ne, w, cen, e, sw, s, se);
         assert_eq!(next_center, 0xC000000E00000002);
+    }
+
+    #[test]
+    fn next_test_data1() {
+        let mut uni = Universe::new(128,64).unwrap();
+        // r-pentomino
+        uni.buffer_a[0][0] = 0x0000000300000000;
+        uni.buffer_a[1][0] = 0x0000000600000000;
+        uni.buffer_a[2][0] = 0x0000000200000000;
+        let gens = 1000;
+        for _ in 0..gens {
+            uni.next();
+        }
+        assert_eq!(uni.latest_gen(), gens + 1);
     }
 }
