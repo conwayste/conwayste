@@ -1,3 +1,5 @@
+use std::fmt;
+
 /// Represents a wrapping universe in Conway's game of life.
 pub struct Universe {
     width:        usize,           // width in u64 elements, _not_ width in cells!
@@ -11,6 +13,28 @@ pub struct Universe {
 
 #[derive(Eq,PartialEq)]
 enum WhichBuffer { A, B }
+
+impl fmt::Display for Universe {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let latest = self.latest();
+        let buffer_cur = if latest == WhichBuffer::A { &self.buffer_a } else { &self.buffer_b };
+        for row in buffer_cur.iter() {
+            for &word in row.iter() {
+                let mut s = String::with_capacity(64);
+                for shift in (0..64).rev() {
+                    if (word>>shift)&1 == 1 {
+                        s.push('*');
+                    } else {
+                        s.push(' ');
+                    }
+                }
+                try!(write!(f, "{}", s));
+            }
+            try!(write!(f, "\n"));
+        }
+        Ok(())
+    }
+}
 
 
 impl Universe {
