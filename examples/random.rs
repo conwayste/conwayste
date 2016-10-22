@@ -13,9 +13,9 @@ fn main() {
     loop {
         println!("\x1b[H\x1b[2J{}", uni);
         println!("Gen: {}", uni.latest_gen());
-        let rand_word: u64 = rng.gen();
-        uni.set_word(0,15, (rand_word >> 12) & 0xfff); // RANDOM!!! 2x12 is nice
-        uni.set_word(0,16,  rand_word        & 0xfff); // RANDOM!!!
+        let rand_word: u64 = rng.gen::<u8>() as u64;
+        uni.set_word(0,15, (rand_word >> 3) & 7); // RANDOM!!!
+        uni.set_word(0,16,  rand_word       & 7); // RANDOM!!!
         uni.next();
         thread::sleep(step_time);
     }
