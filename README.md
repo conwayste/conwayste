@@ -6,6 +6,7 @@ Multiplayer Conway's Game of Life!
 **TODO: SDL and OpenGL development packages, etc.**
 ```
 cargo build
+ln -s ../resources target    # needed only for client
 ```
 
 ## Running the server

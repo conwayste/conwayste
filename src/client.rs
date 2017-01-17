@@ -1,107 +1,74 @@
-#[macro_use] extern crate conrod;
+extern crate ggez;
+use ggez::conf;
+use ggez::game::{Game, GameState};
+use ggez::{GameResult, Context};
+use ggez::graphics;
+use ggez::timer;
+use std::time::Duration;
+use std::fs::File; //XXX ?
 
-use conrod::backend::piston::{self, Window, WindowEvents, OpenGL};
-use conrod::backend::piston::event::UpdateEvent;
+#[macro_use]
+extern crate version;
 
-// Generate a type that will produce a unique `widget::Id` for each widget.
-widget_ids! {
-    struct Ids {
-        canvas,
-        line,
-        point_path,
-        rectangle_fill,
-        rectangle_outline,
-        trapezoid,
-        oval_fill,
-        oval_outline,
-        circle,
-    }
+// All game state
+struct MainState {
+    text: graphics::Text,
 }
 
 
-fn main() {
-    const WIDTH: u32 = 400;
-    const HEIGHT: u32 = 720;
+// Then we implement the `ggez::game::GameState` trait on it, which
+// requires callbacks for creating the game state, updating it each
+// frame, and drawing it.
+//
+// The `GameState` trait also contains callbacks for event handling
+// that you can override if you wish, but the defaults are fine.
+impl GameState for MainState {
+    fn load(ctx: &mut Context, _conf: &conf::Conf) -> GameResult<MainState> {
+        let font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 48).unwrap();
+        let text = graphics::Text::new(ctx, "Hello world!", &font).unwrap();
 
-    // Change this to OpenGL::V2_1 if not working.
-    let opengl = OpenGL::V3_2;
-
-    // Construct the window.
-    let mut window: Window =
-        piston::window::WindowSettings::new("Primitives Demo", [WIDTH, HEIGHT])
-            .opengl(opengl).samples(4).exit_on_esc(true).build().unwrap();
-
-    // Create the event loop.
-    let mut events = WindowEvents::new();
-
-    // construct our `Ui`.
-    let mut ui = conrod::UiBuilder::new([WIDTH as f64, HEIGHT as f64]).build();
-
-    // A unique identifier for each widget.
-    let ids = Ids::new(ui.widget_id_generator());
-
-    // No text to draw, so we'll just create an empty text texture cache.
-    let mut text_texture_cache = piston::window::GlyphCache::new(&mut window, 0, 0);
-
-    // The image map describing each of our widget->image mappings (in our case, none).
-    let image_map = conrod::image::Map::new();
-
-    // Poll events from the window.
-    while let Some(event) = window.next_event(&mut events) {
-
-        // Convert the piston event to a conrod event.
-        if let Some(e) = piston::window::convert_event(event.clone(), &window) {
-            ui.handle_event(e);
-        }
-
-        // Update the widgets.
-        event.update(|_| set_ui(ui.set_widgets(), &ids));
-
-        // Draw the `Ui`.
-        window.draw_2d(&event, |c, g| {
-            if let Some(primitives) = ui.draw_if_changed() {
-                fn texture_from_image<T>(img: &T) -> &T { img };
-                piston::window::draw(c, g, primitives,
-                                     &mut text_texture_cache,
-                                     &image_map,
-                                     texture_from_image);
-            }
-        });
+        let s = MainState { text: text };
+        Ok(s)
     }
 
+    fn update(&mut self, _ctx: &mut Context, _dt: Duration) -> GameResult<()> {
+        Ok(())
+    }
+
+    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
+        ctx.renderer.clear();
+        try!(graphics::draw(ctx, &mut self.text, None, None));
+        ctx.renderer.present();
+        timer::sleep_until_next_frame(ctx, 60);
+        Ok(())
+    }
 }
 
+// Now our main function, which does three things:
+//
+// * First, create a new `ggez::conf::Conf`
+// object which contains configuration info on things such
+// as screen resolution and window title,
+// * Second, create a `ggez::game::Game` object which will
+// do the work of creating our MainState and running our game,
+// * then just call `game.run()` which runs the `Game` mainloop.
+pub fn main() {
+    let mut c = conf::Conf::new();
 
-fn set_ui(ref mut ui: conrod::UiCell, ids: &Ids) {
-    use conrod::{Positionable, Widget};
-    use conrod::widget::{Canvas, Circle, Line, Oval, PointPath, Polygon, Rectangle};
-    use std::iter::once;
+    c.version       = version!().to_string();
+    c.window_width  = 2000;
+    c.window_height = 1200;
+    c.window_icon   = "conwaylife.ico".to_string();
+    c.window_title  = "💥 ConWayste the Enemy 💥".to_string();
 
-    // The background canvas upon which we'll place our widgets.
-    Canvas::new().pad(80.0).set(ids.canvas, ui);
+    // save conf to .toml file
+    let mut f = File::create("aaron_conf.toml").unwrap();
+    c.to_toml_file(&mut f).unwrap();
 
-    Line::centred([-40.0, -40.0], [40.0, 40.0]).top_left_of(ids.canvas).set(ids.line, ui);
-
-    let left = [-40.0, -40.0];
-    let top = [0.0, 40.0];
-    let right = [40.0, -40.0];
-    let points = once(left).chain(once(top)).chain(once(right));
-    PointPath::centred(points).down(80.0).set(ids.point_path, ui);
-
-    Rectangle::fill([80.0, 80.0]).down(80.0).set(ids.rectangle_fill, ui);
-
-    Rectangle::outline([80.0, 80.0]).down(80.0).set(ids.rectangle_outline, ui);
-
-    let bl = [-40.0, -40.0];
-    let tl = [-20.0, 40.0];
-    let tr = [20.0, 40.0];
-    let br = [40.0, -40.0];
-    let points = once(bl).chain(once(tl)).chain(once(tr)).chain(once(br));
-    Polygon::centred_fill(points).right_from(ids.line, 80.0).set(ids.trapezoid, ui);
-
-    Oval::fill([40.0, 80.0]).down(80.0).align_middle_x().set(ids.oval_fill, ui);
-
-    Oval::outline([80.0, 40.0]).down(100.0).align_middle_x().set(ids.oval_outline, ui);
-
-    Circle::fill(40.0).down(100.0).align_middle_x().set(ids.circle, ui);
+    let mut game: Game<MainState> = Game::new("ConWaysteTheEnemy", c).unwrap();
+    if let Err(e) = game.run() {
+        println!("Error encountered: {:?}", e);
+    } else {
+        println!("Game exited cleanly.");
+    }
 }

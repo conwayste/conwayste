@@ -1,12 +1,12 @@
 [package]
 name = "ConWaysteTheEnemy"
-version = "0.0.1"
+version = "0.0.2"
 authors = [ "mang", "Aaron Miller <aaron.miller04@gmail.com>" ]
 
 [dependencies]
 conway = { git = "https://github.com/AaronM04/libconway" }
-mioco = "*"
-conrod = "0.46.2"
+ggez = "0.2.1"
+version = "2.0.1"
 
 [[bin]]
 name = "server"
