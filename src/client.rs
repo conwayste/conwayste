@@ -1,4 +1,8 @@
+extern crate conway;
 extern crate ggez;
+#[macro_use]
+extern crate version;
+
 use ggez::conf;
 use ggez::game::{Game, GameState};
 use ggez::{GameResult, Context};
@@ -6,15 +10,26 @@ use ggez::graphics;
 use ggez::timer;
 use std::time::Duration;
 use std::fs::File; //XXX ?
+use conway::Universe;
 
-#[macro_use]
-extern crate version;
+
+const FPS: u32 = 30;
+const INTRO_DURATION: f64 = 2.0;
+
+
+#[derive(PartialEq)]
+enum Stage {
+    Intro(f64),   // seconds
+    Run,          // TODO: break it out more to indicate whether waiting for game or playing game
+}
 
 // All game state
 struct MainState {
-    text: graphics::Text,
+    intro_text: graphics::Text,
+    stage: Stage,
+    uni: Universe,
+    first_gen_was_drawn: bool,
 }
-
 
 // Then we implement the `ggez::game::GameState` trait on it, which
 // requires callbacks for creating the game state, updating it each
@@ -25,21 +40,58 @@ struct MainState {
 impl GameState for MainState {
     fn load(ctx: &mut Context, _conf: &conf::Conf) -> GameResult<MainState> {
         let font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 48).unwrap();
-        let text = graphics::Text::new(ctx, "Hello world!", &font).unwrap();
+        let intro_text = graphics::Text::new(ctx, "WAYSTE EM!", &font).unwrap();
 
-        let s = MainState { text: text };
+        let mut s = MainState {
+            intro_text: intro_text,
+            stage: Stage::Intro(INTRO_DURATION),
+            uni: Universe::new(128,32).unwrap(),
+            first_gen_was_drawn: false,
+        };
+
+        s.uni.set_word(0,16, 0x0000000000000003);
+        s.uni.set_word(0,17, 0x0000000000000006);
+        s.uni.set_word(0,18, 0x0000000000000002);
+
         Ok(s)
     }
 
-    fn update(&mut self, _ctx: &mut Context, _dt: Duration) -> GameResult<()> {
+    fn update(&mut self, ctx: &mut Context, dt: Duration) -> GameResult<()> {
+        let duration = timer::duration_to_f64(dt); // seconds
+        match self.stage {
+            Stage::Intro(mut remaining) => {
+                remaining -= duration;
+                if remaining > 0.0 {
+                    self.stage = Stage::Intro(remaining);
+                } else {
+                    self.stage = Stage::Run;
+                }
+            }
+            Stage::Run => {
+                println!("Gen: {}", self.uni.latest_gen());
+                if self.first_gen_was_drawn {
+                    self.uni.next();     // next generation
+                }
+            }
+        }
         Ok(())
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         ctx.renderer.clear();
-        try!(graphics::draw(ctx, &mut self.text, None, None));
+        match self.stage {
+            Stage::Intro(_) => {
+                try!(graphics::draw(ctx, &mut self.intro_text, None, None));
+            }
+            Stage::Run => {
+                //XXX draw: need a libconway function that takes a closure and executes with coords of each (or an iterator???)
+
+                //XXX will need a mapping between screen coords and game coords
+                self.first_gen_was_drawn = true;
+            }
+        }
         ctx.renderer.present();
-        timer::sleep_until_next_frame(ctx, 60);
+        timer::sleep_until_next_frame(ctx, FPS);
         Ok(())
     }
 }
@@ -62,7 +114,7 @@ pub fn main() {
     c.window_title  = "💥 ConWayste the Enemy 💥".to_string();
 
     // save conf to .toml file
-    let mut f = File::create("aaron_conf.toml").unwrap();
+    let mut f = File::create("aaron_conf.toml").unwrap(); //XXX
     c.to_toml_file(&mut f).unwrap();
 
     let mut game: Game<MainState> = Game::new("ConWaysteTheEnemy", c).unwrap();
