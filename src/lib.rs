@@ -11,6 +11,14 @@ pub struct Universe {
 }
 
 
+pub enum CellState {
+    Dead,
+    Alive,              // TODO: Alive(Option<u8>) (player number)
+    Wall,
+    Fog,
+}
+
+
 #[derive(Eq,PartialEq)]
 enum WhichBuffer { A, B }
 
@@ -200,6 +208,28 @@ impl Universe {
             self.generation_a = Some(new_latest_gen);
         }
         new_latest_gen
+    }
+
+
+    /// Iterate over every non-dead cell in the universe for the current generation.
+    /// Callback receives (x, y, cell_state).
+    pub fn each_non_dead<F: Fn(usize, usize, CellState)>(&self, callback: F) {
+        let latest = self.latest();
+        let buffer_cur = if latest == WhichBuffer::A { &self.buffer_a } else { &self.buffer_b };
+        let mut x;
+        let mut y = 0;
+        for row in buffer_cur.iter() {
+            x = 0;
+            for &word in row.iter() {
+                for shift in (0..64).rev() {
+                    if (word>>shift)&1 == 1 {
+                        callback(x, y, CellState::Alive);
+                    }
+                    x += 1;
+                }
+            }
+            y += 1;
+        }
     }
 }
 
