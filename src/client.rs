@@ -38,7 +38,19 @@ struct MainState {
     color_settings:      ColorSettings,
 }
 
-type ColorSettings = BTreeMap<CellState, Color>;
+struct ColorSettings {
+    cell_colors: BTreeMap<CellState, Color>,
+    background: Color,
+}
+
+impl ColorSettings {
+    fn get_color(&self, cell_or_none: Option<CellState>) -> Color {
+        match cell_or_none {
+            Some(cell) => self.cell_colors[&cell],
+            None       => self.background
+        }
+    }
+}
 
 
 // Controls the mapping between window and game coordinates
@@ -48,6 +60,7 @@ struct GridView {
     columns:     usize, // width in game coords (should match bitmap/universe width)
     rows:        usize, // height in game coords (should match bitmap/universe height)
     grid_origin: Point, // top-left corner of grid in window coords. (may be outside rect)
+    wrap:        bool,  // does this view wrap? (true for universes, false for draw pads)
 }
 
 // Then we implement the `ggez::game::GameState` trait on it, which
@@ -70,13 +83,17 @@ impl GameState for MainState {
             columns:     game_width,
             rows:        game_height,
             grid_origin: Point::new(0, 0),
+            wrap:        true,
         };
 
-        let mut color_settings: ColorSettings = BTreeMap::new();
-        color_settings.insert(CellState::Dead,  Color::RGB(255, 255, 255));
-        color_settings.insert(CellState::Alive, Color::RGB(  0,   0,   0));
-        color_settings.insert(CellState::Wall,  Color::RGB(158, 141, 105));
-        color_settings.insert(CellState::Fog,   Color::RGB(128, 128, 128));
+        let mut color_settings = ColorSettings {
+            cell_colors: BTreeMap::new(),
+            background:  Color::RGB( 64,  64,  64),
+        };
+        color_settings.cell_colors.insert(CellState::Dead,  Color::RGB(255, 255, 255));
+        color_settings.cell_colors.insert(CellState::Alive, Color::RGB(  0,   0,   0));
+        color_settings.cell_colors.insert(CellState::Wall,  Color::RGB(158, 141, 105));
+        color_settings.cell_colors.insert(CellState::Fog,   Color::RGB(128, 128, 128));
 
         let mut s = MainState {
             intro_text:          intro_text,
@@ -146,17 +163,36 @@ impl GameState for MainState {
 
 
 impl GridView {
-    // y coordinate of top of this region in the window
     fn bounding_rect(&self) -> Rect {
-        panic!("not implemented"); //XXX
+        return self.rect;
     }
 
-    fn game_coords_from_window(&self, winx: i32, winy: i32) -> (usize, usize) {
-        panic!("not implemented"); //XXX
+    fn game_coords_from_window(&self, point: Point) -> Option<(usize, usize)> {
+        let mut col: isize = ((point.x() - self.grid_origin.x()) / self.cell_size) as isize;
+        let mut row: isize = ((point.y() - self.grid_origin.y()) / self.cell_size) as isize;
+        if col < 0 || col >= self.columns as isize || row < 0 || row >= self.rows as isize {
+            if self.wrap {
+                col %= self.columns as isize;
+                row %= self.rows as isize;
+            } else {
+                return None;
+            }
+        }
+        Some((col as usize, row as usize))
     }
 
-    fn window_coords_from_game(&self, gx: usize, gy: usize) -> (i32, i32) {
-        panic!("not implemented"); //XXX
+    // Attempt to return a rectangle for the on-screen area of the specified cell.
+    // If partially in view, will be clipped by the bounding rectangle.
+    // Caller must ensure that col and row are within bounds.
+    fn window_coords_from_game(&self, col: usize, row: usize) -> Option<Rect> {
+        let left   = self.grid_origin.x() + (col as i32) * self.cell_size;
+        let right  = self.grid_origin.x() + (col + 1) as i32 * self.cell_size - 1;
+        let top    = self.grid_origin.y() + (row as i32) * self.cell_size;
+        let bottom = self.grid_origin.y() + (row + 1) as i32 * self.cell_size - 1;
+        assert!(left < right);
+        assert!(top < bottom);
+        let rect = Rect::new(left, top, (right - left) as u32, (bottom - top) as u32);
+        rect.intersection(self.rect)
     }
 }
 
