@@ -52,7 +52,7 @@ dependencies = [
 [[package]]
 name = "conway"
 version = "0.1.1"
-source = "git+https://github.com/AaronM04/libconway#c3f84eff836194f408f10146d4f4c1de777beca2"
+source = "git+https://github.com/AaronM04/libconway#0eadfdd4e4136eb7f68236bc7a6a3b47d0b775a2"
 dependencies = [
  "rand 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
