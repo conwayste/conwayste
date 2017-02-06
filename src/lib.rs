@@ -90,6 +90,19 @@ impl Universe {
         })
     }
 
+
+    /// Return width in cells.
+    pub fn width(&self) -> usize {
+        return self.width * 64;
+    }
+
+
+    /// Return height in cells.
+    pub fn height(&self) -> usize {
+        return self.height;
+    }
+
+
     fn latest(&self) -> WhichBuffer {
         if let Some(gen_a) = self.generation_a {
             match self.generation_b {
