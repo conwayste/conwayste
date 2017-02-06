@@ -11,6 +11,7 @@ pub struct Universe {
 }
 
 
+#[derive(Eq,PartialEq,Ord,PartialOrd)]
 pub enum CellState {
     Dead,
     Alive,              // TODO: Alive(Option<u8>) (player number)
