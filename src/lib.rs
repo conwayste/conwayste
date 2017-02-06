@@ -227,28 +227,81 @@ impl Universe {
 
     /// Iterate over every non-dead cell in the universe for the current generation.
     /// Callback receives (x, y, cell_state).
-    pub fn each_non_dead<F: Fn(usize, usize, CellState)>(&self, callback: F) {
+    //TODO: unit test
+    pub fn each_non_dead<F: Fn(usize, usize, CellState)>(&self, callback: F, region: Region) {
         let latest = self.latest();
         let buffer_cur = if latest == WhichBuffer::A { &self.buffer_a } else { &self.buffer_b };
         let mut x;
         let mut y = 0;
         for row in buffer_cur.iter() {
-            x = 0;
-            for &word in row.iter() {
-                for shift in (0..64).rev() {
-                    if (word>>shift)&1 == 1 {
-                        callback(x, y, CellState::Alive);
+            if (y as isize) >= region.top() && (y as isize) < (region.top() + region.height() as isize) {
+                x = 0;
+                for &word in row.iter() {
+                    for shift in (0..64).rev() {
+                        if (x as isize) >= region.left() &&
+                            (x as isize) < (region.left() + region.width() as isize) {
+                            if (word>>shift)&1 == 1 {
+                                callback(x, y, CellState::Alive);
+                            }
+                        }
+                        x += 1;
                     }
-                    x += 1;
                 }
             }
             y += 1;
         }
     }
+
+
+    /// Iterate over every non-dead cell in the universe for the current generation.
+    /// Callback receives (x, y, cell_state).
+    //TODO: unit test
+    pub fn each_non_dead_full<F: Fn(usize, usize, CellState)>(&self, callback: F) {
+        self.each_non_dead(callback, self.region());
+    }
+
+
+    /// Get a Region of the same size as the universe
+    pub fn region(&self) -> Region {
+        Region::new(0, 0, self.width*64, self.height)
+    }
 }
 
 
-//XXX pub struct Region
+pub struct Region {
+    left:   isize,
+    top:    isize,
+    width:  usize,
+    height: usize,
+}
+
+impl Region {
+    pub fn new(left: isize, top: isize, width: usize, height: usize) -> Self {
+        Region {
+            left:   left,
+            top:    top,
+            width:  width,
+            height: height,
+        }
+    }
+
+    pub fn left(&self) -> isize {
+        self.left
+    }
+
+    pub fn top(&self) -> isize {
+        self.top
+    }
+
+    pub fn width(&self) -> usize {
+        self.width
+    }
+
+    pub fn height(&self) -> usize {
+        self.height
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
