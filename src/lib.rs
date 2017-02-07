@@ -228,7 +228,7 @@ impl Universe {
     /// Iterate over every non-dead cell in the universe for the current generation.
     /// Callback receives (x, y, cell_state).
     //TODO: unit test
-    pub fn each_non_dead<F: Fn(usize, usize, CellState)>(&self, callback: F, region: Region) {
+    pub fn each_non_dead(&self, callback: &mut FnMut(usize, usize, CellState), region: Region) {
         let latest = self.latest();
         let buffer_cur = if latest == WhichBuffer::A { &self.buffer_a } else { &self.buffer_b };
         let mut x;
@@ -256,7 +256,7 @@ impl Universe {
     /// Iterate over every non-dead cell in the universe for the current generation.
     /// Callback receives (x, y, cell_state).
     //TODO: unit test
-    pub fn each_non_dead_full<F: Fn(usize, usize, CellState)>(&self, callback: F) {
+    pub fn each_non_dead_full(&self, callback: &mut FnMut(usize, usize, CellState)) {
         self.each_non_dead(callback, self.region());
     }
 
