@@ -83,7 +83,7 @@ impl GameState for MainState {
             columns:     game_width,
             rows:        game_height,
             grid_origin: Point::new(0, 0),
-            wrap:        true,
+            wrap:        false,         //TODO: implement wrapping
         };
 
         let mut color_settings = ColorSettings {
@@ -139,15 +139,19 @@ impl GameState for MainState {
                 try!(graphics::draw(ctx, &mut self.intro_text, None, None));
             }
             Stage::Run => {
-                let rect1 = Rect::new(0, 0, 10, 10);
-                let rect2 = Rect::new(20, 25, 10, 10);
-                let rect_vec = vec![rect1, rect2];
-                graphics::set_color(ctx, Color::RGB(0,255,0));
-                graphics::rectangles(ctx,  graphics::DrawMode::Fill, &rect_vec).unwrap();
-                graphics::set_color(ctx, Color::RGB(0,0,0));
-                //XXX draw: need a libconway function that takes a closure and executes with coords of each alive cell (or an iterator???)
+                graphics::set_color(ctx, self.color_settings.get_color(Some(CellState::Dead)));
+                graphics::rectangle(ctx,  graphics::DrawMode::Fill, self.grid_view.rect).unwrap();
 
-                //XXX will need a mapping between screen coords and game coords
+                self.uni.each_non_dead_full(&mut |col, row, state| {
+                    let color = self.color_settings.get_color(Some(state));
+                    graphics::set_color(ctx, color);
+
+                    if let Some(rect) = self.grid_view.window_coords_from_game(col, row) {
+                        graphics::rectangle(ctx,  graphics::DrawMode::Fill, rect).unwrap();
+                    }
+                });
+
+                graphics::set_color(ctx, Color::RGB(0,0,0)); // do this at end; not sure why...?
                 self.first_gen_was_drawn = true;
             }
         }
@@ -164,7 +168,7 @@ impl GameState for MainState {
 
 impl GridView {
     fn bounding_rect(&self) -> Rect {
-        return self.rect;
+        self.rect
     }
 
     fn game_coords_from_window(&self, point: Point) -> Option<(usize, usize)> {
@@ -184,10 +188,12 @@ impl GridView {
     // Attempt to return a rectangle for the on-screen area of the specified cell.
     // If partially in view, will be clipped by the bounding rectangle.
     // Caller must ensure that col and row are within bounds.
+    // TODO: handle the wrapping case (we could have more than one Rect!)
     fn window_coords_from_game(&self, col: usize, row: usize) -> Option<Rect> {
-        let left   = self.grid_origin.x() + (col as i32) * self.cell_size;
+        if self.wrap { panic!("wrapping not implemented"); } //TODO
+        let left   = self.grid_origin.x() + (col as i32)     * self.cell_size;
         let right  = self.grid_origin.x() + (col + 1) as i32 * self.cell_size - 1;
-        let top    = self.grid_origin.y() + (row as i32) * self.cell_size;
+        let top    = self.grid_origin.y() + (row as i32)     * self.cell_size;
         let bottom = self.grid_origin.y() + (row + 1) as i32 * self.cell_size - 1;
         assert!(left < right);
         assert!(top < bottom);
