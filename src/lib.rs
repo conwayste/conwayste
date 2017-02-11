@@ -55,6 +55,20 @@ impl Universe {
     }
 
 
+    // switches any non-dead state to CellState::Dead
+    // switches CellState::Dead to CellState::Alive
+    // TODO: when multiple bitmaps are supported, adjust this accordingly
+    pub fn toggle(&mut self, col: usize, row: usize) {
+        let latest = self.latest();
+        let buffer_cur = if latest == WhichBuffer::A { &mut self.buffer_a } else { &mut self.buffer_b };
+        let word_col = col/64;
+        let bit_shift = 63 - (col & (64 - 1));
+        let mut word = buffer_cur[row][word_col];
+        word ^= 1 << bit_shift;
+        buffer_cur[row][word_col] = word;
+    }
+
+
     /// Instantiate a new blank universe with the given width and height, in cells.
     /// The universe is at generation 1.
     pub fn new(width: usize, height: usize) -> Result<Universe, &'static str> {
@@ -228,6 +242,7 @@ impl Universe {
     /// Iterate over every non-dead cell in the universe for the current generation.
     /// Callback receives (x, y, cell_state).
     //TODO: unit test
+    //TODO: other CellStates
     pub fn each_non_dead(&self, callback: &mut FnMut(usize, usize, CellState), region: Region) {
         let latest = self.latest();
         let buffer_cur = if latest == WhichBuffer::A { &self.buffer_a } else { &self.buffer_b };
