@@ -47,14 +47,6 @@ impl fmt::Display for Universe {
 
 
 impl Universe {
-    //XXX backdoor until I write something better
-    pub fn set_word(&mut self, col_idx: usize, row_idx: usize, value: u64) {
-        let latest = self.latest();
-        let buffer_cur = if latest == WhichBuffer::A { &mut self.buffer_a } else { &mut self.buffer_b };
-        buffer_cur[row_idx][col_idx] = value;
-    }
-
-
     // switches any non-dead state to CellState::Dead
     // switches CellState::Dead to CellState::Alive
     // TODO: when multiple bitmaps are supported, adjust this accordingly

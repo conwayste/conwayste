@@ -13,9 +13,15 @@ fn main() {
     loop {
         println!("\x1b[H\x1b[2J{}", uni);
         println!("Gen: {}", uni.latest_gen());
-        let rand_word: u64 = rng.gen::<u8>() as u64;
-        uni.set_word(0,15, (rand_word >> 3) & 7); // RANDOM!!!
-        uni.set_word(0,16,  rand_word       & 7); // RANDOM!!!
+        let mut rand_word: u64 = rng.gen::<u8>() as u64;
+        for col in 60..64 {
+            for row in 15..17 {
+                if rand_word & 1 == 1 {
+                    uni.toggle(col, row);
+                }
+                rand_word >>= 1;
+            }
+        }
         uni.next();
         thread::sleep(step_time);
     }
