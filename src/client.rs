@@ -36,6 +36,7 @@ struct MainState {
     first_gen_was_drawn: bool,
     grid_view:           GridView,
     color_settings:      ColorSettings,
+    running:             bool,
 }
 
 struct ColorSettings {
@@ -60,7 +61,6 @@ struct GridView {
     columns:     usize, // width in game coords (should match bitmap/universe width)
     rows:        usize, // height in game coords (should match bitmap/universe height)
     grid_origin: Point, // top-left corner of grid in window coords. (may be outside rect)
-    wrap:        bool,  // does this view wrap? (true for universes, false for draw pads)
 }
 
 // Then we implement the `ggez::game::GameState` trait on it, which
@@ -74,8 +74,8 @@ impl GameState for MainState {
         let font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 48).unwrap();
         let intro_text = graphics::Text::new(ctx, "WAYSTE EM!", &font).unwrap();
 
-        let game_width  = 64;
-        let game_height = 30;
+        let game_width  = 64*4;
+        let game_height = 30*4;
 
         let grid_view = GridView {
             rect:        Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT),
@@ -83,7 +83,6 @@ impl GameState for MainState {
             columns:     game_width,
             rows:        game_height,
             grid_origin: Point::new(0, 0),
-            wrap:        false,         //TODO: implement wrapping
         };
 
         let mut color_settings = ColorSettings {
@@ -102,11 +101,15 @@ impl GameState for MainState {
             first_gen_was_drawn: false,
             grid_view:           grid_view,
             color_settings:      color_settings,
+            running:             true,
         };
 
-        s.uni.set_word(0,16, 0x0000000000000003);
-        s.uni.set_word(0,17, 0x0000000000000006);
-        s.uni.set_word(0,18, 0x0000000000000002);
+        // Initialize patterns
+        s.uni.toggle(16, 15);
+        s.uni.toggle(17, 15);
+        s.uni.toggle(15, 16);
+        s.uni.toggle(16, 16);
+        s.uni.toggle(16, 17);
 
         Ok(s)
     }
@@ -123,9 +126,9 @@ impl GameState for MainState {
                 }
             }
             Stage::Run => {
-                println!("Gen: {}", self.uni.latest_gen());
-                if self.first_gen_was_drawn {
+                if self.first_gen_was_drawn && self.running {
                     self.uni.next();     // next generation
+                    println!("Gen: {}", self.uni.latest_gen());
                 }
             }
         }
@@ -161,7 +164,31 @@ impl GameState for MainState {
     }
 
     fn mouse_button_down_event(&mut self, button: Mouse, x: i32, y: i32) {
-        println!("Button down event! button:{:?} at ({}, {})", button, x, y);
+        println!("Button down event! button:{:?} at ({}, {})", button, x, y); //XXX
+        if button == Mouse::Left {
+            if let Some((col, row)) = self.grid_view.game_coords_from_window(Point::new(x,y)) {
+                self.uni.toggle(col, row);
+                println!("Clicked at (col={}, row={})", col, row); //XXX
+            }
+        }
+    }
+
+    fn key_down_event(&mut self, keycode: Option<Keycode>, keymod: Mod, repeat: bool) {
+        match self.stage {
+            Stage::Intro(_) => {
+                self.stage = Stage::Run;
+            }
+            Stage::Run => {
+                if keycode == Some(Keycode::Space) && !repeat {
+                    self.running = !self.running;
+                    if self.running {
+                        println!("RUNNING");
+                    } else {
+                        println!("PAUSED");
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -171,16 +198,12 @@ impl GridView {
         self.rect
     }
 
+    // Returns Option<(col, row)>
     fn game_coords_from_window(&self, point: Point) -> Option<(usize, usize)> {
         let mut col: isize = ((point.x() - self.grid_origin.x()) / self.cell_size) as isize;
         let mut row: isize = ((point.y() - self.grid_origin.y()) / self.cell_size) as isize;
         if col < 0 || col >= self.columns as isize || row < 0 || row >= self.rows as isize {
-            if self.wrap {
-                col %= self.columns as isize;
-                row %= self.rows as isize;
-            } else {
-                return None;
-            }
+            return None;
         }
         Some((col as usize, row as usize))
     }
@@ -188,9 +211,7 @@ impl GridView {
     // Attempt to return a rectangle for the on-screen area of the specified cell.
     // If partially in view, will be clipped by the bounding rectangle.
     // Caller must ensure that col and row are within bounds.
-    // TODO: handle the wrapping case (we could have more than one Rect!)
     fn window_coords_from_game(&self, col: usize, row: usize) -> Option<Rect> {
-        if self.wrap { panic!("wrapping not implemented"); } //TODO
         let left   = self.grid_origin.x() + (col as i32)     * self.cell_size;
         let right  = self.grid_origin.x() + (col + 1) as i32 * self.cell_size - 1;
         let top    = self.grid_origin.y() + (row as i32)     * self.cell_size;
