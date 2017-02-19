@@ -38,7 +38,10 @@ struct MainState {
     grid_view:           GridView,
     color_settings:      ColorSettings,
     running:             bool,
+
+    // Input state
     single_step:         bool,
+    arrow_input:         (i32, i32),
 }
 
 struct ColorSettings {
@@ -55,15 +58,6 @@ impl ColorSettings {
     }
 }
 
-
-// Controls the mapping between window and game coordinates
-struct GridView {
-    rect:        Rect,  // the area the game grid takes up on screen
-    cell_size:   i32,   // zoom level in window coordinates
-    columns:     usize, // width in game coords (should match bitmap/universe width)
-    rows:        usize, // height in game coords (should match bitmap/universe height)
-    grid_origin: Point, // top-left corner of grid in window coords. (may be outside rect)
-}
 
 // Then we implement the `ggez::game::GameState` trait on it, which
 // requires callbacks for creating the game state, updating it each
@@ -107,6 +101,7 @@ impl GameState for MainState {
             color_settings:      color_settings,
             running:             false,
             single_step:         false,
+            arrow_input:         (0, 0),
         };
 
         // Initialize patterns
@@ -149,6 +144,11 @@ impl GameState for MainState {
                 if self.first_gen_was_drawn && (self.running || self.single_step) {
                     self.uni.next();     // next generation
                     self.single_step = false;
+                }
+                if self.arrow_input != (0, 0) {
+                    let (dx, dy) = self.arrow_input;
+                    self.grid_view.grid_origin = self.grid_view.grid_origin.offset(-dx * 50, -dy * 50);
+                    //XXX fix the above
                 }
             }
         }
@@ -207,7 +207,7 @@ impl GameState for MainState {
 
     fn key_down_event(&mut self, _keycode: Option<Keycode>, keymod: Mod, repeat: bool) {
         if _keycode == None {
-            // QUESTION: how can this happen?
+            println!("WARNING: got _keycode of None; what could this mean???");
             return;
         }
         let keycode = _keycode.unwrap();
@@ -221,15 +221,22 @@ impl GameState for MainState {
                     Keycode::Return => {
                         if !repeat {
                             self.running = !self.running;
-                            if self.running {
-                                println!("RUNNING");
-                            } else {
-                                println!("PAUSED");
-                            }
                         }
                     }
                     Keycode::Space => {
                         self.single_step = true;
+                    }
+                    Keycode::Up => {
+                        self.arrow_input = (0, -1);
+                    }
+                    Keycode::Down => {
+                        self.arrow_input = (0,  1);
+                    }
+                    Keycode::Left => {
+                        self.arrow_input = (-1, 0);
+                    }
+                    Keycode::Right => {
+                        self.arrow_input = ( 1, 0);
                     }
                     _ => {
                         println!("Unrecognized keycode {}", keycode);
@@ -238,6 +245,31 @@ impl GameState for MainState {
             }
         }
     }
+
+    fn key_up_event(&mut self, _keycode: Option<Keycode>, keymod: Mod, repeat: bool) {
+        if _keycode == None {
+            println!("WARNING: got _keycode of None; what could this mean???");
+            return;
+        }
+        let keycode = _keycode.unwrap();
+
+        match keycode {
+            Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right => {
+                self.arrow_input = (0, 0);
+            }
+            _ => {}
+        }
+    }
+}
+
+
+// Controls the mapping between window and game coordinates
+struct GridView {
+    rect:        Rect,  // the area the game grid takes up on screen
+    cell_size:   i32,   // zoom level in window coordinates
+    columns:     usize, // width in game coords (should match bitmap/universe width)
+    rows:        usize, // height in game coords (should match bitmap/universe height)
+    grid_origin: Point, // top-left corner of grid in window coords. (may be outside rect)
 }
 
 
