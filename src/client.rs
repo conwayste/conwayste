@@ -38,6 +38,7 @@ struct MainState {
     grid_view:           GridView,
     color_settings:      ColorSettings,
     running:             bool,
+    single_step:         bool,
 }
 
 struct ColorSettings {
@@ -105,6 +106,7 @@ impl GameState for MainState {
             grid_view:           grid_view,
             color_settings:      color_settings,
             running:             false,
+            single_step:         false,
         };
 
         // Initialize patterns
@@ -141,8 +143,12 @@ impl GameState for MainState {
                 }
             }
             Stage::Run => {
-                if self.first_gen_was_drawn && self.running {
+                if self.single_step {
+                    self.running = false;
+                }
+                if self.first_gen_was_drawn && (self.running || self.single_step) {
                     self.uni.next();     // next generation
+                    self.single_step = false;
                 }
             }
         }
@@ -221,6 +227,9 @@ impl GameState for MainState {
                                 println!("PAUSED");
                             }
                         }
+                    }
+                    Keycode::Space => {
+                        self.single_step = true;
                     }
                     _ => {
                         println!("Unrecognized keycode {}", keycode);
