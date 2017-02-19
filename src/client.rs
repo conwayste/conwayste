@@ -16,7 +16,7 @@ use conway::{Universe, CellState};
 use std::collections::BTreeMap;
 
 
-const FPS: u32 = 30;
+const FPS: u32 = 25;
 const INTRO_DURATION: f64 = 2.0;
 const SCREEN_WIDTH: u32 = 2000;
 const SCREEN_HEIGHT: u32 = 1200;
@@ -30,10 +30,11 @@ enum Stage {
 
 // All game state
 struct MainState {
+    small_font:          graphics::Font,
     intro_text:          graphics::Text,
     stage:               Stage,
     uni:                 Universe,
-    first_gen_was_drawn: bool,
+    first_gen_was_drawn: bool,              // the purpose of this is to inhibit gen calc until the first draw
     grid_view:           GridView,
     color_settings:      ColorSettings,
     running:             bool,
@@ -71,8 +72,8 @@ struct GridView {
 // that you can override if you wish, but the defaults are fine.
 impl GameState for MainState {
     fn load(ctx: &mut Context, _conf: &conf::Conf) -> GameResult<MainState> {
-        let font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 48).unwrap();
-        let intro_text = graphics::Text::new(ctx, "WAYSTE EM!", &font).unwrap();
+        let intro_font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 48).unwrap();
+        let intro_text = graphics::Text::new(ctx, "WAYSTE EM!", &intro_font).unwrap();
 
         let game_width  = 64*4;
         let game_height = 30*4;
@@ -89,27 +90,41 @@ impl GameState for MainState {
             cell_colors: BTreeMap::new(),
             background:  Color::RGB( 64,  64,  64),
         };
-        color_settings.cell_colors.insert(CellState::Dead,  Color::RGB(255, 255, 255));
+        color_settings.cell_colors.insert(CellState::Dead,  Color::RGB(224, 224, 224));
         color_settings.cell_colors.insert(CellState::Alive, Color::RGB(  0,   0,   0));
         color_settings.cell_colors.insert(CellState::Wall,  Color::RGB(158, 141, 105));
         color_settings.cell_colors.insert(CellState::Fog,   Color::RGB(128, 128, 128));
 
+        let small_font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 20).unwrap();
         let mut s = MainState {
+            small_font:          small_font,
             intro_text:          intro_text,
             stage:               Stage::Intro(INTRO_DURATION),
             uni:                 Universe::new(game_width, game_height).unwrap(),
             first_gen_was_drawn: false,
             grid_view:           grid_view,
             color_settings:      color_settings,
-            running:             true,
+            running:             false,
         };
 
         // Initialize patterns
+        /*
+        // R pentomino
         s.uni.toggle(16, 15);
         s.uni.toggle(17, 15);
         s.uni.toggle(15, 16);
         s.uni.toggle(16, 16);
         s.uni.toggle(16, 17);
+        */
+
+        // Acorn
+        s.uni.toggle(23, 19);
+        s.uni.toggle(24, 19);
+        s.uni.toggle(24, 17);
+        s.uni.toggle(26, 18);
+        s.uni.toggle(27, 19);
+        s.uni.toggle(28, 19);
+        s.uni.toggle(29, 19);
 
         Ok(s)
     }
@@ -128,7 +143,6 @@ impl GameState for MainState {
             Stage::Run => {
                 if self.first_gen_was_drawn && self.running {
                     self.uni.next();     // next generation
-                    println!("Gen: {}", self.uni.latest_gen());
                 }
             }
         }
@@ -142,6 +156,7 @@ impl GameState for MainState {
                 try!(graphics::draw(ctx, &mut self.intro_text, None, None));
             }
             Stage::Run => {
+                ////////// draw universe
                 graphics::set_color(ctx, self.color_settings.get_color(Some(CellState::Dead)));
                 graphics::rectangle(ctx,  graphics::DrawMode::Fill, self.grid_view.rect).unwrap();
 
@@ -154,6 +169,17 @@ impl GameState for MainState {
                     }
                 });
 
+
+                ////////// draw generation counter
+                let gen_counter_str = self.uni.latest_gen().to_string();
+                let mut gen_counter_text = graphics::Text::new(ctx,
+                                                               &gen_counter_str,
+                                                               &self.small_font).unwrap();
+                let dst = Rect::new(0, 0, gen_counter_text.width(), gen_counter_text.height());
+                graphics::draw(ctx, &mut gen_counter_text, None, Some(dst));
+
+
+                ////////////////////// END
                 graphics::set_color(ctx, Color::RGB(0,0,0)); // do this at end; not sure why...?
                 self.first_gen_was_drawn = true;
             }
@@ -173,18 +199,31 @@ impl GameState for MainState {
         }
     }
 
-    fn key_down_event(&mut self, keycode: Option<Keycode>, keymod: Mod, repeat: bool) {
+    fn key_down_event(&mut self, _keycode: Option<Keycode>, keymod: Mod, repeat: bool) {
+        if _keycode == None {
+            // QUESTION: how can this happen?
+            return;
+        }
+        let keycode = _keycode.unwrap();
+
         match self.stage {
             Stage::Intro(_) => {
                 self.stage = Stage::Run;
             }
             Stage::Run => {
-                if keycode == Some(Keycode::Space) && !repeat {
-                    self.running = !self.running;
-                    if self.running {
-                        println!("RUNNING");
-                    } else {
-                        println!("PAUSED");
+                match keycode {
+                    Keycode::Return => {
+                        if !repeat {
+                            self.running = !self.running;
+                            if self.running {
+                                println!("RUNNING");
+                            } else {
+                                println!("PAUSED");
+                            }
+                        }
+                    }
+                    _ => {
+                        println!("Unrecognized keycode {}", keycode);
                     }
                 }
             }
