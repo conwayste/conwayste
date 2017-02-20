@@ -20,6 +20,7 @@ const FPS: u32 = 25;
 const INTRO_DURATION: f64 = 2.0;
 const SCREEN_WIDTH: u32 = 2000;
 const SCREEN_HEIGHT: u32 = 1200;
+const PIXELS_SCROLLED_PER_FRAME: i32 = 50;
 
 
 #[derive(PartialEq)]
@@ -126,7 +127,7 @@ impl GameState for MainState {
         Ok(s)
     }
 
-    fn update(&mut self, ctx: &mut Context, dt: Duration) -> GameResult<()> {
+    fn update(&mut self, _ctx: &mut Context, dt: Duration) -> GameResult<()> {
         let duration = timer::duration_to_f64(dt); // seconds
         match self.stage {
             Stage::Intro(mut remaining) => {
@@ -147,8 +148,8 @@ impl GameState for MainState {
                 }
                 if self.arrow_input != (0, 0) {
                     let (dx, dy) = self.arrow_input;
-                    self.grid_view.grid_origin = self.grid_view.grid_origin.offset(-dx * 50, -dy * 50);
-                    //XXX fix the above
+                    self.grid_view.grid_origin = self.grid_view.grid_origin.offset(-dx * PIXELS_SCROLLED_PER_FRAME,
+                                                                                   -dy * PIXELS_SCROLLED_PER_FRAME);
                 }
             }
         }
@@ -182,7 +183,7 @@ impl GameState for MainState {
                                                                &gen_counter_str,
                                                                &self.small_font).unwrap();
                 let dst = Rect::new(0, 0, gen_counter_text.width(), gen_counter_text.height());
-                graphics::draw(ctx, &mut gen_counter_text, None, Some(dst));
+                graphics::draw(ctx, &mut gen_counter_text, None, Some(dst))?;
 
 
                 ////////////////////// END
@@ -205,12 +206,12 @@ impl GameState for MainState {
         }
     }
 
-    fn key_down_event(&mut self, _keycode: Option<Keycode>, keymod: Mod, repeat: bool) {
-        if _keycode == None {
-            println!("WARNING: got _keycode of None; what could this mean???");
+    fn key_down_event(&mut self, opt_keycode: Option<Keycode>, _keymod: Mod, repeat: bool) {
+        if opt_keycode == None {
+            println!("WARNING: got opt_keycode of None; what could this mean???");
             return;
         }
-        let keycode = _keycode.unwrap();
+        let keycode = opt_keycode.unwrap();
 
         match self.stage {
             Stage::Intro(_) => {
@@ -246,12 +247,12 @@ impl GameState for MainState {
         }
     }
 
-    fn key_up_event(&mut self, _keycode: Option<Keycode>, keymod: Mod, repeat: bool) {
-        if _keycode == None {
-            println!("WARNING: got _keycode of None; what could this mean???");
+    fn key_up_event(&mut self, opt_keycode: Option<Keycode>, _keymod: Mod, _repeat: bool) {
+        if opt_keycode == None {
+            println!("WARNING: got opt_keycode of None; what could this mean???");
             return;
         }
-        let keycode = _keycode.unwrap();
+        let keycode = opt_keycode.unwrap();
 
         match keycode {
             Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right => {
@@ -274,14 +275,10 @@ struct GridView {
 
 
 impl GridView {
-    fn bounding_rect(&self) -> Rect {
-        self.rect
-    }
-
     // Returns Option<(col, row)>
     fn game_coords_from_window(&self, point: Point) -> Option<(usize, usize)> {
-        let mut col: isize = ((point.x() - self.grid_origin.x()) / self.cell_size) as isize;
-        let mut row: isize = ((point.y() - self.grid_origin.y()) / self.cell_size) as isize;
+        let col: isize = ((point.x() - self.grid_origin.x()) / self.cell_size) as isize;
+        let row: isize = ((point.y() - self.grid_origin.y()) / self.cell_size) as isize;
         if col < 0 || col >= self.columns as isize || row < 0 || row >= self.rows as isize {
             return None;
         }
