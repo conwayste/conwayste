@@ -164,9 +164,22 @@ impl GameState for MainState {
             }
             Stage::Run => {
                 ////////// draw universe
-                graphics::set_color(ctx, self.color_settings.get_color(Some(CellState::Dead)));
+                // grid background
+                graphics::set_color(ctx, self.color_settings.get_color(None));
                 graphics::rectangle(ctx,  graphics::DrawMode::Fill, self.grid_view.rect).unwrap();
 
+                // grid foreground (dead cells)
+                //TODO: put in its own function (of GridView); also make this less ugly
+                let origin = self.grid_view.grid_origin;
+                let full_width  = self.grid_view.grid_width();
+                let full_height = self.grid_view.grid_height();
+                let full_rect = Rect::new(origin.x(), origin.y(), full_width, full_height);
+                if let Some(clipped_rect) = full_rect.intersection(self.grid_view.rect) {
+                    graphics::set_color(ctx, self.color_settings.get_color(Some(CellState::Dead)));
+                    graphics::rectangle(ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
+                }
+
+                // grid non-dead cells
                 self.uni.each_non_dead_full(&mut |col, row, state| {
                     let color = self.color_settings.get_color(Some(state));
                     graphics::set_color(ctx, color);
@@ -297,6 +310,14 @@ impl GridView {
         assert!(top < bottom);
         let rect = Rect::new(left, top, (right - left) as u32, (bottom - top) as u32);
         rect.intersection(self.rect)
+    }
+
+    fn grid_width(&self) -> u32 {
+        self.columns as u32 * self.cell_size as u32
+    }
+
+    fn grid_height(&self) -> u32 {
+        self.rows as u32 * self.cell_size as u32
     }
 }
 
