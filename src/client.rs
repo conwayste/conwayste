@@ -43,6 +43,7 @@ struct MainState {
     // Input state
     single_step:         bool,
     arrow_input:         (i32, i32),
+    drag_draw:           Option<CellState>,
 }
 
 struct ColorSettings {
@@ -103,6 +104,7 @@ impl GameState for MainState {
             running:             false,
             single_step:         false,
             arrow_input:         (0, 0),
+            drag_draw:           None,
         };
 
         // Initialize patterns
@@ -115,6 +117,7 @@ impl GameState for MainState {
         s.uni.toggle(16, 17);
         */
 
+        /*
         // Acorn
         s.uni.toggle(23, 19);
         s.uni.toggle(24, 19);
@@ -123,6 +126,55 @@ impl GameState for MainState {
         s.uni.toggle(27, 19);
         s.uni.toggle(28, 19);
         s.uni.toggle(29, 19);
+        */
+
+
+        // Simkin glider gun
+        s.uni.toggle(100, 70);
+        s.uni.toggle(100, 71);
+        s.uni.toggle(101, 70);
+        s.uni.toggle(101, 71);
+
+        s.uni.toggle(104, 73);
+        s.uni.toggle(104, 74);
+        s.uni.toggle(105, 73);
+        s.uni.toggle(105, 74);
+
+        s.uni.toggle(107, 70);
+        s.uni.toggle(107, 71);
+        s.uni.toggle(108, 70);
+        s.uni.toggle(108, 71);
+
+        /* eater
+        s.uni.toggle(120, 87);
+        s.uni.toggle(120, 88);
+        s.uni.toggle(121, 87);
+        s.uni.toggle(121, 89);
+        s.uni.toggle(122, 89);
+        s.uni.toggle(123, 89);
+        s.uni.toggle(123, 90);
+        */
+
+        s.uni.toggle(121, 80);
+        s.uni.toggle(121, 81);
+        s.uni.toggle(121, 82);
+        s.uni.toggle(122, 79);
+        s.uni.toggle(122, 82);
+        s.uni.toggle(123, 79);
+        s.uni.toggle(123, 82);
+        s.uni.toggle(125, 79);
+        s.uni.toggle(126, 79);
+        s.uni.toggle(126, 83);
+        s.uni.toggle(127, 80);
+        s.uni.toggle(127, 82);
+        s.uni.toggle(128, 81);
+
+        s.uni.toggle(131, 81);
+        s.uni.toggle(131, 82);
+        s.uni.toggle(132, 81);
+        s.uni.toggle(132, 82);
+
+
 
         Ok(s)
     }
@@ -210,13 +262,26 @@ impl GameState for MainState {
     }
 
     fn mouse_button_down_event(&mut self, button: Mouse, x: i32, y: i32) {
-        println!("Button down event! button:{:?} at ({}, {})", button, x, y); //XXX
         if button == Mouse::Left {
             if let Some((col, row)) = self.grid_view.game_coords_from_window(Point::new(x,y)) {
-                self.uni.toggle(col, row);
-                println!("Clicked at (col={}, row={})", col, row); //XXX
+                let state = self.uni.toggle(col, row);
+                self.drag_draw = Some(state);
             }
         }
+    }
+
+    fn mouse_motion_event(&mut self, state: MouseState, x: i32, y: i32, _xrel: i32, _yrel: i32) {
+        if state.left() && self.drag_draw != None {
+            if let Some((col, row)) = self.grid_view.game_coords_from_window(Point::new(x,y)) {
+                let cell_state = self.drag_draw.unwrap();
+                self.uni.set(col, row, cell_state);
+            }
+        }
+    }
+
+    fn mouse_button_up_event(&mut self, _button: Mouse, _x: i32, _y: i32) {
+        // Later, we'll need to support drag-and-drop patterns as well as drag draw
+        self.drag_draw = None;   // probably unnecessary because of state.left() check in mouse_motion_event
     }
 
     fn key_down_event(&mut self, opt_keycode: Option<Keycode>, _keymod: Mod, repeat: bool) {
