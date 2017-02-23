@@ -47,17 +47,47 @@ impl fmt::Display for Universe {
 
 
 impl Universe {
-    // switches any non-dead state to CellState::Dead
-    // switches CellState::Dead to CellState::Alive
-    // TODO: when multiple bitmaps are supported, adjust this accordingly
-    pub fn toggle(&mut self, col: usize, row: usize) {
+    // sets the state of a cell
+    // TODO: unit tests
+    // TODO: when multiple bitmaps are supported, adjust this
+    pub fn set(&mut self, col: usize, row: usize, cell: CellState) {
+        //XXX bounds checks
         let latest = self.latest();
         let buffer_cur = if latest == WhichBuffer::A { &mut self.buffer_a } else { &mut self.buffer_b };
         let word_col = col/64;
-        let bit_shift = 63 - (col & (64 - 1));
+        let shift = 63 - (col & (64 - 1));
         let mut word = buffer_cur[row][word_col];
-        word ^= 1 << bit_shift;
+        match cell {
+            CellState::Dead => {
+                word &= !(1 << shift);
+            }
+            CellState::Alive => {
+                word |= 1 << shift;
+            }
+            _ => unimplemented!()
+        }
         buffer_cur[row][word_col] = word;
+    }
+
+
+    // switches any non-dead state to CellState::Dead
+    // switches CellState::Dead to CellState::Alive
+    // TODO: unit tests
+    pub fn toggle(&mut self, col: usize, row: usize) -> CellState {
+        //XXX bounds checks
+        let latest = self.latest();
+        let buffer_cur = if latest == WhichBuffer::A { &mut self.buffer_a } else { &mut self.buffer_b };
+        let word_col = col/64;
+        let shift = 63 - (col & (64 - 1));
+        let mut word = buffer_cur[row][word_col];
+        word ^= 1 << shift;
+        buffer_cur[row][word_col] = word;
+        if (word >> shift) & 1 == 1 {
+            // TODO: when multiple bitmaps are supported, adjust the XOR and the return value computation
+            CellState::Alive
+        } else {
+            CellState::Dead
+        }
     }
 
 
