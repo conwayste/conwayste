@@ -326,9 +326,9 @@ impl GameState for MainState {
                     }
                     Keycode::Minus | Keycode::Underscore => {
                         // Zoom Out
-                        if self.grid_view.cell_size > 0 {
+                        if self.grid_view.cell_size > 2 {
                             self.grid_view.cell_size -= 1;
-                        }
+                        } 
                     }
                     _ => {
                         println!("Unrecognized keycode {}", keycode);
@@ -384,6 +384,9 @@ impl GridView {
         let right  = self.grid_origin.x() + (col + 1) as i32 * self.cell_size - 1;
         let top    = self.grid_origin.y() + (row as i32)     * self.cell_size;
         let bottom = self.grid_origin.y() + (row + 1) as i32 * self.cell_size - 1;
+
+        //println!("Left: {}, Right: {}\nTop: {}, Bottom: {}\n", left, right, top, bottom);
+
         assert!(left < right);
         assert!(top < bottom);
         let rect = Rect::new(left, top, (right - left) as u32, (bottom - top) as u32);
