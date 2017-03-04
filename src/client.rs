@@ -33,10 +33,10 @@ enum Stage {
 struct MainState {
     small_font:          graphics::Font,
     intro_text:          graphics::Text,
-    stage:               Stage,
-    uni:                 Universe,
+    stage:               Stage,             // What state we are in (Intro/Menu Main/Generations..)
+    uni:                 Universe,          // Things alive and moving here
     first_gen_was_drawn: bool,              // the purpose of this is to inhibit gen calc until the first draw
-    grid_view:           GridView,
+    grid_view:           GridView,          // 
     color_settings:      ColorSettings,
     running:             bool,
 
@@ -46,6 +46,7 @@ struct MainState {
     drag_draw:           Option<CellState>,
 }
 
+// Support non-alive/dead/bg colors
 struct ColorSettings {
     cell_colors: BTreeMap<CellState, Color>,
     background: Color,
@@ -317,6 +318,18 @@ impl GameState for MainState {
                     Keycode::Right => {
                         self.arrow_input = ( 1, 0);
                     }
+                    Keycode::Plus | Keycode::Equals => {
+                        // Zoom In
+                        if self.grid_view.cell_size < 100 { // do we need a max
+                            self.grid_view.cell_size += 1;
+                        }
+                    }
+                    Keycode::Minus | Keycode::Underscore => {
+                        // Zoom Out
+                        if self.grid_view.cell_size > 0 {
+                            self.grid_view.cell_size -= 1;
+                        }
+                    }
                     _ => {
                         println!("Unrecognized keycode {}", keycode);
                     }
@@ -348,7 +361,7 @@ struct GridView {
     cell_size:   i32,   // zoom level in window coordinates
     columns:     usize, // width in game coords (should match bitmap/universe width)
     rows:        usize, // height in game coords (should match bitmap/universe height)
-    grid_origin: Point, // top-left corner of grid in window coords. (may be outside rect)
+    grid_origin: Point, // top-left corner of grid w.r.t window coords. (may be outside rect)
 }
 
 
