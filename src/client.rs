@@ -18,14 +18,19 @@ use std::collections::BTreeMap;
 
 const FPS: u32 = 25;
 const INTRO_DURATION: f64 = 2.0;
-const SCREEN_WIDTH: u32 = 2000;
-const SCREEN_HEIGHT: u32 = 1200;
+const SCREEN_WIDTH: u32 = 1200;
+const SCREEN_HEIGHT: u32 = 800;
 const PIXELS_SCROLLED_PER_FRAME: i32 = 50;
+const ZOOM_LEVEL_MIN: i32 = 5;
+const ZOOM_LEVEL_MAX: i32 = 20;
+const OFFSCREEN_ADJUSTMENT_X: i32 = 600;
+const OFFSCREEN_ADJUSTMENT_Y: i32 = 400;
 
 
 #[derive(PartialEq)]
 enum Stage {
     Intro(f64),   // seconds
+    Menu,         // TODO: Consider this for pause as well?
     Run,          // TODO: break it out more to indicate whether waiting for game or playing game
 }
 
@@ -77,8 +82,9 @@ impl GameState for MainState {
         let game_height = 30*4;
 
         let grid_view = GridView {
+            // AM TODO: Get system resolution
             rect:        Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT),
-            cell_size:   30,
+            cell_size:   10,
             columns:     game_width,
             rows:        game_height,
             grid_origin: Point::new(0, 0),
@@ -175,13 +181,12 @@ impl GameState for MainState {
         s.uni.toggle(132, 81);
         s.uni.toggle(132, 82);
 
-
-
         Ok(s)
     }
 
     fn update(&mut self, _ctx: &mut Context, dt: Duration) -> GameResult<()> {
         let duration = timer::duration_to_f64(dt); // seconds
+
         match self.stage {
             Stage::Intro(mut remaining) => {
                 remaining -= duration;
@@ -191,21 +196,44 @@ impl GameState for MainState {
                     self.stage = Stage::Run;
                 }
             }
+            Stage::Menu => {
+                // TODO 
+            }
             Stage::Run => {
                 if self.single_step {
                     self.running = false;
                 }
+
                 if self.first_gen_was_drawn && (self.running || self.single_step) {
                     self.uni.next();     // next generation
                     self.single_step = false;
                 }
+
+                // Update panning
                 if self.arrow_input != (0, 0) {
                     let (dx, dy) = self.arrow_input;
-                    self.grid_view.grid_origin = self.grid_view.grid_origin.offset(-dx * PIXELS_SCROLLED_PER_FRAME,
-                                                                                   -dy * PIXELS_SCROLLED_PER_FRAME);
+                    let dx_in_pixels = -dx * PIXELS_SCROLLED_PER_FRAME;
+                    let dy_in_pixels = -dy * PIXELS_SCROLLED_PER_FRAME;
+                    let new_origin_x = self.grid_view.grid_origin.x() + dx_in_pixels;
+                    let new_origin_y = self.grid_view.grid_origin.y() + dy_in_pixels;
+
+                    println!("{}, {}:", new_origin_x, new_origin_y);
+
+                    if (new_origin_x > -1*(SCREEN_WIDTH as i32 + OFFSCREEN_ADJUSTMENT_X) 
+                     && new_origin_x < (SCREEN_WIDTH as i32 - OFFSCREEN_ADJUSTMENT_X)
+                     && new_origin_y > -1*(SCREEN_HEIGHT as i32 + OFFSCREEN_ADJUSTMENT_Y/10) 
+                     && new_origin_y < (SCREEN_HEIGHT as i32 - OFFSCREEN_ADJUSTMENT_Y)) {
+                        self.grid_view.grid_origin = self.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
+                    }
+
+                   // if (new_origin_x < SCREEN_WIDTH as i32 && new_origin_x > -1*SCREEN_WIDTH as i32) &&
+                   //   (new_origin_y < SCREEN_HEIGHT as i32 && new_origin_y > -1*SCREEN_HEIGHT as i32) {
+                   //     self.grid_view.grid_origin = self.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
+                   // }
                 }
             }
         }
+
         Ok(())
     }
 
@@ -214,6 +242,9 @@ impl GameState for MainState {
         match self.stage {
             Stage::Intro(_) => {
                 try!(graphics::draw(ctx, &mut self.intro_text, None, None));
+            }
+            Stage::Menu => {
+                // TODO 
             }
             Stage::Run => {
                 ////////// draw universe
@@ -227,6 +258,7 @@ impl GameState for MainState {
                 let full_width  = self.grid_view.grid_width();
                 let full_height = self.grid_view.grid_height();
                 let full_rect = Rect::new(origin.x(), origin.y(), full_width, full_height);
+
                 if let Some(clipped_rect) = full_rect.intersection(self.grid_view.rect) {
                     graphics::set_color(ctx, self.color_settings.get_color(Some(CellState::Dead)));
                     graphics::rectangle(ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
@@ -281,7 +313,7 @@ impl GameState for MainState {
     }
 
     fn mouse_button_up_event(&mut self, _button: Mouse, _x: i32, _y: i32) {
-        // Later, we'll need to support drag-and-drop patterns as well as drag draw
+        // TODO Later, we'll need to support drag-and-drop patterns as well as drag draw
         self.drag_draw = None;   // probably unnecessary because of state.left() check in mouse_motion_event
     }
 
@@ -295,6 +327,9 @@ impl GameState for MainState {
         match self.stage {
             Stage::Intro(_) => {
                 self.stage = Stage::Run;
+            }
+            Stage::Menu => {
+                // TODO 
             }
             Stage::Run => {
                 match keycode {
@@ -310,26 +345,46 @@ impl GameState for MainState {
                         self.arrow_input = (0, -1);
                     }
                     Keycode::Down => {
-                        self.arrow_input = (0,  1);
+                        self.arrow_input = (0, 1);
                     }
                     Keycode::Left => {
                         self.arrow_input = (-1, 0);
                     }
                     Keycode::Right => {
-                        self.arrow_input = ( 1, 0);
+                        self.arrow_input = (1, 0);
                     }
                     Keycode::Plus | Keycode::Equals => {
                         // Zoom In
-                        if self.grid_view.cell_size < 100 { // do we need a max
+                        if self.grid_view.cell_size < ZOOM_LEVEL_MAX {
+                            
+                            println!("OriginB: ({},{})", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
+                            
+                            let prev_zoom = self.grid_view.cell_size;
+                            let next_zoom = prev_zoom+1;
+
                             self.grid_view.cell_size += 1;
+
+                            // Draw out zoom 1 and 2
+                            // Calculate distance from center for both
+                            // Calculate hypotenuse delta and apply as offset from
+                            // outter origin
+                             let new_origin_x = (self.grid_view.rows as i32);
+                             let new_origin_y = (self.grid_view.rows as i32);
+
+                             println!("OriginN: ({},{})", new_origin_x, new_origin_y);
+
+                            self.grid_view.grid_origin = self.grid_view.grid_origin.offset(new_origin_x, new_origin_y);
+
+                            println!("OriginA: ({},{})\n", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
                         }
                     }
                     Keycode::Minus | Keycode::Underscore => {
                         // Zoom Out
-                        if self.grid_view.cell_size > 2 {
+                        if self.grid_view.cell_size > ZOOM_LEVEL_MIN {
                             self.grid_view.cell_size -= 1;
                         } 
                     }
+                    Keycode::LGui => {}
                     _ => {
                         println!("Unrecognized keycode {}", keycode);
                     }
@@ -367,6 +422,7 @@ struct GridView {
 
 impl GridView {
     // Returns Option<(col, row)>
+    // Given a Point(x,y), we determine a col/row tuple in cell units
     fn game_coords_from_window(&self, point: Point) -> Option<(usize, usize)> {
         let col: isize = ((point.x() - self.grid_origin.x()) / self.cell_size) as isize;
         let row: isize = ((point.y() - self.grid_origin.y()) / self.cell_size) as isize;
