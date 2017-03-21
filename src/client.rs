@@ -217,7 +217,7 @@ impl GameState for MainState {
                     let new_origin_x = self.grid_view.grid_origin.x() + dx_in_pixels;
                     let new_origin_y = self.grid_view.grid_origin.y() + dy_in_pixels;
 
-                    println!("{}, {}:", new_origin_x, new_origin_y);
+                    //println!("{}, {}:", new_origin_x, new_origin_y);
 
                     if (new_origin_x > -1*(SCREEN_WIDTH as i32 + OFFSCREEN_ADJUSTMENT_X) 
                      && new_origin_x < (SCREEN_WIDTH as i32 - OFFSCREEN_ADJUSTMENT_X)
@@ -225,11 +225,6 @@ impl GameState for MainState {
                      && new_origin_y < (SCREEN_HEIGHT as i32 - OFFSCREEN_ADJUSTMENT_Y)) {
                         self.grid_view.grid_origin = self.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
                     }
-
-                   // if (new_origin_x < SCREEN_WIDTH as i32 && new_origin_x > -1*SCREEN_WIDTH as i32) &&
-                   //   (new_origin_y < SCREEN_HEIGHT as i32 && new_origin_y > -1*SCREEN_HEIGHT as i32) {
-                   //     self.grid_view.grid_origin = self.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
-                   // }
                 }
             }
         }
@@ -357,25 +352,20 @@ impl GameState for MainState {
                         // Zoom In
                         if self.grid_view.cell_size < ZOOM_LEVEL_MAX {
                             
-                            println!("OriginB: ({},{})", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
+                            println!("Origin Before: ({},{})", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
                             
                             let prev_zoom = self.grid_view.cell_size;
                             let next_zoom = prev_zoom+1;
 
                             self.grid_view.cell_size += 1;
 
-                            // Draw out zoom 1 and 2
-                            // Calculate distance from center for both
-                            // Calculate hypotenuse delta and apply as offset from
-                            // outter origin
-                             let new_origin_x = (self.grid_view.rows as i32);
-                             let new_origin_y = (self.grid_view.rows as i32);
-
-                             println!("OriginN: ({},{})", new_origin_x, new_origin_y);
+                            // TODO correct origin after zoom
+                            let new_origin_x = (self.grid_view.rows as i32);
+                            let new_origin_y = (self.grid_view.rows as i32);
 
                             self.grid_view.grid_origin = self.grid_view.grid_origin.offset(new_origin_x, new_origin_y);
 
-                            println!("OriginA: ({},{})\n", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
+                            println!("Origin After: ({},{})\n", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
                         }
                     }
                     Keycode::Minus | Keycode::Underscore => {
