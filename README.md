@@ -5,11 +5,11 @@ Multiplayer Conway's Game of Life!
 ## Installing Depenencies
 Conwayste depends on `SDL2`, `SDL2_Mixer` and `SDL2_Image`. We do plan on bundling these libraries with the binary at some point in the future, but for now you'll need to manually install them. Current verions needed are:
 
-* SDL2 v2.0.5
-* SDL2\_Mixer v2.0.1
-* SDL2\_Image v2.0.1
+* `SDL2 v2.0.5`
+* `SDL2\_Mixer v2.0.1`
+* `SDL2\_Image v2.0.1`
 
-Make sure your Rust is up to date!
+Make sure your Rust is up to date! The easiest way is through rustup.
 
 `rustup update`
 
@@ -41,7 +41,7 @@ TBD
 
 And then add the libraries to your path. This step is necessary if cargo fails to link against theSDL2 libraries.
  
-Under Linux, I had to export `LD_LIBRARY_PATH`, but in Mac it was simply `LD_LIBRARY_PATH`.
+Under Linux, I had to export `$LD_LIBRARY_PATH`, but in Mac it was simply `$LIBRARY_PATH`.
 Homebrew will install the libraries to the Cellar. 
 ```
 export LIBRARY_PATH="/usr/local/Cellar/sdl2_mixer/2.0.1/lib/:/usr/local/Cellar/sdl2_image/2.0.1_2/lib/:/usr/local/Cellar/sdl2/2.0.5/lib/"
@@ -65,7 +65,7 @@ cargo run --bin server 0.0.0.0:9000
 ## Running the client
 
 ```
-cargo run --bin client 127.0.0.1:9000
+cargo run --bin client
 ```
 
 ## Hacking
