@@ -34,7 +34,7 @@ struct PlayerGenState {
 #[derive(Eq,PartialEq,Ord,PartialOrd,Copy,Clone)]
 pub enum CellState {
     Dead,
-    Alive(Option<u8>),    // Some(player_number) or alive but not belonging to any player
+    Alive(Option<usize>),    // Some(player_number) or alive but not belonging to any player
     Wall,
     Fog,
 }
@@ -405,40 +405,108 @@ impl Universe {
     }
 
 
-    /// Iterate over every non-dead cell in the universe for the current generation.
+    /// Iterate over every non-dead cell in the universe for the current generation. `region` is
+    /// the rectangular area used for restricting results. `visibility` is an optional player_id;
+    /// if specified, causes cells not visible to the player to be passed as CellState::Fog to the
+    /// callback.
+    /// 
     /// Callback receives (x, y, cell_state).
     //TODO: unit test
-    //TODO: other CellStates
-    pub fn each_non_dead(&self, callback: &mut FnMut(usize, usize, CellState), region: Region) {
-        let latest = self.latest();
-        let buffer_cur = if latest == WhichBuffer::A { &self.buffer_a } else { &self.buffer_b };
+    pub fn each_non_dead(&self, region: Region, visibility: Option<usize>, callback: &mut FnMut(usize, usize, CellState)) {
+        let cells = &self.gen_states[self.state_index].cells;
+        let wall  = &self.gen_states[self.state_index].wall_cells;
+        let known = &self.gen_states[self.state_index].known;
+        let opt_player_state = if let Some(player_id) = visibility {
+            Some(&self.gen_states[self.state_index].player_states[player_id])
+        } else { None };
         let mut x;
-        let mut y = 0;
-        for row in buffer_cur.iter() {
+        for y in 0 .. self.height {
+            let cells_row = &cells[y];
+            let wall_row  = &wall [y];
+            let known_row = &known[y];
             if (y as isize) >= region.top() && (y as isize) < (region.top() + region.height() as isize) {
                 x = 0;
-                for &word in row.iter() {
+                for col_idx in 0 .. self.width_in_words {
+                    let cells_word = cells_row[col_idx];
+                    let wall_word  = wall_row [col_idx];
+                    let known_word = known_row[col_idx];
+                    let opt_player_words = if let Some(player_state) = opt_player_state {
+                        let player_cells_word = player_state.cells[y][col_idx];
+                        let player_fog_word   = player_state.fog[y][col_idx];
+                        Some((player_cells_word, player_fog_word))
+                    } else { None };
                     for shift in (0..64).rev() {
                         if (x as isize) >= region.left() &&
                             (x as isize) < (region.left() + region.width() as isize) {
-                            if (word>>shift)&1 == 1 {
-                                callback(x, y, CellState::Alive);
+                            let mut state;
+                            let c = (cells_word>>shift)&1 == 1;
+                            let w = (wall_word >>shift)&1 == 1;
+                            let k = (known_word>>shift)&1 == 1;
+                            if c && w {
+                                panic!("Cannot be both cell and wall at ({}, {})", x, y);
+                            }
+                            if !k && ((c && !w) || (!c && w)) {
+                                panic!("Unspecified invalid state at ({}, {})", x, y);
+                            }
+                            if c && !w && k {
+                                // It's known and it's a cell; check cells + fog for every player
+                                // (expensive step since this is per-bit).
+
+                                let mut opt_player_id = None;
+                                for player_id in 0 .. num_players {
+                                    let player_state = &self.gen_states[self.state_index].player_states[player_id];
+                                    let pc = (player_state.cells[y][col_idx] >> shift) & 1 == 1;
+                                    let pf = (player_state.fog[y][col_idx] >> shift) & 1 == 1;
+                                    if pc && pf {
+                                        panic!("Player cell and player fog at ({}, {}) for player {}", x, y, player_id);
+                                    }
+                                    if pc {
+                                        if let Some(other_player_id) = opt_player_id {
+                                            panic!("Cell ({}, {}) belongs to player {} and player {}!", x, y, other_player_id, player_id);
+                                        }
+                                        opt_player_id = Some(player_id);
+                                    }
+                                }
+                                state = CellState::Alive(opt_player_id);
+                            } else {
+                                // (B) other states
+                                if !c && !w {
+                                    state = if k { CellState::Dead } else { CellState::Fog };
+                                } else if !c && w {
+                                    state = CellState::Wall;
+                                }
+                            }
+                            if let Some((player_cells_word, player_fog_word)) = opt_player_words {
+                                let pc = (player_cells_word>>shift)&1 == 1;
+                                let pf = (player_fog_word>>shift)&1 == 1;
+                                if !k && pc {
+                                    panic!("Player can't have cells where unknown, at ({}, {})", x, y);
+                                }
+                                if w && pc {
+                                    panic!("Player can't have cells where wall, at ({}, {})", x, y);
+                                }
+                                if pf {
+                                    state = CellState::Fog;
+                                }
+                            }
+                            if state != CellState::Dead {
+                                callback(x, y, state);
                             }
                         }
                         x += 1;
                     }
                 }
             }
-            y += 1;
         }
     }
 
 
     /// Iterate over every non-dead cell in the universe for the current generation.
+    /// `visibility` is an optional player_id, allowing filtering based on fog.
     /// Callback receives (x, y, cell_state).
     //TODO: unit test
-    pub fn each_non_dead_full(&self, callback: &mut FnMut(usize, usize, CellState)) {
-        self.each_non_dead(callback, self.region());
+    pub fn each_non_dead_full(&self, visibility: Option<usize>, callback: &mut FnMut(usize, usize, CellState)) {
+        self.each_non_dead(self.region(), visibility, callback);
     }
 
 
