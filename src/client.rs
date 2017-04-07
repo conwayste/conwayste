@@ -219,10 +219,10 @@ impl GameState for MainState {
 
                     //println!("{}, {}:", new_origin_x, new_origin_y);
 
-                    if (new_origin_x > -1*(SCREEN_WIDTH as i32 + OFFSCREEN_ADJUSTMENT_X) 
+                    if new_origin_x > -1*(SCREEN_WIDTH as i32 + OFFSCREEN_ADJUSTMENT_X) 
                      && new_origin_x < (SCREEN_WIDTH as i32 - OFFSCREEN_ADJUSTMENT_X)
                      && new_origin_y > -1*(SCREEN_HEIGHT as i32 + OFFSCREEN_ADJUSTMENT_Y/10) 
-                     && new_origin_y < (SCREEN_HEIGHT as i32 - OFFSCREEN_ADJUSTMENT_Y)) {
+                     && new_origin_y < (SCREEN_HEIGHT as i32 - OFFSCREEN_ADJUSTMENT_Y) {
                         self.grid_view.grid_origin = self.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
                     }
                 }
@@ -354,16 +354,23 @@ impl GameState for MainState {
                             
                             println!("Origin Before: ({},{})", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
                             
-                            let prev_zoom = self.grid_view.cell_size;
-                            let next_zoom = prev_zoom+1;
+                            let current_cell_size = self.grid_view.cell_size as f32;
+                            let next_cell_size = (self.grid_view.cell_size + 1) as f32;
 
-                            self.grid_view.cell_size += 1;
+                            let current_cell_count_x = self.grid_view.rect.width() as f32 / current_cell_size;
+                            let current_cell_count_y = self.grid_view.rect.height() as f32 / current_cell_size;
+                            let new_cell_count_x = self.grid_view.rect.width() as f32 / next_cell_size;
+                            let new_cell_count_y = self.grid_view.rect.height() as f32 / next_cell_size;
 
-                            // TODO correct origin after zoom
-                            let new_origin_x = (self.grid_view.rows as i32);
-                            let new_origin_y = (self.grid_view.rows as i32);
+                            println!("cur {}, {}", current_cell_count_x, current_cell_count_y);
+                            println!("new {}, {}", new_cell_count_x, new_cell_count_y);
 
-                            self.grid_view.grid_origin = self.grid_view.grid_origin.offset(new_origin_x, new_origin_y);
+                            let delta_x = (current_cell_count_x - new_cell_count_x) * next_cell_size / 2.0;
+                            let delta_y = (current_cell_count_y - new_cell_count_y) * next_cell_size / 2.0;
+
+                            self.grid_view.cell_size = next_cell_size as i32;
+
+                            self.grid_view.grid_origin = self.grid_view.grid_origin.offset(-(delta_x as i32), -(delta_y as i32));
 
                             println!("Origin After: ({},{})\n", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
                         }
@@ -403,7 +410,7 @@ impl GameState for MainState {
 // Controls the mapping between window and game coordinates
 struct GridView {
     rect:        Rect,  // the area the game grid takes up on screen
-    cell_size:   i32,   // zoom level in window coordinates
+    cell_size:   i32,   // zoom level in window coordinates, TODO AMEEN make unsigned
     columns:     usize, // width in game coords (should match bitmap/universe width)
     rows:        usize, // height in game coords (should match bitmap/universe height)
     grid_origin: Point, // top-left corner of grid w.r.t window coords. (may be outside rect)
