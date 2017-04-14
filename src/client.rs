@@ -352,27 +352,46 @@ impl GameState for MainState {
                         // Zoom In
                         if self.grid_view.cell_size < ZOOM_LEVEL_MAX {
                             
+                            println!("Window Size: ({}, {})", self.grid_view.rect.width(), self.grid_view.rect.height());
                             println!("Origin Before: ({},{})", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
-                            
+                            println!("Cell Size Before: {},", self.grid_view.cell_size);
+
                             let current_cell_size = self.grid_view.cell_size as f32;
                             let next_cell_size = (self.grid_view.cell_size + 1) as f32;
 
-                            let current_cell_count_x = self.grid_view.rect.width() as f32 / current_cell_size;
-                            let current_cell_count_y = self.grid_view.rect.height() as f32 / current_cell_size;
-                            let new_cell_count_x = self.grid_view.rect.width() as f32 / next_cell_size;
-                            let new_cell_count_y = self.grid_view.rect.height() as f32 / next_cell_size;
+                            // TODO change to window width
+                            // let current_cell_count_x = self.grid_view.rect.width() as f32 / current_cell_size;
+                            // let current_cell_count_y = self.grid_view.rect.height() as f32 / current_cell_size;
+                            // let new_cell_count_x = self.grid_view.rect.width() as f32 / next_cell_size;
+                            // let new_cell_count_y = self.grid_view.rect.height() as f32 / next_cell_size;
+                            //
+                            let window_center = Point::new((self.grid_view.rect.width()/2) as i32, (self.grid_view.rect.height()/2) as i32);
 
-                            println!("cur {}, {}", current_cell_count_x, current_cell_count_y);
-                            println!("new {}, {}", new_cell_count_x, new_cell_count_y);
+                            let (current_cell_count_x, current_cell_count_y) = self.grid_view.game_coords_from_window(window_center).unwrap();
 
-                            let delta_x = (current_cell_count_x - new_cell_count_x) * next_cell_size / 2.0;
-                            let delta_y = (current_cell_count_y - new_cell_count_y) * next_cell_size / 2.0;
+                            let current_cell_count_x = current_cell_count_x as f32;
+                            let current_cell_count_y = current_cell_count_y as f32;
+
+                            let delta_x = current_cell_count_x * next_cell_size - current_cell_count_x * current_cell_size;
+                            let delta_y = current_cell_count_y * next_cell_size - current_cell_count_y * current_cell_size;
+
+                            println!("current cell count: {}, {}", current_cell_count_x, current_cell_count_y);
+                            //println!("current cell count: {}, {}", current_cell_count_x, current_cell_count_y);
+                            //println!("current cell count: {}, {}", current_cell_count_x, current_cell_count_y);
+                            //println!("new cell count: {}, {}", new_cell_count_x, new_cell_count_y);
+
+                            // # of pixels to move
+                            // let delta_x = (current_cell_count_x - new_cell_count_x) * next_cell_size / 2.0;
+                            // let delta_y = (current_cell_count_y - new_cell_count_y) * next_cell_size / 2.0;
+
+                            println!("delta in win coords: {}, {}", delta_x, delta_y);
 
                             self.grid_view.cell_size = next_cell_size as i32;
 
                             self.grid_view.grid_origin = self.grid_view.grid_origin.offset(-(delta_x as i32), -(delta_y as i32));
 
                             println!("Origin After: ({},{})\n", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
+                            println!("Cell Size After: {},", self.grid_view.cell_size);
                         }
                     }
                     Keycode::Minus | Keycode::Underscore => {
