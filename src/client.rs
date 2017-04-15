@@ -34,6 +34,13 @@ enum Stage {
     Run,          // TODO: break it out more to indicate whether waiting for game or playing game
 }
 
+#[derive(PartialEq)]
+enum ZoomDirection {
+    ZoomOut,
+    ZoomIn
+}
+
+
 // All game state
 struct MainState {
     small_font:          graphics::Font,
@@ -74,6 +81,7 @@ impl ColorSettings {
 // The `GameState` trait also contains callbacks for event handling
 // that you can override if you wish, but the defaults are fine.
 impl GameState for MainState {
+
     fn load(ctx: &mut Context, _conf: &conf::Conf) -> GameResult<MainState> {
         let intro_font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 48).unwrap();
         let intro_text = graphics::Text::new(ctx, "WAYSTE EM!", &intro_font).unwrap();
@@ -349,56 +357,10 @@ impl GameState for MainState {
                         self.arrow_input = (1, 0);
                     }
                     Keycode::Plus | Keycode::Equals => {
-                        // Zoom In
-                        if self.grid_view.cell_size < ZOOM_LEVEL_MAX {
-                            
-                            println!("Window Size: ({}, {})", self.grid_view.rect.width(), self.grid_view.rect.height());
-                            println!("Origin Before: ({},{})", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
-                            println!("Cell Size Before: {},", self.grid_view.cell_size);
-
-                            let current_cell_size = self.grid_view.cell_size as f32;
-                            let next_cell_size = (self.grid_view.cell_size + 1) as f32;
-
-                            // TODO change to window width
-                            // let current_cell_count_x = self.grid_view.rect.width() as f32 / current_cell_size;
-                            // let current_cell_count_y = self.grid_view.rect.height() as f32 / current_cell_size;
-                            // let new_cell_count_x = self.grid_view.rect.width() as f32 / next_cell_size;
-                            // let new_cell_count_y = self.grid_view.rect.height() as f32 / next_cell_size;
-                            //
-                            let window_center = Point::new((self.grid_view.rect.width()/2) as i32, (self.grid_view.rect.height()/2) as i32);
-
-                            let (current_cell_count_x, current_cell_count_y) = self.grid_view.game_coords_from_window(window_center).unwrap();
-
-                            let current_cell_count_x = current_cell_count_x as f32;
-                            let current_cell_count_y = current_cell_count_y as f32;
-
-                            let delta_x = current_cell_count_x * next_cell_size - current_cell_count_x * current_cell_size;
-                            let delta_y = current_cell_count_y * next_cell_size - current_cell_count_y * current_cell_size;
-
-                            println!("current cell count: {}, {}", current_cell_count_x, current_cell_count_y);
-                            //println!("current cell count: {}, {}", current_cell_count_x, current_cell_count_y);
-                            //println!("current cell count: {}, {}", current_cell_count_x, current_cell_count_y);
-                            //println!("new cell count: {}, {}", new_cell_count_x, new_cell_count_y);
-
-                            // # of pixels to move
-                            // let delta_x = (current_cell_count_x - new_cell_count_x) * next_cell_size / 2.0;
-                            // let delta_y = (current_cell_count_y - new_cell_count_y) * next_cell_size / 2.0;
-
-                            println!("delta in win coords: {}, {}", delta_x, delta_y);
-
-                            self.grid_view.cell_size = next_cell_size as i32;
-
-                            self.grid_view.grid_origin = self.grid_view.grid_origin.offset(-(delta_x as i32), -(delta_y as i32));
-
-                            println!("Origin After: ({},{})\n", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
-                            println!("Cell Size After: {},", self.grid_view.cell_size);
-                        }
+                        adjust_zoom_level(self, ZoomDirection::ZoomIn);
                     }
                     Keycode::Minus | Keycode::Underscore => {
-                        // Zoom Out
-                        if self.grid_view.cell_size > ZOOM_LEVEL_MIN {
-                            self.grid_view.cell_size -= 1;
-                        } 
+                        adjust_zoom_level(self, ZoomDirection::ZoomOut);
                     }
                     Keycode::LGui => {}
                     _ => {
@@ -423,13 +385,59 @@ impl GameState for MainState {
             _ => {}
         }
     }
+
 }
+
+fn adjust_zoom_level(main_state: &mut MainState, direction : ZoomDirection) {
+    // Zoom In
+    if (direction == ZoomDirection::ZoomIn && main_state.grid_view.cell_size < ZOOM_LEVEL_MAX) ||
+       (direction == ZoomDirection::ZoomOut && main_state.grid_view.cell_size > ZOOM_LEVEL_MIN) {
+
+        let zoom_dir: i32;
+        match direction {
+            ZoomDirection::ZoomIn => zoom_dir = 1,
+            ZoomDirection::ZoomOut => zoom_dir = -1,
+        }
+
+        // TODO Mang Proper logging
+        if false {
+            println!("Window Size: ({}, {})", main_state.grid_view.rect.width(), main_state.grid_view.rect.height());
+            println!("Origin Before: ({},{})", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
+            println!("Cell Size Before: {},", main_state.grid_view.cell_size);
+        }
+
+        let old_cell_size = main_state.grid_view.cell_size as isize;
+        let next_cell_size = (main_state.grid_view.cell_size + zoom_dir) as isize;
+
+        let window_center = Point::new((main_state.grid_view.rect.width()/2) as i32, (main_state.grid_view.rect.height()/2) as i32);
+
+        let (old_cell_count_for_x, old_cell_count_for_y) = main_state.grid_view.game_coords_from_window(window_center).unwrap();
+
+        let delta_x = zoom_dir * (old_cell_count_for_x as i32 * next_cell_size as i32 - old_cell_count_for_x as i32 * old_cell_size as i32);
+        let delta_y = zoom_dir * (old_cell_count_for_y as i32 * next_cell_size as i32 - old_cell_count_for_y as i32 * old_cell_size as i32);
+
+        if false {
+            println!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
+            println!("delta in win coords: {}, {}", delta_x, delta_y);
+        }
+
+        main_state.grid_view.cell_size = next_cell_size as i32;
+
+        main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(-zoom_dir * (delta_x as i32), -zoom_dir * (delta_y as i32));
+
+        if false {
+            println!("Origin After: ({},{})\n", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
+            println!("Cell Size After: {},", main_state.grid_view.cell_size);
+        }
+    }
+}
+
 
 
 // Controls the mapping between window and game coordinates
 struct GridView {
     rect:        Rect,  // the area the game grid takes up on screen
-    cell_size:   i32,   // zoom level in window coordinates, TODO AMEEN make unsigned
+    cell_size:   i32,   // zoom level in window coordinates, TODO Mang make unsigned
     columns:     usize, // width in game coords (should match bitmap/universe width)
     rows:        usize, // height in game coords (should match bitmap/universe height)
     grid_origin: Point, // top-left corner of grid w.r.t window coords. (may be outside rect)
