@@ -21,8 +21,8 @@ const INTRO_DURATION: f64 = 2.0;
 const SCREEN_WIDTH: u32 = 1200;
 const SCREEN_HEIGHT: u32 = 800;
 const PIXELS_SCROLLED_PER_FRAME: i32 = 50;
-const ZOOM_LEVEL_MIN: i32 = 5;
-const ZOOM_LEVEL_MAX: i32 = 20;
+const ZOOM_LEVEL_MIN: u32 = 5;
+const ZOOM_LEVEL_MAX: u32 = 20;
 const OFFSCREEN_ADJUSTMENT_X: i32 = 600;
 const OFFSCREEN_ADJUSTMENT_Y: i32 = 400;
 
@@ -406,8 +406,8 @@ fn adjust_zoom_level(main_state: &mut MainState, direction : ZoomDirection) {
             println!("Cell Size Before: {},", main_state.grid_view.cell_size);
         }
 
-        let old_cell_size = main_state.grid_view.cell_size as isize;
-        let next_cell_size = (main_state.grid_view.cell_size + zoom_dir) as isize;
+        let old_cell_size = main_state.grid_view.cell_size;
+        let next_cell_size = main_state.grid_view.cell_size as i32 + zoom_dir;
 
         let window_center = Point::new((main_state.grid_view.rect.width()/2) as i32, (main_state.grid_view.rect.height()/2) as i32);
 
@@ -421,7 +421,7 @@ fn adjust_zoom_level(main_state: &mut MainState, direction : ZoomDirection) {
             println!("delta in win coords: {}, {}", delta_x, delta_y);
         }
 
-        main_state.grid_view.cell_size = next_cell_size as i32;
+        main_state.grid_view.cell_size = next_cell_size as u32;
 
         main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(-zoom_dir * (delta_x as i32), -zoom_dir * (delta_y as i32));
 
@@ -437,7 +437,7 @@ fn adjust_zoom_level(main_state: &mut MainState, direction : ZoomDirection) {
 // Controls the mapping between window and game coordinates
 struct GridView {
     rect:        Rect,  // the area the game grid takes up on screen
-    cell_size:   i32,   // zoom level in window coordinates, TODO Mang make unsigned
+    cell_size:   u32,   // zoom level in window coordinates
     columns:     usize, // width in game coords (should match bitmap/universe width)
     rows:        usize, // height in game coords (should match bitmap/universe height)
     grid_origin: Point, // top-left corner of grid w.r.t window coords. (may be outside rect)
@@ -448,8 +448,8 @@ impl GridView {
     // Returns Option<(col, row)>
     // Given a Point(x,y), we determine a col/row tuple in cell units
     fn game_coords_from_window(&self, point: Point) -> Option<(usize, usize)> {
-        let col: isize = ((point.x() - self.grid_origin.x()) / self.cell_size) as isize;
-        let row: isize = ((point.y() - self.grid_origin.y()) / self.cell_size) as isize;
+        let col: isize = ((point.x() - self.grid_origin.x()) / self.cell_size as i32) as isize;
+        let row: isize = ((point.y() - self.grid_origin.y()) / self.cell_size as i32) as isize;
         if col < 0 || col >= self.columns as isize || row < 0 || row >= self.rows as isize {
             return None;
         }
@@ -460,10 +460,10 @@ impl GridView {
     // If partially in view, will be clipped by the bounding rectangle.
     // Caller must ensure that col and row are within bounds.
     fn window_coords_from_game(&self, col: usize, row: usize) -> Option<Rect> {
-        let left   = self.grid_origin.x() + (col as i32)     * self.cell_size;
-        let right  = self.grid_origin.x() + (col + 1) as i32 * self.cell_size - 1;
-        let top    = self.grid_origin.y() + (row as i32)     * self.cell_size;
-        let bottom = self.grid_origin.y() + (row + 1) as i32 * self.cell_size - 1;
+        let left   = self.grid_origin.x() + (col as i32)     * self.cell_size as i32;
+        let right  = self.grid_origin.x() + (col + 1) as i32 * self.cell_size as i32 - 1;
+        let top    = self.grid_origin.y() + (row as i32)     * self.cell_size as i32;
+        let bottom = self.grid_origin.y() + (row + 1) as i32 * self.cell_size as i32 - 1;
 
         //println!("Left: {}, Right: {}\nTop: {}, Bottom: {}\n", left, right, top, bottom);
 
@@ -474,11 +474,11 @@ impl GridView {
     }
 
     fn grid_width(&self) -> u32 {
-        self.columns as u32 * self.cell_size as u32
+        self.columns as u32 * self.cell_size
     }
 
     fn grid_height(&self) -> u32 {
-        self.rows as u32 * self.cell_size as u32
+        self.rows as u32 * self.cell_size
     }
 }
 
