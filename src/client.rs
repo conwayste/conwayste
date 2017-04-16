@@ -56,6 +56,7 @@ struct MainState {
     single_step:         bool,
     arrow_input:         (i32, i32),
     drag_draw:           Option<CellState>,
+    win_resize:          u8,
 }
 
 // Support non-alive/dead/bg colors
@@ -120,6 +121,7 @@ impl GameState for MainState {
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
+            win_resize:          0,
         };
 
         // Initialize patterns
@@ -216,6 +218,36 @@ impl GameState for MainState {
                     self.uni.next();     // next generation
                     self.single_step = false;
                 }
+
+                if self.win_resize % 4 == 1 {
+                    let renderer = _ctx.renderer.window_mut().unwrap();
+                    println!("Previous Window Size: {:?}", renderer.size());
+
+                    match renderer.set_size(800, 600) {
+                        Err(x) => println!("Resizing Error: {}", x),
+                        Ok(_) => println!("Apparently it went A-OK."),
+                    }
+                }
+                else if self.win_resize % 4 == 2 {
+                    let renderer = _ctx.renderer.window_mut().unwrap();
+                    println!("Previous Window Size: {:?}", renderer.size());
+
+                    match renderer.set_size(640, 480) {
+                        Err(x) => println!("Resizing Error: {}", x),
+                        Ok(_) => println!("Apparently it went A-OK."),
+                    }
+
+                }
+                else if self.win_resize % 4 == 3 {
+                    let renderer = _ctx.renderer.window_mut().unwrap();
+                    println!("Previous Window Size: {:?}", renderer.size());
+
+                    match renderer.set_size(SCREEN_WIDTH, SCREEN_HEIGHT) {
+                        Err(x) => println!("Resizing Error: {}", x),
+                        Ok(_) => println!("Apparently it went A-OK."),
+                    }
+                }
+                self.win_resize = 0;
 
                 // Update panning
                 if self.arrow_input != (0, 0) {
@@ -361,6 +393,18 @@ impl GameState for MainState {
                     }
                     Keycode::Minus | Keycode::Underscore => {
                         adjust_zoom_level(self, ZoomDirection::ZoomOut);
+                    }
+                    Keycode::Num1 => {
+                       self.win_resize = 1;
+                    }
+                    Keycode::Num2 => {
+                       self.win_resize = 2;
+                    }
+                    Keycode::Num3 => {
+                       self.win_resize = 3;
+                    }
+                    Keycode::Num4 => {
+                        self.win_resize = 0;
                     }
                     Keycode::LGui => {}
                     _ => {
