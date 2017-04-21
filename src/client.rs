@@ -1,3 +1,10 @@
+
+// TODOs
+// Contextual logging
+// Modularization
+// Menu System
+//
+
 extern crate conway;
 extern crate ggez;
 #[macro_use]
@@ -18,8 +25,8 @@ use std::collections::BTreeMap;
 
 const FPS: u32 = 25;
 const INTRO_DURATION: f64 = 2.0;
-const SCREEN_WIDTH: u32 = 1200;
-const SCREEN_HEIGHT: u32 = 800;
+const DEFAULT_SCREEN_WIDTH: u32 = 1200;
+const DEFAULT_SCREEN_HEIGHT: u32 = 800;
 const PIXELS_SCROLLED_PER_FRAME: i32 = 50;
 const ZOOM_LEVEL_MIN: u32 = 5;
 const ZOOM_LEVEL_MAX: u32 = 20;
@@ -39,7 +46,6 @@ enum ZoomDirection {
     ZoomOut,
     ZoomIn
 }
-
 
 // All game state
 struct MainState {
@@ -92,7 +98,7 @@ impl GameState for MainState {
 
         let grid_view = GridView {
             // AM TODO: Get system resolution
-            rect:        Rect::new(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT),
+            rect:        Rect::new(0, 0, DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT),
             cell_size:   10,
             columns:     game_width,
             rows:        game_height,
@@ -219,50 +225,59 @@ impl GameState for MainState {
                     self.single_step = false;
                 }
 
-                if self.win_resize % 4 == 1 {
-                    let renderer = _ctx.renderer.window_mut().unwrap();
-                    println!("Previous Window Size: {:?}", renderer.size());
+                let renderer = &mut _ctx.renderer;
+                let mut x = DEFAULT_SCREEN_WIDTH;
+                let mut y = DEFAULT_SCREEN_HEIGHT;
 
-                    match renderer.set_size(800, 600) {
-                        Err(x) => println!("Resizing Error: {}", x),
-                        Ok(_) => println!("Apparently it went A-OK."),
+                if self.win_resize != 0 {
+                    println!("Previous Window Size: {:?}", renderer.logical_size());
+                    println!("Previous Window Scale: {:?}", renderer.scale());
+
+                    if self.win_resize % 4 == 1 {
+                       x = 640;
+                       y = 480;
                     }
-                }
-                else if self.win_resize % 4 == 2 {
-                    let renderer = _ctx.renderer.window_mut().unwrap();
-                    println!("Previous Window Size: {:?}", renderer.size());
-
-                    match renderer.set_size(640, 480) {
-                        Err(x) => println!("Resizing Error: {}", x),
-                        Ok(_) => println!("Apparently it went A-OK."),
+                    else if self.win_resize % 4 == 2 {
+                        x = 800;
+                        y = 600;
+                    }
+                    else if self.win_resize % 4 == 3 {
+                        x = DEFAULT_SCREEN_WIDTH;
+                        y = DEFAULT_SCREEN_HEIGHT;
                     }
 
-                }
-                else if self.win_resize % 4 == 3 {
-                    let renderer = _ctx.renderer.window_mut().unwrap();
-                    println!("Previous Window Size: {:?}", renderer.size());
-
-                    match renderer.set_size(SCREEN_WIDTH, SCREEN_HEIGHT) {
-                        Err(x) => println!("Resizing Error: {}", x),
-                        Ok(_) => println!("Apparently it went A-OK."),
+                    //renderer.set_viewport( Some(Rect::new(0,0,x,y)));
+                    renderer.set_logical_size(x,y);
+                    {
+                        let window = renderer.window_mut().unwrap();
+                        window.set_size(x,y);
                     }
+                    //renderer.set_scale( (x/(100*5)) as f32, (y/(100*5)) as f32);
                 }
                 self.win_resize = 0;
 
                 // Update panning
                 if self.arrow_input != (0, 0) {
+                    let (screen_width, screen_height) = self.grid_view.rect.size();
+
+                    println!("Screen (x,y): ({}, {})", screen_width, screen_height);
+
+                    let offscreen_adjustment_x = (screen_width/2) as i32;
+                    let offscreen_adjustment_y = (screen_height/2) as i32;
+
                     let (dx, dy) = self.arrow_input;
                     let dx_in_pixels = -dx * PIXELS_SCROLLED_PER_FRAME;
                     let dy_in_pixels = -dy * PIXELS_SCROLLED_PER_FRAME;
                     let new_origin_x = self.grid_view.grid_origin.x() + dx_in_pixels;
                     let new_origin_y = self.grid_view.grid_origin.y() + dy_in_pixels;
 
-                    //println!("{}, {}:", new_origin_x, new_origin_y);
+                    println!("{}, {}:", new_origin_x, new_origin_y);
 
-                    if new_origin_x > -1*(SCREEN_WIDTH as i32 + OFFSCREEN_ADJUSTMENT_X) 
-                     && new_origin_x < (SCREEN_WIDTH as i32 - OFFSCREEN_ADJUSTMENT_X)
-                     && new_origin_y > -1*(SCREEN_HEIGHT as i32 + OFFSCREEN_ADJUSTMENT_Y/10) 
-                     && new_origin_y < (SCREEN_HEIGHT as i32 - OFFSCREEN_ADJUSTMENT_Y) {
+                    // FIXME FOR DIFF RESOLUTIONS
+                    if new_origin_x > -1*(screen_width as i32 + offscreen_adjustment_x) 
+                     && new_origin_x < (screen_width as i32 - offscreen_adjustment_x)
+                     && new_origin_y > -1*(screen_height as i32 + offscreen_adjustment_y/10) 
+                     && new_origin_y < (screen_height as i32 - offscreen_adjustment_y) {
                         self.grid_view.grid_origin = self.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
                     }
                 }
@@ -539,8 +554,8 @@ pub fn main() {
     let mut c = conf::Conf::new();
 
     c.version       = version!().to_string();
-    c.window_width  = SCREEN_WIDTH;
-    c.window_height = SCREEN_HEIGHT;
+    c.window_width  = DEFAULT_SCREEN_WIDTH;
+    c.window_height = DEFAULT_SCREEN_HEIGHT;
     c.window_icon   = "conwaylife.ico".to_string();
     c.window_title  = "💥 ConWayste the Enemy 💥".to_string();
 
