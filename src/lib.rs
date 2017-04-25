@@ -48,7 +48,7 @@ impl CellState {
                 if player_id >= 23 {
                     panic!("Player IDs must be less than 23 to be converted to chars");
                 }
-                char::from_u32(player_id as u32 + 65).unwrap()
+                std::char::from_u32(player_id as u32 + 65).unwrap()
             }
             CellState::Alive(None) => 'o',
             CellState::Dead        => 'b',
@@ -69,6 +69,33 @@ fn new_bitgrid(width_in_words: usize, height: usize) -> BitGrid {
 }
 
 
+// Sets or clears a rectangle of bits. Panics if Region is out of range.
+fn fill_region(grid: &mut BitGrid, region: Region, bit: bool) {
+    for y in region.top() .. region.bottom() + 1 {
+        for word_col in 0 .. grid[y as usize].len() {
+            let x_left  = word_col * 64;
+            let x_right = x_left + 63;
+            if region.right() >= x_left as isize && region.left() <= x_right as isize {
+                let mut mask = u64::max_value();
+                for shift in (0..64).rev() {
+                    let x = x_right - shift;
+                    if (x as isize) < region.left() || (x as isize) > region.right() {
+                        mask &= !(1 << shift);
+                    }
+                }
+                // apply change to bitgrid based on mask and bit
+                if bit {
+                    grid[y as usize][word_col] |=  mask;
+                } else {
+                    grid[y as usize][word_col] &= !mask;
+                }
+            }
+        }
+    }
+}
+
+
+/* TODO: will we ever need this?
 impl fmt::Display for Universe {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let latest = self.latest();
@@ -90,17 +117,21 @@ impl fmt::Display for Universe {
         Ok(())
     }
 }
+*/
 
 
 // TODO: unit tests
 impl Universe {
     // sets the state of a cell
-    // TODO: when multiple bitmaps are supported, adjust this
+    /*
+    //XXX TODO
     pub fn set(&mut self, col: usize, row: usize, cell: CellState) {
-        let latest = self.latest();
-        let buffer_cur = if latest == WhichBuffer::A { &mut self.buffer_a } else { &mut self.buffer_b };
+        let cells = &self.gen_states[self.state_index].cells;
+        let wall  = &self.gen_states[self.state_index].wall_cells;
+        let known = &self.gen_states[self.state_index].known;
         let word_col = col/64;
         let shift = 63 - (col & (64 - 1));
+
         let mut word = buffer_cur[row][word_col];
         match cell {
             CellState::Dead => {
@@ -113,24 +144,63 @@ impl Universe {
         }
         buffer_cur[row][word_col] = word;
     }
+    */
 
 
-    // switches any non-dead state to CellState::Dead
-    // switches CellState::Dead to CellState::Alive
-    pub fn toggle(&mut self, col: usize, row: usize) -> CellState {
-        let latest = self.latest();
-        let buffer_cur = if latest == WhichBuffer::A { &mut self.buffer_a } else { &mut self.buffer_b };
+    // Switches any non-dead state to CellState::Dead.
+    // Switches CellState::Dead to CellState::Alive(opt_player_id) and clears fog for that player,
+    // if any.
+    pub fn toggle_unchecked(&mut self, col: usize, row: usize, opt_player_id: Option<usize>) -> CellState {
         let word_col = col/64;
         let shift = 63 - (col & (64 - 1));
-        let mut word = buffer_cur[row][word_col];
-        word ^= 1 << shift;
-        buffer_cur[row][word_col] = word;
-        if (word >> shift) & 1 == 1 {
-            // TODO: when multiple bitmaps are supported, adjust the XOR and the return value computation
-            CellState::Alive
+
+        let mask = 1 << shift;
+        let mut word;
+        {
+            let cells = &mut self.gen_states[self.state_index].cells;
+            word = cells[row][word_col];
+            word ^= mask;
+            cells[row][word_col] = word;
+        }
+        let next_cell = (word & mask) > 0;
+
+        // clear all player cell bits
+        for player_id in 0 .. self.num_players {
+            self.gen_states[self.state_index].player_states[player_id].cells[row][word_col] &= !mask;
+        }
+
+        if next_cell {
+            // set this player's cell bit, if needed, and clear fog
+            if let Some(player_id) = opt_player_id {
+                self.gen_states[self.state_index].player_states[player_id].cells[row][word_col] |= mask;
+                self.gen_states[self.state_index].player_states[player_id].fog[row][word_col]   &= !mask;
+            }
+
+            CellState::Alive(opt_player_id)
         } else {
             CellState::Dead
         }
+    }
+
+
+    // Checked toggle - switch between CellState::Alive and CellState::Dead.
+    // Result is Err if trying to toggle outside player's writable area, or if
+    // trying to toggle a wall or an unknown cell.
+    pub fn toggle(&mut self, col: usize, row: usize, player_id: usize) -> Result<CellState, ()> {
+        if !self.player_writable[player_id].contains(col, row) {
+            return Err(());
+        }
+
+        let word_col = col/64;
+        let shift = 63 - (col & (64 - 1));
+        {
+            let wall  = &self.gen_states[self.state_index].wall_cells;
+            let known = &self.gen_states[self.state_index].known;
+            if (wall[row][word_col] >> shift) & 1 == 1 || (known[row][word_col] >> shift) & 1 == 0 {
+                return Err(());
+            }
+        }
+        Ok(self.toggle_unchecked(col, row, Some(player_id)))
     }
 
 
@@ -156,11 +226,14 @@ impl Universe {
         for i in 0 .. history {
             let mut player_states = Vec::new();
             for player_id in 0 .. num_players {
-                player_states.push(PlayerGenState {
+                let mut pgs = PlayerGenState {
                     player_id: player_id,
                     cells:     new_bitgrid(width_in_words, height),
                     fog:       new_bitgrid(width_in_words, height),
-                });
+                };
+                // clear player fog on writable regions
+                fill_region(&mut pgs.fog, player_writable[player_id], false);
+                player_states.push(pgs);
             }
             let mut known = new_bitgrid(width_in_words, height);
             if is_server && i == 0 {
@@ -300,8 +373,8 @@ impl Universe {
         for player_id in 0 .. self.num_players {
             player_cells_vec.push(&self.gen_states[self.state_index].player_states[player_id].cells);
             player_fog_vec.push(&self.gen_states[self.state_index].player_states[player_id].fog);
-            player_cells_next_vec.push(&self.gen_states[next_state_index].player_states[player_id].cells);
-            player_fog_next_vec.push(&self.gen_states[next_state_index].player_states[player_id].fog);
+            player_cells_next_vec.push(&mut self.gen_states[next_state_index].player_states[player_id].cells);
+            player_fog_next_vec.push(&mut self.gen_states[next_state_index].player_states[player_id].fog);
         }
 
         for row_idx in 0 .. self.height {
@@ -401,7 +474,7 @@ impl Universe {
         self.generation += 1;
         self.state_index = next_state_index;
         self.gen_states[next_state_index].gen_or_none = Some(self.generation);
-        new_latest_gen
+        self.generation
     }
 
 
@@ -438,7 +511,7 @@ impl Universe {
                     for shift in (0..64).rev() {
                         if (x as isize) >= region.left() &&
                             (x as isize) < (region.left() + region.width() as isize) {
-                            let mut state;
+                            let mut state = CellState::Wall;  // TODO: is this needed? Avoiding error: 'possibly uninitialized'
                             let c = (cells_word>>shift)&1 == 1;
                             let w = (wall_word >>shift)&1 == 1;
                             let k = (known_word>>shift)&1 == 1;
@@ -453,7 +526,7 @@ impl Universe {
                                 // (expensive step since this is per-bit).
 
                                 let mut opt_player_id = None;
-                                for player_id in 0 .. num_players {
+                                for player_id in 0 .. self.num_players {
                                     let player_state = &self.gen_states[self.state_index].player_states[player_id];
                                     let pc = (player_state.cells[y][col_idx] >> shift) & 1 == 1;
                                     let pf = (player_state.fog[y][col_idx] >> shift) & 1 == 1;
@@ -517,6 +590,7 @@ impl Universe {
 }
 
 
+#[derive(Eq,PartialEq,Ord,PartialOrd,Copy,Clone)]
 pub struct Region {
     left:   isize,
     top:    isize,
@@ -538,8 +612,16 @@ impl Region {
         self.left
     }
 
+    pub fn right(&self) -> isize {
+        self.left + (self.width as isize) - 1
+    }
+
     pub fn top(&self) -> isize {
         self.top
+    }
+
+    pub fn bottom(&self) -> isize {
+        self.top + (self.height as isize) - 1
     }
 
     pub fn width(&self) -> usize {
@@ -548,6 +630,13 @@ impl Region {
 
     pub fn height(&self) -> usize {
         self.height
+    }
+
+    pub fn contains(&self, col: usize, row: usize) -> bool {
+        self.left    <= col as isize &&
+        col as isize <= self.right() &&
+        self.top     <= row as isize &&
+        row as isize <= self.bottom()
     }
 }
 
