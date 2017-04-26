@@ -359,121 +359,139 @@ impl Universe {
         // get the buffers and buffers_next
         assert!(self.gen_states[self.state_index].gen_or_none.unwrap() == self.generation);
         let next_state_index = (self.state_index + 1) % self.gen_states.len();
-        let cells      = &self.gen_states[self.state_index].cells;
-        let wall       = &self.gen_states[self.state_index].wall_cells;
-        let known      = &self.gen_states[self.state_index].known;
-        let cells_next = &mut self.gen_states[next_state_index].cells;
-        let wall_next  = &mut self.gen_states[next_state_index].wall_cells;
-        let known_next = &mut self.gen_states[next_state_index].known;
 
         let mut player_cells_vec      = Vec::with_capacity(self.num_players);
         let mut player_fog_vec        = Vec::with_capacity(self.num_players);
         let mut player_cells_next_vec = Vec::with_capacity(self.num_players);
         let mut player_fog_next_vec   = Vec::with_capacity(self.num_players);
+
+        let split_idx = if self.state_index < next_state_index { next_state_index } else { self.state_index };
+        // TODO: try factoring out the split_at_mut (I was being conservative with borrow rules)
+        let (gen_state, gen_state_next) = if self.state_index < next_state_index {
+            {
+                let (p0, p1) = self.gen_states.split_at_mut(split_idx);
+                (&p0[0], &mut p1[0])
+            }
+        } else {
+            {
+                let (p0, p1) = self.gen_states.split_at_mut(split_idx);
+                (&p1[0], &mut p0[0])
+            }
+        };
+
         for player_id in 0 .. self.num_players {
-            player_cells_vec.push(&self.gen_states[self.state_index].player_states[player_id].cells);
-            player_fog_vec.push(&self.gen_states[self.state_index].player_states[player_id].fog);
-            player_cells_next_vec.push(&mut self.gen_states[next_state_index].player_states[player_id].cells);
-            player_fog_next_vec.push(&mut self.gen_states[next_state_index].player_states[player_id].fog);
+            player_cells_vec.push(&gen_state.player_states[player_id].cells);
+            player_fog_vec.push(&gen_state.player_states[player_id].fog);
+            player_cells_next_vec.push(&mut gen_state_next.player_states[player_id].cells);
+            player_fog_next_vec.push(&mut gen_state_next.player_states[player_id].fog);
         }
 
-        for row_idx in 0 .. self.height {
-            let n_row_idx = (row_idx + self.height - 1) % self.height;
-            let s_row_idx = (row_idx + 1) % self.height;
-            let cells_row_n = &cells[n_row_idx];
-            let cells_row_c = &cells[ row_idx ];
-            let cells_row_s = &cells[s_row_idx];
-            let wall_row_c  = &wall[ row_idx ];
-            let known_row_n = &known[n_row_idx];
-            let known_row_c = &known[ row_idx ];
-            let known_row_s = &known[s_row_idx];
+        {
+            let cells      = &gen_state.cells;
+            let wall       = &gen_state.wall_cells;
+            let known      = &gen_state.known;
+            let cells_next = &mut gen_state_next.cells;
+            let wall_next  = &mut gen_state_next.wall_cells;
+            let known_next = &mut gen_state_next.known;
+            for row_idx in 0 .. self.height {
+                let n_row_idx = (row_idx + self.height - 1) % self.height;
+                let s_row_idx = (row_idx + 1) % self.height;
+                let cells_row_n = &cells[n_row_idx];
+                let cells_row_c = &cells[ row_idx ];
+                let cells_row_s = &cells[s_row_idx];
+                let wall_row_c  = &wall[ row_idx ];
+                let known_row_n = &known[n_row_idx];
+                let known_row_c = &known[ row_idx ];
+                let known_row_s = &known[s_row_idx];
 
-            // These will be shifted over at the beginning of the loop
-            let mut cells_nw;
-            let mut cells_w;
-            let mut cells_sw;
-            let mut cells_n   = cells_row_n[self.width_in_words - 1];
-            let mut cells_cen = cells_row_c[self.width_in_words - 1];
-            let mut cells_s   = cells_row_s[self.width_in_words - 1];
-            let mut cells_ne  = cells_row_n[0];
-            let mut cells_e   = cells_row_c[0];
-            let mut cells_se  = cells_row_s[0];
-            let mut known_nw;
-            let mut known_w;
-            let mut known_sw;
-            let mut known_n   = known_row_n[self.width_in_words - 1];
-            let mut known_cen = known_row_c[self.width_in_words - 1];
-            let mut known_s   = known_row_s[self.width_in_words - 1];
-            let mut known_ne  = known_row_n[0];
-            let mut known_e   = known_row_c[0];
-            let mut known_se  = known_row_s[0];
+                // These will be shifted over at the beginning of the loop
+                let mut cells_nw;
+                let mut cells_w;
+                let mut cells_sw;
+                let mut cells_n   = cells_row_n[self.width_in_words - 1];
+                let mut cells_cen = cells_row_c[self.width_in_words - 1];
+                let mut cells_s   = cells_row_s[self.width_in_words - 1];
+                let mut cells_ne  = cells_row_n[0];
+                let mut cells_e   = cells_row_c[0];
+                let mut cells_se  = cells_row_s[0];
+                let mut known_nw;
+                let mut known_w;
+                let mut known_sw;
+                let mut known_n   = known_row_n[self.width_in_words - 1];
+                let mut known_cen = known_row_c[self.width_in_words - 1];
+                let mut known_s   = known_row_s[self.width_in_words - 1];
+                let mut known_ne  = known_row_n[0];
+                let mut known_e   = known_row_c[0];
+                let mut known_se  = known_row_s[0];
 
-            for col_idx in 0 .. self.width_in_words {
-                // shift over
-                cells_nw  = cells_n;
-                cells_n   = cells_ne;
-                cells_w   = cells_cen;
-                cells_cen = cells_e;
-                cells_sw  = cells_s;
-                cells_s   = cells_se;
-                cells_ne  = cells_row_n[(col_idx + 1) % self.width_in_words];
-                cells_e   = cells_row_c[(col_idx + 1) % self.width_in_words];
-                cells_se  = cells_row_s[(col_idx + 1) % self.width_in_words];
-                known_nw  = known_n;
-                known_n   = known_ne;
-                known_w   = known_cen;
-                known_cen = known_e;
-                known_sw  = known_s;
-                known_s   = known_se;
-                known_ne  = known_row_n[(col_idx + 1) % self.width_in_words];
-                known_e   = known_row_c[(col_idx + 1) % self.width_in_words];
-                known_se  = known_row_s[(col_idx + 1) % self.width_in_words];
+                for col_idx in 0 .. self.width_in_words {
+                    // shift over
+                    cells_nw  = cells_n;
+                    cells_n   = cells_ne;
+                    cells_w   = cells_cen;
+                    cells_cen = cells_e;
+                    cells_sw  = cells_s;
+                    cells_s   = cells_se;
+                    cells_ne  = cells_row_n[(col_idx + 1) % self.width_in_words];
+                    cells_e   = cells_row_c[(col_idx + 1) % self.width_in_words];
+                    cells_se  = cells_row_s[(col_idx + 1) % self.width_in_words];
+                    known_nw  = known_n;
+                    known_n   = known_ne;
+                    known_w   = known_cen;
+                    known_cen = known_e;
+                    known_sw  = known_s;
+                    known_s   = known_se;
+                    known_ne  = known_row_n[(col_idx + 1) % self.width_in_words];
+                    known_e   = known_row_c[(col_idx + 1) % self.width_in_words];
+                    known_se  = known_row_s[(col_idx + 1) % self.width_in_words];
 
-                // apply BitGrid changes
-                let mut cells_cen_next = Universe::next_single_gen(cells_nw, cells_n, cells_ne, cells_w, cells_cen, cells_e, cells_sw, cells_s, cells_se);
-                known_next[row_idx][col_idx] = Universe::contagious_zero(known_nw, known_n, known_ne, known_w, known_cen, known_e, known_sw, known_s, known_se);
+                    // apply BitGrid changes
+                    let mut cells_cen_next = Universe::next_single_gen(cells_nw, cells_n, cells_ne, cells_w, cells_cen, cells_e, cells_sw, cells_s, cells_se);
+                    known_next[row_idx][col_idx] = Universe::contagious_zero(known_nw, known_n, known_ne, known_w, known_cen, known_e, known_sw, known_s, known_se);
 
-                cells_cen_next &= known_next[row_idx][col_idx];
-                cells_cen_next &= wall_row_c[col_idx];
+                    cells_cen_next &= known_next[row_idx][col_idx];
+                    cells_cen_next &= wall_row_c[col_idx];
 
-                // assign to the u64 element in the next generation
-                cells_next[row_idx][col_idx] = cells_cen_next;
+                    // assign to the u64 element in the next generation
+                    cells_next[row_idx][col_idx] = cells_cen_next;
 
-                let mut in_multiple: u64 = 0;
-                let mut seen_before: u64 = 0;
-                for player_id in 0 .. self.num_players {
-                    let player_cell_next =
-                        Universe::contagious_one(
-                            player_cells_vec[player_id][n_row_idx][(col_idx + self.width_in_words - 1) % self.width_in_words],
-                            player_cells_vec[player_id][n_row_idx][col_idx],
-                            player_cells_vec[player_id][n_row_idx][(col_idx + 1) % self.width_in_words],
-                            player_cells_vec[player_id][ row_idx ][(col_idx + self.width_in_words - 1) % self.width_in_words],
-                            player_cells_vec[player_id][ row_idx ][col_idx],
-                            player_cells_vec[player_id][ row_idx ][(col_idx + 1) % self.width_in_words],
-                            player_cells_vec[player_id][s_row_idx][(col_idx + self.width_in_words - 1) % self.width_in_words],
-                            player_cells_vec[player_id][s_row_idx][col_idx],
-                            player_cells_vec[player_id][s_row_idx][(col_idx + 1) % self.width_in_words]
-                        ) & cells_cen_next;
-                    in_multiple |= player_cell_next & seen_before;
-                    seen_before |= player_cell_next;
-                    player_cells_next_vec[player_id][row_idx][col_idx] = player_cell_next;
+                    let mut in_multiple: u64 = 0;
+                    let mut seen_before: u64 = 0;
+                    for player_id in 0 .. self.num_players {
+                        let player_cell_next =
+                            //XXX need to actually understand this code!!! only needs cells_next (immutable)
+                            Universe::contagious_one(
+                                player_cells_vec[player_id][n_row_idx][(col_idx + self.width_in_words - 1) % self.width_in_words],
+                                player_cells_vec[player_id][n_row_idx][col_idx],
+                                player_cells_vec[player_id][n_row_idx][(col_idx + 1) % self.width_in_words],
+                                player_cells_vec[player_id][ row_idx ][(col_idx + self.width_in_words - 1) % self.width_in_words],
+                                player_cells_vec[player_id][ row_idx ][col_idx],
+                                player_cells_vec[player_id][ row_idx ][(col_idx + 1) % self.width_in_words],
+                                player_cells_vec[player_id][s_row_idx][(col_idx + self.width_in_words - 1) % self.width_in_words],
+                                player_cells_vec[player_id][s_row_idx][col_idx],
+                                player_cells_vec[player_id][s_row_idx][(col_idx + 1) % self.width_in_words]
+                            ) & cells_cen_next;
+                        in_multiple |= player_cell_next & seen_before;
+                        seen_before |= player_cell_next;
+                        player_cells_next_vec[player_id][row_idx][col_idx] = player_cell_next;
+                    }
+                    for player_id in 0 .. self.num_players {
+                        let mut cell_next = player_cells_next_vec[player_id][row_idx][col_idx];
+                        cell_next &= !in_multiple; // if a cell would have belonged to multiple players, it belongs to none
+                        player_fog_next_vec[player_id][row_idx][col_idx] = player_fog_vec[player_id][row_idx][col_idx] & !cell_next; // clear fog!
+                        player_cells_next_vec[player_id][row_idx][col_idx] = cell_next;
+                    }
                 }
-                for player_id in 0 .. self.num_players {
-                    let mut cell_next = player_cells_next_vec[player_id][row_idx][col_idx];
-                    cell_next &= !in_multiple; // if a cell would have belonged to multiple players, it belongs to none
-                    player_fog_next_vec[player_id][row_idx][col_idx] = player_fog_vec[player_id][row_idx][col_idx] & !cell_next; // clear fog!
-                    player_cells_next_vec[player_id][row_idx][col_idx] = cell_next;
-                }
+
+                // copy wall to wall_next
+                wall_next[row_idx].copy_from_slice(wall_row_c);
             }
-
-            // copy wall to wall_next
-            wall_next[row_idx].copy_from_slice(wall_row_c);
         }
 
         // increment generation in appropriate places
         self.generation += 1;
         self.state_index = next_state_index;
-        self.gen_states[next_state_index].gen_or_none = Some(self.generation);
+        gen_state_next.gen_or_none = Some(self.generation);
         self.generation
     }
 
