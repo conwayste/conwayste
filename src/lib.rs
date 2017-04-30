@@ -360,11 +360,6 @@ impl Universe {
         assert!(self.gen_states[self.state_index].gen_or_none.unwrap() == self.generation);
         let next_state_index = (self.state_index + 1) % self.gen_states.len();
 
-        let mut player_cells_vec      = Vec::with_capacity(self.num_players);
-        let mut player_fog_vec        = Vec::with_capacity(self.num_players);
-        let mut player_cells_next_vec = Vec::with_capacity(self.num_players);
-        let mut player_fog_next_vec   = Vec::with_capacity(self.num_players);
-
         let split_idx = if self.state_index < next_state_index { next_state_index } else { self.state_index };
         // TODO: try factoring out the split_at_mut (I was being conservative with borrow rules)
         let (gen_state, gen_state_next) = if self.state_index < next_state_index {
@@ -378,13 +373,6 @@ impl Universe {
                 (&p1[0], &mut p0[0])
             }
         };
-
-        for player_id in 0 .. self.num_players {
-            player_cells_vec.push(&gen_state.player_states[player_id].cells);
-            player_fog_vec.push(&gen_state.player_states[player_id].fog);
-            player_cells_next_vec.push(&mut gen_state_next.player_states[player_id].cells);
-            player_fog_next_vec.push(&mut gen_state_next.player_states[player_id].fog);
-        }
 
         {
             let cells      = &gen_state.cells;
@@ -459,27 +447,26 @@ impl Universe {
                     let mut seen_before: u64 = 0;
                     for player_id in 0 .. self.num_players {
                         let player_cell_next =
-                            //XXX need to actually understand this code!!! only needs cells_next (immutable)
                             Universe::contagious_one(
-                                player_cells_vec[player_id][n_row_idx][(col_idx + self.width_in_words - 1) % self.width_in_words],
-                                player_cells_vec[player_id][n_row_idx][col_idx],
-                                player_cells_vec[player_id][n_row_idx][(col_idx + 1) % self.width_in_words],
-                                player_cells_vec[player_id][ row_idx ][(col_idx + self.width_in_words - 1) % self.width_in_words],
-                                player_cells_vec[player_id][ row_idx ][col_idx],
-                                player_cells_vec[player_id][ row_idx ][(col_idx + 1) % self.width_in_words],
-                                player_cells_vec[player_id][s_row_idx][(col_idx + self.width_in_words - 1) % self.width_in_words],
-                                player_cells_vec[player_id][s_row_idx][col_idx],
-                                player_cells_vec[player_id][s_row_idx][(col_idx + 1) % self.width_in_words]
+                                gen_state.player_states[player_id].cells[n_row_idx][(col_idx + self.width_in_words - 1) % self.width_in_words],
+                                gen_state.player_states[player_id].cells[n_row_idx][col_idx],
+                                gen_state.player_states[player_id].cells[n_row_idx][(col_idx + 1) % self.width_in_words],
+                                gen_state.player_states[player_id].cells[ row_idx ][(col_idx + self.width_in_words - 1) % self.width_in_words],
+                                gen_state.player_states[player_id].cells[ row_idx ][col_idx],
+                                gen_state.player_states[player_id].cells[ row_idx ][(col_idx + 1) % self.width_in_words],
+                                gen_state.player_states[player_id].cells[s_row_idx][(col_idx + self.width_in_words - 1) % self.width_in_words],
+                                gen_state.player_states[player_id].cells[s_row_idx][col_idx],
+                                gen_state.player_states[player_id].cells[s_row_idx][(col_idx + 1) % self.width_in_words]
                             ) & cells_cen_next;
                         in_multiple |= player_cell_next & seen_before;
                         seen_before |= player_cell_next;
-                        player_cells_next_vec[player_id][row_idx][col_idx] = player_cell_next;
+                        gen_state_next.player_states[player_id].cells[row_idx][col_idx] = player_cell_next;
                     }
                     for player_id in 0 .. self.num_players {
-                        let mut cell_next = player_cells_next_vec[player_id][row_idx][col_idx];
+                        let mut cell_next = gen_state_next.player_states[player_id].cells[row_idx][col_idx];
                         cell_next &= !in_multiple; // if a cell would have belonged to multiple players, it belongs to none
-                        player_fog_next_vec[player_id][row_idx][col_idx] = player_fog_vec[player_id][row_idx][col_idx] & !cell_next; // clear fog!
-                        player_cells_next_vec[player_id][row_idx][col_idx] = cell_next;
+                        gen_state_next.player_states[player_id].fog[row_idx][col_idx] = gen_state.player_states[player_id].fog[row_idx][col_idx] & !cell_next; // clear fog!
+                        gen_state_next.player_states[player_id].cells[row_idx][col_idx] = cell_next;
                     }
                 }
 
