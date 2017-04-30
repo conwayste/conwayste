@@ -358,20 +358,16 @@ impl Universe {
     pub fn next(&mut self) -> usize {
         // get the buffers and buffers_next
         assert!(self.gen_states[self.state_index].gen_or_none.unwrap() == self.generation);
-        let next_state_index = (self.state_index + 1) % self.gen_states.len();
+        let history = self.gen_states.len();
+        let next_state_index = (self.state_index + 1) % history;
 
-        let split_idx = if self.state_index < next_state_index { next_state_index } else { self.state_index };
-        // TODO: try factoring out the split_at_mut (I was being conservative with borrow rules)
         let (gen_state, gen_state_next) = if self.state_index < next_state_index {
-            {
-                let (p0, p1) = self.gen_states.split_at_mut(split_idx);
-                (&p0[0], &mut p1[0])
-            }
+            let (p0, p1) = self.gen_states.split_at_mut(next_state_index);
+            (&p0[next_state_index - 1], &mut p1[0])
         } else {
-            {
-                let (p0, p1) = self.gen_states.split_at_mut(split_idx);
-                (&p1[0], &mut p0[0])
-            }
+            // self.state_index == history-1 and next_state_index == 0
+            let (p0, p1) = self.gen_states.split_at_mut(next_state_index + 1);
+            (&p1[history - 2], &mut p0[0])
         };
 
         {
@@ -438,7 +434,7 @@ impl Universe {
                     known_next[row_idx][col_idx] = Universe::contagious_zero(known_nw, known_n, known_ne, known_w, known_cen, known_e, known_sw, known_s, known_se);
 
                     cells_cen_next &= known_next[row_idx][col_idx];
-                    cells_cen_next &= wall_row_c[col_idx];
+                    cells_cen_next &= !wall_row_c[col_idx];
 
                     // assign to the u64 element in the next generation
                     cells_next[row_idx][col_idx] = cells_cen_next;
