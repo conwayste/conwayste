@@ -95,17 +95,33 @@ fn fill_region(grid: &mut BitGrid, region: Region, bit: bool) {
 }
 
 
-/* TODO: will we ever need this?
 impl fmt::Display for Universe {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let latest = self.latest();
-        let buffer_cur = if latest == WhichBuffer::A { &self.buffer_a } else { &self.buffer_b };
-        for row in buffer_cur.iter() {
-            for &word in row.iter() {
+        let cells = &self.gen_states[self.state_index].cells;
+        let wall  = &self.gen_states[self.state_index].wall_cells;
+        let known = &self.gen_states[self.state_index].known;
+        for row_idx in 0 .. self.height {
+            for col_idx in 0 .. self.width_in_words {
+                let cell_cen = cells[row_idx][col_idx];
+                let wall_cen = wall [row_idx][col_idx];
+                let known_cen = known[row_idx][col_idx];
                 let mut s = String::with_capacity(64);
                 for shift in (0..64).rev() {
-                    if (word>>shift)&1 == 1 {
-                        s.push('*');
+                    if (known_cen>>shift)&1 == 0 {
+                        s.push('?');
+                    } else if (cell_cen>>shift)&1 == 1 {
+                        let mut is_player = false;
+                        for player_id in 0 .. self.num_players {
+                            let player_word = self.gen_states[self.state_index].player_states[player_id].cells[row_idx][col_idx];
+                            if (player_word>>shift)&1 == 1 {
+                                s.push(std::char::from_u32(player_id as u32 + 65).unwrap());
+                                is_player = true;
+                                break;
+                            }
+                        }
+                        if !is_player { s.push('*'); }
+                    } else if (wall_cen>>shift)&1 == 1 {
+                        s.push('W');
                     } else {
                         s.push(' ');
                     }
@@ -117,11 +133,19 @@ impl fmt::Display for Universe {
         Ok(())
     }
 }
-*/
 
 
 // TODO: unit tests
 impl Universe {
+    //XXX delete me demo!
+    pub fn set_wall(&mut self, col: usize, row: usize) {
+        let wall  = &mut self.gen_states[self.state_index].wall_cells;
+        let word_col = col/64;
+        let shift = 63 - (col & (64 - 1));
+        wall[row][word_col] |= 1 << shift;
+    }
+
+
     // sets the state of a cell
     /*
     //XXX TODO
