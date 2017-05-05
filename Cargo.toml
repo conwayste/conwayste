@@ -1,7 +1,8 @@
 [package]
 name = "conway"
 version = "0.1.1"
-authors = ["Aaron Miller <aaron.miller04@gmail.com>"]
+authors = ["Aaron Miller <aaron.miller04@gmail.com>", "mang"]
+license = "GPL-3.0+"
 
 [dependencies]
 rand = "0.3"
