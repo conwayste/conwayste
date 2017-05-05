@@ -366,6 +366,8 @@ struct GridView {
     cell_size:   i32,   // zoom level in window coordinates
     columns:     usize, // width in game coords (should match bitmap/universe width)
     rows:        usize, // height in game coords (should match bitmap/universe height)
+    // The grid origin point tells us where the top-left of the universe is with respect to the
+    // window.
     grid_origin: Point, // top-left corner of grid in window coords. (may be outside rect)
 }
 
