@@ -16,7 +16,6 @@
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
 use std::fmt;
-use std::collections::BTreeMap;
 
 
 /// Represents a wrapping universe in Conway's game of life.
@@ -42,7 +41,6 @@ struct GenState {
 }
 
 struct PlayerGenState {
-    player_id: usize,
     cells:     BitGrid,   // cells belonging to this player (if 1 here, must be 1 in GenState cells)
     fog:       BitGrid,   // cells that the player is not allowed to know
 }
@@ -285,7 +283,6 @@ impl Universe {
             let mut player_states = Vec::new();
             for player_id in 0 .. num_players {
                 let mut pgs = PlayerGenState {
-                    player_id: player_id,
                     cells:     new_bitgrid(width_in_words, height),
                     fog:       new_bitgrid(width_in_words, height),
                 };
