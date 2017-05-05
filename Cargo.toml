@@ -1,6 +1,6 @@
 [package]
 name = "conway"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Aaron Miller <aaron.miller04@gmail.com>", "mang"]
 license = "GPL-3.0+"
 
