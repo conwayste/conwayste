@@ -102,8 +102,8 @@ impl fmt::Display for Universe {
         let known = &self.gen_states[self.state_index].known;
         for row_idx in 0 .. self.height {
             for col_idx in 0 .. self.width_in_words {
-                let cell_cen = cells[row_idx][col_idx];
-                let wall_cen = wall [row_idx][col_idx];
+                let cell_cen  = cells[row_idx][col_idx];
+                let wall_cen  = wall [row_idx][col_idx];
                 let known_cen = known[row_idx][col_idx];
                 let mut s = String::with_capacity(64);
                 for shift in (0..64).rev() {
@@ -137,38 +137,55 @@ impl fmt::Display for Universe {
 
 // TODO: unit tests
 impl Universe {
-    //XXX delete me demo!
-    pub fn set_wall(&mut self, col: usize, row: usize) {
-        let wall  = &mut self.gen_states[self.state_index].wall_cells;
-        let word_col = col/64;
-        let shift = 63 - (col & (64 - 1));
-        wall[row][word_col] |= 1 << shift;
-    }
-
-
     // sets the state of a cell
-    /*
-    //XXX TODO
+    // doesn't support setting CellState::Fog
+    // QUESTION: should there be a "checked" version of this function that checks if in player
+    // writable region?
     pub fn set(&mut self, col: usize, row: usize, cell: CellState) {
-        let cells = &self.gen_states[self.state_index].cells;
-        let wall  = &self.gen_states[self.state_index].wall_cells;
-        let known = &self.gen_states[self.state_index].known;
+        let gen_state = &mut self.gen_states[self.state_index];
         let word_col = col/64;
         let shift = 63 - (col & (64 - 1));
+        let mask  = 1 << shift;
 
-        let mut word = buffer_cur[row][word_col];
+        // panic if not known
+        let known_cen = gen_state.known[row][word_col];
+        if known_cen & mask == 0 {
+            panic!("Tried to set unknown cell at ({}, {})", col, row);
+        }
+
+        // clear all player cell bits
+        {
+            for player_id in 0 .. self.num_players {
+                gen_state.player_states[player_id].cells[row][word_col] &= !mask;
+            }
+        }
+
+        let cells = &mut gen_state.cells;
+        let wall  = &mut gen_state.wall_cells;
+        let mut cells_cen = cells[row][word_col];
+        let mut wall_cen  = wall [row][word_col];
         match cell {
             CellState::Dead => {
-                word &= !(1 << shift);
+                cells_cen &= !mask;
+                wall_cen  &= !mask;
             }
-            CellState::Alive => {
-                word |= 1 << shift;
+            CellState::Alive(opt_player_id) => {
+                cells_cen |=  mask;
+                wall_cen  &= !mask;
+                if let Some(player_id) = opt_player_id {
+                    gen_state.player_states[player_id].cells[row][word_col] |=  mask;
+                    gen_state.player_states[player_id].fog[row][word_col]   &= !mask;
+                }
+            }
+            CellState::Wall => {
+                cells_cen &= !mask;
+                wall_cen  |=  mask;
             }
             _ => unimplemented!()
         }
-        buffer_cur[row][word_col] = word;
+        cells[row][word_col] = cells_cen;
+        wall [row][word_col] = wall_cen;
     }
-    */
 
 
     // Switches any non-dead state to CellState::Dead.
@@ -255,6 +272,8 @@ impl Universe {
                     cells:     new_bitgrid(width_in_words, height),
                     fog:       new_bitgrid(width_in_words, height),
                 };
+                // unless writable region, the whole grid is player fog
+                fill_region(&mut pgs.fog, Region::new(0, 0, width, height), true);
                 // clear player fog on writable regions
                 fill_region(&mut pgs.fog, player_writable[player_id], false);
                 player_states.push(pgs);
