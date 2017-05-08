@@ -147,6 +147,59 @@ fn init_patterns(s: &mut MainState) -> Result<(), ()> {
     s.uni.toggle(131, 82, 0)?;
     s.uni.toggle(132, 81, 0)?;
     s.uni.toggle(132, 82, 0)?;
+
+    //Wall!
+    s.uni.set(25, 18, CellState::Wall);
+    s.uni.set(25, 17, CellState::Wall);
+    s.uni.set(25, 16, CellState::Wall);
+    s.uni.set(25, 15, CellState::Wall);
+    s.uni.set(25, 14, CellState::Wall);
+    s.uni.set(25, 13, CellState::Wall);
+    s.uni.set(25, 12, CellState::Wall);
+    s.uni.set(25, 11, CellState::Wall);
+    s.uni.set(25, 10, CellState::Wall);
+    s.uni.set(24, 10, CellState::Wall);
+    s.uni.set(23, 10, CellState::Wall);
+    s.uni.set(22, 10, CellState::Wall);
+    s.uni.set(21, 10, CellState::Wall);
+    s.uni.set(20, 10, CellState::Wall);
+    s.uni.set(19, 10, CellState::Wall);
+    s.uni.set(18, 10, CellState::Wall);
+    s.uni.set(17, 10, CellState::Wall);
+    s.uni.set(16, 10, CellState::Wall);
+    s.uni.set(15, 10, CellState::Wall);
+    s.uni.set(14, 10, CellState::Wall);
+    s.uni.set(13, 10, CellState::Wall);
+    s.uni.set(12, 10, CellState::Wall);
+    s.uni.set(11, 10, CellState::Wall);
+    s.uni.set(10, 10, CellState::Wall);
+    s.uni.set(10, 11, CellState::Wall);
+    s.uni.set(10, 12, CellState::Wall);
+    s.uni.set(10, 13, CellState::Wall);
+    s.uni.set(10, 14, CellState::Wall);
+    s.uni.set(10, 15, CellState::Wall);
+    s.uni.set(10, 16, CellState::Wall);
+    s.uni.set(10, 17, CellState::Wall);
+    s.uni.set(10, 18, CellState::Wall);
+    s.uni.set(10, 19, CellState::Wall);
+    s.uni.set(10, 20, CellState::Wall);
+    s.uni.set(10, 21, CellState::Wall);
+    s.uni.set(10, 22, CellState::Wall);
+    s.uni.set(11, 22, CellState::Wall);
+    s.uni.set(12, 22, CellState::Wall);
+    s.uni.set(13, 22, CellState::Wall);
+    s.uni.set(14, 22, CellState::Wall);
+    s.uni.set(15, 22, CellState::Wall);
+    s.uni.set(16, 22, CellState::Wall);
+    s.uni.set(17, 22, CellState::Wall);
+    s.uni.set(18, 22, CellState::Wall);
+    s.uni.set(19, 22, CellState::Wall);
+    s.uni.set(20, 22, CellState::Wall);
+    s.uni.set(21, 22, CellState::Wall);
+    s.uni.set(22, 22, CellState::Wall);
+    s.uni.set(23, 22, CellState::Wall);
+    s.uni.set(24, 22, CellState::Wall);
+    s.uni.set(25, 22, CellState::Wall);
     Ok(())
 }
 
@@ -186,7 +239,7 @@ impl GameState for MainState {
 
         // we're going to have to tear this all out when this becomes a real game
         let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
-        let player1_writable = Region::new(0, 0, game_width, game_height); // let the human player draw everywhere
+        let player1_writable = Region::new(0, 0, 80, 80);
         let writable_regions = vec![player0_writable, player1_writable];
 
         let small_font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 20).unwrap();
@@ -262,7 +315,7 @@ impl GameState for MainState {
                 }
 
                 // grid non-dead cells
-                let visibility = None;
+                let visibility = Some(1); //XXX
                 self.uni.each_non_dead_full(visibility, &mut |col, row, state| {
                     let color = self.color_settings.get_color(Some(state));
                     graphics::set_color(ctx, color);
