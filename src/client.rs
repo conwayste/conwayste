@@ -1,4 +1,22 @@
 
+/*  Copyright 2017 the ConWaysteTheEnemy Developers.
+ *
+ *  This file is part of ConWaysteTheEnemy.
+ *
+ *  ConWaysteTheEnemy is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  ConWaysteTheEnemy is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with ConWaysteTheEnemy.  If not, see
+ *  <http://www.gnu.org/licenses/>. */
+
 // TODOs
 // Contextual logging
 // Modularization
@@ -19,7 +37,7 @@ use ggez::graphics::{Rect, Point, Color};
 use ggez::timer;
 use std::time::Duration;
 use std::fs::File;
-use conway::{Universe, CellState};
+use conway::{Universe, CellState, Region};
 use std::collections::BTreeMap;
 
 
@@ -30,6 +48,8 @@ const DEFAULT_SCREEN_HEIGHT: u32 = 800;
 const PIXELS_SCROLLED_PER_FRAME: i32 = 50;
 const ZOOM_LEVEL_MIN: u32 = 5;
 const ZOOM_LEVEL_MAX: u32 = 20;
+const HISTORY_SIZE: usize = 16;
+const NUM_PLAYERS: usize = 2;
 
 #[derive(PartialEq)]
 enum Stage {
@@ -79,6 +99,129 @@ impl ColorSettings {
 }
 
 
+fn init_patterns(s: &mut MainState) -> Result<(), ()> {
+    /*
+    // R pentomino
+    s.uni.toggle(16, 15, 0)?;
+    s.uni.toggle(17, 15, 0)?;
+    s.uni.toggle(15, 16, 0)?;
+    s.uni.toggle(16, 16, 0)?;
+    s.uni.toggle(16, 17, 0)?;
+    */
+
+    /*
+    // Acorn
+    s.uni.toggle(23, 19, 0)?;
+    s.uni.toggle(24, 19, 0)?;
+    s.uni.toggle(24, 17, 0)?;
+    s.uni.toggle(26, 18, 0)?;
+    s.uni.toggle(27, 19, 0)?;
+    s.uni.toggle(28, 19, 0)?;
+    s.uni.toggle(29, 19, 0)?;
+    */
+
+
+    // Simkin glider gun
+    s.uni.toggle(100, 70, 0)?;
+    s.uni.toggle(100, 71, 0)?;
+    s.uni.toggle(101, 70, 0)?;
+    s.uni.toggle(101, 71, 0)?;
+
+    s.uni.toggle(104, 73, 0)?;
+    s.uni.toggle(104, 74, 0)?;
+    s.uni.toggle(105, 73, 0)?;
+    s.uni.toggle(105, 74, 0)?;
+
+    s.uni.toggle(107, 70, 0)?;
+    s.uni.toggle(107, 71, 0)?;
+    s.uni.toggle(108, 70, 0)?;
+    s.uni.toggle(108, 71, 0)?;
+
+    /* eater
+    s.uni.toggle(120, 87, 0)?;
+    s.uni.toggle(120, 88, 0)?;
+    s.uni.toggle(121, 87, 0)?;
+    s.uni.toggle(121, 89, 0)?;
+    s.uni.toggle(122, 89, 0)?;
+    s.uni.toggle(123, 89, 0)?;
+    s.uni.toggle(123, 90, 0)?;
+    */
+
+    s.uni.toggle(121, 80, 0)?;
+    s.uni.toggle(121, 81, 0)?;
+    s.uni.toggle(121, 82, 0)?;
+    s.uni.toggle(122, 79, 0)?;
+    s.uni.toggle(122, 82, 0)?;
+    s.uni.toggle(123, 79, 0)?;
+    s.uni.toggle(123, 82, 0)?;
+    s.uni.toggle(125, 79, 0)?;
+    s.uni.toggle(126, 79, 0)?;
+    s.uni.toggle(126, 83, 0)?;
+    s.uni.toggle(127, 80, 0)?;
+    s.uni.toggle(127, 82, 0)?;
+    s.uni.toggle(128, 81, 0)?;
+
+    s.uni.toggle(131, 81, 0)?;
+    s.uni.toggle(131, 82, 0)?;
+    s.uni.toggle(132, 81, 0)?;
+    s.uni.toggle(132, 82, 0)?;
+
+    //Wall!
+    s.uni.set(25, 18, CellState::Wall);
+    s.uni.set(25, 17, CellState::Wall);
+    s.uni.set(25, 16, CellState::Wall);
+    s.uni.set(25, 15, CellState::Wall);
+    s.uni.set(25, 14, CellState::Wall);
+    s.uni.set(25, 13, CellState::Wall);
+    s.uni.set(25, 12, CellState::Wall);
+    s.uni.set(25, 11, CellState::Wall);
+    s.uni.set(25, 10, CellState::Wall);
+    s.uni.set(24, 10, CellState::Wall);
+    s.uni.set(23, 10, CellState::Wall);
+    s.uni.set(22, 10, CellState::Wall);
+    s.uni.set(21, 10, CellState::Wall);
+    s.uni.set(20, 10, CellState::Wall);
+    s.uni.set(19, 10, CellState::Wall);
+    s.uni.set(18, 10, CellState::Wall);
+    s.uni.set(17, 10, CellState::Wall);
+    s.uni.set(16, 10, CellState::Wall);
+    s.uni.set(15, 10, CellState::Wall);
+    s.uni.set(14, 10, CellState::Wall);
+    s.uni.set(13, 10, CellState::Wall);
+    s.uni.set(12, 10, CellState::Wall);
+    s.uni.set(11, 10, CellState::Wall);
+    s.uni.set(10, 10, CellState::Wall);
+    s.uni.set(10, 11, CellState::Wall);
+    s.uni.set(10, 12, CellState::Wall);
+    s.uni.set(10, 13, CellState::Wall);
+    s.uni.set(10, 14, CellState::Wall);
+    s.uni.set(10, 15, CellState::Wall);
+    s.uni.set(10, 16, CellState::Wall);
+    s.uni.set(10, 17, CellState::Wall);
+    s.uni.set(10, 18, CellState::Wall);
+    s.uni.set(10, 19, CellState::Wall);
+    s.uni.set(10, 20, CellState::Wall);
+    s.uni.set(10, 21, CellState::Wall);
+    s.uni.set(10, 22, CellState::Wall);
+    s.uni.set(11, 22, CellState::Wall);
+    s.uni.set(12, 22, CellState::Wall);
+    s.uni.set(13, 22, CellState::Wall);
+    s.uni.set(14, 22, CellState::Wall);
+    s.uni.set(15, 22, CellState::Wall);
+    s.uni.set(16, 22, CellState::Wall);
+    s.uni.set(17, 22, CellState::Wall);
+    s.uni.set(18, 22, CellState::Wall);
+    s.uni.set(19, 22, CellState::Wall);
+    s.uni.set(20, 22, CellState::Wall);
+    s.uni.set(21, 22, CellState::Wall);
+    s.uni.set(22, 22, CellState::Wall);
+    s.uni.set(23, 22, CellState::Wall);
+    s.uni.set(24, 22, CellState::Wall);
+    s.uni.set(25, 22, CellState::Wall);
+    Ok(())
+}
+
+
 // Then we implement the `ggez::game::GameState` trait on it, which
 // requires callbacks for creating the game state, updating it each
 // frame, and drawing it.
@@ -106,17 +249,24 @@ impl GameState for MainState {
             cell_colors: BTreeMap::new(),
             background:  Color::RGB( 64,  64,  64),
         };
-        color_settings.cell_colors.insert(CellState::Dead,  Color::RGB(224, 224, 224));
-        color_settings.cell_colors.insert(CellState::Alive, Color::RGB(  0,   0,   0));
-        color_settings.cell_colors.insert(CellState::Wall,  Color::RGB(158, 141, 105));
-        color_settings.cell_colors.insert(CellState::Fog,   Color::RGB(128, 128, 128));
+        color_settings.cell_colors.insert(CellState::Dead,           Color::RGB(224, 224, 224));
+        color_settings.cell_colors.insert(CellState::Alive(None),    Color::RGB(  0,   0,   0));
+        color_settings.cell_colors.insert(CellState::Alive(Some(0)), Color::RGB(255,   0,   0));  // 0 is red
+        color_settings.cell_colors.insert(CellState::Alive(Some(1)), Color::RGB(  0,   0, 255));  // 1 is blue
+        color_settings.cell_colors.insert(CellState::Wall,           Color::RGB(158, 141, 105));
+        color_settings.cell_colors.insert(CellState::Fog,            Color::RGB(128, 128, 128));
+
+        // we're going to have to tear this all out when this becomes a real game
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
 
         let small_font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 20).unwrap();
         let mut s = MainState {
             small_font:          small_font,
             intro_text:          intro_text,
             stage:               Stage::Intro(INTRO_DURATION),
-            uni:                 Universe::new(game_width, game_height).unwrap(),
+            uni:                 Universe::new(game_width, game_height, true, HISTORY_SIZE, NUM_PLAYERS, writable_regions).unwrap(),
             first_gen_was_drawn: false,
             grid_view:           grid_view,
             color_settings:      color_settings,
@@ -127,72 +277,8 @@ impl GameState for MainState {
             win_resize:          0,
         };
 
-        // Initialize patterns
-        /*
-        // R pentomino
-        s.uni.toggle(16, 15);
-        s.uni.toggle(17, 15);
-        s.uni.toggle(15, 16);
-        s.uni.toggle(16, 16);
-        s.uni.toggle(16, 17);
-        */
+        init_patterns(&mut s).unwrap();
 
-        /*
-        // Acorn
-        s.uni.toggle(23, 19);
-        s.uni.toggle(24, 19);
-        s.uni.toggle(24, 17);
-        s.uni.toggle(26, 18);
-        s.uni.toggle(27, 19);
-        s.uni.toggle(28, 19);
-        s.uni.toggle(29, 19);
-        */
-
-
-        // Simkin glider gun
-        s.uni.toggle(100, 70);
-        s.uni.toggle(100, 71);
-        s.uni.toggle(101, 70);
-        s.uni.toggle(101, 71);
-
-        s.uni.toggle(104, 73);
-        s.uni.toggle(104, 74);
-        s.uni.toggle(105, 73);
-        s.uni.toggle(105, 74);
-
-        s.uni.toggle(107, 70);
-        s.uni.toggle(107, 71);
-        s.uni.toggle(108, 70);
-        s.uni.toggle(108, 71);
-
-        /* eater
-        s.uni.toggle(120, 87);
-        s.uni.toggle(120, 88);
-        s.uni.toggle(121, 87);
-        s.uni.toggle(121, 89);
-        s.uni.toggle(122, 89);
-        s.uni.toggle(123, 89);
-        s.uni.toggle(123, 90);
-        */
-
-        s.uni.toggle(121, 80);
-        s.uni.toggle(121, 81);
-        s.uni.toggle(121, 82);
-        s.uni.toggle(122, 79);
-        s.uni.toggle(122, 82);
-        s.uni.toggle(123, 79);
-        s.uni.toggle(123, 82);
-        s.uni.toggle(125, 79);
-        s.uni.toggle(126, 79);
-        s.uni.toggle(126, 83);
-        s.uni.toggle(127, 80);
-        s.uni.toggle(127, 82);
-        s.uni.toggle(128, 81);
-
-        s.uni.toggle(131, 81);
-        s.uni.toggle(131, 82);
-        s.uni.toggle(132, 81);
-        s.uni.toggle(132, 82);
 
         Ok(s)
     }
@@ -307,7 +393,8 @@ impl GameState for MainState {
                 }
 
                 // grid non-dead cells
-                self.uni.each_non_dead_full(&mut |col, row, state| {
+                let visibility = Some(1); //XXX
+                self.uni.each_non_dead_full(visibility, &mut |col, row, state| {
                     let color = self.color_settings.get_color(Some(state));
                     graphics::set_color(ctx, color);
 
@@ -339,8 +426,11 @@ impl GameState for MainState {
     fn mouse_button_down_event(&mut self, button: Mouse, x: i32, y: i32) {
         if button == Mouse::Left {
             if let Some((col, row)) = self.grid_view.game_coords_from_window(Point::new(x,y)) {
-                let state = self.uni.toggle(col, row);
-                self.drag_draw = Some(state);
+                let result = self.uni.toggle(col, row, 1);   // TODO: don't hardcode the player number
+                self.drag_draw = match result {
+                    Ok(state) => Some(state),
+                    Err(_)    => None,
+                };
             }
         }
     }
@@ -488,7 +578,9 @@ struct GridView {
     cell_size:   u32,   // zoom level in window coordinates
     columns:     usize, // width in game coords (should match bitmap/universe width)
     rows:        usize, // height in game coords (should match bitmap/universe height)
-    grid_origin: Point, // top-left corner of grid w.r.t window coords. (may be outside rect)
+    // The grid origin point tells us where the top-left of the universe is with respect to the
+    // window.
+    grid_origin: Point, // top-left corner of grid in window coords. (may be outside rect)
 }
 
 

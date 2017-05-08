@@ -2,9 +2,10 @@
 name = "ConWaysteTheEnemy"
 version = "0.0.2"
 authors = [ "mang", "Aaron Miller <aaron.miller04@gmail.com>" ]
+license = "GPL-3.0+"
 
 [dependencies]
-conway = { git = "https://github.com/AaronM04/libconway" }
+conway = "0.1.2"  # { git = "https://github.com/AaronM04/libconway" }
 ggez = "0.2.1"
 version = "2.0.1"
 

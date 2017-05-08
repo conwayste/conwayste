@@ -2,7 +2,7 @@
 name = "ConWaysteTheEnemy"
 version = "0.0.2"
 dependencies = [
- "conway 0.1.1 (git+https://github.com/AaronM04/libconway)",
+ "conway 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "ggez 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "version 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -51,8 +51,8 @@ dependencies = [
 
 [[package]]
 name = "conway"
-version = "0.1.1"
-source = "git+https://github.com/AaronM04/libconway#9ae4388cd0a25c0b1ddee1584786e471dbc0e114"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "rand 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -311,7 +311,7 @@ dependencies = [
 "checksum byteorder 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "96c8b41881888cc08af32d47ac4edd52bc7fa27fef774be47a92443756451304"
 "checksum bzip2 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7c30a578393daf45ee6101aa043afa8d47a7e70f05032b15b88b28a7111c6a53"
 "checksum bzip2-sys 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "81c91586be5d862524de53126d49c11fef83dc1a8e8034235f37372e3b2da311"
-"checksum conway 0.1.1 (git+https://github.com/AaronM04/libconway)" = "<none>"
+"checksum conway 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "a81d41bb6411865450c592b4aa29d66e145c50436a90a586bad4de6c66d68327"
 "checksum flate2 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)" = "3eeb481e957304178d2e782f2da1257f1434dfecbae883bafb61ada2a9fea3bb"
 "checksum gcc 0.3.41 (registry+https://github.com/rust-lang/crates.io-index)" = "3689e1982a563af74960ae3a4758aa632bb8fd984cfc3cc3b60ee6109477ab6e"
 "checksum ggez 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "a6ee0da08bcd5334608e66363425096dbc8de92183d29f228493f80592696b0c"
