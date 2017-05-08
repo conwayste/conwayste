@@ -30,14 +30,12 @@ const DEFAULT_SCREEN_HEIGHT: u32 = 800;
 const PIXELS_SCROLLED_PER_FRAME: i32 = 50;
 const ZOOM_LEVEL_MIN: u32 = 5;
 const ZOOM_LEVEL_MAX: u32 = 20;
-const OFFSCREEN_ADJUSTMENT_X: i32 = 600;
-const OFFSCREEN_ADJUSTMENT_Y: i32 = 400;
-
 
 #[derive(PartialEq)]
 enum Stage {
     Intro(f64),   // seconds
-    Menu,         // TODO: Consider this for pause as well?
+    #[allow(dead_code)] // TODO: Consider this for pause as well?
+    Menu,
     Run,          // TODO: break it out more to indicate whether waiting for game or playing game
 }
 
@@ -51,10 +49,10 @@ enum ZoomDirection {
 struct MainState {
     small_font:          graphics::Font,
     intro_text:          graphics::Text,
-    stage:               Stage,             // What state we are in (Intro/Menu Main/Generations..)
+    stage:               Stage,             // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
-    first_gen_was_drawn: bool,              // the purpose of this is to inhibit gen calc until the first draw
-    grid_view:           GridView,          // 
+    first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
+    grid_view:           GridView,
     color_settings:      ColorSettings,
     running:             bool,
 
@@ -93,11 +91,10 @@ impl GameState for MainState {
         let intro_font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 48).unwrap();
         let intro_text = graphics::Text::new(ctx, "WAYSTE EM!", &intro_font).unwrap();
 
-        let game_width  = 64*4;
+        let game_width  = 64*4; // num of cells * pixels per cell
         let game_height = 30*4;
 
         let grid_view = GridView {
-            // AM TODO: Get system resolution
             rect:        Rect::new(0, 0, DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT),
             cell_size:   10,
             columns:     game_width,
@@ -213,7 +210,7 @@ impl GameState for MainState {
                 }
             }
             Stage::Menu => {
-                // TODO 
+                // TODO
             }
             Stage::Run => {
                 if self.single_step {
@@ -229,10 +226,10 @@ impl GameState for MainState {
                 let mut x = DEFAULT_SCREEN_WIDTH;
                 let mut y = DEFAULT_SCREEN_HEIGHT;
 
+                // Resolution resizing
+                // This is a temporary placeholder for this functionality until we implement
+                // the video settings in Menu. 
                 if self.win_resize != 0 {
-                    println!("Previous Window Size: {:?}", renderer.logical_size());
-                    println!("Previous Window Scale: {:?}", renderer.scale());
-
                     if self.win_resize % 4 == 1 {
                        x = 640;
                        y = 480;
@@ -246,24 +243,20 @@ impl GameState for MainState {
                         y = DEFAULT_SCREEN_HEIGHT;
                     }
 
-                    //renderer.set_viewport( Some(Rect::new(0,0,x,y)));
-                    renderer.set_logical_size(x,y);
+                    let _ = renderer.set_logical_size(x,y);
                     {
                         let window = renderer.window_mut().unwrap();
-                        window.set_size(x,y);
+                        let _ = window.set_size(x,y);
                     }
-                    //renderer.set_scale( (x/(100*5)) as f32, (y/(100*5)) as f32);
                 }
                 self.win_resize = 0;
 
                 // Update panning
                 if self.arrow_input != (0, 0) {
-                    let (screen_width, screen_height) = self.grid_view.rect.size();
-
-                    println!("Screen (x,y): ({}, {})", screen_width, screen_height);
-
-                    let offscreen_adjustment_x = (screen_width/2) as i32;
-                    let offscreen_adjustment_y = (screen_height/2) as i32;
+                    let cell_size = self.grid_view.cell_size;
+                    let (columns, rows) = (self.grid_view.columns as u32, self.grid_view.rows as u32);
+                    let screen_width  = cell_size*columns;
+                    let screen_height = cell_size*rows;
 
                     let (dx, dy) = self.arrow_input;
                     let dx_in_pixels = -dx * PIXELS_SCROLLED_PER_FRAME;
@@ -271,15 +264,19 @@ impl GameState for MainState {
                     let new_origin_x = self.grid_view.grid_origin.x() + dx_in_pixels;
                     let new_origin_y = self.grid_view.grid_origin.y() + dy_in_pixels;
 
-                    println!("{}, {}:", new_origin_x, new_origin_y);
+                    let border_in_px = 100;
 
-                    // FIXME FOR DIFF RESOLUTIONS
-                    if new_origin_x > -1*(screen_width as i32 + offscreen_adjustment_x) 
-                     && new_origin_x < (screen_width as i32 - offscreen_adjustment_x)
-                     && new_origin_y > -1*(screen_height as i32 + offscreen_adjustment_y/10) 
-                     && new_origin_y < (screen_height as i32 - offscreen_adjustment_y) {
+                    // lol this works for now. One thing we'll need to check,
+                    // either during zooming in or panning,
+                    // is to check if our grid origin is out of bounds, and correct.
+                    // Todo "11" & "7" are currently magical. TODO Align to resolution
+                    if  new_origin_x > -1*(screen_width as i32 - border_in_px*11) 
+                     && new_origin_y > -1*(screen_height as i32 - border_in_px*7) 
+                     && new_origin_x < border_in_px
+                     && new_origin_y < border_in_px {
                         self.grid_view.grid_origin = self.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
                     }
+
                 }
             }
         }
@@ -470,23 +467,23 @@ fn adjust_zoom_level(main_state: &mut MainState, direction : ZoomDirection) {
 
         let window_center = Point::new((main_state.grid_view.rect.width()/2) as i32, (main_state.grid_view.rect.height()/2) as i32);
 
-        let (old_cell_count_for_x, old_cell_count_for_y) = main_state.grid_view.game_coords_from_window(window_center).unwrap();
+        if let Some((old_cell_count_for_x, old_cell_count_for_y)) = main_state.grid_view.game_coords_from_window(window_center) {
+            let delta_x = zoom_dir * (old_cell_count_for_x as i32 * next_cell_size as i32 - old_cell_count_for_x as i32 * old_cell_size as i32);
+            let delta_y = zoom_dir * (old_cell_count_for_y as i32 * next_cell_size as i32 - old_cell_count_for_y as i32 * old_cell_size as i32);
 
-        let delta_x = zoom_dir * (old_cell_count_for_x as i32 * next_cell_size as i32 - old_cell_count_for_x as i32 * old_cell_size as i32);
-        let delta_y = zoom_dir * (old_cell_count_for_y as i32 * next_cell_size as i32 - old_cell_count_for_y as i32 * old_cell_size as i32);
+            if false {
+                println!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
+                println!("delta in win coords: {}, {}", delta_x, delta_y);
+            }
 
-        if false {
-            println!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
-            println!("delta in win coords: {}, {}", delta_x, delta_y);
-        }
+            main_state.grid_view.cell_size = next_cell_size as u32;
 
-        main_state.grid_view.cell_size = next_cell_size as u32;
+            main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(-zoom_dir * (delta_x as i32), -zoom_dir * (delta_y as i32));
 
-        main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(-zoom_dir * (delta_x as i32), -zoom_dir * (delta_y as i32));
-
-        if false {
-            println!("Origin After: ({},{})\n", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
-            println!("Cell Size After: {},", main_state.grid_view.cell_size);
+            if false {
+                println!("Origin After: ({},{})\n", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
+                println!("Cell Size After: {},", main_state.grid_view.cell_size);
+            }
         }
     }
 }
@@ -507,12 +504,21 @@ impl GridView {
     // Returns Option<(col, row)>
     // Given a Point(x,y), we determine a col/row tuple in cell units
     fn game_coords_from_window(&self, point: Point) -> Option<(usize, usize)> {
+/*
         let col: isize = ((point.x() - self.grid_origin.x()) / self.cell_size as i32) as isize;
         let row: isize = ((point.y() - self.grid_origin.y()) / self.cell_size as i32) as isize;
         if col < 0 || col >= self.columns as isize || row < 0 || row >= self.rows as isize {
             return None;
         }
         Some((col as usize, row as usize))
+*/
+        let col: isize = ((point.x() - self.grid_origin.x()) / self.cell_size as i32) as isize;
+        let row: isize = ((point.y() - self.grid_origin.y()) / self.cell_size as i32) as isize;
+        if col < 0 || col >= self.columns as isize || row < 0 || row >= self.rows as isize {
+            return None;
+        }
+        Some((col as usize, row as usize))
+ 
     }
 
     // Attempt to return a rectangle for the on-screen area of the specified cell.
@@ -523,8 +529,6 @@ impl GridView {
         let right  = self.grid_origin.x() + (col + 1) as i32 * self.cell_size as i32 - 1;
         let top    = self.grid_origin.y() + (row as i32)     * self.cell_size as i32;
         let bottom = self.grid_origin.y() + (row + 1) as i32 * self.cell_size as i32 - 1;
-
-        //println!("Left: {}, Right: {}\nTop: {}, Bottom: {}\n", left, right, top, bottom);
 
         assert!(left < right);
         assert!(top < bottom);
