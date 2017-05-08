@@ -230,17 +230,12 @@ impl GameState for MainState {
                 // This is a temporary placeholder for this functionality until we implement
                 // the video settings in Menu. 
                 if self.win_resize != 0 {
-                    if self.win_resize % 4 == 1 {
-                       x = 640;
-                       y = 480;
-                    }
-                    else if self.win_resize % 4 == 2 {
-                        x = 800;
-                        y = 600;
-                    }
-                    else if self.win_resize % 4 == 3 {
-                        x = DEFAULT_SCREEN_WIDTH;
-                        y = DEFAULT_SCREEN_HEIGHT;
+
+                    match self.win_resize % 4 {
+                        1 => { x = 640; y = 480; }
+                        2 => { x = 800; y = 480; }
+                        3 => { x = DEFAULT_SCREEN_WIDTH; y = DEFAULT_SCREEN_HEIGHT; }
+                        _ => {}
                     }
 
                     let _ = renderer.set_logical_size(x,y);
@@ -414,9 +409,6 @@ impl GameState for MainState {
                     }
                     Keycode::Num3 => {
                        self.win_resize = 3;
-                    }
-                    Keycode::Num4 => {
-                        self.win_resize = 0;
                     }
                     Keycode::LGui => {}
                     _ => {
