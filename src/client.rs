@@ -46,7 +46,7 @@ const INTRO_DURATION: f64 = 2.0;
 const DEFAULT_SCREEN_WIDTH: u32 = 1200;
 const DEFAULT_SCREEN_HEIGHT: u32 = 800;
 const PIXELS_SCROLLED_PER_FRAME: i32 = 50;
-const ZOOM_LEVEL_MIN: u32 = 5;
+const ZOOM_LEVEL_MIN: u32 = 4;
 const ZOOM_LEVEL_MAX: u32 = 20;
 const HISTORY_SIZE: usize = 16;
 const NUM_PLAYERS: usize = 2;
@@ -316,7 +316,6 @@ impl GameState for MainState {
                 // This is a temporary placeholder for this functionality until we implement
                 // the video settings in Menu. 
                 if self.win_resize != 0 {
-
                     match self.win_resize % 4 {
                         1 => { x = 640; y = 480; }
                         2 => { x = 800; y = 480; }
@@ -342,22 +341,64 @@ impl GameState for MainState {
                     let (dx, dy) = self.arrow_input;
                     let dx_in_pixels = -dx * PIXELS_SCROLLED_PER_FRAME;
                     let dy_in_pixels = -dy * PIXELS_SCROLLED_PER_FRAME;
-                    let new_origin_x = self.grid_view.grid_origin.x() + dx_in_pixels;
-                    let new_origin_y = self.grid_view.grid_origin.y() + dy_in_pixels;
 
-                    let border_in_px = 100;
+                    let cur_origin_x = self.grid_view.grid_origin.x();
+                    let cur_origin_y = self.grid_view.grid_origin.y();
+
+                    let new_origin_x = cur_origin_x + dx_in_pixels;
+                    let new_origin_y = cur_origin_y + dy_in_pixels;
+
+                    let mut border_in_px = 100;
+
+                    //if cell_size <= ZOOM_LEVEL_MIN {
+                    //    border_in_px = 25;
+                    //}
+
+                    println!("Cell Size: {:?}", (cell_size, border_in_px));
 
                     // lol this works for now. One thing we'll need to check,
                     // either during zooming in or panning,
                     // is to check if our grid origin is out of bounds, and correct.
                     // Todo "11" & "7" are currently magical. TODO Align to resolution
-                    if  new_origin_x > -1*(screen_width as i32 - border_in_px*11) 
-                     && new_origin_y > -1*(screen_height as i32 - border_in_px*7) 
+
+                    let mut right_boundary_in_px = -1*(screen_width as i32 - border_in_px*11);
+                    let mut bottom_boundary_in_px = -1*(screen_height as i32 - border_in_px*7);
+
+                    if cell_size <= (ZOOM_LEVEL_MIN +1) {
+                        right_boundary_in_px = -1*(200)*(cell_size - ZOOM_LEVEL_MIN+1) as i32;
+                        bottom_boundary_in_px = -1*(100)*(cell_size - ZOOM_LEVEL_MIN+1) as i32;
+                    }
+
+                    if  new_origin_x > right_boundary_in_px
+                     && new_origin_y > bottom_boundary_in_px
                      && new_origin_x < border_in_px
                      && new_origin_y < border_in_px {
                         self.grid_view.grid_origin = self.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
                     }
 
+                    if true {
+                        println!("New Origin: {:?}", (new_origin_x, new_origin_y));
+                        println!("Boundary: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
+                    }
+
+                    // Snap edges in case we are out of bounds
+                    if new_origin_x >= border_in_px {
+                        self.grid_view.grid_origin = Point::new(border_in_px-1, cur_origin_y);
+                    }
+
+                    if new_origin_x <= right_boundary_in_px {
+                        self.grid_view.grid_origin = Point::new(right_boundary_in_px+1, cur_origin_y);
+                    }
+
+                    //if cell_size != ZOOM_LEVEL_MIN {
+                        if new_origin_y <= bottom_boundary_in_px {
+                            self.grid_view.grid_origin = Point::new(cur_origin_x, bottom_boundary_in_px+1);
+                        }
+
+                        if new_origin_y >= border_in_px {
+                            self.grid_view.grid_origin = Point::new(cur_origin_x, border_in_px-1);
+                        }
+                  //  }
                 }
             }
         }
