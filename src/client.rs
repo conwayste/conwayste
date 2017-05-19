@@ -102,7 +102,7 @@ impl ColorSettings {
 fn init_patterns(s: &mut MainState) -> Result<(), ()> {
     /*
     // R pentomino
-    s.uni.toggle(16, 15, 0)?;
+s.uni.toggle(16, 15, 0)?;
     s.uni.toggle(17, 15, 0)?;
     s.uni.toggle(15, 16, 0)?;
     s.uni.toggle(16, 16, 0)?;
@@ -254,7 +254,7 @@ impl GameState for MainState {
         color_settings.cell_colors.insert(CellState::Alive(Some(0)), Color::RGB(255,   0,   0));  // 0 is red
         color_settings.cell_colors.insert(CellState::Alive(Some(1)), Color::RGB(  0,   0, 255));  // 1 is blue
         color_settings.cell_colors.insert(CellState::Wall,           Color::RGB(158, 141, 105));
-        color_settings.cell_colors.insert(CellState::Fog,            Color::RGB(128, 128, 128));
+        color_settings.cell_colors.insert(CellState::Fog,            Color::RGB(200, 200, 200));
 
         // we're going to have to tear this all out when this becomes a real game
         let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
