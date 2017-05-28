@@ -18,7 +18,11 @@
  *  <http://www.gnu.org/licenses/>. */
 
 // TODOs
-// Contextual logging
+// detect screen resolution native
+// full screen/ window toggle support
+// main menu & settings
+// unit tests
+// 
 // Modularization
 // Menu System
 //
@@ -27,6 +31,7 @@ extern crate conway;
 extern crate ggez;
 #[macro_use]
 extern crate version;
+extern crate sdl2;
 
 use ggez::conf;
 use ggez::event::*;
@@ -39,6 +44,7 @@ use std::time::Duration;
 use std::fs::File;
 use conway::{Universe, CellState, Region};
 use std::collections::BTreeMap;
+use sdl2::video::FullscreenType;
 
 
 const FPS: u32 = 25;
@@ -72,6 +78,7 @@ struct MainState {
     stage:               Stage,             // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
+    fullscreen_toggle:   u8,
     grid_view:           GridView,
     color_settings:      ColorSettings,
     running:             bool,
@@ -268,6 +275,7 @@ impl GameState for MainState {
             stage:               Stage::Intro(INTRO_DURATION),
             uni:                 Universe::new(game_width, game_height, true, HISTORY_SIZE, NUM_PLAYERS, writable_regions).unwrap(),
             first_gen_was_drawn: false,
+            fullscreen_toggle:   0,
             grid_view:           grid_view,
             color_settings:      color_settings,
             running:             false,
@@ -331,74 +339,22 @@ impl GameState for MainState {
                 }
                 self.win_resize = 0;
 
+                if self.fullscreen_toggle != 0 {
+                    let window = renderer.window_mut().unwrap();
+
+                    if self.fullscreen_toggle == 2
+                    {
+                        let _ = window.set_fullscreen(FullscreenType::True);
+                    }
+                    else if self.fullscreen_toggle == 1 {
+                        let _ = window.set_fullscreen(FullscreenType::Off);
+                    }
+                    self.fullscreen_toggle = 0;
+                }
+
                 // Update panning
                 if self.arrow_input != (0, 0) {
-                    let cell_size = self.grid_view.cell_size;
-                    let (columns, rows) = (self.grid_view.columns as u32, self.grid_view.rows as u32);
-                    let screen_width  = cell_size*columns;
-                    let screen_height = cell_size*rows;
-
-                    let (dx, dy) = self.arrow_input;
-                    let dx_in_pixels = -dx * PIXELS_SCROLLED_PER_FRAME;
-                    let dy_in_pixels = -dy * PIXELS_SCROLLED_PER_FRAME;
-
-                    let cur_origin_x = self.grid_view.grid_origin.x();
-                    let cur_origin_y = self.grid_view.grid_origin.y();
-
-                    let new_origin_x = cur_origin_x + dx_in_pixels;
-                    let new_origin_y = cur_origin_y + dy_in_pixels;
-
-                    let mut border_in_px = 100;
-
-                    //if cell_size <= ZOOM_LEVEL_MIN {
-                    //    border_in_px = 25;
-                    //}
-
-                    println!("Cell Size: {:?}", (cell_size, border_in_px));
-
-                    // lol this works for now. One thing we'll need to check,
-                    // either during zooming in or panning,
-                    // is to check if our grid origin is out of bounds, and correct.
-                    // Todo "11" & "7" are currently magical. TODO Align to resolution
-
-                    let mut right_boundary_in_px = -1*(screen_width as i32 - border_in_px*11);
-                    let mut bottom_boundary_in_px = -1*(screen_height as i32 - border_in_px*7);
-
-                    if cell_size <= (ZOOM_LEVEL_MIN +1) {
-                        right_boundary_in_px = -1*(200)*(cell_size - ZOOM_LEVEL_MIN+1) as i32;
-                        bottom_boundary_in_px = -1*(100)*(cell_size - ZOOM_LEVEL_MIN+1) as i32;
-                    }
-
-                    if  new_origin_x > right_boundary_in_px
-                     && new_origin_y > bottom_boundary_in_px
-                     && new_origin_x < border_in_px
-                     && new_origin_y < border_in_px {
-                        self.grid_view.grid_origin = self.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
-                    }
-
-                    if true {
-                        println!("New Origin: {:?}", (new_origin_x, new_origin_y));
-                        println!("Boundary: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
-                    }
-
-                    // Snap edges in case we are out of bounds
-                    if new_origin_x >= border_in_px {
-                        self.grid_view.grid_origin = Point::new(border_in_px-1, cur_origin_y);
-                    }
-
-                    if new_origin_x <= right_boundary_in_px {
-                        self.grid_view.grid_origin = Point::new(right_boundary_in_px+1, cur_origin_y);
-                    }
-
-                    //if cell_size != ZOOM_LEVEL_MIN {
-                        if new_origin_y <= bottom_boundary_in_px {
-                            self.grid_view.grid_origin = Point::new(cur_origin_x, bottom_boundary_in_px+1);
-                        }
-
-                        if new_origin_y >= border_in_px {
-                            self.grid_view.grid_origin = Point::new(cur_origin_x, border_in_px-1);
-                        }
-                  //  }
+                    adjust_panning(self);
                 }
             }
         }
@@ -541,6 +497,16 @@ impl GameState for MainState {
                     Keycode::Num3 => {
                        self.win_resize = 3;
                     }
+                    Keycode::G => {
+                        // AMEEN TODO RESOLUTION
+                        // https://stackoverflow.com/questions/33393528/how-to-get-screen-size-in-sdl
+                        //
+                        self.fullscreen_toggle = 1;
+                    }
+                    Keycode::F => {
+                        
+                        self.fullscreen_toggle = 2;
+                    }
                     Keycode::LGui => {}
                     _ => {
                         println!("Unrecognized keycode {}", keycode);
@@ -611,7 +577,69 @@ fn adjust_zoom_level(main_state: &mut MainState, direction : ZoomDirection) {
     }
 }
 
+fn adjust_panning(main_state: &mut MainState) {
+    let cell_size = main_state.grid_view.cell_size;
+    let (columns, rows) = (main_state.grid_view.columns as u32, main_state.grid_view.rows as u32);
+    let screen_width  = cell_size*columns;
+    let screen_height = cell_size*rows;
 
+    let (dx, dy) = main_state.arrow_input;
+    let dx_in_pixels = -dx * PIXELS_SCROLLED_PER_FRAME;
+    let dy_in_pixels = -dy * PIXELS_SCROLLED_PER_FRAME;
+
+    let cur_origin_x = main_state.grid_view.grid_origin.x();
+    let cur_origin_y = main_state.grid_view.grid_origin.y();
+
+    let new_origin_x = cur_origin_x + dx_in_pixels;
+    let new_origin_y = cur_origin_y + dy_in_pixels;
+
+    let mut border_in_px = 100;
+
+    println!("Cell Size: {:?}", (cell_size, border_in_px));
+
+    // lol this works for now. One thing we'll need to check,
+    // either during zooming in or panning,
+    // is to check if our grid origin is out of bounds, and correct.
+    // Todo "11" & "7" are currently magical. TODO Align to resolution
+
+    let mut right_boundary_in_px = -1*(screen_width as i32 - border_in_px*11);
+    let mut bottom_boundary_in_px = -1*(screen_height as i32 - border_in_px*7);
+
+    if cell_size <= (ZOOM_LEVEL_MIN +1) {
+        right_boundary_in_px = -1*(200)*(cell_size - ZOOM_LEVEL_MIN+1) as i32;
+        bottom_boundary_in_px = -1*(100)*(cell_size - ZOOM_LEVEL_MIN+1) as i32;
+    }
+
+    if  new_origin_x > right_boundary_in_px
+     && new_origin_y > bottom_boundary_in_px
+     && new_origin_x < border_in_px
+     && new_origin_y < border_in_px {
+        main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
+    }
+
+    if true {
+        println!("New Origin: {:?}", (new_origin_x, new_origin_y));
+        println!("Boundary: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
+    }
+
+    // Snap edges in case we are out of bounds
+    if new_origin_x >= border_in_px {
+        main_state.grid_view.grid_origin = Point::new(border_in_px-1, cur_origin_y);
+    }
+
+    if new_origin_x <= right_boundary_in_px {
+        main_state.grid_view.grid_origin = Point::new(right_boundary_in_px+1, cur_origin_y);
+    }
+
+    if new_origin_y <= bottom_boundary_in_px {
+        main_state.grid_view.grid_origin = Point::new(cur_origin_x, bottom_boundary_in_px+1);
+    }
+
+    if new_origin_y >= border_in_px {
+        main_state.grid_view.grid_origin = Point::new(cur_origin_x, border_in_px-1);
+    }
+
+}
 
 // Controls the mapping between window and game coordinates
 struct GridView {
