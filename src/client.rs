@@ -45,6 +45,7 @@ use std::fs::File;
 use conway::{Universe, CellState, Region};
 use std::collections::BTreeMap;
 use sdl2::video::FullscreenType;
+mod menu;
 
 
 const FPS: u32 = 25;
@@ -60,7 +61,6 @@ const NUM_PLAYERS: usize = 2;
 #[derive(PartialEq)]
 enum Stage {
     Intro(f64),   // seconds
-    #[allow(dead_code)] // TODO: Consider this for pause as well?
     Menu,
     Run,          // TODO: break it out more to indicate whether waiting for game or playing game
 }
@@ -78,17 +78,20 @@ struct MainState {
     stage:               Stage,             // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
-    fullscreen_toggle:   u8,
     grid_view:           GridView,
     color_settings:      ColorSettings,
     running:             bool,
+    menu_sys:            menu::MenuSystem,
 
     // Input state
     single_step:         bool,
     arrow_input:         (i32, i32),
     drag_draw:           Option<CellState>,
     win_resize:          u8,
+    fullscreen_toggle:   u8,
+    return_key_pressed:  bool,
 }
+
 
 // Support non-alive/dead/bg colors
 struct ColorSettings {
@@ -275,18 +278,19 @@ impl GameState for MainState {
             stage:               Stage::Intro(INTRO_DURATION),
             uni:                 Universe::new(game_width, game_height, true, HISTORY_SIZE, NUM_PLAYERS, writable_regions).unwrap(),
             first_gen_was_drawn: false,
-            fullscreen_toggle:   0,
             grid_view:           grid_view,
             color_settings:      color_settings,
             running:             false,
+            menu_sys:            menu::MenuSystem::new(),
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
             win_resize:          0,
+            fullscreen_toggle:   0,
+            return_key_pressed:  false,
         };
 
         init_patterns(&mut s).unwrap();
-
 
         Ok(s)
     }
@@ -300,12 +304,70 @@ impl GameState for MainState {
                 if remaining > 0.0 {
                     self.stage = Stage::Intro(remaining);
                 } else {
-                    self.stage = Stage::Run;
+                    self.stage = Stage::Menu;
+                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
                 }
             }
             Stage::Menu => {
-                // TODO
-            }
+                //
+                // Start Game / Resume
+                //            / Forfeit
+                // Options
+                // Exit Game
+                //
+                //
+                
+
+                if self.arrow_input != (0,0) {
+                    // move selection accordingly
+                    let (_,y) = self.arrow_input;
+                    
+                }
+                else {
+                    // Return
+                    // Numbers
+                    // Clicking
+                    //
+
+                    if self.return_key_pressed {
+                        match self.menu_sys.menu_state {
+                            menu::MenuState::MainMenu => {
+                                self.stage = Stage::Run;
+                                self.menu_sys.menu_state = menu::MenuState::MenuOff;
+                            }
+                            menu::MenuState::Options => {
+                                self.menu_sys.menu_state = menu::MenuState::Options;
+                            }
+                            menu::MenuState::Quit => {
+                                
+                            }
+                            menu::MenuState::MenuOff => {
+                                
+                            }
+                            menu::MenuState::Audio => {
+
+                            }
+                            menu::MenuState::Gameplay => {
+
+                            }
+                            menu::MenuState::Video => {
+
+                            }
+                        }
+                    }
+                }
+
+
+                // 1. Enum to represent MenuOption
+                // 2. Highlight current option
+                // 3. Directional for movement
+                // 4. Transition to Next Option
+                //
+                
+                // Some exit clean up
+                self.return_key_pressed = false;
+                
+           }
             Stage::Run => {
                 if self.single_step {
                     self.running = false;
@@ -369,7 +431,38 @@ impl GameState for MainState {
                 try!(graphics::draw(ctx, &mut self.intro_text, None, None));
             }
             Stage::Menu => {
-                // TODO 
+                match self.menu_sys.menu_state {
+                    menu::MenuState::MainMenu => {
+                        let ref menu_state = self.menu_sys.menu_state;
+
+                        let ref menus = self.menu_sys.menus.get(menu_state).unwrap();
+                        let start_game_string = menus.get(0).unwrap().get_text();
+                        let start_game_str = start_game_string.as_str();
+                        let mut start_game_text = graphics::Text::new(ctx,
+                                                               &start_game_str,
+                                                               &self.small_font).unwrap();
+                        let dst = Rect::new(0, 0, start_game_text.width(), start_game_text.height());
+                        graphics::draw(ctx, &mut start_game_text, None, Some(dst))?;
+                    }
+                    menu::MenuState::Options => {
+                    
+                    }
+                    menu::MenuState::Quit => {
+                        
+                    }
+                    menu::MenuState::MenuOff => {
+                        
+                    }
+                    menu::MenuState::Audio => {
+
+                    }
+                    menu::MenuState::Gameplay => {
+
+                    }
+                    menu::MenuState::Video => {
+
+                    }
+                }
             }
             Stage::Run => {
                 ////////// draw universe
@@ -458,7 +551,26 @@ impl GameState for MainState {
                 self.stage = Stage::Run;
             }
             Stage::Menu => {
-                // TODO 
+                match keycode {
+                    Keycode::Up => {
+                        self.arrow_input = (0, -1);
+                    }
+                    Keycode::Down => {
+                        self.arrow_input = (0, 1);
+                    }
+                    Keycode::Left => {
+                        self.arrow_input = (-1, 0);
+                    }
+                    Keycode::Right => {
+                        self.arrow_input = (1, 0);
+                    }
+                    Keycode::Return => {
+                       self.return_key_pressed = true;
+                    }
+                    _ => {
+
+                    }
+                }
             }
             Stage::Run => {
                 match keycode {
@@ -504,10 +616,11 @@ impl GameState for MainState {
                         self.fullscreen_toggle = 1;
                     }
                     Keycode::F => {
-                        
                         self.fullscreen_toggle = 2;
                     }
-                    Keycode::LGui => {}
+                   Keycode::LGui => {
+                    
+                    }
                     _ => {
                         println!("Unrecognized keycode {}", keycode);
                     }
