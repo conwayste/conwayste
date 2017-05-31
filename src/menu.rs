@@ -1,7 +1,13 @@
 
+extern crate ggez;
+
+use ggez::graphics::{Point};
 use std::collections::{HashMap};
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+type MenuIndex=u32;
+type MenuItemCount=u32;
+
+#[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub enum MenuState {
      MenuOff,
      MainMenu,
@@ -17,11 +23,13 @@ pub struct MenuItem {
     text:       String,
     editable:   bool,
     value:      u32,
+    coords:     Point
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MenuMetaData {
-    menuIndex:   u32,
+    menuIndex:  u32,
+    menuSize:   u32,
 }
 
 pub struct MenuSystem {
@@ -31,16 +39,41 @@ pub struct MenuSystem {
 }
 
 impl MenuItem {
-    pub fn new(name: String, can_edit: bool, value: u32) -> MenuItem {
+    pub fn new(name: String, can_edit: bool, value: u32, point: Point) -> MenuItem {
         MenuItem {
             text: name,
             editable: can_edit,
-            value: value
+            value: value,
+            coords: point,
         }
     }
 
     pub fn get_text(&self) -> &String {
         &self.text
+    }
+
+    pub fn get_coords(&self) -> &Point {
+        &self.coords
+    }
+}
+
+impl MenuMetaData {
+    pub fn new(index: u32, size: u32) -> MenuMetaData {
+        MenuMetaData {
+            menuIndex: index,
+            menuSize: size,
+        }
+    }
+
+    pub fn get_index(&self) -> &u32 {
+        &self.menuIndex
+    }
+
+    pub fn adjust_index(&mut self, amt: i32) {
+        let size : i32 = self.menuSize as i32;
+        let new_index = (self.menuIndex as i32 + amt) % size;
+
+        self.menuIndex = new_index as u32;
     }
 }
 
@@ -52,7 +85,6 @@ impl MenuSystem {
             menu_state: MenuState::MainMenu,
         };
 
-        
         menu_sys.menus.insert(MenuState::MenuOff,  Vec::new());
         menu_sys.menus.insert(MenuState::MainMenu, Vec::new());
         menu_sys.menus.insert(MenuState::Options,  Vec::new());
@@ -60,61 +92,87 @@ impl MenuSystem {
         menu_sys.menus.insert(MenuState::Audio,    Vec::new());
         menu_sys.menus.insert(MenuState::Gameplay, Vec::new());
 
-        let menu_off    = MenuItem::new(String::from("NULL"), false, 0);
-        let start_game  = MenuItem::new(String::from("Start Game"), false, 0);
-        let options     = MenuItem::new(String::from("Options"), false, 0);
-        let video       = MenuItem::new(String::from("Video"), false, 0);
-        let audio       = MenuItem::new(String::from("Audio"), false, 0);
-        let gameplay    = MenuItem::new(String::from("Gameplay"), false, 0);
-        let quit        = MenuItem::new(String::from("Quit"), false, 0);
-
-        let nothing     = MenuItem::new(String::from("TBD"), true, 100);
+        let menu_off    = MenuItem::new(String::from("NULL"),       false, 0, Point::new(0, 0));
+        let start_game  = MenuItem::new(String::from("Start Game"), false, 0, Point::new(100, 100));
+        let options     = MenuItem::new(String::from("Options"),    false, 0, Point::new(100, 300));
+        let video       = MenuItem::new(String::from("Video"),      false, 0, Point::new(100, 100));
+        let audio       = MenuItem::new(String::from("Audio"),      false, 0, Point::new(100, 300));
+        let gameplay    = MenuItem::new(String::from("Gameplay"),   false, 0, Point::new(100, 500));
+        let quit        = MenuItem::new(String::from("Quit"),       false, 0, Point::new(100, 500));
+        let nothing     = MenuItem::new(String::from("TBD"),        true, 100, Point::new(0, 0));
 
         menu_sys.menus
             .get_mut(&MenuState::MenuOff)
             .unwrap()
             .push(menu_off);
+        menu_sys.menu_metadata.insert(MenuState::MenuOff,  MenuMetaData::new(0, 0));
 
         {
+            let ref mut metadata = menu_sys.menu_metadata;
             let ref mut main_menu = menu_sys.menus
                 .get_mut(&MenuState::MainMenu)
                 .unwrap();
             main_menu.push(start_game);
             main_menu.push(options);
             main_menu.push(quit);
+
+            let count = main_menu.len() as u32;
+
+            metadata.insert(MenuState::MainMenu, MenuMetaData::new(0, count));
         }
 
         {
+            let ref mut metadata = menu_sys.menu_metadata;
             let ref mut options_menu = menu_sys.menus
                 .get_mut(&MenuState::Options)
                 .unwrap();
             options_menu.push(video);
             options_menu.push(audio);
             options_menu.push(gameplay);
+
+            let count = options_menu.len() as u32;
+
+            metadata.insert(MenuState::Options,  MenuMetaData::new(0, count));
         }
 
         {
-            let ref mut options_menu = menu_sys.menus
+            let ref mut metadata = menu_sys.menu_metadata;
+            let ref mut video_menu = menu_sys.menus
                 .get_mut(&MenuState::Video)
                 .unwrap();
-            options_menu.push(nothing.clone());
+            video_menu.push(nothing.clone());
+
+            let count = video_menu.len() as u32;
+            metadata.insert(MenuState::Video,  MenuMetaData::new(0, count));
         }
 
         {
-            let ref mut options_menu = menu_sys.menus
+            let ref mut metadata = menu_sys.menu_metadata;
+            let ref mut audio_menu = menu_sys.menus
                 .get_mut(&MenuState::Audio)
                 .unwrap();
-            options_menu.push(nothing.clone());
+            audio_menu.push(nothing.clone());
+
+            let count = audio_menu.len() as u32;
+            metadata.insert(MenuState::Audio,  MenuMetaData::new(0, count));
         }
 
         {
-            let ref mut options_menu = menu_sys.menus
+            let ref mut metadata = menu_sys.menu_metadata;
+            let ref mut gameplay_menu = menu_sys.menus
                 .get_mut(&MenuState::Gameplay)
                 .unwrap();
-            options_menu.push(nothing.clone());
+            gameplay_menu.push(nothing.clone());
+
+            let count = gameplay_menu.len() as u32;
+            metadata.insert(MenuState::Gameplay,  MenuMetaData::new(0, count));
         }
 
         menu_sys
+    }
+
+    pub fn get_meta_data(& self) -> &mut HashMap<MenuState, MenuMetaData> {
+        &mut self.menu_metadata
     }
 }
 

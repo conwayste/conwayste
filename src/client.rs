@@ -321,7 +321,11 @@ impl GameState for MainState {
                 if self.arrow_input != (0,0) {
                     // move selection accordingly
                     let (_,y) = self.arrow_input;
-                    
+                   let ref mut metaData = self.menu_sys.get_meta_data();
+                   let ref mut menu_meta = metaData.get(&menu::MenuState::MainMenu).unwrap();
+
+                    menu_meta.adjust_index(y);
+ 
                 }
                 else {
                     // Return
@@ -434,15 +438,50 @@ impl GameState for MainState {
                 match self.menu_sys.menu_state {
                     menu::MenuState::MainMenu => {
                         let ref menu_state = self.menu_sys.menu_state;
-
                         let ref menus = self.menu_sys.menus.get(menu_state).unwrap();
-                        let start_game_string = menus.get(0).unwrap().get_text();
-                        let start_game_str = start_game_string.as_str();
-                        let mut start_game_text = graphics::Text::new(ctx,
-                                                               &start_game_str,
-                                                               &self.small_font).unwrap();
-                        let dst = Rect::new(0, 0, start_game_text.width(), start_game_text.height());
-                        graphics::draw(ctx, &mut start_game_text, None, Some(dst))?;
+
+                        /// Print Menu Items
+                        //////////////////////////////////////////////////////
+                        for menu_item in menus.iter() {
+                            let menu_option_string = menu_item.get_text();
+                            let menu_option_str = menu_option_string.as_str();
+                            let mut menu_option_text = graphics::Text::new(ctx,
+                                                                   &menu_option_str,
+                                                                   &self.small_font).unwrap();
+
+                            let menu_coords = menu_item.get_coords();
+
+                            let dst = Rect::new(menu_coords.x(), menu_coords.y(), menu_option_text.width(), menu_option_text.height());
+                            graphics::draw(ctx, &mut menu_option_text, None, Some(dst))?;
+                        }
+
+                        /// Print Current Selection
+                        ////////////////////////////////////////////////////
+                        {
+                            let ref menu_meta = self.menu_sys.menu_metadata.get(&self.menu_sys.menu_state.clone()).unwrap();
+                            let index = *(menu_meta.get_index());
+                            
+                            let cur_option_str = " <-";
+                            let mut cur_option_text = graphics::Text::new(ctx, &cur_option_str, &self.small_font).unwrap();
+                            let mut coords = (0,0);
+
+                            if index == 1
+                            {
+                                coords  = (250, 250);
+                            }
+                            else if index == 2
+                            {
+                                coords = (300, 300);
+                            }
+                            else if index == 3
+                            {
+                                coords = (400, 400);
+                            }
+
+                            let dst = Rect::new(coords.0, coords.1, cur_option_text.width(), cur_option_text.height());
+                            graphics::draw(ctx, &mut cur_option_text, None, Some(dst))?;
+
+                        }
                     }
                     menu::MenuState::Options => {
                     
