@@ -4,9 +4,6 @@ extern crate ggez;
 use ggez::graphics::{Point};
 use std::collections::{HashMap};
 
-type MenuIndex=u32;
-type MenuItemCount=u32;
-
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub enum MenuState {
      MenuOff,
@@ -15,7 +12,6 @@ pub enum MenuState {
      Video,
      Audio,
      Gameplay,
-     Quit
 }
 
 #[derive(Debug, Clone)]
@@ -28,8 +24,8 @@ pub struct MenuItem {
 
 #[derive(Debug, Clone)]
 pub struct MenuMetaData {
-    menuIndex:  u32,
-    menuSize:   u32,
+    menu_index:  u32,
+    menu_size:   u32,
 }
 
 pub struct MenuSystem {
@@ -60,20 +56,24 @@ impl MenuItem {
 impl MenuMetaData {
     pub fn new(index: u32, size: u32) -> MenuMetaData {
         MenuMetaData {
-            menuIndex: index,
-            menuSize: size,
+            menu_index: index,
+            menu_size: size,
         }
     }
 
     pub fn get_index(&self) -> &u32 {
-        &self.menuIndex
+        &self.menu_index
     }
 
     pub fn adjust_index(&mut self, amt: i32) {
-        let size : i32 = self.menuSize as i32;
-        let new_index = (self.menuIndex as i32 + amt) % size;
+        let size = self.menu_size;
+        let mut new_index = (self.menu_index as i32 + amt) as u32 % size;
 
-        self.menuIndex = new_index as u32;
+        if amt < 0 && self.menu_index == 0 {
+            new_index = size-1;
+        }
+
+        self.menu_index = new_index as u32;
     }
 }
 
@@ -171,11 +171,13 @@ impl MenuSystem {
         menu_sys
     }
 
-    pub fn get_meta_data(& self) -> &mut HashMap<MenuState, MenuMetaData> {
-        &mut self.menu_metadata
+    pub fn get_meta_data(&mut self, state: &MenuState) -> &mut MenuMetaData {
+        self.menu_metadata.get_mut(&state).unwrap()
     }
 }
 
+#[allow(dead_code)]
+// when compiled with rustc we'll print out the menus
 fn main() {
     let my_menusys = MenuSystem::new();
 

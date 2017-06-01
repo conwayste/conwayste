@@ -321,10 +321,8 @@ impl GameState for MainState {
                 if self.arrow_input != (0,0) {
                     // move selection accordingly
                     let (_,y) = self.arrow_input;
-                   let ref mut metaData = self.menu_sys.get_meta_data();
-                   let ref mut menu_meta = metaData.get(&menu::MenuState::MainMenu).unwrap();
-
-                    menu_meta.adjust_index(y);
+                   let ref mut mainmenu_md = self.menu_sys.get_meta_data(&menu::MenuState::MainMenu);
+                   mainmenu_md.adjust_index(y);
  
                 }
                 else {
@@ -338,12 +336,12 @@ impl GameState for MainState {
                             menu::MenuState::MainMenu => {
                                 self.stage = Stage::Run;
                                 self.menu_sys.menu_state = menu::MenuState::MenuOff;
+
+                                // TODO Add support for moving between menus by inspecting the menu
+                                // stack
                             }
                             menu::MenuState::Options => {
                                 self.menu_sys.menu_state = menu::MenuState::Options;
-                            }
-                            menu::MenuState::Quit => {
-                                
                             }
                             menu::MenuState::MenuOff => {
                                 
@@ -437,46 +435,43 @@ impl GameState for MainState {
             Stage::Menu => {
                 match self.menu_sys.menu_state {
                     menu::MenuState::MainMenu => {
-                        let ref menu_state = self.menu_sys.menu_state;
-                        let ref menus = self.menu_sys.menus.get(menu_state).unwrap();
+                        let ref cur_menu_state = self.menu_sys.menu_state.clone();
+                        {
+                            //let ref menu_state = self.menu_sys.menu_state;
+                            let ref menus = self.menu_sys.menus.get(cur_menu_state).unwrap();
 
-                        /// Print Menu Items
-                        //////////////////////////////////////////////////////
-                        for menu_item in menus.iter() {
-                            let menu_option_string = menu_item.get_text();
-                            let menu_option_str = menu_option_string.as_str();
-                            let mut menu_option_text = graphics::Text::new(ctx,
-                                                                   &menu_option_str,
-                                                                   &self.small_font).unwrap();
+                            /// Print Menu Items
+                            //////////////////////////////////////////////////////
+                            for menu_item in menus.iter() {
+                                let menu_option_string = menu_item.get_text();
+                                let menu_option_str = menu_option_string.as_str();
+                                let mut menu_option_text = graphics::Text::new(ctx,
+                                                                       &menu_option_str,
+                                                                       &self.small_font).unwrap();
 
-                            let menu_coords = menu_item.get_coords();
+                                let menu_coords = menu_item.get_coords();
 
-                            let dst = Rect::new(menu_coords.x(), menu_coords.y(), menu_option_text.width(), menu_option_text.height());
-                            graphics::draw(ctx, &mut menu_option_text, None, Some(dst))?;
+                                let dst = Rect::new(menu_coords.x(), menu_coords.y(), menu_option_text.width(), menu_option_text.height());
+                                graphics::draw(ctx, &mut menu_option_text, None, Some(dst))?;
+                            }
                         }
 
                         /// Print Current Selection
                         ////////////////////////////////////////////////////
+                        let index = {
+                           
+                            let ref menu_meta = self.menu_sys.get_meta_data(&cur_menu_state);
+                            *(menu_meta.get_index())
+                        };
                         {
-                            let ref menu_meta = self.menu_sys.menu_metadata.get(&self.menu_sys.menu_state.clone()).unwrap();
-                            let index = *(menu_meta.get_index());
-                            
-                            let cur_option_str = " <-";
+                           // let state = self.menu_sys.menu_state.clone();
+                            let cur_option_str = " =>";
                             let mut cur_option_text = graphics::Text::new(ctx, &cur_option_str, &self.small_font).unwrap();
-                            let mut coords = (0,0);
 
-                            if index == 1
-                            {
-                                coords  = (250, 250);
-                            }
-                            else if index == 2
-                            {
-                                coords = (300, 300);
-                            }
-                            else if index == 3
-                            {
-                                coords = (400, 400);
-                            }
+                            let ref menus = self.menu_sys.menus.get(&cur_menu_state).unwrap();
+                            let ref menu_item = menus.get(index as usize).unwrap().get_coords();
+
+                            let coords = (menu_item.x() - 75, menu_item.y());
 
                             let dst = Rect::new(coords.0, coords.1, cur_option_text.width(), cur_option_text.height());
                             graphics::draw(ctx, &mut cur_option_text, None, Some(dst))?;
@@ -485,9 +480,6 @@ impl GameState for MainState {
                     }
                     menu::MenuState::Options => {
                     
-                    }
-                    menu::MenuState::Quit => {
-                        
                     }
                     menu::MenuState::MenuOff => {
                         
@@ -587,7 +579,7 @@ impl GameState for MainState {
 
         match self.stage {
             Stage::Intro(_) => {
-                self.stage = Stage::Run;
+                self.stage = Stage::Menu;
             }
             Stage::Menu => {
                 match keycode {
@@ -649,7 +641,7 @@ impl GameState for MainState {
                        self.win_resize = 3;
                     }
                     Keycode::G => {
-                        // AMEEN TODO RESOLUTION
+                        // MANG TODO RESOLUTION
                         // https://stackoverflow.com/questions/33393528/how-to-get-screen-size-in-sdl
                         //
                         self.fullscreen_toggle = 1;
@@ -745,7 +737,7 @@ fn adjust_panning(main_state: &mut MainState) {
     let new_origin_x = cur_origin_x + dx_in_pixels;
     let new_origin_y = cur_origin_y + dy_in_pixels;
 
-    let mut border_in_px = 100;
+    let border_in_px = 100;
 
     println!("Cell Size: {:?}", (cell_size, border_in_px));
 
