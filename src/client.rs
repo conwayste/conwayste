@@ -316,14 +316,21 @@ impl GameState for MainState {
                 // Exit Game
                 //
                 //
-                
 
-                if self.arrow_input != (0,0) {
+                let is_direction_key_pressed = {
+                    let x = self.menu_sys.get_controls().is_menu_key_pressed();
+                    println!("Pressed? {}", x);
+                    x
+                };
+
+                if self.arrow_input != (0,0) && !is_direction_key_pressed {
                     // move selection accordingly
                     let (_,y) = self.arrow_input;
-                   let ref mut mainmenu_md = self.menu_sys.get_meta_data(&menu::MenuState::MainMenu);
-                   mainmenu_md.adjust_index(y);
- 
+                    {
+                        let ref mut mainmenu_md = self.menu_sys.get_meta_data(&menu::MenuState::MainMenu);
+                        mainmenu_md.adjust_index(y);
+                    }
+                    self.menu_sys.get_controls().set_menu_key_pressed(true);
                 }
                 else {
                     // Return
@@ -459,7 +466,6 @@ impl GameState for MainState {
                         /// Print Current Selection
                         ////////////////////////////////////////////////////
                         let index = {
-                           
                             let ref menu_meta = self.menu_sys.get_meta_data(&cur_menu_state);
                             *(menu_meta.get_index())
                         };
@@ -582,24 +588,28 @@ impl GameState for MainState {
                 self.stage = Stage::Menu;
             }
             Stage::Menu => {
-                match keycode {
-                    Keycode::Up => {
-                        self.arrow_input = (0, -1);
-                    }
-                    Keycode::Down => {
-                        self.arrow_input = (0, 1);
-                    }
-                    Keycode::Left => {
-                        self.arrow_input = (-1, 0);
-                    }
-                    Keycode::Right => {
-                        self.arrow_input = (1, 0);
-                    }
-                    Keycode::Return => {
-                       self.return_key_pressed = true;
-                    }
-                    _ => {
+                
+                if !self.menu_sys.get_controls().is_menu_key_pressed() {
+                    match keycode {
+                        Keycode::Up => {
+                            self.arrow_input = (0, -1);
+                        }
+                        Keycode::Down => {
+                            self.arrow_input = (0, 1);
+                            println!("Key is held down...");
+                        }
+                        Keycode::Left => {
+                            self.arrow_input = (-1, 0);
+                        }
+                        Keycode::Right => {
+                            self.arrow_input = (1, 0);
+                        }
+                        Keycode::Return => {
+                            self.return_key_pressed = true;
+                        }
+                        _ => {
 
+                        }
                     }
                 }
             }
@@ -670,6 +680,8 @@ impl GameState for MainState {
         match keycode {
             Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right => {
                 self.arrow_input = (0, 0);
+                self.menu_sys.get_controls().set_menu_key_pressed(false);
+                println!("Key released: {}", keycode);
             }
             _ => {}
         }

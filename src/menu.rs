@@ -28,10 +28,32 @@ pub struct MenuMetaData {
     menu_size:   u32,
 }
 
+#[derive(Debug)]
+pub struct MenuControls {
+    dir_key_pressed:       bool,
+}
+
 pub struct MenuSystem {
     pub    menus:           HashMap<MenuState, Vec<MenuItem> >,
     pub    menu_metadata:   HashMap<MenuState, MenuMetaData>,
     pub    menu_state:      MenuState,
+           controls:        MenuControls,
+}
+
+impl MenuControls {
+    pub fn new() -> MenuControls {
+        MenuControls {
+            dir_key_pressed: false,
+        }
+    }
+
+    pub fn set_menu_key_pressed(&mut self, state: bool) {
+        self.dir_key_pressed = state;
+    }
+
+    pub fn is_menu_key_pressed(&self) -> bool {
+        self.dir_key_pressed
+    }
 }
 
 impl MenuItem {
@@ -83,6 +105,7 @@ impl MenuSystem {
             menus: HashMap::new(),
             menu_metadata:  HashMap::new(),
             menu_state: MenuState::MainMenu,
+            controls: MenuControls::new(),
         };
 
         menu_sys.menus.insert(MenuState::MenuOff,  Vec::new());
@@ -173,6 +196,10 @@ impl MenuSystem {
 
     pub fn get_meta_data(&mut self, state: &MenuState) -> &mut MenuMetaData {
         self.menu_metadata.get_mut(&state).unwrap()
+    }
+
+    pub fn get_controls(&mut self) -> &mut MenuControls {
+        &mut self.controls
     }
 }
 
