@@ -561,11 +561,14 @@ impl Universe {
                     let cells_word = cells_row[col_idx];
                     let wall_word  = wall_row [col_idx];
                     let known_word = known_row[col_idx];
-                    let opt_player_words = if let Some(player_state) = opt_player_state {
+                    let opt_player_words;
+                    if let Some(player_state) = opt_player_state {
                         let player_cells_word = player_state.cells[y][col_idx];
                         let player_fog_word   = player_state.fog[y][col_idx];
-                        Some((player_cells_word, player_fog_word))
-                    } else { None };
+                        opt_player_words = Some((player_cells_word, player_fog_word));
+                    } else {
+                        opt_player_words = None;
+                    }
                     for shift in (0..64).rev() {
                         if (x as isize) >= region.left() &&
                             (x as isize) < (region.left() + region.width() as isize) {
