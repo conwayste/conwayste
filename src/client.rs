@@ -63,6 +63,7 @@ enum Stage {
     Intro(f64),   // seconds
     Menu,
     Run,          // TODO: break it out more to indicate whether waiting for game or playing game
+    Exit,         // We're getting ready to quit the game, WRAP IT UP SON
 }
 
 #[derive(PartialEq)]
@@ -318,49 +319,106 @@ impl GameState for MainState {
                 //
 
                 let is_direction_key_pressed = {
-                    let x = self.menu_sys.get_controls().is_menu_key_pressed();
-                    println!("Pressed? {}", x);
-                    x
+                    self.menu_sys.get_controls().is_menu_key_pressed()
                 };
 
+                let cur_menu_state = {
+                    self.menu_sys.menu_state.clone()
+                };
+
+
+                //// Directional Key / Menu movement
+                ////////////////////////////////////////
                 if self.arrow_input != (0,0) && !is_direction_key_pressed {
                     // move selection accordingly
                     let (_,y) = self.arrow_input;
                     {
-                        let ref mut mainmenu_md = self.menu_sys.get_meta_data(&menu::MenuState::MainMenu);
+
+                        let ref mut mainmenu_md = self.menu_sys.get_meta_data(&cur_menu_state);
                         mainmenu_md.adjust_index(y);
                     }
                     self.menu_sys.get_controls().set_menu_key_pressed(true);
                 }
                 else {
-                    // Return
                     // Numbers
                     // Clicking
                     //
 
+                    /////////////////////////
+                    //// Enter key was pressed
+                    //////////////////////////
+                    
                     if self.return_key_pressed {
-                        match self.menu_sys.menu_state {
-                            menu::MenuState::MainMenu => {
-                                self.stage = Stage::Run;
-                                self.menu_sys.menu_state = menu::MenuState::MenuOff;
 
-                                // TODO Add support for moving between menus by inspecting the menu
-                                // stack
+                        let id = {
+                            let index = self.menu_sys.get_meta_data(&cur_menu_state).get_index();
+                            let menu_item_list = self.menu_sys.get_menu_item_list(&cur_menu_state);
+                            let menu_item = menu_item_list.get(index).unwrap();
+                            menu_item.get_id()
+                        };
+
+                        match cur_menu_state {
+                            menu::MenuState::MainMenu => {
+                                match id {
+                                    menu::MenuItemIdentifier::StartGame => {
+                                        self.stage = Stage::Run;
+                                        self.menu_sys.menu_state = menu::MenuState::MenuOff;
+                                    }
+                                    menu::MenuItemIdentifier::ExitGame => {
+                                        self.stage = Stage::Exit;
+                                    }
+                                    // todo options video etc..
+                                    menu::MenuItemIdentifier::Options => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                        
+                                        
+                                    }
+                                    _ => {}
+                                }
                             }
                             menu::MenuState::Options => {
-                                self.menu_sys.menu_state = menu::MenuState::Options;
+                                match id {
+                                    menu::MenuItemIdentifier::VideoSettings => {
+                                        self.menu_sys.menu_state = menu::MenuState::Video;
+                                    }
+                                    menu::MenuItemIdentifier::AudioSettings => {
+                                        self.menu_sys.menu_state = menu::MenuState::Audio;
+                                    }
+                                    menu::MenuItemIdentifier::GameplaySettings => {
+                                        self.menu_sys.menu_state = menu::MenuState::Gameplay;
+                                    }
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                                    }
+                                    _ => {}
+                                }
                             }
                             menu::MenuState::MenuOff => {
-                                
+
                             }
                             menu::MenuState::Audio => {
-
+                                match id {
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                    }
+                                    _ => {}
+                                }
                             }
                             menu::MenuState::Gameplay => {
-
+                                match id {
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                    }
+                                    _ => {}
+                                }
                             }
                             menu::MenuState::Video => {
-
+                                match id {
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                    }
+                                    _ => {}
+                                }
                             }
                         }
                     }
@@ -428,6 +486,9 @@ impl GameState for MainState {
                     adjust_panning(self);
                 }
             }
+            Stage::Exit => {
+               let _ = _ctx.quit();
+            }
         }
 
         Ok(())
@@ -441,10 +502,10 @@ impl GameState for MainState {
             }
             Stage::Menu => {
                 match self.menu_sys.menu_state {
-                    menu::MenuState::MainMenu => {
+                    menu::MenuState::MainMenu | menu::MenuState::Options | menu::MenuState::Audio | menu::MenuState::Gameplay | 
+                      menu::MenuState::Video => {
                         let ref cur_menu_state = self.menu_sys.menu_state.clone();
                         {
-                            //let ref menu_state = self.menu_sys.menu_state;
                             let ref menus = self.menu_sys.menus.get(cur_menu_state).unwrap();
 
                             /// Print Menu Items
@@ -467,10 +528,9 @@ impl GameState for MainState {
                         ////////////////////////////////////////////////////
                         let index = {
                             let ref menu_meta = self.menu_sys.get_meta_data(&cur_menu_state);
-                            *(menu_meta.get_index())
+                            menu_meta.get_index()
                         };
                         {
-                           // let state = self.menu_sys.menu_state.clone();
                             let cur_option_str = " =>";
                             let mut cur_option_text = graphics::Text::new(ctx, &cur_option_str, &self.small_font).unwrap();
 
@@ -484,20 +544,8 @@ impl GameState for MainState {
 
                         }
                     }
-                    menu::MenuState::Options => {
-                    
-                    }
                     menu::MenuState::MenuOff => {
                         
-                    }
-                    menu::MenuState::Audio => {
-
-                    }
-                    menu::MenuState::Gameplay => {
-
-                    }
-                    menu::MenuState::Video => {
-
                     }
                 }
             }
@@ -544,7 +592,11 @@ impl GameState for MainState {
                 graphics::set_color(ctx, Color::RGB(0,0,0)); // do this at end; not sure why...?
                 self.first_gen_was_drawn = true;
             }
+            Stage::Exit => {
+
+            }
         }
+
         ctx.renderer.present();
         timer::sleep_until_next_frame(ctx, FPS);
         Ok(())
@@ -596,7 +648,6 @@ impl GameState for MainState {
                         }
                         Keycode::Down => {
                             self.arrow_input = (0, 1);
-                            println!("Key is held down...");
                         }
                         Keycode::Left => {
                             self.arrow_input = (-1, 0);
@@ -667,6 +718,9 @@ impl GameState for MainState {
                     }
                 }
             }
+            Stage::Exit => {
+
+            }
         }
     }
 
@@ -681,7 +735,6 @@ impl GameState for MainState {
             Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right => {
                 self.arrow_input = (0, 0);
                 self.menu_sys.get_controls().set_menu_key_pressed(false);
-                println!("Key released: {}", keycode);
             }
             _ => {}
         }

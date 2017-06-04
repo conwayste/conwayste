@@ -15,7 +15,20 @@ pub enum MenuState {
 }
 
 #[derive(Debug, Clone)]
+pub enum MenuItemIdentifier {
+    None,
+    StartGame,
+    Options,
+    AudioSettings,
+    VideoSettings,
+    GameplaySettings,
+    ExitGame,
+    ReturnToPreviousMenu,
+}
+
+#[derive(Debug, Clone)]
 pub struct MenuItem {
+    id:         MenuItemIdentifier,
     text:       String,
     editable:   bool,
     value:      u32,
@@ -57,8 +70,9 @@ impl MenuControls {
 }
 
 impl MenuItem {
-    pub fn new(name: String, can_edit: bool, value: u32, point: Point) -> MenuItem {
+    pub fn new(identifier: MenuItemIdentifier, name: String, can_edit: bool, value: u32, point: Point) -> MenuItem {
         MenuItem {
+            id: identifier,
             text: name,
             editable: can_edit,
             value: value,
@@ -73,6 +87,10 @@ impl MenuItem {
     pub fn get_coords(&self) -> &Point {
         &self.coords
     }
+
+    pub fn get_id(&self) -> MenuItemIdentifier {
+        self.id.clone()
+    }
 }
 
 impl MenuMetaData {
@@ -83,8 +101,8 @@ impl MenuMetaData {
         }
     }
 
-    pub fn get_index(&self) -> &u32 {
-        &self.menu_index
+    pub fn get_index(&self) -> usize {
+        self.menu_index as usize
     }
 
     pub fn adjust_index(&mut self, amt: i32) {
@@ -115,14 +133,15 @@ impl MenuSystem {
         menu_sys.menus.insert(MenuState::Audio,    Vec::new());
         menu_sys.menus.insert(MenuState::Gameplay, Vec::new());
 
-        let menu_off    = MenuItem::new(String::from("NULL"),       false, 0, Point::new(0, 0));
-        let start_game  = MenuItem::new(String::from("Start Game"), false, 0, Point::new(100, 100));
-        let options     = MenuItem::new(String::from("Options"),    false, 0, Point::new(100, 300));
-        let video       = MenuItem::new(String::from("Video"),      false, 0, Point::new(100, 100));
-        let audio       = MenuItem::new(String::from("Audio"),      false, 0, Point::new(100, 300));
-        let gameplay    = MenuItem::new(String::from("Gameplay"),   false, 0, Point::new(100, 500));
-        let quit        = MenuItem::new(String::from("Quit"),       false, 0, Point::new(100, 500));
-        let nothing     = MenuItem::new(String::from("TBD"),        true, 100, Point::new(0, 0));
+        let menu_off    = MenuItem::new(MenuItemIdentifier::None, String::from("NULL"),       false, 0, Point::new(0, 0));
+        let start_game  = MenuItem::new(MenuItemIdentifier::StartGame, String::from("Start Game"), false, 0, Point::new(100, 100));
+        let options     = MenuItem::new(MenuItemIdentifier::Options, String::from("Options"),    false, 0, Point::new(100, 300));
+        let video       = MenuItem::new(MenuItemIdentifier::VideoSettings, String::from("Video"),      false, 0, Point::new(100, 100));
+        let audio       = MenuItem::new(MenuItemIdentifier::AudioSettings, String::from("Audio"),      false, 0, Point::new(100, 300));
+        let gameplay    = MenuItem::new(MenuItemIdentifier::GameplaySettings, String::from("Gameplay"),   false, 0, Point::new(100, 500));
+        let goback      = MenuItem::new(MenuItemIdentifier::ReturnToPreviousMenu, String::from("Back"), false, 0, Point::new(100, 700));
+        let quit        = MenuItem::new(MenuItemIdentifier::ExitGame, String::from("Quit"),       false, 0, Point::new(100, 500));
+        let nothing     = MenuItem::new(MenuItemIdentifier::None, String::from("TBD"),        true, 100, Point::new(0, 0));
 
         menu_sys.menus
             .get_mut(&MenuState::MenuOff)
@@ -135,9 +154,9 @@ impl MenuSystem {
             let ref mut main_menu = menu_sys.menus
                 .get_mut(&MenuState::MainMenu)
                 .unwrap();
-            main_menu.push(start_game);
-            main_menu.push(options);
-            main_menu.push(quit);
+            main_menu.push(start_game); // 0
+            main_menu.push(options);    // 1
+            main_menu.push(quit);       // 2
 
             let count = main_menu.len() as u32;
 
@@ -152,6 +171,7 @@ impl MenuSystem {
             options_menu.push(video);
             options_menu.push(audio);
             options_menu.push(gameplay);
+            options_menu.push(goback.clone());
 
             let count = options_menu.len() as u32;
 
@@ -163,7 +183,7 @@ impl MenuSystem {
             let ref mut video_menu = menu_sys.menus
                 .get_mut(&MenuState::Video)
                 .unwrap();
-            video_menu.push(nothing.clone());
+            video_menu.push(goback.clone());
 
             let count = video_menu.len() as u32;
             metadata.insert(MenuState::Video,  MenuMetaData::new(0, count));
@@ -174,7 +194,7 @@ impl MenuSystem {
             let ref mut audio_menu = menu_sys.menus
                 .get_mut(&MenuState::Audio)
                 .unwrap();
-            audio_menu.push(nothing.clone());
+            audio_menu.push(goback.clone());
 
             let count = audio_menu.len() as u32;
             metadata.insert(MenuState::Audio,  MenuMetaData::new(0, count));
@@ -185,7 +205,7 @@ impl MenuSystem {
             let ref mut gameplay_menu = menu_sys.menus
                 .get_mut(&MenuState::Gameplay)
                 .unwrap();
-            gameplay_menu.push(nothing.clone());
+            gameplay_menu.push(goback.clone());
 
             let count = gameplay_menu.len() as u32;
             metadata.insert(MenuState::Gameplay,  MenuMetaData::new(0, count));
@@ -200,6 +220,10 @@ impl MenuSystem {
 
     pub fn get_controls(&mut self) -> &mut MenuControls {
         &mut self.controls
+    }
+
+    pub fn get_menu_item_list(&mut self, menu_state: &MenuState) -> &mut Vec<MenuItem> {
+        self.menus.get_mut(menu_state).unwrap()
     }
 }
 
