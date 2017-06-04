@@ -390,7 +390,7 @@ impl GameState for MainState {
                                     menu::MenuItemIdentifier::ReturnToPreviousMenu => {
                                         self.menu_sys.menu_state = menu::MenuState::MainMenu;
                                     }
-                                    _ => {}
+                                   _ => {}
                                 }
                             }
                             menu::MenuState::MenuOff => {
@@ -430,6 +430,47 @@ impl GameState for MainState {
                                             _ => {}
                                         }
                                         let _ = window.set_fullscreen(new_fs_type);
+                                    }
+                                    menu::MenuItemIdentifier::Resolution => {
+                                        let renderer = &mut _ctx.renderer;
+                                        let video_menu = self.menu_sys.menus.get_mut(&menu::MenuState::Video).unwrap();
+                                        let mut screen_res_item = video_menu.get_mut(1).unwrap();
+                                        let cur_resolution = screen_res_item.get_value().clone();
+
+                                        // Transition to next
+                                        let (x, y) = match cur_resolution {
+                                            menu::MenuItemValue::ValEnum(x) => 
+                                            {
+                                                match x {
+                                                    menu::ScreenResolution::PX800X600 => {
+                                                        screen_res_item.set_value(menu::MenuItemValue::ValEnum(menu::ScreenResolution::PX1024X768));
+                                                        (1024, 768)
+                                                    }
+                                                    menu::ScreenResolution::PX1024X768 => {
+                                                        screen_res_item.set_value(menu::MenuItemValue::ValEnum(menu::ScreenResolution::PX1200X960));
+                                                        (1200, 960)
+                                                    }
+                                                    menu::ScreenResolution::PX1200X960 => {
+                                                        screen_res_item.set_value(menu::MenuItemValue::ValEnum(menu::ScreenResolution::PX1920X1080));
+                                                        (1920, 1080)
+                                                    }
+                                                    menu::ScreenResolution::PX1920X1080 => {
+                                                        screen_res_item.set_value(menu::MenuItemValue::ValEnum(menu::ScreenResolution::PX800X600));
+                                                        (800, 600)
+                                                    }
+                                                }
+                                            }
+                                            _ => {(0,0)}
+                                        };
+
+                                        if (x,y) != (0,0) {
+                                        // Resolution resizing
+                                            let _ = renderer.set_logical_size(x,y);
+                                            {
+                                                let window = renderer.window_mut().unwrap();
+                                                let _ = window.set_size(x,y);
+                                            }
+                                        }
                                     }
                                     _ => {}
                                 }
@@ -554,14 +595,47 @@ impl GameState for MainState {
                     menu::MenuState::Video => {
                         let ref menus = self.menu_sys.menus.get(&menu::MenuState::Video).unwrap();
                         {
+                            let ref menu_item_fs_coords = menus.get(0).unwrap().get_coords();
+                            let coords = (menu_item_fs_coords.x() + 200, menu_item_fs_coords.y());
+
                             let is_fullscreen_str = if self.is_fullscreen { "Yes" } else { "No" };
                             let mut is_fullscreen_text = graphics::Text::new(ctx, &is_fullscreen_str, &self.small_font).unwrap();
-                            let ref menu_item_fs_coords = menus.get(0).unwrap().get_coords();
-
-                            let coords = (menu_item_fs_coords.x() + 200, menu_item_fs_coords.y());
 
                             let dst = Rect::new(coords.0, coords.1, is_fullscreen_text.width(), is_fullscreen_text.height());
                             graphics::draw(ctx, &mut is_fullscreen_text, None, Some(dst))?;
+                        }
+                        {
+                            let ref menu_item_res_coords = menus.get(1).unwrap().get_coords();
+                            let coords = (menu_item_res_coords.x() + 200, menu_item_res_coords.y());
+
+                            let cur_resolution = menus.get(1).unwrap().get_value().clone();
+                            let mut cur_res_str = match cur_resolution {
+                                menu::MenuItemValue::ValEnum(x) => 
+                                {
+                                    match x {
+                                        menu::ScreenResolution::PX800X600 => {
+                                            Some("800 x 600")
+                                        }
+                                        menu::ScreenResolution::PX1024X768 => {
+                                            Some("1024 x 768")
+                                        }
+                                        menu::ScreenResolution::PX1200X960 => {
+                                            Some("1200 x 960")
+                                        }
+                                        menu::ScreenResolution::PX1920X1080 => {
+                                            Some("1920 x 1080")
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    None
+                                }
+                            };
+                            let cur_res_str = cur_res_str.unwrap();
+
+                            let mut cur_res_text = graphics::Text::new(ctx, &cur_res_str, &self.small_font).unwrap();
+                            let dst = Rect::new(coords.0, coords.1, cur_res_text.width(), cur_res_text.height());
+                             graphics::draw(ctx, &mut cur_res_text, None, Some(dst))?;
                         }
                     }
                      _  => {}

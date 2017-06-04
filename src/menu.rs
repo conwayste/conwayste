@@ -26,6 +26,16 @@ pub enum MenuItemIdentifier {
     ReturnToPreviousMenu,
 
     Fullscreen,
+    Resolution,
+}
+
+#[derive(Debug, Clone)]
+// TODO this should be moved into a video/gfx module
+pub enum ScreenResolution {
+    PX800X600,
+    PX1024X768,
+    PX1200X960,
+    PX1920X1080,
 }
 
 #[derive(Debug, Clone)]
@@ -34,7 +44,8 @@ pub enum MenuItemValue {
     ValI32(i32),
     ValU32(u32),
     ValF32(f32),
-    valBool(bool),
+    ValBool(bool),
+    ValEnum(ScreenResolution),
     ValNone(),
 }
 
@@ -103,6 +114,14 @@ impl MenuItem {
     pub fn get_id(&self) -> MenuItemIdentifier {
         self.id.clone()
     }
+    
+    pub fn get_value(&self) -> &MenuItemValue {
+        &self.value
+    }
+
+    pub fn set_value(&mut self, new_val: MenuItemValue) {
+        self.value = new_val;
+    }
 }
 
 impl MenuMetaData {
@@ -155,7 +174,8 @@ impl MenuSystem {
         let quit        = MenuItem::new(MenuItemIdentifier::ExitGame, String::from("Quit"),       false, MenuItemValue::ValU32(0), Point::new(100, 500));
         let nothing     = MenuItem::new(MenuItemIdentifier::None, String::from("TBD"),        false, MenuItemValue::ValNone(), Point::new(0, 0));
 
-        let fullscreen  = MenuItem::new(MenuItemIdentifier::Fullscreen, String::from("Fullscreen:"), true, MenuItemValue::valBool(false), Point::new(100, 100));
+        let fullscreen  = MenuItem::new(MenuItemIdentifier::Fullscreen, String::from("Fullscreen:"), true, MenuItemValue::ValBool(false), Point::new(100, 100));
+        let resolution  = MenuItem::new(MenuItemIdentifier::Resolution, String::from("Resolution:"), true, MenuItemValue::ValEnum(ScreenResolution::PX1200X960), Point::new(100, 150));
 
         menu_sys.menus
             .get_mut(&MenuState::MenuOff)
@@ -207,6 +227,7 @@ impl MenuSystem {
                 .get_mut(&MenuState::Video)
                 .unwrap();
             video_menu.push(fullscreen);
+            video_menu.push(resolution);
             video_menu.push(goback.clone());
 
             let count = video_menu.len() as u32;
