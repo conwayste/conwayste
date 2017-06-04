@@ -89,7 +89,7 @@ struct MainState {
     arrow_input:         (i32, i32),
     drag_draw:           Option<CellState>,
     win_resize:          u8,
-    fullscreen_toggle:   u8,
+    is_fullscreen:       bool,
     return_key_pressed:  bool,
 }
 
@@ -287,7 +287,7 @@ impl GameState for MainState {
             arrow_input:         (0, 0),
             drag_draw:           None,
             win_resize:          0,
-            fullscreen_toggle:   0,
+            is_fullscreen:       false,
             return_key_pressed:  false,
         };
 
@@ -417,6 +417,20 @@ impl GameState for MainState {
                                     menu::MenuItemIdentifier::ReturnToPreviousMenu => {
                                         self.menu_sys.menu_state = menu::MenuState::Options;
                                     }
+                                    menu::MenuItemIdentifier::Fullscreen => {
+                                        let renderer = &mut _ctx.renderer;
+                                        let window = renderer.window_mut().unwrap();
+                                        let wlflags = window.window_flags();
+                                        let fullscreen_type = FullscreenType::from_window_flags(wlflags);
+                                        let mut new_fs_type = FullscreenType::Off;
+
+                                        match fullscreen_type {
+                                            FullscreenType::Off => {new_fs_type = FullscreenType::True; self.is_fullscreen = true;}
+                                            FullscreenType::True => {new_fs_type = FullscreenType::Off; self.is_fullscreen = false;}
+                                            _ => {}
+                                        }
+                                        let _ = window.set_fullscreen(new_fs_type);
+                                    }
                                     _ => {}
                                 }
                             }
@@ -468,19 +482,6 @@ impl GameState for MainState {
                 }
                 self.win_resize = 0;
 
-                if self.fullscreen_toggle != 0 {
-                    let window = renderer.window_mut().unwrap();
-
-                    if self.fullscreen_toggle == 2
-                    {
-                        let _ = window.set_fullscreen(FullscreenType::True);
-                    }
-                    else if self.fullscreen_toggle == 1 {
-                        let _ = window.set_fullscreen(FullscreenType::Off);
-                    }
-                    self.fullscreen_toggle = 0;
-                }
-
                 // Update panning
                 if self.arrow_input != (0, 0) {
                     adjust_panning(self);
@@ -501,10 +502,16 @@ impl GameState for MainState {
                 try!(graphics::draw(ctx, &mut self.intro_text, None, None));
             }
             Stage::Menu => {
+
+                let ref cur_menu_state = { self.menu_sys.menu_state.clone() };
+                let index = {
+                    let ref menu_meta = self.menu_sys.get_meta_data(&cur_menu_state);
+                    menu_meta.get_index()
+                };
+
                 match self.menu_sys.menu_state {
                     menu::MenuState::MainMenu | menu::MenuState::Options | menu::MenuState::Audio | menu::MenuState::Gameplay | 
                       menu::MenuState::Video => {
-                        let ref cur_menu_state = self.menu_sys.menu_state.clone();
                         {
                             let ref menus = self.menu_sys.menus.get(cur_menu_state).unwrap();
 
@@ -526,29 +533,41 @@ impl GameState for MainState {
 
                         /// Print Current Selection
                         ////////////////////////////////////////////////////
-                        let index = {
-                            let ref menu_meta = self.menu_sys.get_meta_data(&cur_menu_state);
-                            menu_meta.get_index()
-                        };
                         {
                             let cur_option_str = " =>";
                             let mut cur_option_text = graphics::Text::new(ctx, &cur_option_str, &self.small_font).unwrap();
 
                             let ref menus = self.menu_sys.menus.get(&cur_menu_state).unwrap();
-                            let ref menu_item = menus.get(index as usize).unwrap().get_coords();
+                            let ref menu_item_coords = menus.get(index as usize).unwrap().get_coords();
 
-                            let coords = (menu_item.x() - 75, menu_item.y());
+                            let coords = (menu_item_coords.x() - 75, menu_item_coords.y());
 
                             let dst = Rect::new(coords.0, coords.1, cur_option_text.width(), cur_option_text.height());
                             graphics::draw(ctx, &mut cur_option_text, None, Some(dst))?;
 
                         }
                     }
-                    menu::MenuState::MenuOff => {
-                        
-                    }
+                    menu::MenuState::MenuOff => {}
                 }
-            }
+                
+                match self.menu_sys.menu_state {
+                    menu::MenuState::Video => {
+                        let ref menus = self.menu_sys.menus.get(&menu::MenuState::Video).unwrap();
+                        {
+                            let is_fullscreen_str = if self.is_fullscreen { "Yes" } else { "No" };
+                            let mut is_fullscreen_text = graphics::Text::new(ctx, &is_fullscreen_str, &self.small_font).unwrap();
+                            let ref menu_item_fs_coords = menus.get(0).unwrap().get_coords();
+
+                            let coords = (menu_item_fs_coords.x() + 200, menu_item_fs_coords.y());
+
+                            let dst = Rect::new(coords.0, coords.1, is_fullscreen_text.width(), is_fullscreen_text.height());
+                            graphics::draw(ctx, &mut is_fullscreen_text, None, Some(dst))?;
+                        }
+                    }
+                     _  => {}
+                }
+
+           }
             Stage::Run => {
                 ////////// draw universe
                 // grid background
@@ -701,15 +720,9 @@ impl GameState for MainState {
                     Keycode::Num3 => {
                        self.win_resize = 3;
                     }
-                    Keycode::G => {
                         // MANG TODO RESOLUTION
                         // https://stackoverflow.com/questions/33393528/how-to-get-screen-size-in-sdl
                         //
-                        self.fullscreen_toggle = 1;
-                    }
-                    Keycode::F => {
-                        self.fullscreen_toggle = 2;
-                    }
                    Keycode::LGui => {
                     
                     }
