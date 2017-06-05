@@ -46,6 +46,7 @@ use conway::{Universe, CellState, Region};
 use std::collections::BTreeMap;
 use sdl2::video::FullscreenType;
 mod menu;
+mod video;
 
 
 const FPS: u32 = 25;
@@ -433,35 +434,9 @@ impl GameState for MainState {
                                     }
                                     menu::MenuItemIdentifier::Resolution => {
                                         let renderer = &mut _ctx.renderer;
-                                        let video_menu = self.menu_sys.menus.get_mut(&menu::MenuState::Video).unwrap();
-                                        let mut screen_res_item = video_menu.get_mut(1).unwrap();
-                                        let cur_resolution = screen_res_item.get_value().clone();
 
                                         // Transition to next
-                                        let (x, y) = match cur_resolution {
-                                            menu::MenuItemValue::ValEnum(x) => 
-                                            {
-                                                match x {
-                                                    menu::ScreenResolution::PX800X600 => {
-                                                        screen_res_item.set_value(menu::MenuItemValue::ValEnum(menu::ScreenResolution::PX1024X768));
-                                                        (1024, 768)
-                                                    }
-                                                    menu::ScreenResolution::PX1024X768 => {
-                                                        screen_res_item.set_value(menu::MenuItemValue::ValEnum(menu::ScreenResolution::PX1200X960));
-                                                        (1200, 960)
-                                                    }
-                                                    menu::ScreenResolution::PX1200X960 => {
-                                                        screen_res_item.set_value(menu::MenuItemValue::ValEnum(menu::ScreenResolution::PX1920X1080));
-                                                        (1920, 1080)
-                                                    }
-                                                    menu::ScreenResolution::PX1920X1080 => {
-                                                        screen_res_item.set_value(menu::MenuItemValue::ValEnum(menu::ScreenResolution::PX800X600));
-                                                        (800, 600)
-                                                    }
-                                                }
-                                            }
-                                            _ => {(0,0)}
-                                        };
+                                        let (x, y) = self.menu_sys.transition_video_resolution();
 
                                         if (x,y) != (0,0) {
                                         // Resolution resizing
@@ -594,6 +569,9 @@ impl GameState for MainState {
                 match self.menu_sys.menu_state {
                     menu::MenuState::Video => {
                         let ref menus = self.menu_sys.menus.get(&menu::MenuState::Video).unwrap();
+                        ////////////////////////////////
+                        //// Fullscreen
+                        ///////////////////////////////
                         {
                             let ref menu_item_fs_coords = menus.get(0).unwrap().get_coords();
                             let coords = (menu_item_fs_coords.x() + 200, menu_item_fs_coords.y());
@@ -604,34 +582,16 @@ impl GameState for MainState {
                             let dst = Rect::new(coords.0, coords.1, is_fullscreen_text.width(), is_fullscreen_text.height());
                             graphics::draw(ctx, &mut is_fullscreen_text, None, Some(dst))?;
                         }
+
+                        ////////////////////////////////
+                        //// Resolution
+                        ///////////////////////////////
                         {
                             let ref menu_item_res_coords = menus.get(1).unwrap().get_coords();
                             let coords = (menu_item_res_coords.x() + 200, menu_item_res_coords.y());
 
                             let cur_resolution = menus.get(1).unwrap().get_value().clone();
-                            let mut cur_res_str = match cur_resolution {
-                                menu::MenuItemValue::ValEnum(x) => 
-                                {
-                                    match x {
-                                        menu::ScreenResolution::PX800X600 => {
-                                            Some("800 x 600")
-                                        }
-                                        menu::ScreenResolution::PX1024X768 => {
-                                            Some("1024 x 768")
-                                        }
-                                        menu::ScreenResolution::PX1200X960 => {
-                                            Some("1200 x 960")
-                                        }
-                                        menu::ScreenResolution::PX1920X1080 => {
-                                            Some("1920 x 1080")
-                                        }
-                                    }
-                                }
-                                _ => {
-                                    None
-                                }
-                            };
-                            let cur_res_str = cur_res_str.unwrap();
+                            let cur_res_str = menu::MenuItem::get_video_menu_current_resolution(cur_resolution).unwrap();
 
                             let mut cur_res_text = graphics::Text::new(ctx, &cur_res_str, &self.small_font).unwrap();
                             let dst = Rect::new(coords.0, coords.1, cur_res_text.width(), cur_res_text.height());

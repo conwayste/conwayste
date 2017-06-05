@@ -3,6 +3,7 @@ extern crate ggez;
 
 use ggez::graphics::{Point};
 use std::collections::{HashMap};
+use video;
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub enum MenuState {
@@ -30,22 +31,13 @@ pub enum MenuItemIdentifier {
 }
 
 #[derive(Debug, Clone)]
-// TODO this should be moved into a video/gfx module
-pub enum ScreenResolution {
-    PX800X600,
-    PX1024X768,
-    PX1200X960,
-    PX1920X1080,
-}
-
-#[derive(Debug, Clone)]
 pub enum MenuItemValue {
     ValString(String),
     ValI32(i32),
     ValU32(u32),
     ValF32(f32),
     ValBool(bool),
-    ValEnum(ScreenResolution),
+    ValEnum(video::ScreenResolution),
     ValNone(),
 }
 
@@ -122,6 +114,45 @@ impl MenuItem {
     pub fn set_value(&mut self, new_val: MenuItemValue) {
         self.value = new_val;
     }
+
+    pub fn get_video_menu_current_resolution(cur_resolution: MenuItemValue) -> Option<String> {
+        match cur_resolution {
+            MenuItemValue::ValEnum(x) => { Some(String::from(video::get_resolution_str(x))) }
+            _ => { None }
+        }
+    }
+
+    pub fn set_next_resolution(video_menu: &mut Vec<MenuItem>) -> (u32, u32) {
+
+        let mut screen_res_item = video_menu.get_mut(1).unwrap();
+        let cur_resolution = screen_res_item.get_value().clone();
+
+        match cur_resolution {
+            MenuItemValue::ValEnum(x) => 
+            {
+                match x {
+                    video::ScreenResolution::PX800X600 => {
+                        screen_res_item.set_value(MenuItemValue::ValEnum(video::ScreenResolution::PX1024X768));
+                        (1024, 768)
+                    }
+                    video::ScreenResolution::PX1024X768 => {
+                        screen_res_item.set_value(MenuItemValue::ValEnum(video::ScreenResolution::PX1200X960));
+                        (1200, 960)
+                    }
+                    video::ScreenResolution::PX1200X960 => {
+                        screen_res_item.set_value(MenuItemValue::ValEnum(video::ScreenResolution::PX1920X1080));
+                        (1920, 1080)
+                    }
+                    video::ScreenResolution::PX1920X1080 => {
+                        screen_res_item.set_value(MenuItemValue::ValEnum(video::ScreenResolution::PX800X600));
+                        (800, 600)
+                    }
+                }
+            }
+            _ => {(0,0)}
+        }
+    }
+
 }
 
 impl MenuMetaData {
@@ -175,7 +206,7 @@ impl MenuSystem {
         let nothing     = MenuItem::new(MenuItemIdentifier::None, String::from("TBD"),        false, MenuItemValue::ValNone(), Point::new(0, 0));
 
         let fullscreen  = MenuItem::new(MenuItemIdentifier::Fullscreen, String::from("Fullscreen:"), true, MenuItemValue::ValBool(false), Point::new(100, 100));
-        let resolution  = MenuItem::new(MenuItemIdentifier::Resolution, String::from("Resolution:"), true, MenuItemValue::ValEnum(ScreenResolution::PX1200X960), Point::new(100, 150));
+        let resolution  = MenuItem::new(MenuItemIdentifier::Resolution, String::from("Resolution:"), true, MenuItemValue::ValEnum(video::ScreenResolution::PX1200X960), Point::new(100, 150));
 
         menu_sys.menus
             .get_mut(&MenuState::MenuOff)
@@ -275,6 +306,11 @@ impl MenuSystem {
 
     pub fn get_menu_item_list(&mut self, menu_state: &MenuState) -> &mut Vec<MenuItem> {
         self.menus.get_mut(menu_state).unwrap()
+    }
+
+    pub fn transition_video_resolution(&mut self) -> (u32, u32) {
+        let video_menu = self.menus.get_mut(&MenuState::Video).unwrap();
+        MenuItem::set_next_resolution(video_menu)
     }
 }
 
