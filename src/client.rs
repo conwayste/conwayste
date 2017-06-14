@@ -19,7 +19,7 @@
 
 // TODOs
 // detect screen resolution native
-// full screen/ window toggle support
+// :) full screen/ window toggle support
 // main menu & settings
 // unit tests
 // 
@@ -84,6 +84,7 @@ struct MainState {
     color_settings:      ColorSettings,
     running:             bool,
     menu_sys:            menu::MenuSystem,
+    video_settings:      video::VideoSettings,
 
     // Input state
     single_step:         bool,
@@ -284,6 +285,7 @@ impl GameState for MainState {
             color_settings:      color_settings,
             running:             false,
             menu_sys:            menu::MenuSystem::new(),
+            video_settings:      video::VideoSettings::new(),
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -299,6 +301,15 @@ impl GameState for MainState {
 
     fn update(&mut self, _ctx: &mut Context, dt: Duration) -> GameResult<()> {
         let duration = timer::duration_to_f64(dt); // seconds
+
+        {
+            let renderer = &mut _ctx.renderer;
+            let window = renderer.window().unwrap();
+            let (x, y) = window.size();
+            let (x, y) = (x as u16, y as u16);
+
+            self.video_settings.resolution = (x,y);
+        }
 
         match self.stage {
             Stage::Intro(mut remaining) => {
@@ -334,8 +345,8 @@ impl GameState for MainState {
                     // move selection accordingly
                     let (_,y) = self.arrow_input;
                     {
-
-                        let ref mut mainmenu_md = self.menu_sys.get_meta_data(&cur_menu_state);
+                        let container = self.menu_sys.get_menu_container(&cur_menu_state); 
+                        let mut mainmenu_md = container.get_metadata();
                         mainmenu_md.adjust_index(y);
                     }
                     self.menu_sys.get_controls().set_menu_key_pressed(true);
@@ -352,8 +363,9 @@ impl GameState for MainState {
                     if self.return_key_pressed {
 
                         let id = {
-                            let index = self.menu_sys.get_meta_data(&cur_menu_state).get_index();
-                            let menu_item_list = self.menu_sys.get_menu_item_list(&cur_menu_state);
+                            let container = self.menu_sys.get_menu_container(&cur_menu_state);
+                            let index = container.get_metadata().get_index();
+                            let menu_item_list = container.get_menu_item_list();
                             let menu_item = menu_item_list.get(index).unwrap();
                             menu_item.get_id()
                         };
@@ -521,44 +533,48 @@ impl GameState for MainState {
 
                 let ref cur_menu_state = { self.menu_sys.menu_state.clone() };
                 let index = {
-                    let ref menu_meta = self.menu_sys.get_meta_data(&cur_menu_state);
-                    menu_meta.get_index()
+                    let ref menu_meta = self.menu_sys.get_menu_container(&cur_menu_state).get_metadata();
+                    menu_meta.get_index() as i32
                 };
 
                 match self.menu_sys.menu_state {
                     menu::MenuState::MainMenu | menu::MenuState::Options | menu::MenuState::Audio | menu::MenuState::Gameplay | 
                       menu::MenuState::Video => {
+
+                        /// Draw all menu Items
+                        ////////////////////////////////////////////////
                         {
-                            let ref menus = self.menu_sys.menus.get(cur_menu_state).unwrap();
+                            let mut container = self.menu_sys.menus.get(cur_menu_state).unwrap();
+                            let mut pos_x = container.get_anchor().x();
+                            let mut pos_y = container.get_anchor().y();
 
                             /// Print Menu Items
                             //////////////////////////////////////////////////////
-                            for menu_item in menus.iter() {
+                            for menu_item in container.get_menu_item_list().iter() {
                                 let menu_option_string = menu_item.get_text();
                                 let menu_option_str = menu_option_string.as_str();
                                 let mut menu_option_text = graphics::Text::new(ctx,
                                                                        &menu_option_str,
                                                                        &self.small_font).unwrap();
 
-                                let menu_coords = menu_item.get_coords();
-
-                                let dst = Rect::new(menu_coords.x(), menu_coords.y(), menu_option_text.width(), menu_option_text.height());
+                                let dst = Rect::new(pos_x, pos_y, menu_option_text.width(), menu_option_text.height());
                                 graphics::draw(ctx, &mut menu_option_text, None, Some(dst))?;
+
+                                //pos_x += 50;
+                                pos_y += 50;
                             }
                         }
 
                         /// Print Current Selection
                         ////////////////////////////////////////////////////
                         {
-                            let cur_option_str = " =>";
+                            let cur_option_str = " >";
                             let mut cur_option_text = graphics::Text::new(ctx, &cur_option_str, &self.small_font).unwrap();
 
-                            let ref menus = self.menu_sys.menus.get(&cur_menu_state).unwrap();
-                            let ref menu_item_coords = menus.get(index as usize).unwrap().get_coords();
+                            let ref container = self.menu_sys.menus.get(&cur_menu_state).unwrap();
+                            let mut coords = container.get_anchor();
 
-                            let coords = (menu_item_coords.x() - 75, menu_item_coords.y());
-
-                            let dst = Rect::new(coords.0, coords.1, cur_option_text.width(), cur_option_text.height());
+                            let dst = Rect::new(coords.x() - 50, coords.y() + 50*index, cur_option_text.width(), cur_option_text.height());
                             graphics::draw(ctx, &mut cur_option_text, None, Some(dst))?;
 
                         }
@@ -568,13 +584,14 @@ impl GameState for MainState {
                 
                 match self.menu_sys.menu_state {
                     menu::MenuState::Video => {
-                        let ref menus = self.menu_sys.menus.get(&menu::MenuState::Video).unwrap();
+                        let ref container = self.menu_sys.menus.get(&menu::MenuState::Video).unwrap();
+                        let anchor = container.get_anchor();
+
                         ////////////////////////////////
                         //// Fullscreen
                         ///////////////////////////////
                         {
-                            let ref menu_item_fs_coords = menus.get(0).unwrap().get_coords();
-                            let coords = (menu_item_fs_coords.x() + 200, menu_item_fs_coords.y());
+                            let coords = (anchor.x() + 200, anchor.y());
 
                             let is_fullscreen_str = if self.is_fullscreen { "Yes" } else { "No" };
                             let mut is_fullscreen_text = graphics::Text::new(ctx, &is_fullscreen_str, &self.small_font).unwrap();
@@ -587,10 +604,9 @@ impl GameState for MainState {
                         //// Resolution
                         ///////////////////////////////
                         {
-                            let ref menu_item_res_coords = menus.get(1).unwrap().get_coords();
-                            let coords = (menu_item_res_coords.x() + 200, menu_item_res_coords.y());
+                            let coords = (anchor.x() + 200, anchor.y() + 50);
 
-                            let cur_resolution = menus.get(1).unwrap().get_value().clone();
+                            let cur_resolution = container.get_menu_item_list().get(1).unwrap().get_value().clone();
                             let cur_res_str = menu::MenuItem::get_video_menu_current_resolution(cur_resolution).unwrap();
 
                             let mut cur_res_text = graphics::Text::new(ctx, &cur_res_str, &self.small_font).unwrap();
@@ -851,7 +867,9 @@ fn adjust_panning(main_state: &mut MainState) {
 
     let border_in_px = 100;
 
-    println!("Cell Size: {:?}", (cell_size, border_in_px));
+    if false {
+        println!("Cell Size: {:?}", (cell_size, border_in_px));
+    }
 
     // lol this works for now. One thing we'll need to check,
     // either during zooming in or panning,
@@ -860,6 +878,24 @@ fn adjust_panning(main_state: &mut MainState) {
 
     let mut right_boundary_in_px = -1*(screen_width as i32 - border_in_px*11);
     let mut bottom_boundary_in_px = -1*(screen_height as i32 - border_in_px*7);
+
+    // check if the bottom/right coordinates are within the current window
+    {
+        let resolution = main_state.video_settings.getResolution();
+        let win_x = resolution.0 as i32;
+        let win_y = resolution.1 as i32;
+
+        println!("Window: {:?}", (win_x, win_y));
+        println!("Boundaries: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
+
+        if i32::abs(right_boundary_in_px) > win_x {
+            right_boundary_in_px += -1*(i32::abs(right_boundary_in_px) - win_x);
+        }
+
+        if i32::abs(bottom_boundary_in_px) > win_y {
+            bottom_boundary_in_px += -1*(i32::abs(bottom_boundary_in_px) - win_y/2);
+        }
+    }
 
     if cell_size <= (ZOOM_LEVEL_MIN +1) {
         right_boundary_in_px = -1*(200)*(cell_size - ZOOM_LEVEL_MIN+1) as i32;

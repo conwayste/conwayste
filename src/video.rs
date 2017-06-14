@@ -10,6 +10,27 @@ pub enum ScreenResolution {
     PX1920X1080,
 }
 
+#[derive(Debug, Clone)]
+pub struct VideoSettings {
+    pub resolution : (u16, u16),
+}
+
+impl VideoSettings {
+    pub fn new() -> VideoSettings {
+        VideoSettings {
+            resolution: (0,0),
+        }
+    }
+
+    pub fn getResolution(&self) -> &(u16, u16) {
+        &self.resolution
+    }
+
+    pub fn setResolution(&mut self, x: u16, y: u16) {
+        self.resolution = (x,y)
+    }
+}
+
 pub fn get_resolution_str(x: ScreenResolution) -> &'static str {
     match x {
         ScreenResolution::PX800X600 => {
