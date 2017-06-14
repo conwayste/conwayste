@@ -456,6 +456,7 @@ impl GameState for MainState {
                                             {
                                                 let window = renderer.window_mut().unwrap();
                                                 let _ = window.set_size(x,y);
+                                                self.video_settings.set_resolution(x as u16, y as u16);
                                             }
                                         }
                                     }
@@ -544,8 +545,8 @@ impl GameState for MainState {
                         /// Draw all menu Items
                         ////////////////////////////////////////////////
                         {
-                            let mut container = self.menu_sys.menus.get(cur_menu_state).unwrap();
-                            let mut pos_x = container.get_anchor().x();
+                            let container = self.menu_sys.menus.get(cur_menu_state).unwrap();
+                            let pos_x = container.get_anchor().x();
                             let mut pos_y = container.get_anchor().y();
 
                             /// Print Menu Items
@@ -572,7 +573,7 @@ impl GameState for MainState {
                             let mut cur_option_text = graphics::Text::new(ctx, &cur_option_str, &self.small_font).unwrap();
 
                             let ref container = self.menu_sys.menus.get(&cur_menu_state).unwrap();
-                            let mut coords = container.get_anchor();
+                            let coords = container.get_anchor();
 
                             let dst = Rect::new(coords.x() - 50, coords.y() + 50*index, cur_option_text.width(), cur_option_text.height());
                             graphics::draw(ctx, &mut cur_option_text, None, Some(dst))?;
@@ -881,7 +882,7 @@ fn adjust_panning(main_state: &mut MainState) {
 
     // check if the bottom/right coordinates are within the current window
     {
-        let resolution = main_state.video_settings.getResolution();
+        let resolution = main_state.video_settings.get_resolution();
         let win_x = resolution.0 as i32;
         let win_y = resolution.1 as i32;
 

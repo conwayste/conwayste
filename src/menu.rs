@@ -172,7 +172,7 @@ impl MenuItem {
         let mut screen_res_item = video_menu.get_mut(1).unwrap();
         let cur_resolution = screen_res_item.get_value().clone();
 
-        match cur_resolution {
+        let resolution = match cur_resolution {
             MenuItemValue::ValEnum(x) => 
             {
                 match x {
@@ -195,7 +195,8 @@ impl MenuItem {
                 }
             }
             _ => {(0,0)}
-        }
+        };
+        resolution
     }
 
 }
@@ -240,15 +241,14 @@ impl MenuSystem {
         menu_sys.menus.insert(MenuState::Audio,    MenuContainer::new(200, 100));
         menu_sys.menus.insert(MenuState::Gameplay, MenuContainer::new(200, 100));
 
-        let menu_off    = MenuItem::new(MenuItemIdentifier::None, String::from("NULL"),       false, MenuItemValue::ValU32(0));
-        let start_game  = MenuItem::new(MenuItemIdentifier::StartGame, String::from("Start Game"), false, MenuItemValue::ValU32(0));
-        let options     = MenuItem::new(MenuItemIdentifier::Options, String::from("Options"),    false, MenuItemValue::ValU32(0));
-        let video       = MenuItem::new(MenuItemIdentifier::VideoSettings, String::from("Video"),      false, MenuItemValue::ValU32(0));
-        let audio       = MenuItem::new(MenuItemIdentifier::AudioSettings, String::from("Audio"),      false, MenuItemValue::ValU32(0));
-        let gameplay    = MenuItem::new(MenuItemIdentifier::GameplaySettings, String::from("Gameplay"),   false, MenuItemValue::ValU32(0));
-        let goback      = MenuItem::new(MenuItemIdentifier::ReturnToPreviousMenu, String::from("Back"), false, MenuItemValue::ValU32(0));
-        let quit        = MenuItem::new(MenuItemIdentifier::ExitGame, String::from("Quit"),       false, MenuItemValue::ValU32(0));
-        let nothing     = MenuItem::new(MenuItemIdentifier::None, String::from("TBD"),        false, MenuItemValue::ValNone());
+        let menu_off    = MenuItem::new(MenuItemIdentifier::None, String::from("NULL"),       false, MenuItemValue::ValNone());
+        let start_game  = MenuItem::new(MenuItemIdentifier::StartGame, String::from("Start Game"), false, MenuItemValue::ValNone());
+        let options     = MenuItem::new(MenuItemIdentifier::Options, String::from("Options"),    false, MenuItemValue::ValNone());
+        let video       = MenuItem::new(MenuItemIdentifier::VideoSettings, String::from("Video"),      false, MenuItemValue::ValNone());
+        let audio       = MenuItem::new(MenuItemIdentifier::AudioSettings, String::from("Audio"),      false, MenuItemValue::ValNone());
+        let gameplay    = MenuItem::new(MenuItemIdentifier::GameplaySettings, String::from("Gameplay"),   false, MenuItemValue::ValNone());
+        let goback      = MenuItem::new(MenuItemIdentifier::ReturnToPreviousMenu, String::from("Back"), false, MenuItemValue::ValNone());
+        let quit        = MenuItem::new(MenuItemIdentifier::ExitGame, String::from("Quit"),       false, MenuItemValue::ValNone());
 
         let fullscreen  = MenuItem::new(MenuItemIdentifier::Fullscreen, String::from("Fullscreen:"), true, MenuItemValue::ValBool(false));
         let resolution  = MenuItem::new(MenuItemIdentifier::Resolution, String::from("Resolution:"), true, MenuItemValue::ValEnum(video::ScreenResolution::PX1200X960));

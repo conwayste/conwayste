@@ -22,11 +22,11 @@ impl VideoSettings {
         }
     }
 
-    pub fn getResolution(&self) -> &(u16, u16) {
+    pub fn get_resolution(&self) -> &(u16, u16) {
         &self.resolution
     }
 
-    pub fn setResolution(&mut self, x: u16, y: u16) {
+    pub fn set_resolution(&mut self, x: u16, y: u16) {
         self.resolution = (x,y)
     }
 }
