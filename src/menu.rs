@@ -167,7 +167,7 @@ impl MenuItem {
         }
     }
 
-    pub fn set_next_resolution(video_menu: &mut Vec<MenuItem>) -> (u32, u32) {
+    pub fn set_next_menu_resolution(video_menu: &mut Vec<MenuItem>) -> (u32, u32) {
 
         let mut screen_res_item = video_menu.get_mut(1).unwrap();
         let cur_resolution = screen_res_item.get_value().clone();
@@ -332,11 +332,10 @@ impl MenuSystem {
         &mut self.controls
     }
 
-    // TODO Move into correct module
-    pub fn transition_video_resolution(&mut self) -> (u32, u32) {
+    pub fn advance_menu_resolution_option(&mut self) -> (u32, u32) {
         let video_menu = self.menus.get_mut(&MenuState::Video).unwrap();
         let mut menu_list = video_menu.get_menu_item_list_mut();
-        MenuItem::set_next_resolution(menu_list)
+        MenuItem::set_next_menu_resolution(menu_list)
     }
 }
 

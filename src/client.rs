@@ -32,6 +32,8 @@ extern crate ggez;
 #[macro_use]
 extern crate version;
 extern crate sdl2;
+#[macro_use] extern crate log;
+extern crate env_logger;
 
 use ggez::conf;
 use ggez::event::*;
@@ -44,7 +46,8 @@ use std::time::Duration;
 use std::fs::File;
 use conway::{Universe, CellState, Region};
 use std::collections::BTreeMap;
-use sdl2::video::FullscreenType;
+use log::LogLevel;
+
 mod menu;
 mod video;
 
@@ -431,24 +434,13 @@ impl GameState for MainState {
                                         self.menu_sys.menu_state = menu::MenuState::Options;
                                     }
                                     menu::MenuItemIdentifier::Fullscreen => {
-                                        let renderer = &mut _ctx.renderer;
-                                        let window = renderer.window_mut().unwrap();
-                                        let wlflags = window.window_flags();
-                                        let fullscreen_type = FullscreenType::from_window_flags(wlflags);
-                                        let mut new_fs_type = FullscreenType::Off;
-
-                                        match fullscreen_type {
-                                            FullscreenType::Off => {new_fs_type = FullscreenType::True; self.is_fullscreen = true;}
-                                            FullscreenType::True => {new_fs_type = FullscreenType::Off; self.is_fullscreen = false;}
-                                            _ => {}
-                                        }
-                                        let _ = window.set_fullscreen(new_fs_type);
+                                        self.is_fullscreen = video::toggle_full_screen(_ctx);
                                     }
                                     menu::MenuItemIdentifier::Resolution => {
                                         let renderer = &mut _ctx.renderer;
 
                                         // Transition to next
-                                        let (x, y) = self.menu_sys.transition_video_resolution();
+                                        let (x, y) = self.menu_sys.advance_menu_resolution_option();
 
                                         if (x,y) != (0,0) {
                                         // Resolution resizing
@@ -771,10 +763,7 @@ impl GameState for MainState {
                     Keycode::Num3 => {
                        self.win_resize = 3;
                     }
-                        // MANG TODO RESOLUTION
-                        // https://stackoverflow.com/questions/33393528/how-to-get-screen-size-in-sdl
-                        //
-                   Keycode::LGui => {
+                    Keycode::LGui => {
                     
                     }
                     _ => {
@@ -818,10 +807,10 @@ fn adjust_zoom_level(main_state: &mut MainState, direction : ZoomDirection) {
         }
 
         // TODO Mang Proper logging
-        if false {
-            println!("Window Size: ({}, {})", main_state.grid_view.rect.width(), main_state.grid_view.rect.height());
-            println!("Origin Before: ({},{})", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
-            println!("Cell Size Before: {},", main_state.grid_view.cell_size);
+        if log_enabled!(LogLevel::Debug) {
+            debug!("Window Size: ({}, {})", main_state.grid_view.rect.width(), main_state.grid_view.rect.height());
+            debug!("Origin Before: ({},{})", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
+            debug!("Cell Size Before: {},", main_state.grid_view.cell_size);
         }
 
         let old_cell_size = main_state.grid_view.cell_size;
@@ -833,18 +822,18 @@ fn adjust_zoom_level(main_state: &mut MainState, direction : ZoomDirection) {
             let delta_x = zoom_dir * (old_cell_count_for_x as i32 * next_cell_size as i32 - old_cell_count_for_x as i32 * old_cell_size as i32);
             let delta_y = zoom_dir * (old_cell_count_for_y as i32 * next_cell_size as i32 - old_cell_count_for_y as i32 * old_cell_size as i32);
 
-            if false {
-                println!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
-                println!("delta in win coords: {}, {}", delta_x, delta_y);
+            if log_enabled!(LogLevel::Debug) {
+                debug!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
+                debug!("delta in win coords: {}, {}", delta_x, delta_y);
             }
 
             main_state.grid_view.cell_size = next_cell_size as u32;
 
             main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(-zoom_dir * (delta_x as i32), -zoom_dir * (delta_y as i32));
 
-            if false {
-                println!("Origin After: ({},{})\n", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
-                println!("Cell Size After: {},", main_state.grid_view.cell_size);
+            if log_enabled!(LogLevel::Debug) {
+                debug!("Origin After: ({},{})\n", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
+                debug!("Cell Size After: {},", main_state.grid_view.cell_size);
             }
         }
     }
@@ -868,8 +857,8 @@ fn adjust_panning(main_state: &mut MainState) {
 
     let border_in_px = 100;
 
-    if false {
-        println!("Cell Size: {:?}", (cell_size, border_in_px));
+    if log_enabled!(LogLevel::Debug) {
+        debug!("Cell Size: {:?}", (cell_size, border_in_px));
     }
 
     // lol this works for now. One thing we'll need to check,
@@ -886,8 +875,10 @@ fn adjust_panning(main_state: &mut MainState) {
         let win_x = resolution.0 as i32;
         let win_y = resolution.1 as i32;
 
-        println!("Window: {:?}", (win_x, win_y));
-        println!("Boundaries: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
+        if log_enabled!(LogLevel::Debug) {
+            debug!("Window: {:?}", (win_x, win_y));
+            debug!("Boundaries: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
+        }
 
         if i32::abs(right_boundary_in_px) > win_x {
             right_boundary_in_px += -1*(i32::abs(right_boundary_in_px) - win_x);
@@ -910,9 +901,9 @@ fn adjust_panning(main_state: &mut MainState) {
         main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
     }
 
-    if true {
-        println!("New Origin: {:?}", (new_origin_x, new_origin_y));
-        println!("Boundary: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
+    if log_enabled!(LogLevel::Debug) {
+        debug!("New Origin: {:?}", (new_origin_x, new_origin_y));
+        debug!("Boundary: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
     }
 
     // Snap edges in case we are out of bounds
@@ -1001,6 +992,7 @@ impl GridView {
 // do the work of creating our MainState and running our game,
 // * then just call `game.run()` which runs the `Game` mainloop.
 pub fn main() {
+    env_logger::init().unwrap();
     let mut c = conf::Conf::new();
 
     c.version       = version!().to_string();

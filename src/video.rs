@@ -1,8 +1,9 @@
 extern crate ggez;
 
+use ggez::Context;
+use sdl2::video::FullscreenType;
 
 #[derive(Debug, Clone)]
-// TODO this should be moved into a video/gfx module
 pub enum ScreenResolution {
     PX800X600,
     PX1024X768,
@@ -46,4 +47,21 @@ pub fn get_resolution_str(x: ScreenResolution) -> &'static str {
             "1920 x 1080"
         }
     }
+}
+
+pub fn toggle_full_screen(_ctx: &mut Context) -> bool {
+    let renderer = &mut _ctx.renderer;
+    let window = renderer.window_mut().unwrap();
+    let wlflags = window.window_flags();
+    let fullscreen_type = FullscreenType::from_window_flags(wlflags);
+    let mut new_fs_type = FullscreenType::Off;
+
+    match fullscreen_type {
+        FullscreenType::Off => {new_fs_type = FullscreenType::True;}
+        FullscreenType::True => {new_fs_type = FullscreenType::Off;}
+        _ => {}
+    }
+    let _ = window.set_fullscreen(new_fs_type);
+    
+    new_fs_type == FullscreenType::True
 }
