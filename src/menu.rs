@@ -3,9 +3,11 @@ extern crate ggez;
 
 use ggez::Context;
 use ggez::graphics;
-use ggez::graphics::{Rect, Point, Color};
+use ggez::graphics::{Point, Color};
 use std::collections::{HashMap};
+
 use video;
+use utils;
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub enum MenuState {
@@ -33,6 +35,7 @@ pub enum MenuItemIdentifier {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum MenuItemValue {
     ValString(String),
     ValI32(i32),
@@ -96,12 +99,15 @@ impl MenuContainer {
         self.metadata.menu_size = size;
     }
 
-    pub fn get_menu_item_list(&self) -> &Vec<MenuItem> {
-        &self.menu_items
-    }
-
+    /*
+     * May be used if we have toggable state-dependant items
     pub fn get_menu_item_list_mut(&mut self) -> &mut Vec<MenuItem> {
         &mut self.menu_items
+    }
+    */
+
+    pub fn get_menu_item_list(&self) -> &Vec<MenuItem> {
+        &self.menu_items
     }
 
     pub fn get_anchor(&self) -> Point {
@@ -155,13 +161,17 @@ impl MenuItem {
         self.id.clone()
     }
     
+    /*
     pub fn get_value(&self) -> &MenuItemValue {
         &self.value
     }
+    */
 
+    /*
     pub fn set_value(&mut self, new_val: MenuItemValue) {
         self.value = new_val;
     }
+    */
 
 }
 
@@ -296,7 +306,7 @@ impl MenuSystem {
         &mut self.controls
     }
 
-    fn draw_general_menu_view(&mut self,  ctx: &mut Context, index: &i32, cur_menu_state: &MenuState) {
+    fn draw_general_menu_view(&mut self, _ctx: &mut Context, index: &i32, cur_menu_state: &MenuState) {
         /// Menu Navigation 
         /////////////////////////////////////////
         match self.menu_state {
@@ -306,23 +316,18 @@ impl MenuSystem {
                 ////////////////////////////////////////////////
                 {
                     let container = self.menus.get(cur_menu_state).unwrap();
-                    let pos_x = container.get_anchor().x();
-                    let mut pos_y = container.get_anchor().y();
+                    let coords = container.get_anchor();
+                    let mut offset = Point::new(0,0);
 
                     /// Print Menu Items
                     //////////////////////////////////////////////////////
                     for menu_item in container.get_menu_item_list().iter() {
                         let menu_option_string = menu_item.get_text();
                         let menu_option_str = menu_option_string.as_str();
-                        let mut menu_option_text = graphics::Text::new(ctx,
-                                                               &menu_option_str,
-                                                               &self.menu_font).unwrap();
 
-                        let dst = Rect::new(pos_x, pos_y, menu_option_text.width(), menu_option_text.height());
-                        graphics::draw(ctx, &mut menu_option_text, None, Some(dst));
+                        utils::Graphics::draw_text(_ctx, &self.menu_font, &menu_option_str, &coords, Some(&offset));
 
-                        //pos_x += 50;
-                        pos_y += 50;
+                        offset = offset.offset(0, 50);
                     }
                 }
 
@@ -330,21 +335,18 @@ impl MenuSystem {
                 ////////////////////////////////////////////////////
                 {
                     let cur_option_str = " >";
-                    let mut cur_option_text = graphics::Text::new(ctx, &cur_option_str, &self.menu_font).unwrap();
-
                     let ref container = self.menus.get(&cur_menu_state).unwrap();
                     let coords = container.get_anchor();
+                    let offset = Point::new(-50, index*50);
 
-                    let dst = Rect::new(coords.x() - 50, coords.y() + 50*index, cur_option_text.width(), cur_option_text.height());
-                    graphics::draw(ctx, &mut cur_option_text, None, Some(dst));
-
+                    utils::Graphics::draw_text(_ctx, &self.menu_font, &cur_option_str, &coords, Some(&offset));
                 }
             }
             MenuState::MenuOff => {}
         }
     }
 
-    fn draw_specific_menu_view(&mut self, video_settings: &video::VideoSettings, ctx: &mut Context, index: &i32, cur_menu_state: &MenuState) {
+    fn draw_specific_menu_view(&mut self, video_settings: &video::VideoSettings,_ctx: &mut Context) {
         match self.menu_state {
             ////////////////////////////////////
             /// V I D E O
@@ -357,45 +359,36 @@ impl MenuSystem {
                 //// Fullscreen
                 ///////////////////////////////
                 {
-                    let coords = (anchor.x() + 200, anchor.y());
-
+                    let coords = Point::new(anchor.x() + 200, anchor.y());
                     let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
-                    let mut is_fullscreen_text = graphics::Text::new(ctx, &is_fullscreen_str, &self.menu_font).unwrap();
 
-                    let dst = Rect::new(coords.0, coords.1, is_fullscreen_text.width(), is_fullscreen_text.height());
-                    graphics::draw(ctx, &mut is_fullscreen_text, None, Some(dst));
-                }
+                    utils::Graphics::draw_text(_ctx, &self.menu_font, &is_fullscreen_str, &coords, None);
+               }
 
                 ////////////////////////////////
                 //// Resolution
                 ///////////////////////////////
                 {
-                    let coords = (anchor.x() + 200, anchor.y() + 50);
-
-                    //let cur_resolution = container.get_menu_item_list().get(1).unwrap().get_value().clone();
+                    let coords = Point::new(anchor.x() + 200, anchor.y() + 50);
                     let (width, height) = video_settings.get_active_resolution();
-
                     let cur_res_str = format!("{}x{}", width, height);
 
-                    let mut cur_res_text = graphics::Text::new(ctx, &cur_res_str, &self.menu_font).unwrap();
-                    let dst = Rect::new(coords.0, coords.1, cur_res_text.width(), cur_res_text.height());
-                     graphics::draw(ctx, &mut cur_res_text, None, Some(dst));
-                }
+                    utils::Graphics::draw_text(_ctx, &self.menu_font, &cur_res_str, &coords, None);
+               }
             }
              _  => {}
         }
     }
 
-    pub fn draw_menu(&mut self, video_settings: &video::VideoSettings, ctx: &mut Context) {
+    pub fn draw_menu(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context) {
         let ref cur_menu_state = { self.menu_state.clone() };
         let index = {
             let ref menu_meta = self.get_menu_container(&cur_menu_state).get_metadata();
             menu_meta.get_index() as i32
         };
 
-        self.draw_general_menu_view(ctx, &index, cur_menu_state);
-        self.draw_specific_menu_view(video_settings, ctx, &index, cur_menu_state);
-
+        self.draw_general_menu_view(_ctx, &index, cur_menu_state);
+        self.draw_specific_menu_view(video_settings, _ctx);
     }
 
 

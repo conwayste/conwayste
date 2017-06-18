@@ -53,6 +53,7 @@ use log::LogLevel;
 
 mod menu;
 mod video;
+mod utils;
 
 
 const FPS: u32 = 25;
@@ -98,7 +99,7 @@ struct MainState {
     drag_draw:           Option<CellState>,
     win_resize:          u8,
     return_key_pressed:  bool,
-    print_some_videos:   bool,
+    key_pressed_g:   bool,
 }
 
 
@@ -249,9 +250,9 @@ s.uni.toggle(16, 15, 0)?;
 // that you can override if you wish, but the defaults are fine.
 impl GameState for MainState {
 
-    fn load(ctx: &mut Context, _conf: &conf::Conf) -> GameResult<MainState> {
-        let intro_font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 48).unwrap();
-        let intro_text = graphics::Text::new(ctx, "WAYSTE EM!", &intro_font).unwrap();
+    fn load(_ctx: &mut Context, _conf: &conf::Conf) -> GameResult<MainState> {
+        let intro_font = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 32).unwrap();
+        let intro_text = graphics::Text::new(_ctx, "WAYSTE EM!", &intro_font).unwrap();
 
         let game_width  = 64*4; // num of cells * pixels per cell
         let game_height = 30*4;
@@ -280,8 +281,8 @@ impl GameState for MainState {
         let player1_writable = Region::new(0, 0, 80, 80);
         let writable_regions = vec![player0_writable, player1_writable];
 
-        let small_font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 20).unwrap();
-        let menu_font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 20).unwrap();
+        let small_font = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 20).unwrap();
+        let menu_font = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 20).unwrap();
         let mut s = MainState {
             small_font:          small_font,
             intro_text:          intro_text,
@@ -298,12 +299,12 @@ impl GameState for MainState {
             drag_draw:           None,
             win_resize:          0,
             return_key_pressed:  false,
-            print_some_videos:   false,
+            key_pressed_g:   false,
         };
 
         init_patterns(&mut s).unwrap();
 
-        s.video_settings.gather_display_modes(ctx);
+        s.video_settings.gather_display_modes(_ctx);
         s.video_settings.print_resolutions();
 
         Ok(s)
@@ -340,9 +341,8 @@ impl GameState for MainState {
                 //
                 //
 
-                if self.print_some_videos {
-                    video::get_current_display_mode(_ctx);
-                    self.print_some_videos = false;
+                if self.key_pressed_g {
+                    self.key_pressed_g = false;
                 }
 
                 let is_direction_key_pressed = {
@@ -515,20 +515,20 @@ impl GameState for MainState {
         Ok(())
     }
 
-    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        ctx.renderer.clear();
+    fn draw(&mut self, _ctx: &mut Context) -> GameResult<()> {
+       _ctx.renderer.clear();
         match self.stage {
             Stage::Intro(_) => {
-                try!(graphics::draw(ctx, &mut self.intro_text, None, None));
+                try!(graphics::draw(_ctx, &mut self.intro_text, None, None));
             }
             Stage::Menu => {
-                self.menu_sys.draw_menu(&self.video_settings, ctx);
+                self.menu_sys.draw_menu(&self.video_settings, _ctx);
             }
             Stage::Run => {
                 ////////// draw universe
                 // grid background
-                graphics::set_color(ctx, self.color_settings.get_color(None));
-                graphics::rectangle(ctx,  graphics::DrawMode::Fill, self.grid_view.rect).unwrap();
+                graphics::set_color(_ctx, self.color_settings.get_color(None));
+                graphics::rectangle(_ctx,  graphics::DrawMode::Fill, self.grid_view.rect).unwrap();
 
                 // grid foreground (dead cells)
                 //TODO: put in its own function (of GridView); also make this less ugly
@@ -538,33 +538,28 @@ impl GameState for MainState {
                 let full_rect = Rect::new(origin.x(), origin.y(), full_width, full_height);
 
                 if let Some(clipped_rect) = full_rect.intersection(self.grid_view.rect) {
-                    graphics::set_color(ctx, self.color_settings.get_color(Some(CellState::Dead)));
-                    graphics::rectangle(ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
+                    graphics::set_color(_ctx, self.color_settings.get_color(Some(CellState::Dead)));
+                    graphics::rectangle(_ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
                 }
 
                 // grid non-dead cells
                 let visibility = Some(1); //XXX
                 self.uni.each_non_dead_full(visibility, &mut |col, row, state| {
                     let color = self.color_settings.get_color(Some(state));
-                    graphics::set_color(ctx, color);
+                    graphics::set_color(_ctx, color);
 
                     if let Some(rect) = self.grid_view.window_coords_from_game(col, row) {
-                        graphics::rectangle(ctx,  graphics::DrawMode::Fill, rect).unwrap();
+                        graphics::rectangle(_ctx,  graphics::DrawMode::Fill, rect).unwrap();
                     }
                 });
 
 
                 ////////// draw generation counter
                 let gen_counter_str = self.uni.latest_gen().to_string();
-                let mut gen_counter_text = graphics::Text::new(ctx,
-                                                               &gen_counter_str,
-                                                               &self.small_font).unwrap();
-                let dst = Rect::new(0, 0, gen_counter_text.width(), gen_counter_text.height());
-                graphics::draw(ctx, &mut gen_counter_text, None, Some(dst))?;
-
+                utils::Graphics::draw_text(_ctx, &self.small_font, &gen_counter_str, &Point::new(0,0), None);
 
                 ////////////////////// END
-                graphics::set_color(ctx, Color::RGB(0,0,0)); // do this at end; not sure why...?
+                graphics::set_color(_ctx, Color::RGB(0,0,0)); // do this at end; not sure why...?
                 self.first_gen_was_drawn = true;
             }
             Stage::Exit => {
@@ -572,8 +567,8 @@ impl GameState for MainState {
             }
         }
 
-        ctx.renderer.present();
-        timer::sleep_until_next_frame(ctx, FPS);
+       _ctx.renderer.present();
+        timer::sleep_until_next_frame(_ctx, FPS);
         Ok(())
     }
 
@@ -634,7 +629,7 @@ impl GameState for MainState {
                             self.return_key_pressed = true;
                         }
                         Keycode::G => {
-                            self.print_some_videos = true;
+                            self.key_pressed_g = true;
                         }
                         _ => {
 

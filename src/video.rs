@@ -108,6 +108,7 @@ pub fn toggle_full_screen(_ctx: &mut Context) -> bool {
     new_fs_type == FullscreenType::True
 }
 
+/*
 pub fn get_display_mode(_ctx: &mut Context) -> bool {
     let renderer = &mut _ctx.renderer;
     let window = renderer.window_mut().unwrap();
@@ -134,6 +135,7 @@ pub fn get_current_display_mode(_ctx: &mut Context) -> bool {
     }
     true
 }
+*/
 
 fn refresh_game_resolution(_ctx: &mut Context, w: i32, h: i32) {
     if w != 0 && h != 0 {
