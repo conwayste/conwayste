@@ -5,18 +5,6 @@ use ggez::Context;
 use sdl2::video::{FullscreenType, DisplayMode};
 use log::LogLevel;
 
-// Need to replace this with 
-// call SDL_GetDisplayMode() in a loop, SDL_GetNumDisplayModes() times)
-// Enter into a list, point to current
-
-#[derive(Debug, Clone)]
-pub enum ScreenResolution {
-    PX800X600,
-    PX1024X768,
-    PX1200X960,
-    PX1920X1080,
-}
-
 #[derive(Debug, Clone)]
 struct DisplayModeManager {
     index: usize,
@@ -29,13 +17,6 @@ impl DisplayModeManager {
             index: 0,
             modes: Vec::new(),
         }
-    }
-
-    pub fn at_capacity(&self) -> bool {
-        if log_enabled!(LogLevel::Debug) {
-            debug!("L: {}, C: {}", self.modes.len(), self.modes.capacity());
-        }
-        self.modes.len() != 0 && self.modes.len() == self.modes.capacity()
     }
 
     pub fn add_mode(&mut self, new_mode: DisplayMode) {
@@ -62,6 +43,7 @@ impl DisplayModeManager {
 #[derive(Debug, Clone)]
 pub struct VideoSettings {
     pub resolution : (i32, i32),
+    pub is_fullscreen:       bool,
     res_manager : DisplayModeManager,
 
 }
@@ -70,6 +52,7 @@ impl VideoSettings {
     pub fn new() -> VideoSettings {
         VideoSettings {
             resolution: (0,0),
+            is_fullscreen: false,
             res_manager: DisplayModeManager::new(),
         }
     }
@@ -106,23 +89,6 @@ impl VideoSettings {
         refresh_game_resolution(_ctx, width, height);
     }
 
-}
-
-pub fn get_resolution_str(x: ScreenResolution) -> &'static str {
-    match x {
-        ScreenResolution::PX800X600 => {
-            "800 x 600"
-        }
-        ScreenResolution::PX1024X768 => {
-            "1024 x 768"
-        }
-        ScreenResolution::PX1200X960 => {
-            "1200 x 960"
-        }
-        ScreenResolution::PX1920X1080 => {
-            "1920 x 1080"
-        }
-    }
 }
 
 pub fn toggle_full_screen(_ctx: &mut Context) -> bool {

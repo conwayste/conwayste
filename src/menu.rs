@@ -1,7 +1,9 @@
 
 extern crate ggez;
 
-use ggez::graphics::{Point, Color};
+use ggez::Context;
+use ggez::graphics;
+use ggez::graphics::{Rect, Point, Color};
 use std::collections::{HashMap};
 use video;
 
@@ -37,7 +39,7 @@ pub enum MenuItemValue {
     ValU32(u32),
     ValF32(f32),
     ValBool(bool),
-    ValEnum(video::ScreenResolution),
+//    ValEnum(),
     ValNone(),
 }
 
@@ -116,6 +118,7 @@ pub struct MenuSystem {
     pub    menus:           HashMap<MenuState, MenuContainer >,
     pub    menu_state:      MenuState,
            controls:        MenuControls,
+           menu_font:       graphics::Font,
 }
 
 impl MenuControls {
@@ -160,47 +163,6 @@ impl MenuItem {
         self.value = new_val;
     }
 
-    /*
-    pub fn get_video_menu_current_resolution(cur_resolution: MenuItemValue) -> Option<String> {
-        match cur_resolution {
-            MenuItemValue::ValEnum(x) => { Some(String::from(video::get_resolution_str(x))) }
-            _ => { None }
-        }
-    }
-
-    pub fn set_next_menu_resolution(video_menu: &mut Vec<MenuItem>) -> (u32, u32) {
-
-        let mut screen_res_item = video_menu.get_mut(1).unwrap();
-        let cur_resolution = screen_res_item.get_value().clone();
-
-        let resolution = match cur_resolution {
-            MenuItemValue::ValEnum(x) => 
-            {
-                match x {
-                    video::ScreenResolution::PX800X600 => {
-                        screen_res_item.set_value(MenuItemValue::ValEnum(video::ScreenResolution::PX1024X768));
-                        (1024, 768)
-                    }
-                    video::ScreenResolution::PX1024X768 => {
-                        screen_res_item.set_value(MenuItemValue::ValEnum(video::ScreenResolution::PX1200X960));
-                        (1200, 960)
-                    }
-                    video::ScreenResolution::PX1200X960 => {
-                        screen_res_item.set_value(MenuItemValue::ValEnum(video::ScreenResolution::PX1920X1080));
-                        (1920, 1080)
-                    }
-                    video::ScreenResolution::PX1920X1080 => {
-                        screen_res_item.set_value(MenuItemValue::ValEnum(video::ScreenResolution::PX800X600));
-                        (800, 600)
-                    }
-                }
-            }
-            _ => {(0,0)}
-        };
-        resolution
-    }
-    */
-
 }
 
 impl MenuMetaData {
@@ -228,14 +190,14 @@ impl MenuMetaData {
 }
 
 impl MenuSystem {
-    pub fn new() -> MenuSystem {
+    pub fn new(font: graphics::Font) -> MenuSystem {
         let mut menu_sys = MenuSystem {
             menus: HashMap::new(),
             menu_state: MenuState::MainMenu,
             controls: MenuControls::new(),
+            menu_font: font,
         };
 
-        // TODO needs to reference the window coordinates
         menu_sys.menus.insert(MenuState::MenuOff,  MenuContainer::new(0, 0));
         menu_sys.menus.insert(MenuState::MainMenu, MenuContainer::new(400, 300));
         menu_sys.menus.insert(MenuState::Options,  MenuContainer::new(400, 300));
@@ -253,7 +215,7 @@ impl MenuSystem {
         let quit        = MenuItem::new(MenuItemIdentifier::ExitGame, String::from("Quit"),       false, MenuItemValue::ValNone());
 
         let fullscreen  = MenuItem::new(MenuItemIdentifier::Fullscreen, String::from("Fullscreen:"), true, MenuItemValue::ValBool(false));
-        let resolution  = MenuItem::new(MenuItemIdentifier::Resolution, String::from("Resolution:"), true, MenuItemValue::ValEnum(video::ScreenResolution::PX1200X960));
+        let resolution  = MenuItem::new(MenuItemIdentifier::Resolution, String::from("Resolution:"), true, MenuItemValue::ValNone());
 
         {
             let container = menu_sys.menus.get_mut(&MenuState::MenuOff).unwrap();
@@ -334,17 +296,108 @@ impl MenuSystem {
         &mut self.controls
     }
 
-}
+    fn draw_general_menu_view(&mut self,  ctx: &mut Context, index: &i32, cur_menu_state: &MenuState) {
+        /// Menu Navigation 
+        /////////////////////////////////////////
+        match self.menu_state {
+             MenuState::MainMenu | MenuState::Options | MenuState::Audio | MenuState::Gameplay | MenuState::Video => {
 
-#[allow(dead_code)]
-// when compiled with rustc we'll print out the menus
-fn main() {
-    let my_menusys = MenuSystem::new();
+                /// Draw all menu Items
+                ////////////////////////////////////////////////
+                {
+                    let container = self.menus.get(cur_menu_state).unwrap();
+                    let pos_x = container.get_anchor().x();
+                    let mut pos_y = container.get_anchor().y();
 
-    // This will print it in arbitrary order
-    // Won't matter once we actually are in a State
-    for x in my_menusys.menus {
-        println!("{:?}, {:?}\n", x.0, x.1);
+                    /// Print Menu Items
+                    //////////////////////////////////////////////////////
+                    for menu_item in container.get_menu_item_list().iter() {
+                        let menu_option_string = menu_item.get_text();
+                        let menu_option_str = menu_option_string.as_str();
+                        let mut menu_option_text = graphics::Text::new(ctx,
+                                                               &menu_option_str,
+                                                               &self.menu_font).unwrap();
+
+                        let dst = Rect::new(pos_x, pos_y, menu_option_text.width(), menu_option_text.height());
+                        graphics::draw(ctx, &mut menu_option_text, None, Some(dst));
+
+                        //pos_x += 50;
+                        pos_y += 50;
+                    }
+                }
+
+                /// Print Current Selection
+                ////////////////////////////////////////////////////
+                {
+                    let cur_option_str = " >";
+                    let mut cur_option_text = graphics::Text::new(ctx, &cur_option_str, &self.menu_font).unwrap();
+
+                    let ref container = self.menus.get(&cur_menu_state).unwrap();
+                    let coords = container.get_anchor();
+
+                    let dst = Rect::new(coords.x() - 50, coords.y() + 50*index, cur_option_text.width(), cur_option_text.height());
+                    graphics::draw(ctx, &mut cur_option_text, None, Some(dst));
+
+                }
+            }
+            MenuState::MenuOff => {}
+        }
     }
 
+    fn draw_specific_menu_view(&mut self, video_settings: &video::VideoSettings, ctx: &mut Context, index: &i32, cur_menu_state: &MenuState) {
+        match self.menu_state {
+            ////////////////////////////////////
+            /// V I D E O
+            ///////////////////////////////////
+            MenuState::Video => {
+                let ref container = self.menus.get(&MenuState::Video).unwrap();
+                let anchor = container.get_anchor();
+
+                ///////////////////////////////
+                //// Fullscreen
+                ///////////////////////////////
+                {
+                    let coords = (anchor.x() + 200, anchor.y());
+
+                    let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
+                    let mut is_fullscreen_text = graphics::Text::new(ctx, &is_fullscreen_str, &self.menu_font).unwrap();
+
+                    let dst = Rect::new(coords.0, coords.1, is_fullscreen_text.width(), is_fullscreen_text.height());
+                    graphics::draw(ctx, &mut is_fullscreen_text, None, Some(dst));
+                }
+
+                ////////////////////////////////
+                //// Resolution
+                ///////////////////////////////
+                {
+                    let coords = (anchor.x() + 200, anchor.y() + 50);
+
+                    //let cur_resolution = container.get_menu_item_list().get(1).unwrap().get_value().clone();
+                    let (width, height) = video_settings.get_active_resolution();
+
+                    let cur_res_str = format!("{}x{}", width, height);
+
+                    let mut cur_res_text = graphics::Text::new(ctx, &cur_res_str, &self.menu_font).unwrap();
+                    let dst = Rect::new(coords.0, coords.1, cur_res_text.width(), cur_res_text.height());
+                     graphics::draw(ctx, &mut cur_res_text, None, Some(dst));
+                }
+            }
+             _  => {}
+        }
+    }
+
+    pub fn draw_menu(&mut self, video_settings: &video::VideoSettings, ctx: &mut Context) {
+        let ref cur_menu_state = { self.menu_state.clone() };
+        let index = {
+            let ref menu_meta = self.get_menu_container(&cur_menu_state).get_metadata();
+            menu_meta.get_index() as i32
+        };
+
+        self.draw_general_menu_view(ctx, &index, cur_menu_state);
+        self.draw_specific_menu_view(video_settings, ctx, &index, cur_menu_state);
+
+    }
+
+
 }
+

@@ -97,7 +97,6 @@ struct MainState {
     arrow_input:         (i32, i32),
     drag_draw:           Option<CellState>,
     win_resize:          u8,
-    is_fullscreen:       bool,
     return_key_pressed:  bool,
     print_some_videos:   bool,
 }
@@ -282,6 +281,7 @@ impl GameState for MainState {
         let writable_regions = vec![player0_writable, player1_writable];
 
         let small_font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 20).unwrap();
+        let menu_font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 20).unwrap();
         let mut s = MainState {
             small_font:          small_font,
             intro_text:          intro_text,
@@ -291,13 +291,12 @@ impl GameState for MainState {
             grid_view:           grid_view,
             color_settings:      color_settings,
             running:             false,
-            menu_sys:            menu::MenuSystem::new(),
+            menu_sys:            menu::MenuSystem::new(menu_font),
             video_settings:      video::VideoSettings::new(),
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
             win_resize:          0,
-            is_fullscreen:       false,
             return_key_pressed:  false,
             print_some_videos:   false,
         };
@@ -447,7 +446,7 @@ impl GameState for MainState {
                                         self.menu_sys.menu_state = menu::MenuState::Options;
                                     }
                                     menu::MenuItemIdentifier::Fullscreen => {
-                                        self.is_fullscreen = video::toggle_full_screen(_ctx);
+                                        self.video_settings.is_fullscreen = video::toggle_full_screen(_ctx);
                                     }
                                     menu::MenuItemIdentifier::Resolution => {
                                          self.video_settings.advance_to_next_resolution(_ctx);
@@ -523,101 +522,8 @@ impl GameState for MainState {
                 try!(graphics::draw(ctx, &mut self.intro_text, None, None));
             }
             Stage::Menu => {
-
-                let ref cur_menu_state = { self.menu_sys.menu_state.clone() };
-                let index = {
-                    let ref menu_meta = self.menu_sys.get_menu_container(&cur_menu_state).get_metadata();
-                    menu_meta.get_index() as i32
-                };
-
-                /// Menu Navigation 
-                /////////////////////////////////////////
-                match self.menu_sys.menu_state {
-                    menu::MenuState::MainMenu | menu::MenuState::Options | menu::MenuState::Audio | menu::MenuState::Gameplay | 
-                      menu::MenuState::Video => {
-
-                        /// Draw all menu Items
-                        ////////////////////////////////////////////////
-                        {
-                            let container = self.menu_sys.menus.get(cur_menu_state).unwrap();
-                            let pos_x = container.get_anchor().x();
-                            let mut pos_y = container.get_anchor().y();
-
-                            /// Print Menu Items
-                            //////////////////////////////////////////////////////
-                            for menu_item in container.get_menu_item_list().iter() {
-                                let menu_option_string = menu_item.get_text();
-                                let menu_option_str = menu_option_string.as_str();
-                                let mut menu_option_text = graphics::Text::new(ctx,
-                                                                       &menu_option_str,
-                                                                       &self.small_font).unwrap();
-
-                                let dst = Rect::new(pos_x, pos_y, menu_option_text.width(), menu_option_text.height());
-                                graphics::draw(ctx, &mut menu_option_text, None, Some(dst))?;
-
-                                //pos_x += 50;
-                                pos_y += 50;
-                            }
-                        }
-
-                        /// Print Current Selection
-                        ////////////////////////////////////////////////////
-                        {
-                            let cur_option_str = " >";
-                            let mut cur_option_text = graphics::Text::new(ctx, &cur_option_str, &self.small_font).unwrap();
-
-                            let ref container = self.menu_sys.menus.get(&cur_menu_state).unwrap();
-                            let coords = container.get_anchor();
-
-                            let dst = Rect::new(coords.x() - 50, coords.y() + 50*index, cur_option_text.width(), cur_option_text.height());
-                            graphics::draw(ctx, &mut cur_option_text, None, Some(dst))?;
-
-                        }
-                    }
-                    menu::MenuState::MenuOff => {}
-                }
-                
-                match self.menu_sys.menu_state {
-                    ////////////////////////////////////
-                    /// V I D E O
-                    ///////////////////////////////////
-                    menu::MenuState::Video => {
-                        let ref container = self.menu_sys.menus.get(&menu::MenuState::Video).unwrap();
-                        let anchor = container.get_anchor();
-
-                        ////////////////////////////////
-                        //// Fullscreen
-                        ///////////////////////////////
-                        {
-                            let coords = (anchor.x() + 200, anchor.y());
-
-                            let is_fullscreen_str = if self.is_fullscreen { "Yes" } else { "No" };
-                            let mut is_fullscreen_text = graphics::Text::new(ctx, &is_fullscreen_str, &self.small_font).unwrap();
-
-                            let dst = Rect::new(coords.0, coords.1, is_fullscreen_text.width(), is_fullscreen_text.height());
-                            graphics::draw(ctx, &mut is_fullscreen_text, None, Some(dst))?;
-                        }
-
-                        ////////////////////////////////
-                        //// Resolution
-                        ///////////////////////////////
-                        {
-                            let coords = (anchor.x() + 200, anchor.y() + 50);
-
-                            //let cur_resolution = container.get_menu_item_list().get(1).unwrap().get_value().clone();
-                            let (width, height) = self.video_settings.get_active_resolution();
-
-                            let cur_res_str = format!("{}x{}", width, height);
-
-                            let mut cur_res_text = graphics::Text::new(ctx, &cur_res_str, &self.small_font).unwrap();
-                            let dst = Rect::new(coords.0, coords.1, cur_res_text.width(), cur_res_text.height());
-                             graphics::draw(ctx, &mut cur_res_text, None, Some(dst))?;
-                        }
-                    }
-                     _  => {}
-                }
-
-           }
+                self.menu_sys.draw_menu(&self.video_settings, ctx);
+            }
             Stage::Run => {
                 ////////// draw universe
                 // grid background
