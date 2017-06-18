@@ -160,6 +160,7 @@ impl MenuItem {
         self.value = new_val;
     }
 
+    /*
     pub fn get_video_menu_current_resolution(cur_resolution: MenuItemValue) -> Option<String> {
         match cur_resolution {
             MenuItemValue::ValEnum(x) => { Some(String::from(video::get_resolution_str(x))) }
@@ -198,6 +199,7 @@ impl MenuItem {
         };
         resolution
     }
+    */
 
 }
 
@@ -332,11 +334,6 @@ impl MenuSystem {
         &mut self.controls
     }
 
-    pub fn advance_menu_resolution_option(&mut self) -> (u32, u32) {
-        let video_menu = self.menus.get_mut(&MenuState::Video).unwrap();
-        let mut menu_list = video_menu.get_menu_item_list_mut();
-        MenuItem::set_next_menu_resolution(menu_list)
-    }
 }
 
 #[allow(dead_code)]

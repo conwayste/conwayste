@@ -18,13 +18,16 @@
  *  <http://www.gnu.org/licenses/>. */
 
 // TODOs
-// detect screen resolution native
+// :) detect screen resolution native
 // :) full screen/ window toggle support
-// main menu & settings
+// :) main menu & settings
 // unit tests
+// :) logging support
+// update ggez to 0.3.x
+// align panning to window border
 // 
 // Modularization
-// Menu System
+// :) Menu System
 //
 
 extern crate conway;
@@ -96,6 +99,7 @@ struct MainState {
     win_resize:          u8,
     is_fullscreen:       bool,
     return_key_pressed:  bool,
+    print_some_videos:   bool,
 }
 
 
@@ -295,9 +299,13 @@ impl GameState for MainState {
             win_resize:          0,
             is_fullscreen:       false,
             return_key_pressed:  false,
+            print_some_videos:   false,
         };
 
         init_patterns(&mut s).unwrap();
+
+        s.video_settings.gather_display_modes(ctx);
+        s.video_settings.print_resolutions();
 
         Ok(s)
     }
@@ -309,7 +317,7 @@ impl GameState for MainState {
             let renderer = &mut _ctx.renderer;
             let window = renderer.window().unwrap();
             let (x, y) = window.size();
-            let (x, y) = (x as u16, y as u16);
+            let (x, y) = (x as i32, y as i32);
 
             self.video_settings.resolution = (x,y);
         }
@@ -332,6 +340,11 @@ impl GameState for MainState {
                 // Exit Game
                 //
                 //
+
+                if self.print_some_videos {
+                    video::get_current_display_mode(_ctx);
+                    self.print_some_videos = false;
+                }
 
                 let is_direction_key_pressed = {
                     self.menu_sys.get_controls().is_menu_key_pressed()
@@ -437,20 +450,7 @@ impl GameState for MainState {
                                         self.is_fullscreen = video::toggle_full_screen(_ctx);
                                     }
                                     menu::MenuItemIdentifier::Resolution => {
-                                        let renderer = &mut _ctx.renderer;
-
-                                        // Transition to next
-                                        let (x, y) = self.menu_sys.advance_menu_resolution_option();
-
-                                        if (x,y) != (0,0) {
-                                        // Resolution resizing
-                                            let _ = renderer.set_logical_size(x,y);
-                                            {
-                                                let window = renderer.window_mut().unwrap();
-                                                let _ = window.set_size(x,y);
-                                                self.video_settings.set_resolution(x as u16, y as u16);
-                                            }
-                                        }
+                                         self.video_settings.advance_to_next_resolution(_ctx);
                                     }
                                     _ => {}
                                 }
@@ -530,6 +530,8 @@ impl GameState for MainState {
                     menu_meta.get_index() as i32
                 };
 
+                /// Menu Navigation 
+                /////////////////////////////////////////
                 match self.menu_sys.menu_state {
                     menu::MenuState::MainMenu | menu::MenuState::Options | menu::MenuState::Audio | menu::MenuState::Gameplay | 
                       menu::MenuState::Video => {
@@ -576,6 +578,9 @@ impl GameState for MainState {
                 }
                 
                 match self.menu_sys.menu_state {
+                    ////////////////////////////////////
+                    /// V I D E O
+                    ///////////////////////////////////
                     menu::MenuState::Video => {
                         let ref container = self.menu_sys.menus.get(&menu::MenuState::Video).unwrap();
                         let anchor = container.get_anchor();
@@ -599,8 +604,10 @@ impl GameState for MainState {
                         {
                             let coords = (anchor.x() + 200, anchor.y() + 50);
 
-                            let cur_resolution = container.get_menu_item_list().get(1).unwrap().get_value().clone();
-                            let cur_res_str = menu::MenuItem::get_video_menu_current_resolution(cur_resolution).unwrap();
+                            //let cur_resolution = container.get_menu_item_list().get(1).unwrap().get_value().clone();
+                            let (width, height) = self.video_settings.get_active_resolution();
+
+                            let cur_res_str = format!("{}x{}", width, height);
 
                             let mut cur_res_text = graphics::Text::new(ctx, &cur_res_str, &self.small_font).unwrap();
                             let dst = Rect::new(coords.0, coords.1, cur_res_text.width(), cur_res_text.height());
@@ -719,6 +726,9 @@ impl GameState for MainState {
                         }
                         Keycode::Return => {
                             self.return_key_pressed = true;
+                        }
+                        Keycode::G => {
+                            self.print_some_videos = true;
                         }
                         _ => {
 
@@ -871,7 +881,7 @@ fn adjust_panning(main_state: &mut MainState) {
 
     // check if the bottom/right coordinates are within the current window
     {
-        let resolution = main_state.video_settings.get_resolution();
+        let resolution = main_state.video_settings.get_active_resolution();
         let win_x = resolution.0 as i32;
         let win_y = resolution.1 as i32;
 
