@@ -49,7 +49,6 @@ use std::time::Duration;
 use std::fs::File;
 use conway::{Universe, CellState, Region};
 use std::collections::BTreeMap;
-use log::LogLevel;
 
 mod menu;
 mod video;

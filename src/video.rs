@@ -3,7 +3,6 @@ extern crate env_logger;
 
 use ggez::Context;
 use sdl2::video::{FullscreenType, DisplayMode};
-use log::LogLevel;
 
 #[derive(Debug, Clone)]
 struct DisplayModeManager {
