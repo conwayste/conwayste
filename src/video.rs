@@ -24,12 +24,10 @@ impl DisplayModeManager {
     }
 
     pub fn print_supported_modes(&self) {
-        if log_enabled!(LogLevel::Info) {
-            info!("Supported Resolutions Discovered:");
+        info!("Supported Resolutions Discovered:");
 
-            for mode in self.modes.iter() {
-                println!("Width: {}, Height: {}, Format: {}", mode.w, mode.h, mode.format);
-            }
+        for mode in self.modes.iter() {
+            info!("Width: {}, Height: {}, Format: {:?}", mode.w, mode.h, mode.format);
         }
     }
 

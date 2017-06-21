@@ -718,11 +718,9 @@ fn adjust_zoom_level(main_state: &mut MainState, direction : ZoomDirection) {
         }
 
         // TODO Mang Proper logging
-        if log_enabled!(LogLevel::Debug) {
-            debug!("Window Size: ({}, {})", main_state.grid_view.rect.width(), main_state.grid_view.rect.height());
-            debug!("Origin Before: ({},{})", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
-            debug!("Cell Size Before: {},", main_state.grid_view.cell_size);
-        }
+        debug!("Window Size: ({}, {})", main_state.grid_view.rect.width(), main_state.grid_view.rect.height());
+        debug!("Origin Before: ({},{})", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
+        debug!("Cell Size Before: {},", main_state.grid_view.cell_size);
 
         let old_cell_size = main_state.grid_view.cell_size;
         let next_cell_size = main_state.grid_view.cell_size as i32 + zoom_dir;
@@ -733,19 +731,15 @@ fn adjust_zoom_level(main_state: &mut MainState, direction : ZoomDirection) {
             let delta_x = zoom_dir * (old_cell_count_for_x as i32 * next_cell_size as i32 - old_cell_count_for_x as i32 * old_cell_size as i32);
             let delta_y = zoom_dir * (old_cell_count_for_y as i32 * next_cell_size as i32 - old_cell_count_for_y as i32 * old_cell_size as i32);
 
-            if log_enabled!(LogLevel::Debug) {
-                debug!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
-                debug!("delta in win coords: {}, {}", delta_x, delta_y);
-            }
+            debug!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
+            debug!("delta in win coords: {}, {}", delta_x, delta_y);
 
             main_state.grid_view.cell_size = next_cell_size as u32;
 
             main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(-zoom_dir * (delta_x as i32), -zoom_dir * (delta_y as i32));
 
-            if log_enabled!(LogLevel::Debug) {
-                debug!("Origin After: ({},{})\n", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
-                debug!("Cell Size After: {},", main_state.grid_view.cell_size);
-            }
+            debug!("Origin After: ({},{})\n", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
+            debug!("Cell Size After: {},", main_state.grid_view.cell_size);
         }
     }
 }
@@ -768,9 +762,7 @@ fn adjust_panning(main_state: &mut MainState) {
 
     let border_in_px = 100;
 
-    if log_enabled!(LogLevel::Debug) {
-        debug!("Cell Size: {:?}", (cell_size, border_in_px));
-    }
+    debug!("Cell Size: {:?}", (cell_size, border_in_px));
 
     // lol this works for now. One thing we'll need to check,
     // either during zooming in or panning,
@@ -786,10 +778,8 @@ fn adjust_panning(main_state: &mut MainState) {
         let win_x = resolution.0 as i32;
         let win_y = resolution.1 as i32;
 
-        if log_enabled!(LogLevel::Debug) {
-            debug!("Window: {:?}", (win_x, win_y));
-            debug!("Boundaries: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
-        }
+        debug!("Window: {:?}", (win_x, win_y));
+        debug!("Boundaries: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
 
         if i32::abs(right_boundary_in_px) > win_x {
             right_boundary_in_px += -1*(i32::abs(right_boundary_in_px) - win_x);
@@ -812,10 +802,8 @@ fn adjust_panning(main_state: &mut MainState) {
         main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
     }
 
-    if log_enabled!(LogLevel::Debug) {
-        debug!("New Origin: {:?}", (new_origin_x, new_origin_y));
-        debug!("Boundary: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
-    }
+    debug!("New Origin: {:?}", (new_origin_x, new_origin_y));
+    debug!("Boundary: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
 
     // Snap edges in case we are out of bounds
     if new_origin_x >= border_in_px {
