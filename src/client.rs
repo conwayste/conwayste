@@ -571,8 +571,8 @@ impl GameState for MainState {
         Ok(())
     }
 
-    fn mouse_button_down_event(&mut self, button: Mouse, x: i32, y: i32) {
-        if button == Mouse::Left {
+    fn mouse_button_down_event(&mut self, button: MouseButton, x: i32, y: i32) {
+        if button == MouseButton::Left {
             if let Some((col, row)) = self.grid_view.game_coords_from_window(Point::new(x,y)) {
                 let result = self.uni.toggle(col, row, 1);   // TODO: don't hardcode the player number
                 self.drag_draw = match result {
@@ -592,7 +592,7 @@ impl GameState for MainState {
         }
     }
 
-    fn mouse_button_up_event(&mut self, _button: Mouse, _x: i32, _y: i32) {
+    fn mouse_button_up_event(&mut self, _button: MouseButton, _x: i32, _y: i32) {
         // TODO Later, we'll need to support drag-and-drop patterns as well as drag draw
         self.drag_draw = None;   // probably unnecessary because of state.left() check in mouse_motion_event
     }
