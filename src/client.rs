@@ -1,20 +1,20 @@
 
-/*  Copyright 2017 the ConWaysteTheEnemy Developers.
+/*  Copyright 2017 the Conwayste Developers.
  *
- *  This file is part of ConWaysteTheEnemy.
+ *  This file is part of conwayste.
  *
- *  ConWaysteTheEnemy is free software: you can redistribute it and/or modify
+ *  conwayste is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation, either version 3 of the License, or
  *  (at your option) any later version.
  *
- *  ConWaysteTheEnemy is distributed in the hope that it will be useful,
+ *  conwayste is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with ConWaysteTheEnemy.  If not, see
+ *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
 // TODOs
@@ -897,13 +897,13 @@ pub fn main() {
     c.window_width  = DEFAULT_SCREEN_WIDTH;
     c.window_height = DEFAULT_SCREEN_HEIGHT;
     c.window_icon   = "conwaylife.ico".to_string();
-    c.window_title  = "💥 ConWayste the Enemy 💥".to_string();
+    c.window_title  = "💥 conwayste 💥".to_string();
 
     // save conf to .toml file
     let mut f = File::create("aaron_conf.toml").unwrap(); //XXX
     c.to_toml_file(&mut f).unwrap();
 
-    let mut game: Game<MainState> = Game::new("ConWaysteTheEnemy", c).unwrap();
+    let mut game: Game<MainState> = Game::new("conwayste", c).unwrap();
     if let Err(e) = game.run() {
         println!("Error encountered: {:?}", e);
     } else {

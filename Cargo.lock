@@ -1,5 +1,5 @@
 [root]
-name = "ConWaysteTheEnemy"
+name = "conwayste"
 version = "0.0.3"
 dependencies = [
  "conway 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
