@@ -18,15 +18,25 @@
  *  <http://www.gnu.org/licenses/>. */
 
 // TODOs
-// Contextual logging
+// :) detect screen resolution native
+// :) full screen/ window toggle support
+// :) main menu & settings
+// unit tests
+// :) logging support
+// update ggez to 0.3.x
+// align panning to window border
+// 
 // Modularization
-// Menu System
+// :) Menu System
 //
 
 extern crate conway;
 extern crate ggez;
 #[macro_use]
 extern crate version;
+extern crate sdl2;
+#[macro_use] extern crate log;
+extern crate env_logger;
 
 use ggez::conf;
 use ggez::event::*;
@@ -40,13 +50,17 @@ use std::fs::File;
 use conway::{Universe, CellState, Region};
 use std::collections::BTreeMap;
 
+mod menu;
+mod video;
+mod utils;
+
 
 const FPS: u32 = 25;
 const INTRO_DURATION: f64 = 2.0;
 const DEFAULT_SCREEN_WIDTH: u32 = 1200;
 const DEFAULT_SCREEN_HEIGHT: u32 = 800;
 const PIXELS_SCROLLED_PER_FRAME: i32 = 50;
-const ZOOM_LEVEL_MIN: u32 = 5;
+const ZOOM_LEVEL_MIN: u32 = 4;
 const ZOOM_LEVEL_MAX: u32 = 20;
 const HISTORY_SIZE: usize = 16;
 const NUM_PLAYERS: usize = 2;
@@ -54,9 +68,9 @@ const NUM_PLAYERS: usize = 2;
 #[derive(PartialEq)]
 enum Stage {
     Intro(f64),   // seconds
-    #[allow(dead_code)] // TODO: Consider this for pause as well?
     Menu,
     Run,          // TODO: break it out more to indicate whether waiting for game or playing game
+    Exit,         // We're getting ready to quit the game, WRAP IT UP SON
 }
 
 #[derive(PartialEq)]
@@ -75,13 +89,18 @@ struct MainState {
     grid_view:           GridView,
     color_settings:      ColorSettings,
     running:             bool,
+    menu_sys:            menu::MenuSystem,
+    video_settings:      video::VideoSettings,
 
     // Input state
     single_step:         bool,
     arrow_input:         (i32, i32),
     drag_draw:           Option<CellState>,
     win_resize:          u8,
+    return_key_pressed:  bool,
+    key_pressed_g:   bool,
 }
+
 
 // Support non-alive/dead/bg colors
 struct ColorSettings {
@@ -102,7 +121,7 @@ impl ColorSettings {
 fn init_patterns(s: &mut MainState) -> Result<(), ()> {
     /*
     // R pentomino
-    s.uni.toggle(16, 15, 0)?;
+s.uni.toggle(16, 15, 0)?;
     s.uni.toggle(17, 15, 0)?;
     s.uni.toggle(15, 16, 0)?;
     s.uni.toggle(16, 16, 0)?;
@@ -230,9 +249,9 @@ fn init_patterns(s: &mut MainState) -> Result<(), ()> {
 // that you can override if you wish, but the defaults are fine.
 impl GameState for MainState {
 
-    fn load(ctx: &mut Context, _conf: &conf::Conf) -> GameResult<MainState> {
-        let intro_font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 48).unwrap();
-        let intro_text = graphics::Text::new(ctx, "WAYSTE EM!", &intro_font).unwrap();
+    fn load(_ctx: &mut Context, _conf: &conf::Conf) -> GameResult<MainState> {
+        let intro_font = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 32).unwrap();
+        let intro_text = graphics::Text::new(_ctx, "WAYSTE EM!", &intro_font).unwrap();
 
         let game_width  = 64*4; // num of cells * pixels per cell
         let game_height = 30*4;
@@ -254,14 +273,15 @@ impl GameState for MainState {
         color_settings.cell_colors.insert(CellState::Alive(Some(0)), Color::RGB(255,   0,   0));  // 0 is red
         color_settings.cell_colors.insert(CellState::Alive(Some(1)), Color::RGB(  0,   0, 255));  // 1 is blue
         color_settings.cell_colors.insert(CellState::Wall,           Color::RGB(158, 141, 105));
-        color_settings.cell_colors.insert(CellState::Fog,            Color::RGB(128, 128, 128));
+        color_settings.cell_colors.insert(CellState::Fog,            Color::RGB(200, 200, 200));
 
         // we're going to have to tear this all out when this becomes a real game
         let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
         let player1_writable = Region::new(0, 0, 80, 80);
         let writable_regions = vec![player0_writable, player1_writable];
 
-        let small_font = graphics::Font::new(ctx, "DejaVuSerif.ttf", 20).unwrap();
+        let small_font = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 20).unwrap();
+        let menu_font = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 20).unwrap();
         let mut s = MainState {
             small_font:          small_font,
             intro_text:          intro_text,
@@ -271,14 +291,20 @@ impl GameState for MainState {
             grid_view:           grid_view,
             color_settings:      color_settings,
             running:             false,
+            menu_sys:            menu::MenuSystem::new(menu_font),
+            video_settings:      video::VideoSettings::new(),
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
             win_resize:          0,
+            return_key_pressed:  false,
+            key_pressed_g:   false,
         };
 
         init_patterns(&mut s).unwrap();
 
+        s.video_settings.gather_display_modes(_ctx);
+        s.video_settings.print_resolutions();
 
         Ok(s)
     }
@@ -286,18 +312,162 @@ impl GameState for MainState {
     fn update(&mut self, _ctx: &mut Context, dt: Duration) -> GameResult<()> {
         let duration = timer::duration_to_f64(dt); // seconds
 
+        {
+            let renderer = &mut _ctx.renderer;
+            let window = renderer.window().unwrap();
+            let (x, y) = window.size();
+            let (x, y) = (x as i32, y as i32);
+
+            self.video_settings.resolution = (x,y);
+        }
+
         match self.stage {
             Stage::Intro(mut remaining) => {
                 remaining -= duration;
                 if remaining > 0.0 {
                     self.stage = Stage::Intro(remaining);
                 } else {
-                    self.stage = Stage::Run;
+                    self.stage = Stage::Menu;
+                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
                 }
             }
             Stage::Menu => {
-                // TODO
-            }
+                //
+                // Start Game / Resume
+                //            / Forfeit
+                // Options
+                // Exit Game
+                //
+                //
+
+                if self.key_pressed_g {
+                    self.key_pressed_g = false;
+                }
+
+                let is_direction_key_pressed = {
+                    self.menu_sys.get_controls().is_menu_key_pressed()
+                };
+
+                let cur_menu_state = {
+                    self.menu_sys.menu_state.clone()
+                };
+
+
+                //// Directional Key / Menu movement
+                ////////////////////////////////////////
+                if self.arrow_input != (0,0) && !is_direction_key_pressed {
+                    // move selection accordingly
+                    let (_,y) = self.arrow_input;
+                    {
+                        let container = self.menu_sys.get_menu_container(&cur_menu_state); 
+                        let mut mainmenu_md = container.get_metadata();
+                        mainmenu_md.adjust_index(y);
+                    }
+                    self.menu_sys.get_controls().set_menu_key_pressed(true);
+                }
+                else {
+                    // Numbers
+                    // Clicking
+                    //
+
+                    /////////////////////////
+                    //// Enter key was pressed
+                    //////////////////////////
+                    
+                    if self.return_key_pressed {
+
+                        let id = {
+                            let container = self.menu_sys.get_menu_container(&cur_menu_state);
+                            let index = container.get_metadata().get_index();
+                            let menu_item_list = container.get_menu_item_list();
+                            let menu_item = menu_item_list.get(index).unwrap();
+                            menu_item.get_id()
+                        };
+
+                        match cur_menu_state {
+                            menu::MenuState::MainMenu => {
+                                match id {
+                                    menu::MenuItemIdentifier::StartGame => {
+                                        self.stage = Stage::Run;
+                                        self.menu_sys.menu_state = menu::MenuState::MenuOff;
+                                    }
+                                    menu::MenuItemIdentifier::ExitGame => {
+                                        self.stage = Stage::Exit;
+                                    }
+                                    // todo options video etc..
+                                    menu::MenuItemIdentifier::Options => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                        
+                                        
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            menu::MenuState::Options => {
+                                match id {
+                                    menu::MenuItemIdentifier::VideoSettings => {
+                                        self.menu_sys.menu_state = menu::MenuState::Video;
+                                    }
+                                    menu::MenuItemIdentifier::AudioSettings => {
+                                        self.menu_sys.menu_state = menu::MenuState::Audio;
+                                    }
+                                    menu::MenuItemIdentifier::GameplaySettings => {
+                                        self.menu_sys.menu_state = menu::MenuState::Gameplay;
+                                    }
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                                    }
+                                   _ => {}
+                                }
+                            }
+                            menu::MenuState::MenuOff => {
+
+                            }
+                            menu::MenuState::Audio => {
+                                match id {
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            menu::MenuState::Gameplay => {
+                                match id {
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            menu::MenuState::Video => {
+                                match id {
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                    }
+                                    menu::MenuItemIdentifier::Fullscreen => {
+                                        self.video_settings.is_fullscreen = video::toggle_full_screen(_ctx);
+                                    }
+                                    menu::MenuItemIdentifier::Resolution => {
+                                         self.video_settings.advance_to_next_resolution(_ctx);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+
+
+                // 1. Enum to represent MenuOption
+                // 2. Highlight current option
+                // 3. Directional for movement
+                // 4. Transition to Next Option
+                //
+                
+                // Some exit clean up
+                self.return_key_pressed = false;
+                
+           }
             Stage::Run => {
                 if self.single_step {
                     self.running = false;
@@ -316,7 +486,6 @@ impl GameState for MainState {
                 // This is a temporary placeholder for this functionality until we implement
                 // the video settings in Menu. 
                 if self.win_resize != 0 {
-
                     match self.win_resize % 4 {
                         1 => { x = 640; y = 480; }
                         2 => { x = 800; y = 480; }
@@ -334,51 +503,31 @@ impl GameState for MainState {
 
                 // Update panning
                 if self.arrow_input != (0, 0) {
-                    let cell_size = self.grid_view.cell_size;
-                    let (columns, rows) = (self.grid_view.columns as u32, self.grid_view.rows as u32);
-                    let screen_width  = cell_size*columns;
-                    let screen_height = cell_size*rows;
-
-                    let (dx, dy) = self.arrow_input;
-                    let dx_in_pixels = -dx * PIXELS_SCROLLED_PER_FRAME;
-                    let dy_in_pixels = -dy * PIXELS_SCROLLED_PER_FRAME;
-                    let new_origin_x = self.grid_view.grid_origin.x() + dx_in_pixels;
-                    let new_origin_y = self.grid_view.grid_origin.y() + dy_in_pixels;
-
-                    let border_in_px = 100;
-
-                    // lol this works for now. One thing we'll need to check,
-                    // either during zooming in or panning,
-                    // is to check if our grid origin is out of bounds, and correct.
-                    // Todo "11" & "7" are currently magical. TODO Align to resolution
-                    if  new_origin_x > -1*(screen_width as i32 - border_in_px*11) 
-                     && new_origin_y > -1*(screen_height as i32 - border_in_px*7) 
-                     && new_origin_x < border_in_px
-                     && new_origin_y < border_in_px {
-                        self.grid_view.grid_origin = self.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
-                    }
-
+                    adjust_panning(self);
                 }
+            }
+            Stage::Exit => {
+               let _ = _ctx.quit();
             }
         }
 
         Ok(())
     }
 
-    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        ctx.renderer.clear();
+    fn draw(&mut self, _ctx: &mut Context) -> GameResult<()> {
+       _ctx.renderer.clear();
         match self.stage {
             Stage::Intro(_) => {
-                try!(graphics::draw(ctx, &mut self.intro_text, None, None));
+                try!(graphics::draw(_ctx, &mut self.intro_text, None, None));
             }
             Stage::Menu => {
-                // TODO 
+                self.menu_sys.draw_menu(&self.video_settings, _ctx);
             }
             Stage::Run => {
                 ////////// draw universe
                 // grid background
-                graphics::set_color(ctx, self.color_settings.get_color(None));
-                graphics::rectangle(ctx,  graphics::DrawMode::Fill, self.grid_view.rect).unwrap();
+                graphics::set_color(_ctx, self.color_settings.get_color(None));
+                graphics::rectangle(_ctx,  graphics::DrawMode::Fill, self.grid_view.rect).unwrap();
 
                 // grid foreground (dead cells)
                 //TODO: put in its own function (of GridView); also make this less ugly
@@ -388,38 +537,37 @@ impl GameState for MainState {
                 let full_rect = Rect::new(origin.x(), origin.y(), full_width, full_height);
 
                 if let Some(clipped_rect) = full_rect.intersection(self.grid_view.rect) {
-                    graphics::set_color(ctx, self.color_settings.get_color(Some(CellState::Dead)));
-                    graphics::rectangle(ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
+                    graphics::set_color(_ctx, self.color_settings.get_color(Some(CellState::Dead)));
+                    graphics::rectangle(_ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
                 }
 
                 // grid non-dead cells
                 let visibility = Some(1); //XXX
                 self.uni.each_non_dead_full(visibility, &mut |col, row, state| {
                     let color = self.color_settings.get_color(Some(state));
-                    graphics::set_color(ctx, color);
+                    graphics::set_color(_ctx, color);
 
                     if let Some(rect) = self.grid_view.window_coords_from_game(col, row) {
-                        graphics::rectangle(ctx,  graphics::DrawMode::Fill, rect).unwrap();
+                        graphics::rectangle(_ctx,  graphics::DrawMode::Fill, rect).unwrap();
                     }
                 });
 
 
                 ////////// draw generation counter
                 let gen_counter_str = self.uni.latest_gen().to_string();
-                let mut gen_counter_text = graphics::Text::new(ctx,
-                                                               &gen_counter_str,
-                                                               &self.small_font).unwrap();
-                let dst = Rect::new(0, 0, gen_counter_text.width(), gen_counter_text.height());
-                graphics::draw(ctx, &mut gen_counter_text, None, Some(dst))?;
-
+                utils::Graphics::draw_text(_ctx, &self.small_font, &gen_counter_str, &Point::new(0,0), None);
 
                 ////////////////////// END
-                graphics::set_color(ctx, Color::RGB(0,0,0)); // do this at end; not sure why...?
+                graphics::set_color(_ctx, Color::RGB(0,0,0)); // do this at end; not sure why...?
                 self.first_gen_was_drawn = true;
             }
+            Stage::Exit => {
+
+            }
         }
-        ctx.renderer.present();
-        timer::sleep_until_next_frame(ctx, FPS);
+
+       _ctx.renderer.present();
+        timer::sleep_until_next_frame(_ctx, FPS);
         Ok(())
     }
 
@@ -458,10 +606,35 @@ impl GameState for MainState {
 
         match self.stage {
             Stage::Intro(_) => {
-                self.stage = Stage::Run;
+                self.stage = Stage::Menu;
             }
             Stage::Menu => {
-                // TODO 
+                
+                if !self.menu_sys.get_controls().is_menu_key_pressed() {
+                    match keycode {
+                        Keycode::Up => {
+                            self.arrow_input = (0, -1);
+                        }
+                        Keycode::Down => {
+                            self.arrow_input = (0, 1);
+                        }
+                        Keycode::Left => {
+                            self.arrow_input = (-1, 0);
+                        }
+                        Keycode::Right => {
+                            self.arrow_input = (1, 0);
+                        }
+                        Keycode::Return => {
+                            self.return_key_pressed = true;
+                        }
+                        Keycode::G => {
+                            self.key_pressed_g = true;
+                        }
+                        _ => {
+
+                        }
+                    }
+                }
             }
             Stage::Run => {
                 match keycode {
@@ -500,11 +673,16 @@ impl GameState for MainState {
                     Keycode::Num3 => {
                        self.win_resize = 3;
                     }
-                    Keycode::LGui => {}
+                    Keycode::LGui => {
+                    
+                    }
                     _ => {
                         println!("Unrecognized keycode {}", keycode);
                     }
                 }
+            }
+            Stage::Exit => {
+
             }
         }
     }
@@ -519,6 +697,7 @@ impl GameState for MainState {
         match keycode {
             Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right => {
                 self.arrow_input = (0, 0);
+                self.menu_sys.get_controls().set_menu_key_pressed(false);
             }
             _ => {}
         }
@@ -538,11 +717,9 @@ fn adjust_zoom_level(main_state: &mut MainState, direction : ZoomDirection) {
         }
 
         // TODO Mang Proper logging
-        if false {
-            println!("Window Size: ({}, {})", main_state.grid_view.rect.width(), main_state.grid_view.rect.height());
-            println!("Origin Before: ({},{})", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
-            println!("Cell Size Before: {},", main_state.grid_view.cell_size);
-        }
+        debug!("Window Size: ({}, {})", main_state.grid_view.rect.width(), main_state.grid_view.rect.height());
+        debug!("Origin Before: ({},{})", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
+        debug!("Cell Size Before: {},", main_state.grid_view.cell_size);
 
         let old_cell_size = main_state.grid_view.cell_size;
         let next_cell_size = main_state.grid_view.cell_size as i32 + zoom_dir;
@@ -553,24 +730,98 @@ fn adjust_zoom_level(main_state: &mut MainState, direction : ZoomDirection) {
             let delta_x = zoom_dir * (old_cell_count_for_x as i32 * next_cell_size as i32 - old_cell_count_for_x as i32 * old_cell_size as i32);
             let delta_y = zoom_dir * (old_cell_count_for_y as i32 * next_cell_size as i32 - old_cell_count_for_y as i32 * old_cell_size as i32);
 
-            if false {
-                println!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
-                println!("delta in win coords: {}, {}", delta_x, delta_y);
-            }
+            debug!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
+            debug!("delta in win coords: {}, {}", delta_x, delta_y);
 
             main_state.grid_view.cell_size = next_cell_size as u32;
 
             main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(-zoom_dir * (delta_x as i32), -zoom_dir * (delta_y as i32));
 
-            if false {
-                println!("Origin After: ({},{})\n", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
-                println!("Cell Size After: {},", main_state.grid_view.cell_size);
-            }
+            debug!("Origin After: ({},{})\n", main_state.grid_view.grid_origin.x(), main_state.grid_view.grid_origin.y());
+            debug!("Cell Size After: {},", main_state.grid_view.cell_size);
         }
     }
 }
 
+fn adjust_panning(main_state: &mut MainState) {
+    let cell_size = main_state.grid_view.cell_size;
+    let (columns, rows) = (main_state.grid_view.columns as u32, main_state.grid_view.rows as u32);
+    let screen_width  = cell_size*columns;
+    let screen_height = cell_size*rows;
 
+    let (dx, dy) = main_state.arrow_input;
+    let dx_in_pixels = -dx * PIXELS_SCROLLED_PER_FRAME;
+    let dy_in_pixels = -dy * PIXELS_SCROLLED_PER_FRAME;
+
+    let cur_origin_x = main_state.grid_view.grid_origin.x();
+    let cur_origin_y = main_state.grid_view.grid_origin.y();
+
+    let new_origin_x = cur_origin_x + dx_in_pixels;
+    let new_origin_y = cur_origin_y + dy_in_pixels;
+
+    let border_in_px = 100;
+
+    debug!("Cell Size: {:?}", (cell_size, border_in_px));
+
+    // lol this works for now. One thing we'll need to check,
+    // either during zooming in or panning,
+    // is to check if our grid origin is out of bounds, and correct.
+    // Todo "11" & "7" are currently magical. TODO Align to resolution
+
+    let mut right_boundary_in_px = -1*(screen_width as i32 - border_in_px*11);
+    let mut bottom_boundary_in_px = -1*(screen_height as i32 - border_in_px*7);
+
+    // check if the bottom/right coordinates are within the current window
+    {
+        let resolution = main_state.video_settings.get_active_resolution();
+        let win_x = resolution.0 as i32;
+        let win_y = resolution.1 as i32;
+
+        debug!("Window: {:?}", (win_x, win_y));
+        debug!("Boundaries: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
+
+        if i32::abs(right_boundary_in_px) > win_x {
+            right_boundary_in_px += -1*(i32::abs(right_boundary_in_px) - win_x);
+        }
+
+        if i32::abs(bottom_boundary_in_px) > win_y {
+            bottom_boundary_in_px += -1*(i32::abs(bottom_boundary_in_px) - win_y/2);
+        }
+    }
+
+    if cell_size <= (ZOOM_LEVEL_MIN +1) {
+        right_boundary_in_px = -1*(200)*(cell_size - ZOOM_LEVEL_MIN+1) as i32;
+        bottom_boundary_in_px = -1*(100)*(cell_size - ZOOM_LEVEL_MIN+1) as i32;
+    }
+
+    if  new_origin_x > right_boundary_in_px
+     && new_origin_y > bottom_boundary_in_px
+     && new_origin_x < border_in_px
+     && new_origin_y < border_in_px {
+        main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
+    }
+
+    debug!("New Origin: {:?}", (new_origin_x, new_origin_y));
+    debug!("Boundary: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
+
+    // Snap edges in case we are out of bounds
+    if new_origin_x >= border_in_px {
+        main_state.grid_view.grid_origin = Point::new(border_in_px-1, cur_origin_y);
+    }
+
+    if new_origin_x <= right_boundary_in_px {
+        main_state.grid_view.grid_origin = Point::new(right_boundary_in_px+1, cur_origin_y);
+    }
+
+    if new_origin_y <= bottom_boundary_in_px {
+        main_state.grid_view.grid_origin = Point::new(cur_origin_x, bottom_boundary_in_px+1);
+    }
+
+    if new_origin_y >= border_in_px {
+        main_state.grid_view.grid_origin = Point::new(cur_origin_x, border_in_px-1);
+    }
+
+}
 
 // Controls the mapping between window and game coordinates
 struct GridView {
@@ -639,6 +890,7 @@ impl GridView {
 // do the work of creating our MainState and running our game,
 // * then just call `game.run()` which runs the `Game` mainloop.
 pub fn main() {
+    env_logger::init().unwrap();
     let mut c = conf::Conf::new();
 
     c.version       = version!().to_string();
