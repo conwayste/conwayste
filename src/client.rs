@@ -572,14 +572,19 @@ impl GameState for MainState {
     }
 
     fn mouse_button_down_event(&mut self, button: MouseButton, x: i32, y: i32) {
-        if button == MouseButton::Left {
-            if let Some((col, row)) = self.grid_view.game_coords_from_window(Point::new(x,y)) {
-                let result = self.uni.toggle(col, row, 1);   // TODO: don't hardcode the player number
-                self.drag_draw = match result {
-                    Ok(state) => Some(state),
-                    Err(_)    => None,
-                };
+        match self.stage {
+            Stage::Run => {
+                if button == MouseButton::Left {
+                    if let Some((col, row)) = self.grid_view.game_coords_from_window(Point::new(x,y)) {
+                        let result = self.uni.toggle(col, row, 1);   // TODO: don't hardcode the player number
+                        self.drag_draw = match result {
+                            Ok(state) => Some(state),
+                            Err(_)    => None,
+                        };
+                    }
+                }
             }
+            _ => {}
         }
     }
 
@@ -746,6 +751,23 @@ fn adjust_zoom_level(main_state: &mut MainState, direction : ZoomDirection) {
 fn adjust_panning(main_state: &mut MainState) {
     let cell_size = main_state.grid_view.cell_size;
     let (columns, rows) = (main_state.grid_view.columns as u32, main_state.grid_view.rows as u32);
+
+    // TODO This is the problem here. We are defining the limits of our screen due to the universe
+    // and not the window itself. When qualifying a new origin for movement, we need to always keep 
+    // in mind where it, and the bottom/right corner, stand with respect to the boundaries of the virtual window edges.
+    //
+    //   Universe
+    // ---------------               
+    // |                             
+    // |     Window      Window      
+    // |   +====                :   |
+    // |   :                    :   |
+    // |   :                ====+   |
+    // |                            |
+    // |                -------------
+    //                     Universe  
+    //
+
     let screen_width  = cell_size*columns;
     let screen_height = cell_size*rows;
 
@@ -761,7 +783,7 @@ fn adjust_panning(main_state: &mut MainState) {
 
     let border_in_px = 100;
 
-    debug!("Cell Size: {:?}", (cell_size, border_in_px));
+    debug!("Cell Size: {:?}", (cell_size));
 
     // lol this works for now. One thing we'll need to check,
     // either during zooming in or panning,
