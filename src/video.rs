@@ -84,6 +84,7 @@ impl VideoSettings {
         self.set_active_resolution(width, height);
 
         refresh_game_resolution(_ctx, width, height);
+        println!("{:?}", (width, height));
     }
 
 }

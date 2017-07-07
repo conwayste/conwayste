@@ -576,7 +576,7 @@ impl GameState for MainState {
             Stage::Run => {
                 if button == MouseButton::Left {
                     if let Some((col, row)) = self.grid_view.game_coords_from_window(Point::new(x,y)) {
-                        let result = self.uni.toggle(col, row, 1);   // TODO: don't hardcode the player number
+                        let result = self.uni.toggle(col as usize, row  as usize, 1);   // TODO: don't hardcode the player number
                         self.drag_draw = match result {
                             Ok(state) => Some(state),
                             Err(_)    => None,
@@ -592,7 +592,7 @@ impl GameState for MainState {
         if state.left() && self.drag_draw != None {
             if let Some((col, row)) = self.grid_view.game_coords_from_window(Point::new(x,y)) {
                 let cell_state = self.drag_draw.unwrap();
-                self.uni.set(col, row, cell_state);
+                self.uni.set(col as usize, row  as usize, cell_state);
             }
         }
     }
@@ -768,8 +768,10 @@ fn adjust_panning(main_state: &mut MainState) {
     //                     Universe  
     //
 
-    let screen_width  = cell_size*columns;
-    let screen_height = cell_size*rows;
+    debug!("\n\nP A N N I N G:");
+
+    let universe_width_px  = cell_size*columns;
+    let universe_height_px = cell_size*rows;
 
     let (dx, dy) = main_state.arrow_input;
     let dx_in_pixels = -dx * PIXELS_SCROLLED_PER_FRAME;
@@ -781,54 +783,72 @@ fn adjust_panning(main_state: &mut MainState) {
     let new_origin_x = cur_origin_x + dx_in_pixels;
     let new_origin_y = cur_origin_y + dy_in_pixels;
 
-    let border_in_px = 100;
+    let new_origin_x_in_gc = new_origin_x/cell_size as i32 + 1;
+    let new_origin_y_in_gc = new_origin_y/cell_size as i32 + 1;
+
+    let border_in_cells = 10;
 
     debug!("Cell Size: {:?}", (cell_size));
 
-    // lol this works for now. One thing we'll need to check,
-    // either during zooming in or panning,
-    // is to check if our grid origin is out of bounds, and correct.
-    // Todo "11" & "7" are currently magical. TODO Align to resolution
+    let mut right_boundary_in_px = -1*(universe_width_px as i32 + cur_origin_x);
+    let mut bottom_boundary_in_px = -1*(universe_height_px as i32 + cur_origin_y);
 
-    let mut right_boundary_in_px = -1*(screen_width as i32 - border_in_px*11);
-    let mut bottom_boundary_in_px = -1*(screen_height as i32 - border_in_px*7);
 
-    // check if the bottom/right coordinates are within the current window
-    {
-        let resolution = main_state.video_settings.get_active_resolution();
-        let win_x = resolution.0 as i32;
-        let win_y = resolution.1 as i32;
+    // Get the game coordinates of the two corners
+    if let Some(w_in_gc) = get_all_window_coords_in_game_coords(main_state) { // use w_in_gc to calculate the distance between
+        let (mut offset_x, mut offset_y) = (0, 0);
+        let mut pan = false;
 
-        debug!("Window: {:?}", (win_x, win_y));
-        debug!("Boundaries: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
-
-        if i32::abs(right_boundary_in_px) > win_x {
-            right_boundary_in_px += -1*(i32::abs(right_boundary_in_px) - win_x);
+        if (w_in_gc.top_left.x() < new_origin_x_in_gc)
+        && (new_origin_x_in_gc - w_in_gc.top_left.x()  < border_in_cells) {
+            offset_x = dx_in_pixels;
+            pan = true;
+            debug!("Panned[Top_Left_X]");
         }
 
-        if i32::abs(bottom_boundary_in_px) > win_y {
-            bottom_boundary_in_px += -1*(i32::abs(bottom_boundary_in_px) - win_y/2);
+        if (w_in_gc.top_left.y() < new_origin_y_in_gc)
+        && (new_origin_y_in_gc - w_in_gc.top_left.y()  < border_in_cells) {
+            offset_y = dy_in_pixels;
+            pan = true;
+            debug!("Panned[Top_Left_Y]");
+        }
+
+        if (w_in_gc.bottom_right.x() > new_origin_x_in_gc)
+        && (w_in_gc.bottom_right.x() - new_origin_x_in_gc < border_in_cells) {
+            offset_x = dx_in_pixels;
+            pan = true;
+        }
+
+        if (w_in_gc.top_left.y() > new_origin_y_in_gc)
+        && (w_in_gc.top_left.y() - new_origin_y_in_gc < border_in_cells) {
+            offset_y = dy_in_pixels;
+            pan = true;
+        }
+
+        if pan {
+            main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(offset_x, offset_y);
+            println!("New Origin: {:?}", main_state.grid_view.grid_origin);
         }
     }
 
-    if cell_size <= (ZOOM_LEVEL_MIN +1) {
+/*    if cell_size <= (ZOOM_LEVEL_MIN +1) {
         right_boundary_in_px = -1*(200)*(cell_size - ZOOM_LEVEL_MIN+1) as i32;
         bottom_boundary_in_px = -1*(100)*(cell_size - ZOOM_LEVEL_MIN+1) as i32;
     }
 
     if  new_origin_x > right_boundary_in_px
      && new_origin_y > bottom_boundary_in_px
-     && new_origin_x < border_in_px
-     && new_origin_y < border_in_px {
+     && new_origin_x < border_in_cells
+     && new_origin_y < border_in_cells {
         main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
     }
-
+*/
     debug!("New Origin: {:?}", (new_origin_x, new_origin_y));
     debug!("Boundary: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
 
     // Snap edges in case we are out of bounds
-    if new_origin_x >= border_in_px {
-        main_state.grid_view.grid_origin = Point::new(border_in_px-1, cur_origin_y);
+/*    if new_origin_x >= border_in_cells {
+        main_state.grid_view.grid_origin = Point::new(border_in_cells-1, cur_origin_y);
     }
 
     if new_origin_x <= right_boundary_in_px {
@@ -839,11 +859,46 @@ fn adjust_panning(main_state: &mut MainState) {
         main_state.grid_view.grid_origin = Point::new(cur_origin_x, bottom_boundary_in_px+1);
     }
 
-    if new_origin_y >= border_in_px {
-        main_state.grid_view.grid_origin = Point::new(cur_origin_x, border_in_px-1);
+    if new_origin_y >= border_in_cells {
+        main_state.grid_view.grid_origin = Point::new(cur_origin_x, border_in_cells-1);
     }
-
+  */
 }
+
+#[derive(Debug, Clone)]
+struct WindowCornersInGameCoords {
+    top_left : Point,
+    bottom_right: Point,
+}
+
+fn get_all_window_coords_in_game_coords(main_state: &MainState) -> Option<WindowCornersInGameCoords> {
+    let resolution = main_state.video_settings.get_active_resolution();
+    let win_width_px = resolution.0 as i32;
+    let win_height_px = resolution.1 as i32;
+
+    debug!("Window: {:?} px", (win_width_px, win_height_px));
+
+    let mut result : Option<WindowCornersInGameCoords> = None;
+
+    let (origin_x, origin_y) = main_state.grid_view.game_coords_from_window_unchecked(Point::new(0, 0));
+    {
+        debug!("GetAllCoords [0,0]: {:?}", (origin_x, origin_y));
+
+        let (win_width_px, win_height_px) = main_state.grid_view.game_coords_from_window_unchecked(Point::new(win_width_px, win_height_px));
+        {
+            debug!("GetAllCoords [resolution]: {:?}",(win_width_px, win_height_px));
+            
+            result = Some(WindowCornersInGameCoords {
+                top_left : Point::new(origin_x as i32, origin_y as i32),
+                bottom_right : Point::new(win_width_px as i32, win_height_px as i32),
+            });
+
+            println!("{:?}", result);
+        }
+    }
+    result
+}
+
 
 // Controls the mapping between window and game coordinates
 struct GridView {
@@ -860,22 +915,20 @@ struct GridView {
 impl GridView {
     // Returns Option<(col, row)>
     // Given a Point(x,y), we determine a col/row tuple in cell units
-    fn game_coords_from_window(&self, point: Point) -> Option<(usize, usize)> {
-/*
+    fn game_coords_from_window(&self, point: Point) -> Option<(isize, isize)> {
         let col: isize = ((point.x() - self.grid_origin.x()) / self.cell_size as i32) as isize;
         let row: isize = ((point.y() - self.grid_origin.y()) / self.cell_size as i32) as isize;
         if col < 0 || col >= self.columns as isize || row < 0 || row >= self.rows as isize {
             return None;
         }
-        Some((col as usize, row as usize))
-*/
+        Some((col , row ))
+    }
+
+    fn game_coords_from_window_unchecked(&self, point: Point) -> (isize, isize) {
         let col: isize = ((point.x() - self.grid_origin.x()) / self.cell_size as i32) as isize;
         let row: isize = ((point.y() - self.grid_origin.y()) / self.cell_size as i32) as isize;
-        if col < 0 || col >= self.columns as isize || row < 0 || row >= self.rows as isize {
-            return None;
-        }
-        Some((col as usize, row as usize))
- 
+        
+        (col , row )
     }
 
     // Attempt to return a rectangle for the on-screen area of the specified cell.
@@ -900,6 +953,7 @@ impl GridView {
     fn grid_height(&self) -> u32 {
         self.rows as u32 * self.cell_size
     }
+
 }
 
 
