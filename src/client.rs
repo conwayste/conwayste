@@ -783,6 +783,9 @@ fn adjust_panning(main_state: &mut MainState) {
     let new_origin_x = cur_origin_x + dx_in_pixels;
     let new_origin_y = cur_origin_y + dy_in_pixels;
 
+    let cur_origin_x_in_gc = cur_origin_x/cell_size as i32 + 1;
+    let cur_origin_y_in_gc = cur_origin_y/cell_size as i32 + 1;
+
     let new_origin_x_in_gc = new_origin_x/cell_size as i32 + 1;
     let new_origin_y_in_gc = new_origin_y/cell_size as i32 + 1;
 
@@ -790,43 +793,57 @@ fn adjust_panning(main_state: &mut MainState) {
 
     debug!("Cell Size: {:?}", (cell_size));
 
-    let mut right_boundary_in_px = -1*(universe_width_px as i32 + cur_origin_x);
-    let mut bottom_boundary_in_px = -1*(universe_height_px as i32 + cur_origin_y);
-
+    let mut right_boundary_in_gc = (columns as i32 + cur_origin_x_in_gc) as i32;
+    let mut bottom_boundary_in_gc = (rows  as i32 + cur_origin_y_in_gc) as i32;
 
     // Get the game coordinates of the two corners
     if let Some(w_in_gc) = get_all_window_coords_in_game_coords(main_state) { // use w_in_gc to calculate the distance between
-        let (mut offset_x, mut offset_y) = (0, 0);
-        let mut pan = false;
+        let (mut offset_x, mut offset_y) = (dx_in_pixels, dy_in_pixels);
+        let mut pan_x = true;
+        let mut pan_y = true;
 
         if (w_in_gc.top_left.x() < new_origin_x_in_gc)
-        && (new_origin_x_in_gc - w_in_gc.top_left.x()  < border_in_cells) {
-            offset_x = dx_in_pixels;
-            pan = true;
-            debug!("Panned[Top_Left_X]");
+        && (new_origin_x_in_gc - w_in_gc.top_left.x() > border_in_cells) {
+            offset_x = 0;
+            pan_x = false;
+            debug!("Could not pan [Top_Left_X]");
         }
 
         if (w_in_gc.top_left.y() < new_origin_y_in_gc)
-        && (new_origin_y_in_gc - w_in_gc.top_left.y()  < border_in_cells) {
-            offset_y = dy_in_pixels;
-            pan = true;
-            debug!("Panned[Top_Left_Y]");
+        && (new_origin_y_in_gc - w_in_gc.top_left.y() > border_in_cells) {
+            offset_y = 0;
+            pan_y = false;
+            debug!("Could not pan [Top_Left_Y]");
+        }
+        
+        debug!("[X] Bot Right::{:?}  |  New_Origin::{:?}", w_in_gc.bottom_right.x(), right_boundary_in_gc);
+        if (w_in_gc.bottom_right.x() > right_boundary_in_gc)
+        && (w_in_gc.bottom_right.x() - right_boundary_in_gc > border_in_cells) {
+            offset_x = 0;
+            pan_x = false;
+            debug!("Could not pan [Bot_Right_Y]");
         }
 
-        if (w_in_gc.bottom_right.x() > new_origin_x_in_gc)
-        && (w_in_gc.bottom_right.x() - new_origin_x_in_gc < border_in_cells) {
-            offset_x = dx_in_pixels;
-            pan = true;
+        debug!("[Y] Bot Right::{:?}  |  New_Origin::{:?}", w_in_gc.bottom_right.y(), bottom_boundary_in_gc);
+        if (w_in_gc.top_left.y() > bottom_boundary_in_gc)
+        && (w_in_gc.top_left.y() - bottom_boundary_in_gc > border_in_cells) {
+            offset_y = 0;
+            pan_y = false;
+            debug!("Could not pan [Bot_Right_Y]");
+        }
+        
+        debug!("TwoCanPan [X|Y]: {:?}", (pan_x, pan_y));
+        debug!("Panning Offsets: {:?}", (offset_x, offset_y));
+        
+        if pan_x {
+            main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(offset_x, 0);
         }
 
-        if (w_in_gc.top_left.y() > new_origin_y_in_gc)
-        && (w_in_gc.top_left.y() - new_origin_y_in_gc < border_in_cells) {
-            offset_y = dy_in_pixels;
-            pan = true;
+        if pan_y {
+            main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(0, offset_y);
         }
 
-        if pan {
-            main_state.grid_view.grid_origin = main_state.grid_view.grid_origin.offset(offset_x, offset_y);
+        if pan_y || pan_x {
             println!("New Origin: {:?}", main_state.grid_view.grid_origin);
         }
     }
@@ -844,7 +861,7 @@ fn adjust_panning(main_state: &mut MainState) {
     }
 */
     debug!("New Origin: {:?}", (new_origin_x, new_origin_y));
-    debug!("Boundary: {:?}", (right_boundary_in_px, bottom_boundary_in_px));
+    debug!("Bottom Right Corner In Cells: {:?}", (right_boundary_in_gc, bottom_boundary_in_gc));
 
     // Snap edges in case we are out of bounds
 /*    if new_origin_x >= border_in_cells {
