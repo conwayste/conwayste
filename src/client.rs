@@ -19,6 +19,7 @@
 
 // TODOs
 // :) detect screen resolution native
+// current default resolution
 // :) full screen/ window toggle support
 // :) main menu & settings
 // unit tests
@@ -769,6 +770,7 @@ fn adjust_panning(main_state: &mut MainState) {
     //
 
     debug!("\n\nP A N N I N G:");
+    debug!("Columns, Rows = {:?}", (columns, rows));
 
     let universe_width_px  = cell_size*columns;
     let universe_height_px = cell_size*rows;
@@ -780,8 +782,8 @@ fn adjust_panning(main_state: &mut MainState) {
     let cur_origin_x = main_state.grid_view.grid_origin.x();
     let cur_origin_y = main_state.grid_view.grid_origin.y();
 
-    let new_origin_x = cur_origin_x + dx_in_pixels;
-    let new_origin_y = cur_origin_y + dy_in_pixels;
+    let mut new_origin_x = cur_origin_x + dx_in_pixels;
+    let mut new_origin_y = cur_origin_y + dy_in_pixels;
 
     let cur_origin_x_in_gc = cur_origin_x/cell_size as i32 + 1;
     let cur_origin_y_in_gc = cur_origin_y/cell_size as i32 + 1;
@@ -793,8 +795,11 @@ fn adjust_panning(main_state: &mut MainState) {
 
     debug!("Cell Size: {:?}", (cell_size));
 
-    let mut right_boundary_in_gc = (columns as i32 + cur_origin_x_in_gc) as i32;
-    let mut bottom_boundary_in_gc = (rows  as i32 + cur_origin_y_in_gc) as i32;
+    let mut right_boundary_in_gc = (columns as i32);// + cur_origin_x_in_gc) as i32;
+    let mut bottom_boundary_in_gc = (rows  as i32);// + cur_origin_y_in_gc) as i32;
+
+    debug!("Cur Origin in GC: {:?}", (cur_origin_x_in_gc, cur_origin_y_in_gc));
+    debug!("Bottom Right Corner in GC: {:?}", (right_boundary_in_gc, bottom_boundary_in_gc));
 
     // Get the game coordinates of the two corners
     if let Some(w_in_gc) = get_all_window_coords_in_game_coords(main_state) { // use w_in_gc to calculate the distance between
@@ -802,6 +807,7 @@ fn adjust_panning(main_state: &mut MainState) {
         let mut pan_x = true;
         let mut pan_y = true;
 
+        debug!("[X] Top Left Window::{:?}  |  TL Universe::{:?}", w_in_gc.top_left.x(), new_origin_x_in_gc);
         if (w_in_gc.top_left.x() < new_origin_x_in_gc)
         && (new_origin_x_in_gc - w_in_gc.top_left.x() > border_in_cells) {
             offset_x = 0;
@@ -809,6 +815,7 @@ fn adjust_panning(main_state: &mut MainState) {
             debug!("Could not pan [Top_Left_X]");
         }
 
+         debug!("[Y] Top Left Window::{:?}  |  TL Universe::{:?}", w_in_gc.top_left.y(), new_origin_y_in_gc);
         if (w_in_gc.top_left.y() < new_origin_y_in_gc)
         && (new_origin_y_in_gc - w_in_gc.top_left.y() > border_in_cells) {
             offset_y = 0;
@@ -816,17 +823,17 @@ fn adjust_panning(main_state: &mut MainState) {
             debug!("Could not pan [Top_Left_Y]");
         }
         
-        debug!("[X] Bot Right::{:?}  |  New_Origin::{:?}", w_in_gc.bottom_right.x(), right_boundary_in_gc);
+        debug!("[X] Bot Right Window::{:?}  |  BR Universe::{:?}", w_in_gc.bottom_right.x(), right_boundary_in_gc);
         if (w_in_gc.bottom_right.x() > right_boundary_in_gc)
         && (w_in_gc.bottom_right.x() - right_boundary_in_gc > border_in_cells) {
             offset_x = 0;
             pan_x = false;
-            debug!("Could not pan [Bot_Right_Y]");
+            debug!("Could not pan [Bot_Right_X]");
         }
 
-        debug!("[Y] Bot Right::{:?}  |  New_Origin::{:?}", w_in_gc.bottom_right.y(), bottom_boundary_in_gc);
-        if (w_in_gc.top_left.y() > bottom_boundary_in_gc)
-        && (w_in_gc.top_left.y() - bottom_boundary_in_gc > border_in_cells) {
+        debug!("[Y] Bot Right Window::{:?}  |  BR Universe::{:?}", w_in_gc.bottom_right.y(), bottom_boundary_in_gc);
+        if (w_in_gc.bottom_right.y() > bottom_boundary_in_gc)
+        && (w_in_gc.bottom_right.y() - bottom_boundary_in_gc > border_in_cells) {
             offset_y = 0;
             pan_y = false;
             debug!("Could not pan [Bot_Right_Y]");
@@ -848,6 +855,9 @@ fn adjust_panning(main_state: &mut MainState) {
         }
     }
 
+    new_origin_x = main_state.grid_view.grid_origin.x();
+    new_origin_y = main_state.grid_view.grid_origin.y();
+
 /*    if cell_size <= (ZOOM_LEVEL_MIN +1) {
         right_boundary_in_px = -1*(200)*(cell_size - ZOOM_LEVEL_MIN+1) as i32;
         bottom_boundary_in_px = -1*(100)*(cell_size - ZOOM_LEVEL_MIN+1) as i32;
@@ -863,23 +873,26 @@ fn adjust_panning(main_state: &mut MainState) {
     debug!("New Origin: {:?}", (new_origin_x, new_origin_y));
     debug!("Bottom Right Corner In Cells: {:?}", (right_boundary_in_gc, bottom_boundary_in_gc));
 
+    
     // Snap edges in case we are out of bounds
-/*    if new_origin_x >= border_in_cells {
-        main_state.grid_view.grid_origin = Point::new(border_in_cells-1, cur_origin_y);
+//    if new_origin_x >= border_in_cells {
+//        main_state.grid_view.grid_origin = Point::new(border_in_cells-1, cur_origin_y);
+//    }
+
+    if new_origin_x >= right_boundary_in_gc {
+        main_state.grid_view.grid_origin = Point::new(right_boundary_in_gc-border_in_cells, new_origin_y);
+        new_origin_x = right_boundary_in_gc-border_in_cells;
     }
 
-    if new_origin_x <= right_boundary_in_px {
-        main_state.grid_view.grid_origin = Point::new(right_boundary_in_px+1, cur_origin_y);
+    if new_origin_y >= bottom_boundary_in_gc {
+        main_state.grid_view.grid_origin = Point::new(new_origin_x, bottom_boundary_in_gc-border_in_cells);
     }
 
-    if new_origin_y <= bottom_boundary_in_px {
-        main_state.grid_view.grid_origin = Point::new(cur_origin_x, bottom_boundary_in_px+1);
-    }
-
-    if new_origin_y >= border_in_cells {
-        main_state.grid_view.grid_origin = Point::new(cur_origin_x, border_in_cells-1);
-    }
-  */
+//    if new_origin_y >= border_in_cells {
+//        main_state.grid_view.grid_origin = Point::new(cur_origin_x, border_in_cells-1);
+//    }
+    
+  
 }
 
 #[derive(Debug, Clone)]
@@ -893,24 +906,24 @@ fn get_all_window_coords_in_game_coords(main_state: &MainState) -> Option<Window
     let win_width_px = resolution.0 as i32;
     let win_height_px = resolution.1 as i32;
 
-    debug!("Window: {:?} px", (win_width_px, win_height_px));
+    debug!("\tWindow: {:?} px", (win_width_px, win_height_px));
 
     let mut result : Option<WindowCornersInGameCoords> = None;
 
     let (origin_x, origin_y) = main_state.grid_view.game_coords_from_window_unchecked(Point::new(0, 0));
     {
-        debug!("GetAllCoords [0,0]: {:?}", (origin_x, origin_y));
+        debug!("\tGetAllCoords [0,0]: {:?}", (origin_x, origin_y));
 
         let (win_width_px, win_height_px) = main_state.grid_view.game_coords_from_window_unchecked(Point::new(win_width_px, win_height_px));
         {
-            debug!("GetAllCoords [resolution]: {:?}",(win_width_px, win_height_px));
+            debug!("\tGetAllCoords [resolution]: {:?}",(win_width_px, win_height_px));
             
             result = Some(WindowCornersInGameCoords {
                 top_left : Point::new(origin_x as i32, origin_y as i32),
                 bottom_right : Point::new(win_width_px as i32, win_height_px as i32),
             });
 
-            println!("{:?}", result);
+            println!("\tReturning... {:?}", result);
         }
     }
     result
