@@ -19,13 +19,13 @@
 
 // TODOs
 // :) detect screen resolution native
-// current default resolution
+// :) current default resolution
 // :) full screen/ window toggle support
 // :) main menu & settings
 // unit tests
 // :) logging support
 // update ggez to 0.3.x
-// align panning to window border
+// :) align panning to window border
 // 
 // Modularization
 // :) Menu System
@@ -306,6 +306,8 @@ impl GameState for MainState {
 
         s.video_settings.gather_display_modes(_ctx);
         s.video_settings.print_resolutions();
+        // This will set resolution to first supported & discovered res
+        s.video_settings.advance_to_next_resolution(_ctx);
 
         Ok(s)
     }

@@ -3,17 +3,18 @@ extern crate env_logger;
 
 use ggez::Context;
 use sdl2::video::{FullscreenType, DisplayMode};
+use std::num::Wrapping;
 
 #[derive(Debug, Clone)]
 struct DisplayModeManager {
-    index: usize,
+    index: Wrapping<usize>,
     modes: Vec<DisplayMode>,
 }
 
 impl DisplayModeManager {
     pub fn new() -> DisplayModeManager {
         DisplayModeManager {
-            index: 0,
+            index: Wrapping(usize::max_value()),
             modes: Vec::new(),
         }
     }
@@ -31,17 +32,17 @@ impl DisplayModeManager {
     }
 
     pub fn set_next_supported_resolution(&mut self) -> (i32, i32) {
-        self.index = (self.index + 1) % self.modes.len();
-        let display_mode = self.modes.get(self.index).unwrap();
+        self.index = (self.index + Wrapping(1usize)) % Wrapping(self.modes.len());
+        let display_mode = self.modes.get(self.index.0).unwrap();
         (display_mode.w, display_mode.h)
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct VideoSettings {
-    pub resolution : (i32, i32),
-    pub is_fullscreen:       bool,
-    res_manager : DisplayModeManager,
+    pub resolution    : (i32, i32),
+    pub is_fullscreen :       bool,
+    res_manager       : DisplayModeManager,
 
 }
 
@@ -64,7 +65,6 @@ impl VideoSettings {
             let display_mode = sdl_video.display_mode(0, x).unwrap();
             self.res_manager.add_mode(display_mode);
         }
-        
     }
 
     pub fn print_resolutions(&self) {
