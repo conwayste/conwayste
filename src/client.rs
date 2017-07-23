@@ -256,8 +256,15 @@ impl GameState for MainState {
         let game_width  = 64*4; // num of cells * pixels per cell
         let game_height = 30*4;
 
+        let mut vs = video::VideoSettings::new();
+        vs.gather_display_modes(_ctx);
+        vs.print_resolutions();
+        // This will set resolution to first supported & discovered res
+        vs.advance_to_next_resolution(_ctx);
+        let (w,h) = vs.get_active_resolution();
+
         let grid_view = GridView {
-            rect:        Rect::new(0, 0, DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT),
+            rect:        Rect::new(0, 0, w as u32, h as u32),
             cell_size:   10,
             columns:     game_width,
             rows:        game_height,
@@ -292,7 +299,7 @@ impl GameState for MainState {
             color_settings:      color_settings,
             running:             false,
             menu_sys:            menu::MenuSystem::new(menu_font),
-            video_settings:      video::VideoSettings::new(),
+            video_settings:      vs,
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -303,25 +310,11 @@ impl GameState for MainState {
 
         init_patterns(&mut s).unwrap();
 
-        s.video_settings.gather_display_modes(_ctx);
-        s.video_settings.print_resolutions();
-        // This will set resolution to first supported & discovered res
-        s.video_settings.advance_to_next_resolution(_ctx);
-
         Ok(s)
     }
 
     fn update(&mut self, _ctx: &mut Context, dt: Duration) -> GameResult<()> {
         let duration = timer::duration_to_f64(dt); // seconds
-
-        {
-            let renderer = &mut _ctx.renderer;
-            let window = renderer.window().unwrap();
-            let (x, y) = window.size();
-            let (x, y) = (x as i32, y as i32);
-
-            self.video_settings.resolution = (x,y);
-        }
 
         match self.stage {
             Stage::Intro(mut remaining) => {
