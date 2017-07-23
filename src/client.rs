@@ -24,7 +24,6 @@
 // :) main menu & settings
 // unit tests
 // :) logging support
-// update ggez to 0.3.x
 // :) align panning to window border
 // 
 // Modularization
