@@ -19,7 +19,7 @@ pub enum MenuState {
      Gameplay,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MenuItemIdentifier {
     None,
     StartGame,
@@ -306,7 +306,7 @@ impl MenuSystem {
         &mut self.controls
     }
 
-    fn draw_general_menu_view(&mut self, _ctx: &mut Context, index: &i32, cur_menu_state: &MenuState) {
+    fn draw_general_menu_view(&mut self, _ctx: &mut Context, index: &i32, cur_menu_state: &MenuState, has_game_started: bool) {
         /// Menu Navigation 
         /////////////////////////////////////////
         match self.menu_state {
@@ -319,11 +319,13 @@ impl MenuSystem {
                     let coords = container.get_anchor();
                     let mut offset = Point::new(0,0);
 
-                    /// Print Menu Items
-                    //////////////////////////////////////////////////////
                     for menu_item in container.get_menu_item_list().iter() {
                         let menu_option_string = menu_item.get_text();
-                        let menu_option_str = menu_option_string.as_str();
+                        let mut menu_option_str = menu_option_string.as_str();
+
+                        if menu_item.get_id() == MenuItemIdentifier::StartGame && has_game_started {
+                            menu_option_str = "Resume Game";
+                        }
 
                         utils::Graphics::draw_text(_ctx, &self.menu_font, &menu_option_str, &coords, Some(&offset));
 
@@ -331,7 +333,7 @@ impl MenuSystem {
                     }
                 }
 
-                /// Print Current Selection
+                /// Denote Current Selection
                 ////////////////////////////////////////////////////
                 {
                     let cur_option_str = " >";
@@ -380,14 +382,14 @@ impl MenuSystem {
         }
     }
 
-    pub fn draw_menu(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context) {
+    pub fn draw_menu(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context, has_game_started: bool) {
         let ref cur_menu_state = { self.menu_state.clone() };
         let index = {
             let ref menu_meta = self.get_menu_container(&cur_menu_state).get_metadata();
             menu_meta.get_index() as i32
         };
 
-        self.draw_general_menu_view(_ctx, &index, cur_menu_state);
+        self.draw_general_menu_view(_ctx, &index, cur_menu_state, has_game_started);
         self.draw_specific_menu_view(video_settings, _ctx);
     }
 
