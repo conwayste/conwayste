@@ -810,32 +810,32 @@ fn adjust_panning(main_state: &mut MainState) {
         debug!("[X] Top Left Window::{:?}  |  TL Universe::{:?}", w_in_gc.top_left.x(), new_origin_x_in_gc);
         if (w_in_gc.top_left.x() < new_origin_x_in_gc)
         && (new_origin_x_in_gc - w_in_gc.top_left.x() > border_in_cells) {
-            offset_x = 0;
-            pan_x = false;
+            offset_x = -10;
+            pan_x = true;
             debug!("Could not pan [Top_Left_X]");
         }
 
          debug!("[Y] Top Left Window::{:?}  |  TL Universe::{:?}", w_in_gc.top_left.y(), new_origin_y_in_gc);
         if (w_in_gc.top_left.y() < new_origin_y_in_gc)
         && (new_origin_y_in_gc - w_in_gc.top_left.y() > border_in_cells) {
-            offset_y = 0;
-            pan_y = false;
+            offset_y = -10;
+            pan_y = true;
             debug!("Could not pan [Top_Left_Y]");
         }
         
         debug!("[X] Bot Right Window::{:?}  |  BR Universe::{:?}", w_in_gc.bottom_right.x(), right_boundary_in_gc);
         if (w_in_gc.bottom_right.x() > right_boundary_in_gc)
         && (w_in_gc.bottom_right.x() - right_boundary_in_gc > border_in_cells) {
-            offset_x = 0;
-            pan_x = false;
+            offset_x = 10;
+            pan_x = true;
             debug!("Could not pan [Bot_Right_X]");
         }
 
         debug!("[Y] Bot Right Window::{:?}  |  BR Universe::{:?}", w_in_gc.bottom_right.y(), bottom_boundary_in_gc);
         if (w_in_gc.bottom_right.y() > bottom_boundary_in_gc)
         && (w_in_gc.bottom_right.y() - bottom_boundary_in_gc > border_in_cells) {
-            offset_y = 0;
-            pan_y = false;
+            offset_y = 10;
+            pan_y = true;
             debug!("Could not pan [Bot_Right_Y]");
         }
         
@@ -878,16 +878,17 @@ fn adjust_panning(main_state: &mut MainState) {
 //    if new_origin_x >= border_in_cells {
 //        main_state.grid_view.grid_origin = Point::new(border_in_cells-1, cur_origin_y);
 //    }
-
-    if new_origin_x >= right_boundary_in_gc {
-        main_state.grid_view.grid_origin = Point::new(right_boundary_in_gc-border_in_cells, new_origin_y);
+/*
+    if new_origin_x_in_gc >= right_boundary_in_gc {
+        debug!("\n\n\n\nSnapping!\n\n\n");
         new_origin_x = right_boundary_in_gc-border_in_cells;
+        main_state.grid_view.grid_origin = Point::new(new_origin_x, new_origin_y);
     }
 
-    if new_origin_y >= bottom_boundary_in_gc {
+    if new_origin_y_in_gc >= bottom_boundary_in_gc {
         main_state.grid_view.grid_origin = Point::new(new_origin_x, bottom_boundary_in_gc-border_in_cells);
     }
-
+*/
 //    if new_origin_y >= border_in_cells {
 //        main_state.grid_view.grid_origin = Point::new(cur_origin_x, border_in_cells-1);
 //    }
