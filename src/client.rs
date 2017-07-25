@@ -98,7 +98,7 @@ struct MainState {
     drag_draw:           Option<CellState>,
     win_resize:          u8,
     return_key_pressed:  bool,
-    key_pressed_g:   bool,
+    escape_key_pressed:  bool,
     toggle_paused_game:  bool,
 }
 
@@ -306,7 +306,7 @@ impl GameState for MainState {
             drag_draw:           None,
             win_resize:          0,
             return_key_pressed:  false,
-            key_pressed_g:       false, // Action flag, available for use
+            escape_key_pressed:  false, // Action flag, available for use
             toggle_paused_game:  false,
         };
 
@@ -334,10 +334,6 @@ impl GameState for MainState {
             }
             Stage::Menu => {
                 
-                if self.key_pressed_g {
-                    self.key_pressed_g = false;
-                }
-
                 let is_direction_key_pressed = {
                     self.menu_sys.get_controls().is_menu_key_pressed()
                 };
@@ -359,9 +355,9 @@ impl GameState for MainState {
                     //// Enter key was pressed
                     //////////////////////////
 
-                    if self.return_key_pressed {
+                    if self.return_key_pressed || self.escape_key_pressed {
 
-                        let id = {
+                        let mut id = {
                             let container = self.menu_sys.get_menu_container(&cur_menu_state);
                             let index = container.get_metadata().get_index();
                             let menu_item_list = container.get_menu_item_list();
@@ -369,34 +365,46 @@ impl GameState for MainState {
                             menu_item.get_id()
                         };
 
+                        if self.escape_key_pressed {
+                            id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
+                        }
+
                         match cur_menu_state {
                             menu::MenuState::MainMenu => {
-                                match id {
-                                    menu::MenuItemIdentifier::StartGame => {
-                                        self.pause_or_resume_game();
+                                if !self.escape_key_pressed {
+                                    match id {
+                                        menu::MenuItemIdentifier::StartGame => {
+                                            self.pause_or_resume_game();
+                                        }
+                                        menu::MenuItemIdentifier::ExitGame => {
+                                            self.stage = Stage::Exit;
+                                        }
+                                        menu::MenuItemIdentifier::Options => {
+                                            self.menu_sys.menu_state = menu::MenuState::Options;
+                                        }
+                                        _ => {}
                                     }
-                                    menu::MenuItemIdentifier::ExitGame => {
-                                        self.stage = Stage::Exit;
-                                    }
-                                    menu::MenuItemIdentifier::Options => {
-                                        self.menu_sys.menu_state = menu::MenuState::Options;
-                                    }
-                                    _ => {}
                                 }
                             }
                             menu::MenuState::Options => {
                                 match id {
                                     menu::MenuItemIdentifier::VideoSettings => {
-                                        self.menu_sys.menu_state = menu::MenuState::Video;
+                                        if !self.escape_key_pressed {
+                                            self.menu_sys.menu_state = menu::MenuState::Video;
+                                        }
                                     }
                                     menu::MenuItemIdentifier::AudioSettings => {
-                                        self.menu_sys.menu_state = menu::MenuState::Audio;
+                                        if !self.escape_key_pressed {
+                                            self.menu_sys.menu_state = menu::MenuState::Audio;
+                                        }
                                     }
                                     menu::MenuItemIdentifier::GameplaySettings => {
-                                        self.menu_sys.menu_state = menu::MenuState::Gameplay;
+                                        if !self.escape_key_pressed {
+                                            self.menu_sys.menu_state = menu::MenuState::Gameplay;
+                                        }
                                     }
                                     menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                        self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                                            self.menu_sys.menu_state = menu::MenuState::MainMenu;
                                     }
                                    _ => {}
                                 }
@@ -409,7 +417,9 @@ impl GameState for MainState {
                                     menu::MenuItemIdentifier::ReturnToPreviousMenu => {
                                         self.menu_sys.menu_state = menu::MenuState::Options;
                                     }
-                                    _ => {}
+                                    _ => {
+                                        if !self.escape_key_pressed { }
+                                    }
                                 }
                             }
                             menu::MenuState::Gameplay => {
@@ -417,7 +427,9 @@ impl GameState for MainState {
                                     menu::MenuItemIdentifier::ReturnToPreviousMenu => {
                                         self.menu_sys.menu_state = menu::MenuState::Options;
                                     }
-                                    _ => {}
+                                    _ => {
+                                        if !self.escape_key_pressed { }
+                                    }
                                 }
                             }
                             menu::MenuState::Video => {
@@ -426,10 +438,14 @@ impl GameState for MainState {
                                         self.menu_sys.menu_state = menu::MenuState::Options;
                                     }
                                     menu::MenuItemIdentifier::Fullscreen => {
-                                        self.video_settings.is_fullscreen = video::toggle_full_screen(_ctx);
+                                        if !self.escape_key_pressed {
+                                            self.video_settings.is_fullscreen = video::toggle_full_screen(_ctx);
+                                        }
                                     }
                                     menu::MenuItemIdentifier::Resolution => {
-                                         self.video_settings.advance_to_next_resolution(_ctx);
+                                        if !self.escape_key_pressed {
+                                            self.video_settings.advance_to_next_resolution(_ctx);
+                                        }
                                     }
                                     _ => {}
                                 }
@@ -439,7 +455,7 @@ impl GameState for MainState {
                 }
 
                 self.return_key_pressed = false;
-                
+                self.escape_key_pressed = false;
             }
             Stage::Run => {
                 if self.single_step {
@@ -551,8 +567,8 @@ impl GameState for MainState {
                         Keycode::Return => {
                             self.return_key_pressed = true;
                         }
-                        Keycode::G => {
-                            self.key_pressed_g = true;
+                        Keycode::Escape => {
+                            self.escape_key_pressed = true;
                         }
                         _ => {
 
@@ -600,9 +616,6 @@ impl GameState for MainState {
                     Keycode::LGui => {
                     
                     }
-                    Keycode::M => {
-                        self.toggle_paused_game = true;
-                    }
                     _ => {
                         println!("Unrecognized keycode {}", keycode);
                     }
@@ -628,6 +641,28 @@ impl GameState for MainState {
             }
             _ => {}
         }
+    }
+
+    fn quit_event(&mut self) -> bool {
+        let mut do_not_quit = true;
+
+        match self.stage {
+            Stage::Run => {
+                self.pause_or_resume_game();
+            }
+            Stage::Menu => {
+                // This is currently handled in the return_key_pressed path as well
+                self.escape_key_pressed = true;
+            }
+            Stage::Exit => {
+                do_not_quit = false;
+            }
+            _ => {
+
+            }
+        }
+
+        do_not_quit
     }
 
 }
