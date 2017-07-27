@@ -64,6 +64,7 @@ const ZOOM_LEVEL_MIN: u32 = 4;
 const ZOOM_LEVEL_MAX: u32 = 20;
 const HISTORY_SIZE: usize = 16;
 const NUM_PLAYERS: usize = 2;
+const CURRENT_PLAYER_ID: usize = 1; // TODO: get the player ID from server rather than hardcoding
 
 #[derive(PartialEq, Clone)]
 enum Stage {
@@ -187,57 +188,57 @@ s.uni.toggle(16, 15, 0)?;
     s.uni.toggle(132, 82, 0)?;
 
     //Wall!
-    s.uni.set(25, 18, CellState::Wall);
-    s.uni.set(25, 17, CellState::Wall);
-    s.uni.set(25, 16, CellState::Wall);
-    s.uni.set(25, 15, CellState::Wall);
-    s.uni.set(25, 14, CellState::Wall);
-    s.uni.set(25, 13, CellState::Wall);
-    s.uni.set(25, 12, CellState::Wall);
-    s.uni.set(25, 11, CellState::Wall);
-    s.uni.set(25, 10, CellState::Wall);
-    s.uni.set(24, 10, CellState::Wall);
-    s.uni.set(23, 10, CellState::Wall);
-    s.uni.set(22, 10, CellState::Wall);
-    s.uni.set(21, 10, CellState::Wall);
-    s.uni.set(20, 10, CellState::Wall);
-    s.uni.set(19, 10, CellState::Wall);
-    s.uni.set(18, 10, CellState::Wall);
-    s.uni.set(17, 10, CellState::Wall);
-    s.uni.set(16, 10, CellState::Wall);
-    s.uni.set(15, 10, CellState::Wall);
-    s.uni.set(14, 10, CellState::Wall);
-    s.uni.set(13, 10, CellState::Wall);
-    s.uni.set(12, 10, CellState::Wall);
-    s.uni.set(11, 10, CellState::Wall);
-    s.uni.set(10, 10, CellState::Wall);
-    s.uni.set(10, 11, CellState::Wall);
-    s.uni.set(10, 12, CellState::Wall);
-    s.uni.set(10, 13, CellState::Wall);
-    s.uni.set(10, 14, CellState::Wall);
-    s.uni.set(10, 15, CellState::Wall);
-    s.uni.set(10, 16, CellState::Wall);
-    s.uni.set(10, 17, CellState::Wall);
-    s.uni.set(10, 18, CellState::Wall);
-    s.uni.set(10, 19, CellState::Wall);
-    s.uni.set(10, 20, CellState::Wall);
-    s.uni.set(10, 21, CellState::Wall);
-    s.uni.set(10, 22, CellState::Wall);
-    s.uni.set(11, 22, CellState::Wall);
-    s.uni.set(12, 22, CellState::Wall);
-    s.uni.set(13, 22, CellState::Wall);
-    s.uni.set(14, 22, CellState::Wall);
-    s.uni.set(15, 22, CellState::Wall);
-    s.uni.set(16, 22, CellState::Wall);
-    s.uni.set(17, 22, CellState::Wall);
-    s.uni.set(18, 22, CellState::Wall);
-    s.uni.set(19, 22, CellState::Wall);
-    s.uni.set(20, 22, CellState::Wall);
-    s.uni.set(21, 22, CellState::Wall);
-    s.uni.set(22, 22, CellState::Wall);
-    s.uni.set(23, 22, CellState::Wall);
-    s.uni.set(24, 22, CellState::Wall);
-    s.uni.set(25, 22, CellState::Wall);
+    s.uni.set_unchecked(25, 18, CellState::Wall);
+    s.uni.set_unchecked(25, 17, CellState::Wall);
+    s.uni.set_unchecked(25, 16, CellState::Wall);
+    s.uni.set_unchecked(25, 15, CellState::Wall);
+    s.uni.set_unchecked(25, 14, CellState::Wall);
+    s.uni.set_unchecked(25, 13, CellState::Wall);
+    s.uni.set_unchecked(25, 12, CellState::Wall);
+    s.uni.set_unchecked(25, 11, CellState::Wall);
+    s.uni.set_unchecked(25, 10, CellState::Wall);
+    s.uni.set_unchecked(24, 10, CellState::Wall);
+    s.uni.set_unchecked(23, 10, CellState::Wall);
+    s.uni.set_unchecked(22, 10, CellState::Wall);
+    s.uni.set_unchecked(21, 10, CellState::Wall);
+    s.uni.set_unchecked(20, 10, CellState::Wall);
+    s.uni.set_unchecked(19, 10, CellState::Wall);
+    s.uni.set_unchecked(18, 10, CellState::Wall);
+    s.uni.set_unchecked(17, 10, CellState::Wall);
+    s.uni.set_unchecked(16, 10, CellState::Wall);
+    s.uni.set_unchecked(15, 10, CellState::Wall);
+    s.uni.set_unchecked(14, 10, CellState::Wall);
+    s.uni.set_unchecked(13, 10, CellState::Wall);
+    s.uni.set_unchecked(12, 10, CellState::Wall);
+    s.uni.set_unchecked(11, 10, CellState::Wall);
+    s.uni.set_unchecked(10, 10, CellState::Wall);
+    s.uni.set_unchecked(10, 11, CellState::Wall);
+    s.uni.set_unchecked(10, 12, CellState::Wall);
+    s.uni.set_unchecked(10, 13, CellState::Wall);
+    s.uni.set_unchecked(10, 14, CellState::Wall);
+    s.uni.set_unchecked(10, 15, CellState::Wall);
+    s.uni.set_unchecked(10, 16, CellState::Wall);
+    s.uni.set_unchecked(10, 17, CellState::Wall);
+    s.uni.set_unchecked(10, 18, CellState::Wall);
+    s.uni.set_unchecked(10, 19, CellState::Wall);
+    s.uni.set_unchecked(10, 20, CellState::Wall);
+    s.uni.set_unchecked(10, 21, CellState::Wall);
+    s.uni.set_unchecked(10, 22, CellState::Wall);
+    s.uni.set_unchecked(11, 22, CellState::Wall);
+    s.uni.set_unchecked(12, 22, CellState::Wall);
+    s.uni.set_unchecked(13, 22, CellState::Wall);
+    s.uni.set_unchecked(14, 22, CellState::Wall);
+    s.uni.set_unchecked(15, 22, CellState::Wall);
+    s.uni.set_unchecked(16, 22, CellState::Wall);
+    s.uni.set_unchecked(17, 22, CellState::Wall);
+    s.uni.set_unchecked(18, 22, CellState::Wall);
+    s.uni.set_unchecked(19, 22, CellState::Wall);
+    s.uni.set_unchecked(20, 22, CellState::Wall);
+    s.uni.set_unchecked(21, 22, CellState::Wall);
+    s.uni.set_unchecked(22, 22, CellState::Wall);
+    s.uni.set_unchecked(23, 22, CellState::Wall);
+    s.uni.set_unchecked(24, 22, CellState::Wall);
+    s.uni.set_unchecked(25, 22, CellState::Wall);
     Ok(())
 }
 
@@ -511,7 +512,7 @@ impl GameState for MainState {
             Stage::Run => {
                 if button == MouseButton::Left {
                     if let Some((col, row)) = self.grid_view.game_coords_from_window(Point::new(x,y)) {
-                        let result = self.uni.toggle(col as usize, row  as usize, 1);   // TODO: don't hardcode the player number
+                        let result = self.uni.toggle(col as usize, row  as usize, CURRENT_PLAYER_ID);
                         self.drag_draw = match result {
                             Ok(state) => Some(state),
                             Err(_)    => None,
@@ -527,7 +528,7 @@ impl GameState for MainState {
         if state.left() && self.drag_draw != None {
             if let Some((col, row)) = self.grid_view.game_coords_from_window(Point::new(x,y)) {
                 let cell_state = self.drag_draw.unwrap();
-                self.uni.set(col as usize, row  as usize, cell_state);
+                self.uni.set(col as usize, row  as usize, cell_state, CURRENT_PLAYER_ID);
             }
         }
     }
