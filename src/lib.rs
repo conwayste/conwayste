@@ -219,8 +219,8 @@ impl Universe {
 
             let cells = &mut gen_state.cells;
             let wall  = &mut gen_state.wall_cells;
-            let mut cells_word = cells[row][word_col];
-            let mut walls_word = wall [row][word_col];
+            let cells_word = cells[row][word_col];
+            let walls_word = wall [row][word_col];
 
             if walls_word & mask > 0 {
                 return;
