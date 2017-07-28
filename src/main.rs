@@ -43,25 +43,25 @@ fn main() {
     uni.toggle(50, 9, 0).unwrap();
     uni.toggle(51, 9, 0).unwrap();
 
-    uni.set(74, 13, CellState::Wall);
-    uni.set(75, 13, CellState::Wall);
-    uni.set(76, 13, CellState::Wall);
-    uni.set(77, 13, CellState::Wall);
-    uni.set(78, 13, CellState::Wall);
-    uni.set(78, 14, CellState::Wall);
-    uni.set(78, 15, CellState::Wall);
-    uni.set(78, 16, CellState::Wall);
-    uni.set(78, 17, CellState::Wall);
-    uni.set(78, 18, CellState::Wall);
-    uni.set(78, 19, CellState::Wall);
-    uni.set(78, 20, CellState::Wall);
-    uni.set(78, 21, CellState::Wall);
-    uni.set(78, 22, CellState::Wall);
-    uni.set(78, 23, CellState::Wall);
-    uni.set(78, 24, CellState::Wall);
-    uni.set(77, 24, CellState::Wall);
-    uni.set(76, 24, CellState::Wall);
-    uni.set(75, 24, CellState::Wall);
+    uni.set_unchecked(74, 13, CellState::Wall);
+    uni.set_unchecked(75, 13, CellState::Wall);
+    uni.set_unchecked(76, 13, CellState::Wall);
+    uni.set_unchecked(77, 13, CellState::Wall);
+    uni.set_unchecked(78, 13, CellState::Wall);
+    uni.set_unchecked(78, 14, CellState::Wall);
+    uni.set_unchecked(78, 15, CellState::Wall);
+    uni.set_unchecked(78, 16, CellState::Wall);
+    uni.set_unchecked(78, 17, CellState::Wall);
+    uni.set_unchecked(78, 18, CellState::Wall);
+    uni.set_unchecked(78, 19, CellState::Wall);
+    uni.set_unchecked(78, 20, CellState::Wall);
+    uni.set_unchecked(78, 21, CellState::Wall);
+    uni.set_unchecked(78, 22, CellState::Wall);
+    uni.set_unchecked(78, 23, CellState::Wall);
+    uni.set_unchecked(78, 24, CellState::Wall);
+    uni.set_unchecked(77, 24, CellState::Wall);
+    uni.set_unchecked(76, 24, CellState::Wall);
+    uni.set_unchecked(75, 24, CellState::Wall);
 
     loop {
         println!("\x1b[H\x1b[2J{}", uni);
