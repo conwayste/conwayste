@@ -152,23 +152,23 @@ impl fmt::Display for Universe {
 
 // TODO: unit tests
 impl Universe {
-    // sets the state of a cell
+    // sets the state of a cell, with minimal checking
     // doesn't support setting CellState::Fog
-    // QUESTION: should there be a "checked" version of this function that checks if in player
-    // writable region?
-    pub fn set(&mut self, col: usize, row: usize, cell: CellState) {
+    pub fn set_unchecked(&mut self, col: usize, row: usize, new_state: CellState) {
         let gen_state = &mut self.gen_states[self.state_index];
         let word_col = col/64;
         let shift = 63 - (col & (64 - 1));
-        let mask  = 1 << shift;
+        let mask  = 1 << shift;     // cell to set
 
         // panic if not known
-        let known_cen = gen_state.known[row][word_col];
-        if known_cen & mask == 0 {
+        // known_cell_word is the current word of 64 cells
+        let known_cell_word = gen_state.known[row][word_col];
+        if known_cell_word & mask == 0 {
             panic!("Tried to set unknown cell at ({}, {})", col, row);
         }
 
-        // clear all player cell bits
+        // clear all player cell bits, so that this cell is unowned by any player (we'll set
+        // ownership further down)
         {
             for player_id in 0 .. self.num_players {
                 gen_state.player_states[player_id].cells[row][word_col] &= !mask;
@@ -177,29 +177,76 @@ impl Universe {
 
         let cells = &mut gen_state.cells;
         let wall  = &mut gen_state.wall_cells;
-        let mut cells_cen = cells[row][word_col];
-        let mut wall_cen  = wall [row][word_col];
-        match cell {
+        let mut cells_word = cells[row][word_col];
+        let mut walls_word = wall [row][word_col];
+        match new_state {
             CellState::Dead => {
-                cells_cen &= !mask;
-                wall_cen  &= !mask;
+                cells_word &= !mask;
+                walls_word &= !mask;
             }
             CellState::Alive(opt_player_id) => {
-                cells_cen |=  mask;
-                wall_cen  &= !mask;
+                cells_word |=  mask;
+                walls_word &= !mask;
                 if let Some(player_id) = opt_player_id {
                     gen_state.player_states[player_id].cells[row][word_col] |=  mask;
                     gen_state.player_states[player_id].fog[row][word_col]   &= !mask;
                 }
             }
             CellState::Wall => {
-                cells_cen &= !mask;
-                wall_cen  |=  mask;
+                cells_word &= !mask;
+                walls_word |=  mask;
             }
             _ => unimplemented!()
         }
-        cells[row][word_col] = cells_cen;
-        wall [row][word_col] = wall_cen;
+        cells[row][word_col] = cells_word;
+        wall [row][word_col] = walls_word;
+    }
+
+
+    // Checked set - check for:
+    //   :) current cell state (can't change wall)
+    //   :) player writable region
+    //   :) fog
+    //   :) if current cell is alive, player_id matches player_id argument
+    // if checks fail, do nothing
+    // panic if player_id inside CellState does not match player_id argument
+    pub fn set(&mut self, col: usize, row: usize, new_state: CellState, player_id: usize) {
+        {
+            let gen_state = &mut self.gen_states[self.state_index];
+            let word_col = col/64;
+            let shift = 63 - (col & (64 - 1));
+            let mask  = 1 << shift;     // cell to set
+
+            let cells = &mut gen_state.cells;
+            let wall  = &mut gen_state.wall_cells;
+            let mut cells_word = cells[row][word_col];
+            let mut walls_word = wall [row][word_col];
+
+            if walls_word & mask > 0 {
+                return;
+            }
+
+            if !self.player_writable[player_id].contains(col, row) {
+                return;
+            }
+
+            if gen_state.player_states[player_id].fog[row][word_col] & mask > 0 {
+                return;
+            }
+
+            // If the current cell is alive but not owned by this player, do nothing
+            if cells_word & mask > 0 && gen_state.player_states[player_id].cells[row][word_col] & mask == 0 {
+                return;
+            }
+
+            if let CellState::Alive(Some(new_state_player_id)) = new_state {
+                if new_state_player_id != player_id {
+                    panic!("A player cannot set the cell state of another player");
+                }
+            }
+        }
+            
+        self.set_unchecked(col, row, new_state)
     }
 
 
