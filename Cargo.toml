@@ -5,12 +5,12 @@ authors = [ "mang", "Aaron Miller <aaron.miller04@gmail.com>" ]
 license = "GPL-3.0+"
 
 [dependencies]
-conway = { path = "../libconway" }  # "0.1.2"  # { git = "https://github.com/conwayste/libconway" }
-ggez = "0.2.2"
+conway     = "0.1.3"  # { git = "https://github.com/conwayste/libconway" } # { path = "../libconway" }
+ggez       = "0.2.2"
 env_logger = "0.3"
-log = "0.3"
-sdl2 = "0.27.3"
-version = "2.0.1"
+log        = "0.3"
+sdl2       = "0.27.3"
+version    = "2.0.1"
 
 [[bin]]
 name = "server"
