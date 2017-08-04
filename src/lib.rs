@@ -18,6 +18,8 @@
 use std::fmt;
 
 
+type BitGrid = Vec<Vec<u64>>;
+
 /// Represents a wrapping universe in Conway's game of life.
 pub struct Universe {
     width:           usize,
@@ -28,9 +30,10 @@ pub struct Universe {
     state_index:     usize,                     // index of GenState for current generation within gen_states
     gen_states:      Vec<GenState>,             // circular buffer
     player_writable: Vec<Region>,               // writable region (indexed by player_id)
+    fog_radius:      usize,
+    fog_circle:      BitGrid,
 }
 
-type BitGrid = Vec<Vec<u64>>;
 
 struct GenState {
     gen_or_none:   Option<usize>,        // Some(generation number) (redundant info); if None, this is an unused buffer
@@ -314,7 +317,8 @@ impl Universe {
                is_server:       bool,
                history:         usize,
                num_players:     usize,
-               player_writable: Vec<Region>) -> Result<Universe, &'static str> {
+               player_writable: Vec<Region>,
+               fog_radius:      usize) -> Result<Universe, &'static str> {
         if height == 0 {
             return Err("Height must be positive");
         }
@@ -356,7 +360,10 @@ impl Universe {
             });
         }
 
-        Ok(Universe {
+        // generate fog circle bitmap
+
+
+        let mut uni = Universe {
             width:           width,
             height:          height,
             width_in_words:  width_in_words,
@@ -365,7 +372,47 @@ impl Universe {
             state_index:     0,
             gen_states:      gen_states,
             player_writable: player_writable,
-        })
+            fog_radius:      0, // uninitialized
+            fog_circle:      vec![],
+        };
+        uni.generate_fog_circle_bitmap(fog_radius);
+        Ok(uni)
+    }
+
+
+    fn generate_fog_circle_bitmap(&mut self, fog_radius: usize) {
+        if fog_radius == 0 {
+            panic!("fog_radius must be positive");
+        }
+        self.fog_radius = fog_radius;
+        let height = 2*fog_radius - 1;
+        let word_width = (height - 1) / 64 + 1;
+        self.fog_circle = new_bitgrid(word_width, height);
+
+        // Parts outside the circle must be 1, so initialize with 1 first, then draw the
+        // filled-in circle, containing 0 bits.
+        for y in 0 .. height {
+            for x in 0 .. word_width {
+                self.fog_circle[y][x] = u64::max_value();
+            }
+        }
+
+        // Algebra!
+        // calculate the center bit coordinates
+        let center_x = (fog_radius - 1) as isize;
+        let center_y = (fog_radius - 1) as isize;
+        for y in 0 .. height {
+            for bit_x in 0 .. word_width*64 {
+                let shift = 63 - (bit_x & 63);
+                let mask = 1<<shift;
+                // calculate x_delta and y_delta
+                let x_delta = isize::abs(center_x - bit_x as isize) as usize;
+                let y_delta = isize::abs(center_y - y as isize) as usize;
+                if x_delta*x_delta + y_delta*y_delta < fog_radius*fog_radius {
+                    self.fog_circle[y][bit_x/64] &= !mask;
+                }
+            }
+        }
     }
 
 
