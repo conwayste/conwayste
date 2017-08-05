@@ -360,9 +360,6 @@ impl Universe {
             });
         }
 
-        // generate fog circle bitmap
-
-
         let mut uni = Universe {
             width:           width,
             height:          height,
@@ -372,8 +369,8 @@ impl Universe {
             state_index:     0,
             gen_states:      gen_states,
             player_writable: player_writable,
-            fog_radius:      0, // uninitialized
-            fog_circle:      vec![],
+            fog_radius:      0,      // uninitialized
+            fog_circle:      vec![], // uninitialized
         };
         uni.generate_fog_circle_bitmap(fog_radius);
         Ok(uni)
