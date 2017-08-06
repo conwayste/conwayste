@@ -377,6 +377,19 @@ impl Universe {
     }
 
 
+    /// Pre-computes a "fog circle" bitmap of given cell radius to be saved to the `Universe`
+    /// struct. This bitmap is used for clearing fog around a player's cells.
+    ///
+    /// The bitmap has 0 bits inside the circle radius, and 1 bits elsewhere. The bitmap has
+    /// width and height such that the circle's height exactly fits, and the left edge of the
+    /// circle touches the left edge of the bitmap. Therefore, before masking out the fog, it
+    /// must be shifted up and to the left by `fog_radius - 1` cells.
+    ///
+    /// Notable `fog_radius` values:
+    /// * 1: This does not clear any fog around the cell
+    /// * 2: This clears the cell and its neighbors
+    /// * 4: Smallest radius at which the cleared fog region is not a square
+    /// * 8: Smallest radius at which the cleared fog region is neither square nor octagon
     fn generate_fog_circle_bitmap(&mut self, fog_radius: usize) {
         if fog_radius == 0 {
             panic!("fog_radius must be positive");
@@ -394,10 +407,10 @@ impl Universe {
             }
         }
 
-        // Algebra!
         // calculate the center bit coordinates
         let center_x = (fog_radius - 1) as isize;
         let center_y = (fog_radius - 1) as isize;
+        // algebra!
         for y in 0 .. height {
             for bit_x in 0 .. word_width*64 {
                 let shift = 63 - (bit_x & 63);
