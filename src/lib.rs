@@ -752,36 +752,94 @@ impl Region {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+ 
     #[test]
     fn new_universe_with_valid_dims() {
-        Universe::new(128,64).unwrap();
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+
+
+        Universe::new(256,  // width
+                      128,   // height
+                      true, // server_mode
+                      16,   // history
+                      2,    // players
+                      writable_regions
+                      ).unwrap();
     }
 
     #[test]
     fn new_universe_with_bad_dims() {
-        let uni_result1 = Universe::new(123,64);
+
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+
+        let uni_result1 = Universe::new(255,   // width
+                                        128,   // height
+                                        true,  // server_mode
+                                        16,    // history
+                                        2,     // players
+                                        writable_regions.clone()
+                                      );
         assert!(uni_result1.is_err());
 
-        let uni_result2 = Universe::new(0,64);
+        let uni_result2 = Universe::new(256,  // width
+                                        0,    // height
+                                        true, // server_mode
+                                        16,   // history
+                                        2,    // players
+                                        writable_regions.clone()
+                                      );
         assert!(uni_result2.is_err());
 
-        let uni_result3 = Universe::new(128,0);
+        let uni_result3 = Universe::new(0,   // width
+                                      256,   // height
+                                      true,  // server_mode
+                                      16,    // history
+                                      2,     // players
+                                      writable_regions.clone()
+                                      );
         assert!(uni_result3.is_err());
     }
 
     #[test]
-    fn new_universe_latest_gen_is_one() {
-        let uni = Universe::new(128,64).unwrap();
+    fn new_universe_first_gen_is_one() {
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+
+
+        let uni = Universe::new(256,  // width
+                                128,   // height
+                                true, // server_mode
+                                16,   // history
+                                2,    // players
+                                writable_regions
+                                ).unwrap();
+
         assert_eq!(uni.latest_gen(), 1);
     }
+
     #[test]
     #[should_panic]
     fn universe_with_no_gens_panics() {
-        let mut uni = Universe::new(128,64).unwrap();
-        uni.generation_a = None;
-        uni.generation_b = None;
-        uni.latest();
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+
+
+        let mut uni = Universe::new(128,  // width
+                      64,   // height
+                      true, // server_mode
+                      16,   // history
+                      2,    // players
+                      writable_regions
+                      ).unwrap();
+
+        uni.generation = 0;
+        uni.latest_gen();
     }
 
     #[test]
@@ -802,11 +860,25 @@ mod tests {
 
     #[test]
     fn next_test_data1() {
-        let mut uni = Universe::new(128,64).unwrap();
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+
+        let mut uni = Universe::new(256,   // width
+                                    128,   // height
+                                    true,  // server_mode
+                                    16,    // history
+                                    2,     // players
+                                    writable_regions
+                                    ).unwrap();
+
         // r-pentomino
-        uni.buffer_a[0][0] = 0x0000000300000000;
-        uni.buffer_a[1][0] = 0x0000000600000000;
-        uni.buffer_a[2][0] = 0x0000000200000000;
+        let _ = uni.toggle(16, 15, 0);
+        let _ = uni.toggle(17, 15, 0);
+        let _ = uni.toggle(15, 16, 0);
+        let _ = uni.toggle(16, 16, 0);
+        let _ = uni.toggle(16, 17, 0);
+
         let gens = 1000;
         for _ in 0..gens {
             uni.next();
