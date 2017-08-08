@@ -620,10 +620,13 @@ impl Universe {
                         gen_state_next.player_states[player_id].cells[row_idx][col_idx] = player_cell_next;
                     }
                     for player_id in 0 .. self.num_players {
-                        let mut cell_next = gen_state_next.player_states[player_id].cells[row_idx][col_idx];
+                        let cell_cur = gen_state_next.player_states[player_id].cells[row_idx][col_idx];
+                        let mut cell_next = cell_cur;
                         cell_next &= !in_multiple; // if a cell would have belonged to multiple players, it belongs to none
-                        gen_state_next.player_states[player_id].fog[row_idx][col_idx] = gen_state.player_states[player_id].fog[row_idx][col_idx] & !cell_next; // clear fog!
                         gen_state_next.player_states[player_id].cells[row_idx][col_idx] = cell_next;
+
+                        // clear fog for all cells that turned on in this generation
+                        Universe::clear_fog(&mut gen_state_next.player_states[player_id].fog, &self.fog_circle, self.fog_radius, row_idx, col_idx, cell_next & !cell_cur);
                     }
                 }
 
@@ -637,6 +640,24 @@ impl Universe {
         self.state_index = next_state_index;
         gen_state_next.gen_or_none = Some(self.generation);
         self.generation
+    }
+
+
+    /// Clears the fog for the specified bits in the 64-bit word at `row_idx` and `col_idx` using
+    /// the fog circle (see `generate_fog_circle_bitmap` documentation for more on this).
+    //TODO: unit test with fog_radiuses above and below 64
+    fn clear_fog(player_fog:     &mut BitGrid,
+                 fog_circle:     &BitGrid,
+                 fog_radius:     usize,
+                 center_row_idx: usize,
+                 center_col_idx: usize,
+                 bits_to_clear:  u64) {
+
+        // self.fog_radius
+        // Iterate over every u64 in a rectangular region of `player_fog`, ANDing together the
+        // shifted u64s of `fog_circle` according to `bits_to_clear`, so as to only perform a
+        // single `&=` in `player_fog`.
+        //XXX
     }
 
 
