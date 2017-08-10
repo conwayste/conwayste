@@ -698,7 +698,7 @@ impl Universe {
 }
 
 
-#[derive(Eq,PartialEq,Ord,PartialOrd,Copy,Clone)]
+#[derive(Eq,PartialEq,Ord,PartialOrd,Copy,Clone,Debug)]
 pub struct Region {
     left:   isize,
     top:    isize,
@@ -762,15 +762,19 @@ mod universe_tests {
         let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
         let player1_writable = Region::new(0, 0, 80, 80);
         let writable_regions = vec![player0_writable, player1_writable];
+        let universe_as_region = Region::new(0, 0, 256, 128);
 
-
-        Universe::new(256,  // width
+        let uni = Universe::new(256,  // width
                       128,   // height
                       true, // server_mode
                       16,   // history
                       2,    // players
                       writable_regions
                       ).unwrap();
+
+        assert_eq!(uni.width(), 256);
+        assert_eq!(uni.height(), 128);
+        assert_eq!(uni.region(), universe_as_region);
     }
 
     #[test]
@@ -942,4 +946,27 @@ mod region_tests {
         assert!(!region1.contains(-50, -50));
         assert!(!region2.contains(50, 50));
     }
+}
+
+#[cfg(test)]
+mod cellstate_tests {
+    use super::*;
+
+    #[test]
+    fn test_cell_states_as_char() {
+        let dead = CellState::Dead;
+        let alive = CellState::Alive(None);
+        let player1 = CellState::Alive(Some(1));
+        let player2 = CellState::Alive(Some(2));
+        let wall = CellState::Wall;
+        let fog = CellState::Fog;
+
+        assert_eq!(dead.to_char(), 'b');
+        assert_eq!(alive.to_char(), 'o');
+        assert_eq!(player1.to_char(), 'B');
+        assert_eq!(player2.to_char(), 'C');
+        assert_eq!(wall.to_char(), 'W');
+        assert_eq!(fog.to_char(), '?');
+    }
+
 }
