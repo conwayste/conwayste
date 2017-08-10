@@ -226,7 +226,7 @@ impl Universe {
                 return;
             }
 
-            if !self.player_writable[player_id].contains(col, row) {
+            if !self.player_writable[player_id].contains(col as isize, row as isize) {
                 return;
             }
 
@@ -290,7 +290,7 @@ impl Universe {
     // Result is Err if trying to toggle outside player's writable area, or if
     // trying to toggle a wall or an unknown cell.
     pub fn toggle(&mut self, col: usize, row: usize, player_id: usize) -> Result<CellState, ()> {
-        if !self.player_writable[player_id].contains(col, row) {
+        if !self.player_writable[player_id].contains(col as isize, row as isize) {
             return Err(());
         }
 
@@ -744,11 +744,11 @@ impl Region {
         self.height
     }
 
-    pub fn contains(&self, col: usize, row: usize) -> bool {
-        self.left    <= col as isize &&
-        col as isize <= self.right() &&
-        self.top     <= row as isize &&
-        row as isize <= self.bottom()
+    pub fn contains(&self, col: isize, row: isize) -> bool {
+        self.left    <= col &&
+        col <= self.right() &&
+        self.top     <= row &&
+        row <= self.bottom()
     }
 }
 
@@ -939,7 +939,7 @@ mod region_tests {
         let region1 = Region::new(1, 10, 100, 200);
         let region2 = Region::new(-100, -200, 100, 200);
 
-        assert!(region1.contains(-50, -50));
-        assert!(region2.contains(50, 50));
+        assert!(!region1.contains(-50, -50));
+        assert!(!region2.contains(50, 50));
     }
 }
