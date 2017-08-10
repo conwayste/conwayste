@@ -707,7 +707,11 @@ pub struct Region {
 }
 
 impl Region {
+    // A region is described in game coordinates
     pub fn new(left: isize, top: isize, width: usize, height: usize) -> Self {
+        assert!(width != 0);
+        assert!(height != 0);
+
         Region {
             left:   left,
             top:    top,
@@ -750,7 +754,7 @@ impl Region {
 
 
 #[cfg(test)]
-mod tests {
+mod universe_tests {
     use super::*;
  
     #[test]
@@ -884,5 +888,58 @@ mod tests {
             uni.next();
         }
         assert_eq!(uni.latest_gen(), gens + 1);
+    }
+}
+
+#[cfg(test)]
+mod region_tests {
+    use super::*;
+
+    #[test]
+    fn test_region_with_valid_dims() {
+        let region = Region::new(1, 10, 100, 200);
+
+        assert_eq!(region.left(), 1);
+        assert_eq!(region.top(), 10);
+        assert_eq!(region.height(), 200);
+        assert_eq!(region.width(), 100);
+        assert_eq!(region.right(), 100);
+        assert_eq!(region.bottom(), 209);
+    }
+    
+    #[test]
+    fn test_region_with_valid_dims_negative_top_and_left() {
+        let region = Region::new(-1, -10, 100, 200);
+
+        assert_eq!(region.left(), -1);
+        assert_eq!(region.top(), -10);
+        assert_eq!(region.height(), 200);
+        assert_eq!(region.width(), 100);
+        assert_eq!(region.right(), 98);
+        assert_eq!(region.bottom(), 189);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_region_with_bad_dims_panics() {
+        Region::new(0, 0, 0, 0);
+    }
+
+    #[test]
+    fn test_region_contains_a_valid_sub_region() {
+        let region1 = Region::new(1, 10, 100, 200);
+        let region2 = Region::new(-100, -200, 100, 200);
+
+        assert!(region1.contains(50, 50));
+        assert!(region2.contains(-50, -50));
+    }
+    
+    #[test]
+    fn test_region_does_not_contain_sub_region() {
+        let region1 = Region::new(1, 10, 100, 200);
+        let region2 = Region::new(-100, -200, 100, 200);
+
+        assert!(region1.contains(-50, -50));
+        assert!(region2.contains(50, 50));
     }
 }
