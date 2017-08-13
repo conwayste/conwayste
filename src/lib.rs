@@ -15,6 +15,9 @@
  *  You should have received a copy of the GNU General Public License
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
+#[macro_use] extern crate log;
+extern crate env_logger;
+
 use std::fmt;
 
 
@@ -626,7 +629,7 @@ impl Universe {
                         gen_state_next.player_states[player_id].cells[row_idx][col_idx] = cell_next;
 
                         // clear fog for all cells that turned on in this generation
-                        Universe::clear_fog(&mut gen_state_next.player_states[player_id].fog, &self.fog_circle, self.fog_radius, row_idx, col_idx, cell_next & !cell_cur);
+                        Universe::clear_fog(&mut gen_state_next.player_states[player_id].fog, &self.fog_circle, self.fog_radius, self.width, self.height, row_idx, col_idx, cell_next & !cell_cur);
                     }
                 }
 
@@ -643,21 +646,84 @@ impl Universe {
     }
 
 
-    /// Clears the fog for the specified bits in the 64-bit word at `row_idx` and `col_idx` using
-    /// the fog circle (see `generate_fog_circle_bitmap` documentation for more on this).
+    /// Clears the fog for the specified bits in the 64-bit word at `center_row_idx` and
+    /// `center_col_idx` using the fog circle (see `generate_fog_circle_bitmap` documentation for
+    /// more on this).
     //TODO: unit test with fog_radiuses above and below 64
     fn clear_fog(player_fog:     &mut BitGrid,
                  fog_circle:     &BitGrid,
                  fog_radius:     usize,
+                 uni_width:      usize,
+                 uni_height:     usize,
                  center_row_idx: usize,
                  center_col_idx: usize,
                  bits_to_clear:  u64) {
 
-        // self.fog_radius
+        if bits_to_clear == 0 {
+            return; // nothing to do
+        }
+
         // Iterate over every u64 in a rectangular region of `player_fog`, ANDing together the
         // shifted u64s of `fog_circle` according to `bits_to_clear`, so as to only perform a
         // single `&=` in `player_fog`.
-        //XXX
+        // EXPLANATION OF VAR NAMES: "_idx" indicates this is a word index; otherwise, it's a game
+        // coord.
+
+        // Get the highest and lowest bits in bits_to_clear
+        let mut col_of_highest_to_clear = center_col_idx * 64;
+        for shift in (0..64).rev() {
+            if bits_to_clear & (1 << shift) > 0 {
+                break;
+            }
+            col_of_highest_to_clear += 1;
+        }
+        let mut col_of_lowest_to_clear  = center_col_idx * 64 + 63;
+        for shift in 0..64 {
+            if bits_to_clear & (1 << shift) > 0 {
+                break;
+            }
+            col_of_lowest_to_clear -= 1;
+        }
+
+        // Get the bounds in terms of game coordinates (from col_left to col_right, inclusive,
+        // and from row_top to row_bottom, inclusive).
+        let row_top    = (uni_height + center_row_idx - (fog_radius - 1)) % uni_height;
+        let row_bottom = (center_row_idx + fog_radius - 1) % uni_height;
+        let col_left   = (uni_width + col_of_lowest_to_clear - (fog_radius - 1)) % uni_width;
+        let col_right  = (col_of_highest_to_clear + fog_radius - 1) % uni_width;
+        debug!("row_(top,bottom) range is [{}, {}]", row_top, row_bottom);
+        debug!("col_(left,right) range is [{}, {}]", col_left, col_right);
+
+        // Convert cols to col_idxes
+        let col_idx_left  = col_left/64;
+        let col_idx_right = col_right/64;
+
+        let mut row_idx = row_top;
+        loop {
+            let mut col_idx = col_idx_left;
+            loop {
+                let mut mask = u64::max_value();
+                for shift in (0..64).rev() {
+                    if mask == 0 {
+                        break;
+                    }
+                    if bits_to_clear & (1 << shift) > 0 {
+                        //XXX mask &= player_fog[?][?] <<?>> ?
+                    }
+                }
+                player_fog[row_idx][col_idx] &= mask;
+
+                if col_idx == col_right {
+                    break;
+                }
+                col_idx = (col_idx + 1) % uni_width;
+            }
+
+            if row_idx == row_bottom {
+                break;
+            }
+            row_idx = (row_idx + 1) % uni_height;
+        }
     }
 
 
