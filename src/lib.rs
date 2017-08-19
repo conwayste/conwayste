@@ -49,7 +49,7 @@ struct PlayerGenState {
 }
 
 
-#[derive(Eq,PartialEq,Ord,PartialOrd,Copy,Clone)]
+#[derive(Eq,PartialEq,Ord,PartialOrd,Copy,Clone,Debug)]
 pub enum CellState {
     Dead,
     Alive(Option<usize>),    // Some(player_number) or alive but not belonging to any player
@@ -168,10 +168,21 @@ impl fmt::Display for Universe {
 // TODO: unit tests
 impl Universe {
 
-//pub fn get_state(&self, col: usize, row: usize) -> CellState {
-//        
-//        unimplemented!();
-//    }
+    pub fn get_cell_state(&mut self, col: usize, row: usize, player_id: Option<usize>) -> CellState {
+        let gen_state = &mut self.gen_states[self.state_index];
+        let word_col = col/64;
+        let shift = 63 - (col & (64 - 1)); // translate literal col (ex: 134) to bit index in word_col
+        let mask  = 1 << shift;     // cell to set
+
+        if let Some(opt_player_id) = player_id {
+            let cell = (gen_state.player_states[opt_player_id].cells[row][word_col] & mask) >> shift;
+            if cell == 1 {CellState::Alive(player_id)} else {CellState::Dead}
+        }
+        else {
+            let cell = (gen_state.cells[row][word_col] & mask) >> shift;
+            if cell == 1 {CellState::Alive(None)} else {CellState::Dead}
+        }
+    }
 
     // sets the state of a cell, with minimal checking
     // doesn't support setting CellState::Fog
@@ -206,6 +217,7 @@ impl Universe {
             CellState::Alive(opt_player_id) => {
                 modify_cell_bits(cells, row, word_col, mask, BitOperation::Set);
                 modify_cell_bits(walls, row, word_col, mask, BitOperation::Clear);
+
                 if let Some(player_id) = opt_player_id {
                     let ref mut player = gen_state.player_states[player_id];
                     modify_cell_bits(&mut player.cells, row, word_col, mask, BitOperation::Set);
@@ -245,8 +257,7 @@ impl Universe {
                 return;
             }
 
-            if !self.player_writable[player_id].contains(col as isize, row as isize) {
-                return;
+            if !self.player_writable[player_id].contains(col as isize, row as isize) { return;
             }
 
             if gen_state.player_states[player_id].fog[row][word_col] & mask > 0 {
@@ -806,7 +817,11 @@ impl Region {
 mod universe_tests {
     use super::*;
 
-    fn generate_functional_test_universe() -> Universe {
+    fn generate_test_universe_with_default_params() -> Universe {
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+ 
         Universe::new(256,
                       128,   // height
                       true, // server_mode
@@ -818,18 +833,8 @@ mod universe_tests {
 
     #[test]
     fn new_universe_with_valid_dims() {
-        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
-        let player1_writable = Region::new(0, 0, 80, 80);
-        let writable_regions = vec![player0_writable, player1_writable];
+        let uni = generate_test_universe_with_default_params();
         let universe_as_region = Region::new(0, 0, 256, 128);
-
-        let uni = Universe::new(256,  // width
-                      128,   // height
-                      true, // server_mode
-                      16,   // history
-                      2,    // players
-                      writable_regions
-                      ).unwrap();
 
         assert_eq!(uni.width(), 256);
         assert_eq!(uni.height(), 128);
@@ -873,19 +878,7 @@ mod universe_tests {
 
     #[test]
     fn new_universe_first_gen_is_one() {
-        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
-        let player1_writable = Region::new(0, 0, 80, 80);
-        let writable_regions = vec![player0_writable, player1_writable];
-
-
-        let uni = Universe::new(256,  // width
-                                128,   // height
-                                true, // server_mode
-                                16,   // history
-                                2,    // players
-                                writable_regions
-                                ).unwrap();
-
+        let mut uni = generate_test_universe_with_default_params();
         assert_eq!(uni.latest_gen(), 1);
     }
 
@@ -927,17 +920,7 @@ mod universe_tests {
 
     #[test]
     fn next_test_data1() {
-        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
-        let player1_writable = Region::new(0, 0, 80, 80);
-        let writable_regions = vec![player0_writable, player1_writable];
-
-        let mut uni = Universe::new(256,   // width
-                                    128,   // height
-                                    true,  // server_mode
-                                    16,    // history
-                                    2,     // players
-                                    writable_regions
-                                    ).unwrap();
+        let mut uni = generate_test_universe_with_default_params();
 
         // r-pentomino
         let _ = uni.toggle(16, 15, 0);
@@ -954,7 +937,81 @@ mod universe_tests {
     }
 
     #[test]
-    fn set_unchecked_valid() {
+    fn set_unchecked_with_valid_rows_and_cols() {
+        let mut uni = generate_test_universe_with_default_params();
+        let max_width = uni.width()-1;
+        let max_height = uni.height()-1;
+        let mut cell_state;
+        
+        for x in 0.. max_width {
+            for y in 0..max_height {
+                cell_state = uni.get_cell_state(x,y, None);
+                assert_eq!(cell_state, CellState::Dead);
+            }
+        }
+
+        uni.set_unchecked(0, 0, CellState::Alive(None));
+        cell_state = uni.get_cell_state(0,0, None);
+        assert_eq!(cell_state, CellState::Alive(None));
+
+        uni.set_unchecked(max_width, max_height, CellState::Alive(None));
+        assert_eq!(cell_state, CellState::Alive(None));
+
+        uni.set_unchecked(55, 55, CellState::Alive(None));
+        assert_eq!(cell_state, CellState::Alive(None));
+   }
+
+    #[test]
+    #[should_panic]
+    fn set_unchecked_with_invalid_rols_and_cols_panics() {
+        let mut uni = generate_test_universe_with_default_params();
+        uni.set_unchecked(257, 129, CellState::Alive(None));
+    }
+
+    #[test]
+    fn set_checked_all_cases_with_valid_rows_and_cols() {
+        let mut uni = generate_test_universe_with_default_params();
+        let max_width = uni.width()-1;
+        let max_height = uni.height()-1;
+        let player_id = 1; // writing into player 1's regions
+        let alive_player_cell = CellState::Alive(Some(player_id));
+        let mut cell_state;
+        
+        for x in 0..max_width {
+            for y in 0..max_height {
+                cell_state = uni.get_cell_state(x,y, None);
+                assert_eq!(cell_state, CellState::Dead);
+            }
+        }
+
+        // Writable region OK, Transitions to Alive
+        uni.set(0, 0, alive_player_cell, player_id);
+        cell_state = uni.get_cell_state(0,0, Some(player_id));
+        assert_eq!(cell_state, alive_player_cell);
+
+        // This should be dead as it is outside the writable region
+        uni.set(max_width, max_height, alive_player_cell, player_id);
+        cell_state = uni.get_cell_state(max_width, max_height, Some(player_id));
+        assert_eq!(cell_state, CellState::Dead);
+
+        // Writable region OK, transitions to Alive
+        uni.set(55, 55, alive_player_cell, player_id);
+        cell_state = uni.get_cell_state(55, 55, Some(player_id));
+        assert_eq!(cell_state, alive_player_cell);
+
+        // Outside of player_id's writable region which will remain unchanged
+        uni.set(81, 81, alive_player_cell, player_id);
+        cell_state = uni.get_cell_state(81, 81, Some(player_id));
+        assert_eq!(cell_state, CellState::Dead);
+
+        // Let's hardcode this and try to set a fog'd cell
+        // a players writable region. Reset first.
+        uni.set(0, 0, CellState::Dead, player_id);
+        let state_index = uni.state_index;
+        uni.gen_states[state_index].player_states[player_id].fog[0][0] |= (1<<63);
+        uni.set(0, 0, alive_player_cell, player_id);
+        cell_state = uni.get_cell_state(0,0, Some(player_id));
+        assert_eq!(cell_state, CellState::Dead);
 
     }
 }
