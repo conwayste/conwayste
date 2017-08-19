@@ -26,12 +26,15 @@ pub struct Universe {
     generation:      usize,                     // current generation (1-based)
     num_players:     usize,                     // number of players in the game (player numbers are 0-based)
     state_index:     usize,                     // index of GenState for current generation within gen_states
-    gen_states:      Vec<GenState>,             // circular buffer
+    gen_states:      Vec<GenState>,             // circular buffer of generational states
     player_writable: Vec<Region>,               // writable region (indexed by player_id)
 }
 
 type BitGrid = Vec<Vec<u64>>;
 
+// Describes the state of the universe for a particular generation
+// This includes any cells alive, known, and each player's own gen states
+// for this current session
 struct GenState {
     gen_or_none:   Option<usize>,        // Some(generation number) (redundant info); if None, this is an unused buffer
     cells:         BitGrid,              // 1 = cell is known to be Alive
@@ -42,7 +45,7 @@ struct GenState {
 
 struct PlayerGenState {
     cells:     BitGrid,   // cells belonging to this player (if 1 here, must be 1 in GenState cells)
-    fog:       BitGrid,   // cells that the player is not allowed to know
+    fog:       BitGrid,   // cells that the player is currently invisible to the player
 }
 
 
@@ -83,32 +86,44 @@ fn new_bitgrid(width_in_words: usize, height: usize) -> BitGrid {
     result
 }
 
+#[derive(Eq,PartialEq,Debug, Clone, Copy)]
+enum BitOperation {
+    Clear,
+    Set,
+    Toggle
+}
+
+fn modify_cell_bits(bit_grid: &mut BitGrid, row: usize, word_col: usize, mask: u64, op: BitOperation) {
+    match op {
+        BitOperation::Set => bit_grid[row][word_col] |= mask,
+        BitOperation::Clear => bit_grid[row][word_col] &= !mask,
+        BitOperation::Toggle => bit_grid[row][word_col] ^= mask,
+    }
+}
 
 // Sets or clears a rectangle of bits. Panics if Region is out of range.
-fn fill_region(grid: &mut BitGrid, region: Region, bit: bool) {
+fn fill_region(grid: &mut BitGrid, region: Region, op: BitOperation) {
     for y in region.top() .. region.bottom() + 1 {
         for word_col in 0 .. grid[y as usize].len() {
             let x_left  = word_col * 64;
             let x_right = x_left + 63;
+
             if region.right() >= x_left as isize && region.left() <= x_right as isize {
                 let mut mask = u64::max_value();
+
                 for shift in (0..64).rev() {
                     let x = x_right - shift;
                     if (x as isize) < region.left() || (x as isize) > region.right() {
                         mask &= !(1 << shift);
                     }
                 }
+
                 // apply change to bitgrid based on mask and bit
-                if bit {
-                    grid[y as usize][word_col] |=  mask;
-                } else {
-                    grid[y as usize][word_col] &= !mask;
-                }
+                modify_cell_bits(grid, y as usize, word_col, mask, op);
             }
         }
     }
 }
-
 
 impl fmt::Display for Universe {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -152,16 +167,21 @@ impl fmt::Display for Universe {
 
 // TODO: unit tests
 impl Universe {
+
+//pub fn get_state(&self, col: usize, row: usize) -> CellState {
+//        
+//        unimplemented!();
+//    }
+
     // sets the state of a cell, with minimal checking
     // doesn't support setting CellState::Fog
     pub fn set_unchecked(&mut self, col: usize, row: usize, new_state: CellState) {
         let gen_state = &mut self.gen_states[self.state_index];
         let word_col = col/64;
-        let shift = 63 - (col & (64 - 1));
+        let shift = 63 - (col & (64 - 1)); // translate literal col (ex: 134) to bit index in word_col
         let mask  = 1 << shift;     // cell to set
 
         // panic if not known
-        // known_cell_word is the current word of 64 cells
         let known_cell_word = gen_state.known[row][word_col];
         if known_cell_word & mask == 0 {
             panic!("Tried to set unknown cell at ({}, {})", col, row);
@@ -171,35 +191,33 @@ impl Universe {
         // ownership further down)
         {
             for player_id in 0 .. self.num_players {
-                gen_state.player_states[player_id].cells[row][word_col] &= !mask;
+                let ref mut grid = gen_state.player_states[player_id].cells;
+                modify_cell_bits(grid, row, word_col, mask, BitOperation::Clear);
             }
         }
 
         let cells = &mut gen_state.cells;
-        let wall  = &mut gen_state.wall_cells;
-        let mut cells_word = cells[row][word_col];
-        let mut walls_word = wall [row][word_col];
+        let walls  = &mut gen_state.wall_cells;
         match new_state {
             CellState::Dead => {
-                cells_word &= !mask;
-                walls_word &= !mask;
+                modify_cell_bits(cells, row, word_col, mask, BitOperation::Clear);
+                modify_cell_bits(walls, row, word_col, mask, BitOperation::Clear);
             }
             CellState::Alive(opt_player_id) => {
-                cells_word |=  mask;
-                walls_word &= !mask;
+                modify_cell_bits(cells, row, word_col, mask, BitOperation::Set);
+                modify_cell_bits(walls, row, word_col, mask, BitOperation::Clear);
                 if let Some(player_id) = opt_player_id {
-                    gen_state.player_states[player_id].cells[row][word_col] |=  mask;
-                    gen_state.player_states[player_id].fog[row][word_col]   &= !mask;
+                    let ref mut player = gen_state.player_states[player_id];
+                    modify_cell_bits(&mut player.cells, row, word_col, mask, BitOperation::Set);
+                    modify_cell_bits(&mut player.fog, row, word_col, mask, BitOperation::Clear);
                 }
             }
             CellState::Wall => {
-                cells_word &= !mask;
-                walls_word |=  mask;
+                modify_cell_bits(cells, row, word_col, mask, BitOperation::Clear);
+                modify_cell_bits(walls, row, word_col, mask, BitOperation::Set);
             }
             _ => unimplemented!()
         }
-        cells[row][word_col] = cells_word;
-        wall [row][word_col] = walls_word;
     }
 
 
@@ -211,11 +229,12 @@ impl Universe {
     // if checks fail, do nothing
     // panic if player_id inside CellState does not match player_id argument
     pub fn set(&mut self, col: usize, row: usize, new_state: CellState, player_id: usize) {
+
         {
             let gen_state = &mut self.gen_states[self.state_index];
             let word_col = col/64;
             let shift = 63 - (col & (64 - 1));
-            let mask  = 1 << shift;     // cell to set
+            let mask  = 1 << shift;     // bit to set for cell represented by (row,col)
 
             let cells = &mut gen_state.cells;
             let wall  = &mut gen_state.wall_cells;
@@ -245,7 +264,7 @@ impl Universe {
                 }
             }
         }
-            
+
         self.set_unchecked(col, row, new_state)
     }
 
@@ -261,22 +280,26 @@ impl Universe {
         let mut word;
         {
             let cells = &mut self.gen_states[self.state_index].cells;
+            modify_cell_bits(cells, row, word_col, mask, BitOperation::Toggle);
             word = cells[row][word_col];
             word ^= mask;
-            cells[row][word_col] = word;
         }
+
+        // Cell transitioned Dead -> Alive 
         let next_cell = (word & mask) > 0;
 
         // clear all player cell bits
         for player_id in 0 .. self.num_players {
-            self.gen_states[self.state_index].player_states[player_id].cells[row][word_col] &= !mask;
+            let ref mut player_cells = self.gen_states[self.state_index].player_states[player_id].cells;
+            modify_cell_bits(player_cells, row, word_col, mask, BitOperation::Clear);
         }
 
         if next_cell {
             // set this player's cell bit, if needed, and clear fog
             if let Some(player_id) = opt_player_id {
-                self.gen_states[self.state_index].player_states[player_id].cells[row][word_col] |= mask;
-                self.gen_states[self.state_index].player_states[player_id].fog[row][word_col]   &= !mask;
+                let ref mut player = self.gen_states[self.state_index].player_states[player_id];
+                modify_cell_bits(&mut player.cells, row, word_col, mask, BitOperation::Set);
+                modify_cell_bits(&mut player.fog, row, word_col, mask, BitOperation::Clear);
             }
 
             CellState::Alive(opt_player_id)
@@ -316,37 +339,50 @@ impl Universe {
                num_players:     usize,
                player_writable: Vec<Region>) -> Result<Universe, &'static str> {
         if height == 0 {
-            return Err("Height must be positive");
-        }
-        let width_in_words = width/64;
-        if width != width_in_words * 64 {
-            return Err("Width must be a multiple of 64");
-        } else if width == 0 {
-            return Err("Width must be positive");
+            return Err("Height must be non-zero");
         }
 
+        let width_in_words = width/64;
+        if width % 64 != 0 {
+            return Err("Width must be a multiple of 64");
+        } else if width == 0 {
+            return Err("Width must be non-zero");
+        }
+
+        // Initialize all generational states with the default appropriate bitgrids
         let mut gen_states = Vec::new();
         for i in 0 .. history {
             let mut player_states = Vec::new();
             for player_id in 0 .. num_players {
+
                 let mut pgs = PlayerGenState {
                     cells:     new_bitgrid(width_in_words, height),
                     fog:       new_bitgrid(width_in_words, height),
                 };
+
                 // unless writable region, the whole grid is player fog
-                fill_region(&mut pgs.fog, Region::new(0, 0, width, height), true);
+                fill_region(&mut pgs.fog, Region::new(0, 0, width, height), BitOperation::Set);
+
                 // clear player fog on writable regions
-                fill_region(&mut pgs.fog, player_writable[player_id], false);
+                fill_region(&mut pgs.fog, player_writable[player_id], BitOperation::Clear);
+
                 player_states.push(pgs);
             }
+
+            // Known cells describe what the current operative (player, server)
+            // visibiity reaches. For example, a Server has total visibility as
+            // it needs to know all.
             let mut known = new_bitgrid(width_in_words, height);
+            
             if is_server && i == 0 {
+                // could use fill_region but its much cheaper this way
                 for y in 0 .. height {
                     for x in 0 .. width_in_words {
                         known[y][x] = u64::max_value();   // if server, all cells are known
                     }
                 }
             }
+
             gen_states.push(GenState {
                 gen_or_none:   if i == 0 { Some(1) } else { None },
                 cells:         new_bitgrid(width_in_words, height),
@@ -535,6 +571,9 @@ impl Universe {
 
                     // apply BitGrid changes
                     let mut cells_cen_next = Universe::next_single_gen(cells_nw, cells_n, cells_ne, cells_w, cells_cen, cells_e, cells_sw, cells_s, cells_se);
+
+                    // any known cells with at least one unknown neighbor will become unknown in
+                    // the next generation
                     known_next[row_idx][col_idx] = Universe::contagious_zero(known_nw, known_n, known_ne, known_w, known_cen, known_e, known_sw, known_s, known_se);
 
                     cells_cen_next &= known_next[row_idx][col_idx];
@@ -546,6 +585,16 @@ impl Universe {
                     let mut in_multiple: u64 = 0;
                     let mut seen_before: u64 = 0;
                     for player_id in 0 .. self.num_players {
+                        // Any unknown cell with 
+                        //
+                        // A cell which would have belonged to 2+ players in the next
+                        // generation will belong to no one. These are unowned cells.
+                        //
+                        // Unowned cells follow the same rules of life.
+                        //
+                        // Any unowned cells are influenced by their neighbors, and if players,
+                        // can be acquired by the player, just as long as no two players are
+                        // fighting over those cells
                         let player_cell_next =
                             Universe::contagious_one(
                                 gen_state.player_states[player_id].cells[n_row_idx][(col_idx + self.width_in_words - 1) % self.width_in_words],
@@ -756,7 +805,17 @@ impl Region {
 #[cfg(test)]
 mod universe_tests {
     use super::*;
- 
+
+    fn generate_functional_test_universe() -> Universe {
+        Universe::new(256,
+                      128,   // height
+                      true, // server_mode
+                      16,   // history
+                      2,    // players
+                      writable_regions
+                      ).unwrap()
+    }
+
     #[test]
     fn new_universe_with_valid_dims() {
         let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
@@ -851,7 +910,7 @@ mod universe_tests {
     }
 
     #[test]
-    fn next_single_gen_test_data1() {
+    fn next_single_gen_test_data1_with_wrapping() {
         // glider, blinker, glider
         let nw = 0x0000000000000000;
         let n  = 0x0000000400000002;
@@ -892,6 +951,11 @@ mod universe_tests {
             uni.next();
         }
         assert_eq!(uni.latest_gen(), gens + 1);
+    }
+
+    #[test]
+    fn set_unchecked_valid() {
+
     }
 }
 
