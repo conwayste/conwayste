@@ -689,8 +689,8 @@ impl Universe {
         // and from row_top to row_bottom, inclusive).
         let row_top    = (uni_height + center_row_idx - (fog_radius - 1)) % uni_height;
         let row_bottom = (center_row_idx + fog_radius - 1) % uni_height;
-        let col_left   = (uni_width + col_of_lowest_to_clear - (fog_radius - 1)) % uni_width;
-        let col_right  = (col_of_highest_to_clear + fog_radius - 1) % uni_width;
+        let col_left   = (uni_width + col_of_highest_to_clear - (fog_radius - 1)) % uni_width;
+        let col_right  = (col_of_lowest_to_clear + fog_radius - 1) % uni_width;
         debug!("row_(top,bottom) range is [{}, {}]", row_top, row_bottom);
         debug!("col_(left,right) range is [{}, {}]", col_left, col_right);
 
@@ -699,6 +699,7 @@ impl Universe {
         let col_idx_right = col_right/64;
 
         let mut row_idx = row_top;
+        let uni_word_width = uni_width/64;
         loop {
             let mut col_idx = col_idx_left;
             loop {
@@ -708,7 +709,21 @@ impl Universe {
                         break;
                     }
                     if bits_to_clear & (1 << shift) > 0 {
-                        //XXX mask &= player_fog[?][?] <<?>> ?
+                        let fog_row_idx = (uni_height  +  row_idx - center_row_idx + (fog_radius - 1)) % uni_height;
+                        let current_highest_col = col_idx * 64;
+                        let current_lowest_col  = col_idx * 64 + 63;
+                        for fog_col_idx in 0 .. fog_circle[0].len() {
+                            let fog_highest_col = (col_left + fog_col_idx * 64) % uni_width;
+                            let fog_lowest_col  = (col_left + fog_col_idx * 64 + 63) % uni_width;
+
+                            if current_highest_col == fog_highest_col && current_lowest_col == fog_lowest_col {
+                              mask &= player_fog[fog_row_idx][fog_col_idx];
+                            } else if current_highest_col <= fog_lowest_col && fog_lowest_col < current_lowest_col {
+                              mask &= player_fog[fog_row_idx][fog_col_idx] >> (current_lowest_col - fog_lowest_col);
+                            } else if current_highest_col < fog_highest_col && fog_highest_col <= current_lowest_col {
+                              mask &= player_fog[fog_row_idx][fog_col_idx] << (fog_highest_col - current_highest_col);
+                            }
+                        }
                     }
                 }
                 player_fog[row_idx][col_idx] &= mask;
@@ -716,7 +731,7 @@ impl Universe {
                 if col_idx == col_right {
                     break;
                 }
-                col_idx = (col_idx + 1) % uni_width;
+                col_idx = (col_idx + 1) % uni_word_width;
             }
 
             if row_idx == row_bottom {
