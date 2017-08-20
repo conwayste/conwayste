@@ -93,12 +93,31 @@ enum BitOperation {
     Toggle
 }
 
+impl fmt::Display for BitOperation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+
+        let string = match *self {
+            BitOperation::Clear => "Clear",
+            BitOperation::Set => "Set",
+            BitOperation::Toggle => "Toggle",
+        };
+
+        try!(write!(f, "{}", string));
+        Ok(())
+    }
+}
+
 fn modify_cell_bits(bit_grid: &mut BitGrid, row: usize, word_col: usize, mask: u64, op: BitOperation) {
+
+    //debug!("Enter Modify ({}).... [{}][{}] = {}", op, row, word_col, bit_grid[row][word_col] & mask);
+    
     match op {
         BitOperation::Set => bit_grid[row][word_col] |= mask,
         BitOperation::Clear => bit_grid[row][word_col] &= !mask,
         BitOperation::Toggle => bit_grid[row][word_col] ^= mask,
     }
+
+    //debug!("...Modified [{}][{}] = {:b}", row, word_col, bit_grid[row][word_col]);
 }
 
 // Sets or clears a rectangle of bits. Panics if Region is out of range.
@@ -283,21 +302,29 @@ impl Universe {
     // Switches any non-dead state to CellState::Dead.
     // Switches CellState::Dead to CellState::Alive(opt_player_id) and clears fog for that player,
     // if any.
+    //
+    // This operation works in three steps
+    //  1. Toggle general cell
+    //  2. Clear all players' cell
+    //  3. If general cell transitioned Dead->Alive, then set requested player's cell
+    //  ..
+    //  Shouldn't this use set(...)??? Check with Aaron TODO
     pub fn toggle_unchecked(&mut self, col: usize, row: usize, opt_player_id: Option<usize>) -> CellState {
         let word_col = col/64;
         let shift = 63 - (col & (64 - 1));
-
         let mask = 1 << shift;
-        let mut word;
+
+        let word =
         {
             let cells = &mut self.gen_states[self.state_index].cells;
             modify_cell_bits(cells, row, word_col, mask, BitOperation::Toggle);
-            word = cells[row][word_col];
-            word ^= mask;
-        }
+            cells[row][word_col]
+        };
 
         // Cell transitioned Dead -> Alive 
         let next_cell = (word & mask) > 0;
+        //debug!("Word/Mask: => {:b} | {:b}", word, mask);
+        //debug!("Next Cell: {}", next_cell);
 
         // clear all player cell bits
         for player_id in 0 .. self.num_players {
@@ -878,7 +905,7 @@ mod universe_tests {
 
     #[test]
     fn new_universe_first_gen_is_one() {
-        let mut uni = generate_test_universe_with_default_params();
+        let uni = generate_test_universe_with_default_params();
         assert_eq!(uni.latest_gen(), 1);
     }
 
@@ -969,20 +996,27 @@ mod universe_tests {
     }
 
     #[test]
-    fn set_checked_all_cases_with_valid_rows_and_cols() {
+    fn universe_cell_states_are_dead_on_creation() {
+        let mut uni = generate_test_universe_with_default_params();
+        let max_width = uni.width()-1;
+        let max_height = uni.height()-1;
+        
+        for x in 0..max_width {
+            for y in 0..max_height {
+                let cell_state = uni.get_cell_state(x,y, None);
+                assert_eq!(cell_state, CellState::Dead);
+            }
+        }
+    }
+
+    #[test]
+    fn set_checked_verify_players_remain_within_writable_regions() {
         let mut uni = generate_test_universe_with_default_params();
         let max_width = uni.width()-1;
         let max_height = uni.height()-1;
         let player_id = 1; // writing into player 1's regions
         let alive_player_cell = CellState::Alive(Some(player_id));
         let mut cell_state;
-        
-        for x in 0..max_width {
-            for y in 0..max_height {
-                cell_state = uni.get_cell_state(x,y, None);
-                assert_eq!(cell_state, CellState::Dead);
-            }
-        }
 
         // Writable region OK, Transitions to Alive
         uni.set(0, 0, alive_player_cell, player_id);
@@ -1003,16 +1037,122 @@ mod universe_tests {
         uni.set(81, 81, alive_player_cell, player_id);
         cell_state = uni.get_cell_state(81, 81, Some(player_id));
         assert_eq!(cell_state, CellState::Dead);
+    }
+
+    #[test]
+    fn set_checked_cannot_set_a_fog_cell() {
+        let mut uni = generate_test_universe_with_default_params();
+        let player_id = 1; // writing into player 1's regions
+        let alive_player_cell = CellState::Alive(Some(player_id));
+        let state_index = uni.state_index;
 
         // Let's hardcode this and try to set a fog'd cell
-        // a players writable region. Reset first.
-        uni.set(0, 0, CellState::Dead, player_id);
-        let state_index = uni.state_index;
-        uni.gen_states[state_index].player_states[player_id].fog[0][0] |= (1<<63);
-        uni.set(0, 0, alive_player_cell, player_id);
-        cell_state = uni.get_cell_state(0,0, Some(player_id));
-        assert_eq!(cell_state, CellState::Dead);
+        // within what was a players writable region.
+        uni.gen_states[state_index].player_states[player_id].fog[0][0] |= 1<<63;
 
+        uni.set(0, 0, alive_player_cell, player_id);
+        let cell_state = uni.get_cell_state(0,0, Some(player_id));
+        assert_eq!(cell_state, CellState::Dead);
+    }
+
+
+    #[test]
+    fn toggle_unchecked_cell_toggled_is_owned_by_player() {
+        let mut uni = generate_test_universe_with_default_params();
+        let state_index = uni.state_index;
+        let row = 0;
+        let col = 0;
+        let bit = 63;
+        let player_one_opt = Some(0);
+        let player_two_opt = Some(1);
+
+        // Should transition from dead to alive. Player one will have their cell set, player two
+        // will not
+        assert_eq!(uni.toggle_unchecked(row, col, player_one_opt), CellState::Alive(player_one_opt));
+        assert_eq!(uni.gen_states[state_index].player_states[player_one_opt.unwrap()].cells[row][col] >> bit, 1);
+        assert_eq!(uni.gen_states[state_index].player_states[player_two_opt.unwrap()].cells[row][col] >> bit, 0);
+    }
+
+    #[test]
+    fn toggle_unchecked_cell_toggled_by_both_players_repetatively() {
+        let mut uni = generate_test_universe_with_default_params();
+        let state_index = uni.state_index;
+        let row = 0;
+        let col = 0;
+        let bit = 63;
+        let player_one_opt = Some(0);
+        let player_two_opt = Some(1);
+
+        // Should transition from dead to alive. Player one will have their cell set, player two
+        // will not
+        assert_eq!(uni.toggle_unchecked(row, col, player_one_opt), CellState::Alive(player_one_opt));
+        assert_eq!(uni.gen_states[state_index].player_states[player_one_opt.unwrap()].cells[row][col] >> bit, 1);
+        assert_eq!(uni.gen_states[state_index].player_states[player_two_opt.unwrap()].cells[row][col] >> bit, 0);
+
+        // Player two will now toggle the cell, killing it as it was previously alive.
+        // Player one will be cleared as a result, the cell will not be set at all.
+        // Notice we are not checking for writable regions here (unchecked doesn't care) so this
+        // runs through
+        assert_eq!(uni.toggle_unchecked(row, col, player_two_opt), CellState::Dead);
+        assert_eq!(uni.gen_states[state_index].player_states[player_one_opt.unwrap()].cells[row][col] >> bit, 0);
+        assert_eq!(uni.gen_states[state_index].player_states[player_two_opt.unwrap()].cells[row][col] >> bit, 0);
+    }
+
+    #[test]
+    fn toggle_checked_outside_a_player_writable_region_fails() {
+        let mut uni = generate_test_universe_with_default_params();
+        let player_one = 0;
+        let player_two = 1;
+        let row = 0;
+        let col = 0;
+
+        assert_eq!(uni.toggle(row, col, player_one), Err(()));
+        assert_eq!(uni.toggle(row, col, player_two).unwrap(), CellState::Alive(Some(player_two)));
+    }
+
+    #[test]
+    fn toggle_checked_players_cannot_toggle_a_wall_cell() {
+        let mut uni = generate_test_universe_with_default_params();
+        let player_one = 0;
+        let player_two = 1;
+        let row = 0;
+        let col = 0;
+        let state_index = uni.state_index;
+
+        modify_cell_bits(&mut uni.gen_states[state_index].wall_cells, row, col, 1<<63, BitOperation::Set);
+
+        assert_eq!(uni.toggle(row, col, player_one), Err(()));
+        assert_eq!(uni.toggle(row, col, player_two), Err(()));
+    }
+
+    #[test]
+    fn toggle_checked_players_can_toggle_an_known_cell_if_writable() {
+        let mut uni = generate_test_universe_with_default_params();
+        let player_one = 0;
+        let player_two = 1;
+        let row = 0;
+        let col = 0;
+        let state_index = uni.state_index;
+
+        modify_cell_bits(&mut uni.gen_states[state_index].known, row, col, 1<<63, BitOperation::Set);
+
+        assert_eq!(uni.toggle(row, col, player_one), Err(()));
+        assert_eq!(uni.toggle(row, col, player_two), Ok(CellState::Alive(Some(player_two))));
+    }
+
+    #[test]
+    fn toggle_checked_players_cannot_toggle_an_unknown_cell() {
+        let mut uni = generate_test_universe_with_default_params();
+        let player_one = 0;
+        let player_two = 1;
+        let row = 0;
+        let col = 0;
+        let state_index = uni.state_index;
+
+        modify_cell_bits(&mut uni.gen_states[state_index].known, row, col, 1<<63, BitOperation::Clear);
+
+        assert_eq!(uni.toggle(row, col, player_one), Err(()));
+        assert_eq!(uni.toggle(row, col, player_two), Err(()));
     }
 }
 
@@ -1021,7 +1161,7 @@ mod region_tests {
     use super::*;
 
     #[test]
-    fn test_region_with_valid_dims() {
+    fn region_with_valid_dims() {
         let region = Region::new(1, 10, 100, 200);
 
         assert_eq!(region.left(), 1);
@@ -1033,7 +1173,7 @@ mod region_tests {
     }
     
     #[test]
-    fn test_region_with_valid_dims_negative_top_and_left() {
+    fn region_with_valid_dims_negative_top_and_left() {
         let region = Region::new(-1, -10, 100, 200);
 
         assert_eq!(region.left(), -1);
@@ -1046,12 +1186,12 @@ mod region_tests {
 
     #[test]
     #[should_panic]
-    fn test_region_with_bad_dims_panics() {
+    fn region_with_bad_dims_panics() {
         Region::new(0, 0, 0, 0);
     }
 
     #[test]
-    fn test_region_contains_a_valid_sub_region() {
+    fn region_contains_a_valid_sub_region() {
         let region1 = Region::new(1, 10, 100, 200);
         let region2 = Region::new(-100, -200, 100, 200);
 
@@ -1060,7 +1200,7 @@ mod region_tests {
     }
     
     #[test]
-    fn test_region_does_not_contain_sub_region() {
+    fn region_does_not_contain_sub_region() {
         let region1 = Region::new(1, 10, 100, 200);
         let region2 = Region::new(-100, -200, 100, 200);
 
@@ -1074,7 +1214,7 @@ mod cellstate_tests {
     use super::*;
 
     #[test]
-    fn test_cell_states_as_char() {
+    fn cell_states_as_char() {
         let dead = CellState::Dead;
         let alive = CellState::Alive(None);
         let player1 = CellState::Alive(Some(1));
