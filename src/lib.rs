@@ -623,8 +623,8 @@ impl Universe {
                         gen_state_next.player_states[player_id].cells[row_idx][col_idx] = player_cell_next;
                     }
                     for player_id in 0 .. self.num_players {
-                        let cell_cur = gen_state_next.player_states[player_id].cells[row_idx][col_idx];
-                        let mut cell_next = cell_cur;
+                        let cell_cur = gen_state.player_states[player_id].cells[row_idx][col_idx];
+                        let mut cell_next = gen_state_next.player_states[player_id].cells[row_idx][col_idx];
                         cell_next &= !in_multiple; // if a cell would have belonged to multiple players, it belongs to none
                         gen_state_next.player_states[player_id].cells[row_idx][col_idx] = cell_next;
 
@@ -662,6 +662,7 @@ impl Universe {
         if bits_to_clear == 0 {
             return; // nothing to do
         }
+        debug!("---");
 
         // Iterate over every u64 in a rectangular region of `player_fog`, ANDing together the
         // shifted u64s of `fog_circle` according to `bits_to_clear`, so as to only perform a
@@ -684,6 +685,7 @@ impl Universe {
             }
             col_of_lowest_to_clear -= 1;
         }
+        debug!("bits_to_clear: row {} and cols range [{}, {}]", center_row_idx, col_of_highest_to_clear, col_of_lowest_to_clear);
 
         // Get the bounds in terms of game coordinates (from col_left to col_right, inclusive,
         // and from row_top to row_bottom, inclusive).
@@ -701,8 +703,11 @@ impl Universe {
         let mut row_idx = row_top;
         let uni_word_width = uni_width/64;
         loop {
+            //debug!("row_idx is {} (out of height {})", row_idx, uni_height);
             let mut col_idx = col_idx_left;
             loop {
+                debug!("row {}, col range [{}, {}]", row_idx, col_idx*64, col_idx*64+63);
+                //debug!("col_idx is {} (out of word_width {}); stopping after {}", col_idx, uni_word_width, col_idx_right);
                 let mut mask = u64::max_value();
                 for shift in (0..64).rev() {
                     if mask == 0 {
@@ -713,22 +718,29 @@ impl Universe {
                         let current_highest_col = col_idx * 64;
                         let current_lowest_col  = col_idx * 64 + 63;
                         for fog_col_idx in 0 .. fog_circle[0].len() {
-                            let fog_highest_col = (col_left + fog_col_idx * 64) % uni_width;
-                            let fog_lowest_col  = (col_left + fog_col_idx * 64 + 63) % uni_width;
+                            let fog_highest_col = (uni_width + current_highest_col + (63 - shift) - (fog_radius - 1)) % uni_width;
+                            let fog_lowest_col  = (uni_width + current_highest_col + (63 - shift) - (fog_radius - 1) + 63) % uni_width;
+                            debug!("  fog col range [{}, {}]", fog_highest_col, fog_lowest_col);
 
                             if current_highest_col == fog_highest_col && current_lowest_col == fog_lowest_col {
-                              mask &= player_fog[fog_row_idx][fog_col_idx];
+                                mask &= fog_circle[fog_row_idx][fog_col_idx];
+                                debug!("  mask is now {:016x}, cleared by fog circle R{}, Ci{}, no shift", mask, fog_row_idx, fog_col_idx);
                             } else if current_highest_col <= fog_lowest_col && fog_lowest_col < current_lowest_col {
-                              mask &= player_fog[fog_row_idx][fog_col_idx] >> (current_lowest_col - fog_lowest_col);
+                                // we need to double negate so that shifting results in 1s, not 0s
+                                mask &= !(!fog_circle[fog_row_idx][fog_col_idx] << (current_lowest_col - fog_lowest_col));
+                                debug!("  fog word is {:016x}", fog_circle[fog_row_idx][fog_col_idx]);
+                                debug!("  mask is now {:016x}, cleared by fog circle R{}, Ci{}, fog circle << {}", mask, fog_row_idx, fog_col_idx, current_lowest_col - fog_lowest_col);
                             } else if current_highest_col < fog_highest_col && fog_highest_col <= current_lowest_col {
-                              mask &= player_fog[fog_row_idx][fog_col_idx] << (fog_highest_col - current_highest_col);
+                                mask &= !(!fog_circle[fog_row_idx][fog_col_idx] >> (fog_highest_col - current_highest_col));
+                                debug!("  fog word is {:016x}", fog_circle[fog_row_idx][fog_col_idx]);
+                                debug!("  mask is now {:016x}, cleared by fog circle R{}, Ci{}, fog circle >> {}", mask, fog_row_idx, fog_col_idx, fog_highest_col - current_highest_col);
                             }
                         }
                     }
                 }
                 player_fog[row_idx][col_idx] &= mask;
 
-                if col_idx == col_right {
+                if col_idx == col_idx_right {
                     break;
                 }
                 col_idx = (col_idx + 1) % uni_word_width;
