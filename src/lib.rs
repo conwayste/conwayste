@@ -541,6 +541,14 @@ impl Universe {
             let cells_next = &mut gen_state_next.cells;
             let wall_next  = &mut gen_state_next.wall_cells;
             let known_next = &mut gen_state_next.known;
+
+            // Copy fog over to next generation
+            for row_idx in 0 .. self.height {
+                for player_id in 0 .. self.num_players {
+                    gen_state_next.player_states[player_id].fog[row_idx].copy_from_slice(&gen_state.player_states[player_id].fog[row_idx]);
+                }
+            }
+
             for row_idx in 0 .. self.height {
                 let n_row_idx = (row_idx + self.height - 1) % self.height;
                 let s_row_idx = (row_idx + 1) % self.height;
