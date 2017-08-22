@@ -726,8 +726,8 @@ impl Universe {
                         let current_highest_col = col_idx * 64;
                         let current_lowest_col  = col_idx * 64 + 63;
                         for fog_col_idx in 0 .. fog_circle[0].len() {
-                            let fog_highest_col = (uni_width + current_highest_col + (63 - shift) - (fog_radius - 1)) % uni_width;
-                            let fog_lowest_col  = (uni_width + current_highest_col + (63 - shift) - (fog_radius - 1) + 63) % uni_width;
+                            let fog_highest_col = (uni_width + center_col_idx*64 + (63 - shift) - (fog_radius - 1)) % uni_width;
+                            let fog_lowest_col  = (uni_width + center_col_idx*64 + (63 - shift) - (fog_radius - 1) + 63) % uni_width;
                             debug!("  fog col range [{}, {}]", fog_highest_col, fog_lowest_col);
 
                             if current_highest_col == fog_highest_col && current_lowest_col == fog_lowest_col {
