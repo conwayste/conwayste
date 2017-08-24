@@ -78,6 +78,9 @@ impl CellState {
 
 
 fn new_bitgrid(width_in_words: usize, height: usize) -> BitGrid {
+    assert!(width_in_words != 0);
+    assert!(height != 0);
+
     let mut result: BitGrid = Vec::new();
     for _ in 0 .. height {
         let row: Vec<u64> = vec![0; width_in_words];
@@ -123,6 +126,7 @@ fn modify_cell_bits(bit_grid: &mut BitGrid, row: usize, word_col: usize, mask: u
 // Sets or clears a rectangle of bits. Panics if Region is out of range.
 fn fill_region(grid: &mut BitGrid, region: Region, op: BitOperation) {
     for y in region.top() .. region.bottom() + 1 {
+        assert!(y >= 0);
         for word_col in 0 .. grid[y as usize].len() {
             let x_left  = word_col * 64;
             let x_right = x_left + 63;
@@ -1228,6 +1232,139 @@ mod cellstate_tests {
         assert_eq!(player2.to_char(), 'C');
         assert_eq!(wall.to_char(), 'W');
         assert_eq!(fog.to_char(), '?');
+    }
+}
+
+#[cfg(test)]
+mod bitgrid_tests {
+    use super::*;
+
+    #[test]
+    fn create_valid_empty_bitgrid() {
+        let height = 11;
+        let width_in_words = 10;
+        let grid = new_bitgrid(width_in_words, height);
+
+        assert_eq!(grid[0][0], 0);
+        assert_eq!(grid[height-1][width_in_words-1], 0);
+
+        for x in 0..height {
+            for y in 0..width_in_words {
+                assert_eq!(grid[x][y], 0);
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn create_bitgrid_with_invalid_dims() {
+        let height = 0;
+        let width_in_words = 0;
+        let _ = new_bitgrid(width_in_words, height);
+    }
+
+    #[test]
+    fn set_cell_bits_within_a_bitgrid() {
+        let height = 10;
+        let width_in_words = 10;
+        let mut grid = new_bitgrid(width_in_words, height);
+
+        for x in 0..height {
+            for y in 0..width_in_words {
+                assert_eq!(grid[x][y], 0);
+            }
+        }
+
+        modify_cell_bits(&mut grid, height/2, width_in_words/2, 1<<63, BitOperation::Set);
+        assert_eq!(grid[height/2][width_in_words/2] >> 63, 1);
+        
+        modify_cell_bits(&mut grid, height-1, width_in_words-1, 1<<63, BitOperation::Set);
+        assert_eq!(grid[height-1][width_in_words-1] >> 63, 1);
+    }
+
+    #[test]
+    fn clear_cell_bits_within_a_bitgrid() {
+        let height = 10;
+        let width_in_words = 10;
+        let mut grid = new_bitgrid(width_in_words, height);
+
+        for x in 0..height {
+            for y in 0..width_in_words {
+                grid[x][y] = u64::max_value();
+            }
+        }
+
+        modify_cell_bits(&mut grid, height/2, width_in_words/2, 1<<63, BitOperation::Clear);
+        assert_eq!(grid[height/2][width_in_words/2] >> 63, 0);
+        
+        modify_cell_bits(&mut grid, height-1, width_in_words-1, 1<<63, BitOperation::Clear);
+        assert_eq!(grid[height-1][width_in_words-1] >> 63, 0);
+    }
+
+    #[test]
+    fn toggle_cell_bits_within_a_bitgrid() {
+        let height = 10;
+        let width_in_words = 10;
+        let mut grid = new_bitgrid(width_in_words, height);
+
+        for x in 0..height {
+            for y in 0..width_in_words {
+                grid[x][y] = u64::max_value();
+            }
+        }
+
+        modify_cell_bits(&mut grid, height/2, width_in_words/2, 1<<63, BitOperation::Toggle);
+        assert_eq!(grid[height/2][width_in_words/2] >> 63, 0);
+        
+        modify_cell_bits(&mut grid, height/2, width_in_words/2, 1<<63, BitOperation::Toggle);
+        assert_eq!(grid[height/2][width_in_words/2] >> 63, 1);
+    }
+
+    #[test]
+    fn fill_region_within_a_bit_grid() {
+        let height = 10;
+        let width_in_words = 10;
+
+        let region1_w = 7;
+        let region1_h = 7;
+        let region2_w = 3;
+        let region2_h = 3;
+        let region3_h = 4;
+        let region3_w = 4;
+
+        let mut grid = new_bitgrid(width_in_words, height);
+        let region1 = Region::new(0, 0, region1_w, region1_h);
+        let region2 = Region::new(0, 0, region2_w, region2_h);
+        let region3 = Region::new(region2_w as isize, region2_h as isize, region3_w, region3_h);
+
+        fill_region(&mut grid, region1, BitOperation::Set);
+
+        for y in 0..region1_w {
+            assert_eq!(grid[y][0], 0xFE00000000000000);
+        }
+
+        fill_region(&mut grid, region2, BitOperation::Clear);
+        for y in 0..region2_w {
+            assert_eq!(grid[y][0], 0x1E00000000000000);
+        }
+
+        fill_region(&mut grid, region3, BitOperation::Toggle);
+        for x in region2_w..region3_w {
+            for y in region2_h..region3_h {
+                assert_eq!(grid[x][y], 0);
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn fill_grid_with_a_negative_region_panics() {
+        let height = 10;
+        let width_in_words = 10;
+
+        let mut grid = new_bitgrid(width_in_words, height);
+        let region_neg = Region::new(-1, -1, 1, 1);
+        fill_region(&mut grid, region_neg, BitOperation::Set);
     }
 
 }
