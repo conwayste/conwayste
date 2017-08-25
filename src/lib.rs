@@ -15,8 +15,13 @@
  *  You should have received a copy of the GNU General Public License
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
+#[macro_use] extern crate log;
+extern crate env_logger;
+
 use std::fmt;
 
+
+type BitGrid = Vec<Vec<u64>>;
 
 /// Represents a wrapping universe in Conway's game of life.
 pub struct Universe {
@@ -28,9 +33,10 @@ pub struct Universe {
     state_index:     usize,                     // index of GenState for current generation within gen_states
     gen_states:      Vec<GenState>,             // circular buffer
     player_writable: Vec<Region>,               // writable region (indexed by player_id)
+    fog_radius:      usize,
+    fog_circle:      BitGrid,
 }
 
-type BitGrid = Vec<Vec<u64>>;
 
 struct GenState {
     gen_or_none:   Option<usize>,        // Some(generation number) (redundant info); if None, this is an unused buffer
@@ -314,7 +320,8 @@ impl Universe {
                is_server:       bool,
                history:         usize,
                num_players:     usize,
-               player_writable: Vec<Region>) -> Result<Universe, &'static str> {
+               player_writable: Vec<Region>,
+               fog_radius:      usize) -> Result<Universe, &'static str> {
         if height == 0 {
             return Err("Height must be positive");
         }
@@ -356,7 +363,7 @@ impl Universe {
             });
         }
 
-        Ok(Universe {
+        let mut uni = Universe {
             width:           width,
             height:          height,
             width_in_words:  width_in_words,
@@ -365,7 +372,60 @@ impl Universe {
             state_index:     0,
             gen_states:      gen_states,
             player_writable: player_writable,
-        })
+            fog_radius:      0,      // uninitialized
+            fog_circle:      vec![], // uninitialized
+        };
+        uni.generate_fog_circle_bitmap(fog_radius);
+        Ok(uni)
+    }
+
+
+    /// Pre-computes a "fog circle" bitmap of given cell radius to be saved to the `Universe`
+    /// struct. This bitmap is used for clearing fog around a player's cells.
+    ///
+    /// The bitmap has 0 bits inside the circle radius, and 1 bits elsewhere. The bitmap has
+    /// width and height such that the circle's height exactly fits, and the left edge of the
+    /// circle touches the left edge of the bitmap. Therefore, before masking out the fog, it
+    /// must be shifted up and to the left by `fog_radius - 1` cells.
+    ///
+    /// Notable `fog_radius` values:
+    /// * 1: This does not clear any fog around the cell
+    /// * 2: This clears the cell and its neighbors
+    /// * 4: Smallest radius at which the cleared fog region is not a square
+    /// * 8: Smallest radius at which the cleared fog region is neither square nor octagon
+    fn generate_fog_circle_bitmap(&mut self, fog_radius: usize) {
+        if fog_radius == 0 {
+            panic!("fog_radius must be positive");
+        }
+        self.fog_radius = fog_radius;
+        let height = 2*fog_radius - 1;
+        let word_width = (height - 1) / 64 + 1;
+        self.fog_circle = new_bitgrid(word_width, height);
+
+        // Parts outside the circle must be 1, so initialize with 1 first, then draw the
+        // filled-in circle, containing 0 bits.
+        for y in 0 .. height {
+            for x in 0 .. word_width {
+                self.fog_circle[y][x] = u64::max_value();
+            }
+        }
+
+        // calculate the center bit coordinates
+        let center_x = (fog_radius - 1) as isize;
+        let center_y = (fog_radius - 1) as isize;
+        // algebra!
+        for y in 0 .. height {
+            for bit_x in 0 .. word_width*64 {
+                let shift = 63 - (bit_x & 63);
+                let mask = 1<<shift;
+                // calculate x_delta and y_delta
+                let x_delta = isize::abs(center_x - bit_x as isize) as usize;
+                let y_delta = isize::abs(center_y - y as isize) as usize;
+                if x_delta*x_delta + y_delta*y_delta < fog_radius*fog_radius {
+                    self.fog_circle[y][bit_x/64] &= !mask;
+                }
+            }
+        }
     }
 
 
@@ -481,6 +541,14 @@ impl Universe {
             let cells_next = &mut gen_state_next.cells;
             let wall_next  = &mut gen_state_next.wall_cells;
             let known_next = &mut gen_state_next.known;
+
+            // Copy fog over to next generation
+            for row_idx in 0 .. self.height {
+                for player_id in 0 .. self.num_players {
+                    gen_state_next.player_states[player_id].fog[row_idx].copy_from_slice(&gen_state.player_states[player_id].fog[row_idx]);
+                }
+            }
+
             for row_idx in 0 .. self.height {
                 let n_row_idx = (row_idx + self.height - 1) % self.height;
                 let s_row_idx = (row_idx + 1) % self.height;
@@ -563,10 +631,13 @@ impl Universe {
                         gen_state_next.player_states[player_id].cells[row_idx][col_idx] = player_cell_next;
                     }
                     for player_id in 0 .. self.num_players {
+                        let cell_cur = gen_state.player_states[player_id].cells[row_idx][col_idx];
                         let mut cell_next = gen_state_next.player_states[player_id].cells[row_idx][col_idx];
                         cell_next &= !in_multiple; // if a cell would have belonged to multiple players, it belongs to none
-                        gen_state_next.player_states[player_id].fog[row_idx][col_idx] = gen_state.player_states[player_id].fog[row_idx][col_idx] & !cell_next; // clear fog!
                         gen_state_next.player_states[player_id].cells[row_idx][col_idx] = cell_next;
+
+                        // clear fog for all cells that turned on in this generation
+                        Universe::clear_fog(&mut gen_state_next.player_states[player_id].fog, &self.fog_circle, self.fog_radius, self.width, self.height, row_idx, col_idx, cell_next & !cell_cur);
                     }
                 }
 
@@ -580,6 +651,114 @@ impl Universe {
         self.state_index = next_state_index;
         gen_state_next.gen_or_none = Some(self.generation);
         self.generation
+    }
+
+
+    /// Clears the fog for the specified bits in the 64-bit word at `center_row_idx` and
+    /// `center_col_idx` using the fog circle (see `generate_fog_circle_bitmap` documentation for
+    /// more on this).
+    //TODO: unit test with fog_radiuses above and below 64
+    fn clear_fog(player_fog:     &mut BitGrid,
+                 fog_circle:     &BitGrid,
+                 fog_radius:     usize,
+                 uni_width:      usize,
+                 uni_height:     usize,
+                 center_row_idx: usize,
+                 center_col_idx: usize,
+                 bits_to_clear:  u64) {
+
+        if bits_to_clear == 0 {
+            return; // nothing to do
+        }
+        debug!("---");
+
+        // Iterate over every u64 in a rectangular region of `player_fog`, ANDing together the
+        // shifted u64s of `fog_circle` according to `bits_to_clear`, so as to only perform a
+        // single `&=` in `player_fog`.
+        // EXPLANATION OF VAR NAMES: "_idx" indicates this is a word index; otherwise, it's a game
+        // coord.
+
+        // Get the highest and lowest bits in bits_to_clear
+        let mut col_of_highest_to_clear = center_col_idx * 64;
+        for shift in (0..64).rev() {
+            if bits_to_clear & (1 << shift) > 0 {
+                break;
+            }
+            col_of_highest_to_clear += 1;
+        }
+        let mut col_of_lowest_to_clear  = center_col_idx * 64 + 63;
+        for shift in 0..64 {
+            if bits_to_clear & (1 << shift) > 0 {
+                break;
+            }
+            col_of_lowest_to_clear -= 1;
+        }
+        debug!("bits_to_clear: row {} and cols range [{}, {}]", center_row_idx, col_of_highest_to_clear, col_of_lowest_to_clear);
+
+        // Get the bounds in terms of game coordinates (from col_left to col_right, inclusive,
+        // and from row_top to row_bottom, inclusive).
+        let row_top    = (uni_height + center_row_idx - (fog_radius - 1)) % uni_height;
+        let row_bottom = (center_row_idx + fog_radius - 1) % uni_height;
+        let col_left   = (uni_width + col_of_highest_to_clear - (fog_radius - 1)) % uni_width;
+        let col_right  = (col_of_lowest_to_clear + fog_radius - 1) % uni_width;
+        debug!("row_(top,bottom) range is [{}, {}]", row_top, row_bottom);
+        debug!("col_(left,right) range is [{}, {}]", col_left, col_right);
+
+        // Convert cols to col_idxes
+        let col_idx_left  = col_left/64;
+        let col_idx_right = col_right/64;
+
+        let mut row_idx = row_top;
+        let uni_word_width = uni_width/64;
+        loop {
+            //debug!("row_idx is {} (out of height {})", row_idx, uni_height);
+            let mut col_idx = col_idx_left;
+            loop {
+                debug!("row {}, col range [{}, {}]", row_idx, col_idx*64, col_idx*64+63);
+                //debug!("col_idx is {} (out of word_width {}); stopping after {}", col_idx, uni_word_width, col_idx_right);
+                let mut mask = u64::max_value();
+                for shift in (0..64).rev() {
+                    if mask == 0 {
+                        break;
+                    }
+                    if bits_to_clear & (1 << shift) > 0 {
+                        let fog_row_idx = (uni_height  +  row_idx - center_row_idx + (fog_radius - 1)) % uni_height;
+                        let current_highest_col = col_idx * 64;
+                        let current_lowest_col  = col_idx * 64 + 63;
+                        for fog_col_idx in 0 .. fog_circle[0].len() {
+                            let fog_highest_col = (uni_width + center_col_idx*64 + (63 - shift) - (fog_radius - 1)) % uni_width;
+                            let fog_lowest_col  = (uni_width + center_col_idx*64 + (63 - shift) - (fog_radius - 1) + 63) % uni_width;
+                            debug!("  fog col range [{}, {}]", fog_highest_col, fog_lowest_col);
+
+                            if current_highest_col == fog_highest_col && current_lowest_col == fog_lowest_col {
+                                mask &= fog_circle[fog_row_idx][fog_col_idx];
+                                debug!("  mask is now {:016x}, cleared by fog circle R{}, Ci{}, no shift", mask, fog_row_idx, fog_col_idx);
+                            } else if current_highest_col <= fog_lowest_col && fog_lowest_col < current_lowest_col {
+                                // we need to double negate so that shifting results in 1s, not 0s
+                                mask &= !(!fog_circle[fog_row_idx][fog_col_idx] << (current_lowest_col - fog_lowest_col));
+                                debug!("  fog word is {:016x}", fog_circle[fog_row_idx][fog_col_idx]);
+                                debug!("  mask is now {:016x}, cleared by fog circle R{}, Ci{}, fog circle << {}", mask, fog_row_idx, fog_col_idx, current_lowest_col - fog_lowest_col);
+                            } else if current_highest_col < fog_highest_col && fog_highest_col <= current_lowest_col {
+                                mask &= !(!fog_circle[fog_row_idx][fog_col_idx] >> (fog_highest_col - current_highest_col));
+                                debug!("  fog word is {:016x}", fog_circle[fog_row_idx][fog_col_idx]);
+                                debug!("  mask is now {:016x}, cleared by fog circle R{}, Ci{}, fog circle >> {}", mask, fog_row_idx, fog_col_idx, fog_highest_col - current_highest_col);
+                            }
+                        }
+                    }
+                }
+                player_fog[row_idx][col_idx] &= mask;
+
+                if col_idx == col_idx_right {
+                    break;
+                }
+                col_idx = (col_idx + 1) % uni_word_width;
+            }
+
+            if row_idx == row_bottom {
+                break;
+            }
+            row_idx = (row_idx + 1) % uni_height;
+        }
     }
 
 
