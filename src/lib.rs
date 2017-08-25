@@ -308,7 +308,7 @@ impl Universe {
     // if any.
     //
     // This operation works in three steps
-    //  1. Toggle general cell
+    //  1. Toggle alive/dead cell in the current generation state cell grid
     //  2. Clear all players' cell
     //  3. If general cell transitioned Dead->Alive, then set requested player's cell
     //  ..
@@ -380,14 +380,14 @@ impl Universe {
                num_players:     usize,
                player_writable: Vec<Region>) -> Result<Universe, &'static str> {
         if height == 0 {
-            return Err("Height must be non-zero");
+            return Err("Height must be positive");
         }
 
         let width_in_words = width/64;
         if width % 64 != 0 {
             return Err("Width must be a multiple of 64");
         } else if width == 0 {
-            return Err("Width must be non-zero");
+            return Err("Width must be positive");
         }
 
         // Initialize all generational states with the default appropriate bitgrids
@@ -411,7 +411,7 @@ impl Universe {
             }
 
             // Known cells describe what the current operative (player, server)
-            // visibiity reaches. For example, a Server has total visibility as
+            // visibility reaches. For example, a Server has total visibility as
             // it needs to know all.
             let mut known = new_bitgrid(width_in_words, height);
             
@@ -894,11 +894,11 @@ mod universe_tests {
         assert!(uni_result2.is_err());
 
         let uni_result3 = Universe::new(0,   // width
-                                      256,   // height
-                                      true,  // server_mode
-                                      16,    // history
-                                      2,     // players
-                                      writable_regions.clone()
+                                        256,   // height
+                                        true,  // server_mode
+                                        16,    // history
+                                        2,     // players
+                                        writable_regions.clone()
                                       );
         assert!(uni_result3.is_err());
     }
