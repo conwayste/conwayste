@@ -109,11 +109,8 @@ impl fmt::Display for BitOperation {
         Ok(())
     }
 }
-// -rwxr-xr-x  2 manghi_a  staff  599448 Aug 18 21:42 target/debug/conway
-// -rw-r--r--  2 manghi_a  staff  156832 Aug 24 20:02 target/release/libconway.rlib
 
-
-//#[inline]
+#[inline]
 fn modify_cell_bits(bit_grid: &mut BitGrid, row: usize, word_col: usize, mask: u64, op: BitOperation) {
 
     //debug!("Enter Modify ({}).... [{}][{}] = {}", op, row, word_col, bit_grid[row][word_col] & mask);
@@ -192,7 +189,6 @@ impl fmt::Display for Universe {
 }
 
 
-// TODO: unit tests
 impl Universe {
 
     pub fn get_cell_state(&mut self, col: usize, row: usize, player_id: Option<usize>) -> CellState {
@@ -316,7 +312,6 @@ impl Universe {
     //  2. Clear all players' cell
     //  3. If general cell transitioned Dead->Alive, then set requested player's cell
     //  ..
-    //  Shouldn't this use set(...)??? Check with Aaron TODO
     pub fn toggle_unchecked(&mut self, col: usize, row: usize, opt_player_id: Option<usize>) -> CellState {
         let word_col = col/64;
         let shift = 63 - (col & (64 - 1));
@@ -540,7 +535,6 @@ impl Universe {
 
 
     /// Compute the next generation. Returns the new latest generation number.
-    // TODO: write some good unit tests covering all features and cases, then optimize & rewrite (use macros?)
     pub fn next(&mut self) -> usize {
         // get the buffers and buffers_next
         assert!(self.gen_states[self.state_index].gen_or_none.unwrap() == self.generation);
@@ -684,7 +678,6 @@ impl Universe {
     /// callback.
     /// 
     /// Callback receives (x, y, cell_state).
-    //TODO: unit test
     pub fn each_non_dead(&self, region: Region, visibility: Option<usize>, callback: &mut FnMut(usize, usize, CellState)) {
         let cells = &self.gen_states[self.state_index].cells;
         let wall  = &self.gen_states[self.state_index].wall_cells;
@@ -714,7 +707,7 @@ impl Universe {
                     for shift in (0..64).rev() {
                         if (x as isize) >= region.left() &&
                             (x as isize) < (region.left() + region.width() as isize) {
-                            let mut state = CellState::Wall;  // TODO: is this needed? Avoiding error: 'possibly uninitialized'
+                            let mut state = CellState::Wall;
                             let c = (cells_word>>shift)&1 == 1;
                             let w = (wall_word >>shift)&1 == 1;
                             let k = (known_word>>shift)&1 == 1;
@@ -780,7 +773,6 @@ impl Universe {
     /// Iterate over every non-dead cell in the universe for the current generation.
     /// `visibility` is an optional player_id, allowing filtering based on fog.
     /// Callback receives (x, y, cell_state).
-    //TODO: unit test
     pub fn each_non_dead_full(&self, visibility: Option<usize>, callback: &mut FnMut(usize, usize, CellState)) {
         self.each_non_dead(self.region(), visibility, callback);
     }
