@@ -31,13 +31,16 @@ pub struct Universe {
     generation:      usize,                     // current generation (1-based)
     num_players:     usize,                     // number of players in the game (player numbers are 0-based)
     state_index:     usize,                     // index of GenState for current generation within gen_states
-    gen_states:      Vec<GenState>,             // circular buffer
+    gen_states:      Vec<GenState>,             // circular buffer of generational states
     player_writable: Vec<Region>,               // writable region (indexed by player_id)
     fog_radius:      usize,
     fog_circle:      BitGrid,
 }
 
 
+// Describes the state of the universe for a particular generation
+// This includes any cells alive, known, and each player's own gen states
+// for this current session
 struct GenState {
     gen_or_none:   Option<usize>,        // Some(generation number) (redundant info); if None, this is an unused buffer
     cells:         BitGrid,              // 1 = cell is known to be Alive
@@ -48,11 +51,11 @@ struct GenState {
 
 struct PlayerGenState {
     cells:     BitGrid,   // cells belonging to this player (if 1 here, must be 1 in GenState cells)
-    fog:       BitGrid,   // cells that the player is not allowed to know
+    fog:       BitGrid,   // cells that the player is currently invisible to the player
 }
 
 
-#[derive(Eq,PartialEq,Ord,PartialOrd,Copy,Clone)]
+#[derive(Eq,PartialEq,Ord,PartialOrd,Copy,Clone,Debug)]
 pub enum CellState {
     Dead,
     Alive(Option<usize>),    // Some(player_number) or alive but not belonging to any player
@@ -81,6 +84,9 @@ impl CellState {
 
 
 fn new_bitgrid(width_in_words: usize, height: usize) -> BitGrid {
+    assert!(width_in_words != 0);
+    assert!(height != 0);
+
     let mut result: BitGrid = Vec::new();
     for _ in 0 .. height {
         let row: Vec<u64> = vec![0; width_in_words];
@@ -89,32 +95,65 @@ fn new_bitgrid(width_in_words: usize, height: usize) -> BitGrid {
     result
 }
 
+#[derive(Eq,PartialEq,Debug, Clone, Copy)]
+enum BitOperation {
+    Clear,
+    Set,
+    Toggle
+}
+
+impl fmt::Display for BitOperation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+
+        let string = match *self {
+            BitOperation::Clear => "Clear",
+            BitOperation::Set => "Set",
+            BitOperation::Toggle => "Toggle",
+        };
+
+        try!(write!(f, "{}", string));
+        Ok(())
+    }
+}
+
+#[inline]
+fn modify_cell_bits(bit_grid: &mut BitGrid, row: usize, word_col: usize, mask: u64, op: BitOperation) {
+
+    //debug!("Enter Modify ({}).... [{}][{}] = {}", op, row, word_col, bit_grid[row][word_col] & mask);
+    
+    match op {
+        BitOperation::Set => bit_grid[row][word_col] |= mask,
+        BitOperation::Clear => bit_grid[row][word_col] &= !mask,
+        BitOperation::Toggle => bit_grid[row][word_col] ^= mask,
+    }
+
+    //debug!("...Modified [{}][{}] = {:b}", row, word_col, bit_grid[row][word_col]);
+}
 
 // Sets or clears a rectangle of bits. Panics if Region is out of range.
-fn fill_region(grid: &mut BitGrid, region: Region, bit: bool) {
+fn fill_region(grid: &mut BitGrid, region: Region, op: BitOperation) {
     for y in region.top() .. region.bottom() + 1 {
+        assert!(y >= 0);
         for word_col in 0 .. grid[y as usize].len() {
             let x_left  = word_col * 64;
             let x_right = x_left + 63;
+
             if region.right() >= x_left as isize && region.left() <= x_right as isize {
                 let mut mask = u64::max_value();
+
                 for shift in (0..64).rev() {
                     let x = x_right - shift;
                     if (x as isize) < region.left() || (x as isize) > region.right() {
                         mask &= !(1 << shift);
                     }
                 }
+
                 // apply change to bitgrid based on mask and bit
-                if bit {
-                    grid[y as usize][word_col] |=  mask;
-                } else {
-                    grid[y as usize][word_col] &= !mask;
-                }
+                modify_cell_bits(grid, y as usize, word_col, mask, op);
             }
         }
     }
 }
-
 
 impl fmt::Display for Universe {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -156,18 +195,33 @@ impl fmt::Display for Universe {
 }
 
 
-// TODO: unit tests
 impl Universe {
+
+    pub fn get_cell_state(&mut self, col: usize, row: usize, player_id: Option<usize>) -> CellState {
+        let gen_state = &mut self.gen_states[self.state_index];
+        let word_col = col/64;
+        let shift = 63 - (col & (64 - 1)); // translate literal col (ex: 134) to bit index in word_col
+        let mask  = 1 << shift;     // cell to set
+
+        if let Some(opt_player_id) = player_id {
+            let cell = (gen_state.player_states[opt_player_id].cells[row][word_col] & mask) >> shift;
+            if cell == 1 {CellState::Alive(player_id)} else {CellState::Dead}
+        }
+        else {
+            let cell = (gen_state.cells[row][word_col] & mask) >> shift;
+            if cell == 1 {CellState::Alive(None)} else {CellState::Dead}
+        }
+    }
+
     // sets the state of a cell, with minimal checking
     // doesn't support setting CellState::Fog
     pub fn set_unchecked(&mut self, col: usize, row: usize, new_state: CellState) {
         let gen_state = &mut self.gen_states[self.state_index];
         let word_col = col/64;
-        let shift = 63 - (col & (64 - 1));
+        let shift = 63 - (col & (64 - 1)); // translate literal col (ex: 134) to bit index in word_col
         let mask  = 1 << shift;     // cell to set
 
         // panic if not known
-        // known_cell_word is the current word of 64 cells
         let known_cell_word = gen_state.known[row][word_col];
         if known_cell_word & mask == 0 {
             panic!("Tried to set unknown cell at ({}, {})", col, row);
@@ -177,35 +231,34 @@ impl Universe {
         // ownership further down)
         {
             for player_id in 0 .. self.num_players {
-                gen_state.player_states[player_id].cells[row][word_col] &= !mask;
+                let ref mut grid = gen_state.player_states[player_id].cells;
+                modify_cell_bits(grid, row, word_col, mask, BitOperation::Clear);
             }
         }
 
         let cells = &mut gen_state.cells;
-        let wall  = &mut gen_state.wall_cells;
-        let mut cells_word = cells[row][word_col];
-        let mut walls_word = wall [row][word_col];
+        let walls  = &mut gen_state.wall_cells;
         match new_state {
             CellState::Dead => {
-                cells_word &= !mask;
-                walls_word &= !mask;
+                modify_cell_bits(cells, row, word_col, mask, BitOperation::Clear);
+                modify_cell_bits(walls, row, word_col, mask, BitOperation::Clear);
             }
             CellState::Alive(opt_player_id) => {
-                cells_word |=  mask;
-                walls_word &= !mask;
+                modify_cell_bits(cells, row, word_col, mask, BitOperation::Set);
+                modify_cell_bits(walls, row, word_col, mask, BitOperation::Clear);
+
                 if let Some(player_id) = opt_player_id {
-                    gen_state.player_states[player_id].cells[row][word_col] |=  mask;
-                    gen_state.player_states[player_id].fog[row][word_col]   &= !mask;
+                    let ref mut player = gen_state.player_states[player_id];
+                    modify_cell_bits(&mut player.cells, row, word_col, mask, BitOperation::Set);
+                    modify_cell_bits(&mut player.fog, row, word_col, mask, BitOperation::Clear);
                 }
             }
             CellState::Wall => {
-                cells_word &= !mask;
-                walls_word |=  mask;
+                modify_cell_bits(cells, row, word_col, mask, BitOperation::Clear);
+                modify_cell_bits(walls, row, word_col, mask, BitOperation::Set);
             }
             _ => unimplemented!()
         }
-        cells[row][word_col] = cells_word;
-        wall [row][word_col] = walls_word;
     }
 
 
@@ -217,11 +270,12 @@ impl Universe {
     // if checks fail, do nothing
     // panic if player_id inside CellState does not match player_id argument
     pub fn set(&mut self, col: usize, row: usize, new_state: CellState, player_id: usize) {
+
         {
             let gen_state = &mut self.gen_states[self.state_index];
             let word_col = col/64;
             let shift = 63 - (col & (64 - 1));
-            let mask  = 1 << shift;     // cell to set
+            let mask  = 1 << shift;     // bit to set for cell represented by (row,col)
 
             let cells = &mut gen_state.cells;
             let wall  = &mut gen_state.wall_cells;
@@ -232,8 +286,7 @@ impl Universe {
                 return;
             }
 
-            if !self.player_writable[player_id].contains(col, row) {
-                return;
+            if !self.player_writable[player_id].contains(col as isize, row as isize) { return;
             }
 
             if gen_state.player_states[player_id].fog[row][word_col] & mask > 0 {
@@ -251,7 +304,7 @@ impl Universe {
                 }
             }
         }
-            
+
         self.set_unchecked(col, row, new_state)
     }
 
@@ -259,30 +312,41 @@ impl Universe {
     // Switches any non-dead state to CellState::Dead.
     // Switches CellState::Dead to CellState::Alive(opt_player_id) and clears fog for that player,
     // if any.
+    //
+    // This operation works in three steps
+    //  1. Toggle alive/dead cell in the current generation state cell grid
+    //  2. Clear all players' cell
+    //  3. If general cell transitioned Dead->Alive, then set requested player's cell
+    //  ..
     pub fn toggle_unchecked(&mut self, col: usize, row: usize, opt_player_id: Option<usize>) -> CellState {
         let word_col = col/64;
         let shift = 63 - (col & (64 - 1));
-
         let mask = 1 << shift;
-        let mut word;
+
+        let word =
         {
             let cells = &mut self.gen_states[self.state_index].cells;
-            word = cells[row][word_col];
-            word ^= mask;
-            cells[row][word_col] = word;
-        }
+            modify_cell_bits(cells, row, word_col, mask, BitOperation::Toggle);
+            cells[row][word_col]
+        };
+
+        // Cell transitioned Dead -> Alive 
         let next_cell = (word & mask) > 0;
+        //debug!("Word/Mask: => {:b} | {:b}", word, mask);
+        //debug!("Next Cell: {}", next_cell);
 
         // clear all player cell bits
         for player_id in 0 .. self.num_players {
-            self.gen_states[self.state_index].player_states[player_id].cells[row][word_col] &= !mask;
+            let ref mut player_cells = self.gen_states[self.state_index].player_states[player_id].cells;
+            modify_cell_bits(player_cells, row, word_col, mask, BitOperation::Clear);
         }
 
         if next_cell {
             // set this player's cell bit, if needed, and clear fog
             if let Some(player_id) = opt_player_id {
-                self.gen_states[self.state_index].player_states[player_id].cells[row][word_col] |= mask;
-                self.gen_states[self.state_index].player_states[player_id].fog[row][word_col]   &= !mask;
+                let ref mut player = self.gen_states[self.state_index].player_states[player_id];
+                modify_cell_bits(&mut player.cells, row, word_col, mask, BitOperation::Set);
+                modify_cell_bits(&mut player.fog, row, word_col, mask, BitOperation::Clear);
             }
 
             CellState::Alive(opt_player_id)
@@ -296,7 +360,7 @@ impl Universe {
     // Result is Err if trying to toggle outside player's writable area, or if
     // trying to toggle a wall or an unknown cell.
     pub fn toggle(&mut self, col: usize, row: usize, player_id: usize) -> Result<CellState, ()> {
-        if !self.player_writable[player_id].contains(col, row) {
+        if !self.player_writable[player_id].contains(col as isize, row as isize) {
             return Err(());
         }
 
@@ -325,35 +389,48 @@ impl Universe {
         if height == 0 {
             return Err("Height must be positive");
         }
+
         let width_in_words = width/64;
-        if width != width_in_words * 64 {
+        if width % 64 != 0 {
             return Err("Width must be a multiple of 64");
         } else if width == 0 {
             return Err("Width must be positive");
         }
 
+        // Initialize all generational states with the default appropriate bitgrids
         let mut gen_states = Vec::new();
         for i in 0 .. history {
             let mut player_states = Vec::new();
             for player_id in 0 .. num_players {
+
                 let mut pgs = PlayerGenState {
                     cells:     new_bitgrid(width_in_words, height),
                     fog:       new_bitgrid(width_in_words, height),
                 };
+
                 // unless writable region, the whole grid is player fog
-                fill_region(&mut pgs.fog, Region::new(0, 0, width, height), true);
+                fill_region(&mut pgs.fog, Region::new(0, 0, width, height), BitOperation::Set);
+
                 // clear player fog on writable regions
-                fill_region(&mut pgs.fog, player_writable[player_id], false);
+                fill_region(&mut pgs.fog, player_writable[player_id], BitOperation::Clear);
+
                 player_states.push(pgs);
             }
+
+            // Known cells describe what the current operative (player, server)
+            // visibility reaches. For example, a Server has total visibility as
+            // it needs to know all.
             let mut known = new_bitgrid(width_in_words, height);
+            
             if is_server && i == 0 {
+                // could use fill_region but its much cheaper this way
                 for y in 0 .. height {
                     for x in 0 .. width_in_words {
                         known[y][x] = u64::max_value();   // if server, all cells are known
                     }
                 }
             }
+
             gen_states.push(GenState {
                 gen_or_none:   if i == 0 { Some(1) } else { None },
                 cells:         new_bitgrid(width_in_words, height),
@@ -518,7 +595,6 @@ impl Universe {
 
 
     /// Compute the next generation. Returns the new latest generation number.
-    // TODO: write some good unit tests covering all features and cases, then optimize & rewrite (use macros?)
     pub fn next(&mut self) -> usize {
         // get the buffers and buffers_next
         assert!(self.gen_states[self.state_index].gen_or_none.unwrap() == self.generation);
@@ -603,6 +679,9 @@ impl Universe {
 
                     // apply BitGrid changes
                     let mut cells_cen_next = Universe::next_single_gen(cells_nw, cells_n, cells_ne, cells_w, cells_cen, cells_e, cells_sw, cells_s, cells_se);
+
+                    // any known cells with at least one unknown neighbor will become unknown in
+                    // the next generation
                     known_next[row_idx][col_idx] = Universe::contagious_zero(known_nw, known_n, known_ne, known_w, known_cen, known_e, known_sw, known_s, known_se);
 
                     cells_cen_next &= known_next[row_idx][col_idx];
@@ -614,6 +693,16 @@ impl Universe {
                     let mut in_multiple: u64 = 0;
                     let mut seen_before: u64 = 0;
                     for player_id in 0 .. self.num_players {
+                        // Any unknown cell with 
+                        //
+                        // A cell which would have belonged to 2+ players in the next
+                        // generation will belong to no one. These are unowned cells.
+                        //
+                        // Unowned cells follow the same rules of life.
+                        //
+                        // Any unowned cells are influenced by their neighbors, and if players,
+                        // can be acquired by the player, just as long as no two players are
+                        // fighting over those cells
                         let player_cell_next =
                             Universe::contagious_one(
                                 gen_state.player_states[player_id].cells[n_row_idx][(col_idx + self.width_in_words - 1) % self.width_in_words],
@@ -768,7 +857,6 @@ impl Universe {
     /// callback.
     /// 
     /// Callback receives (x, y, cell_state).
-    //TODO: unit test
     pub fn each_non_dead(&self, region: Region, visibility: Option<usize>, callback: &mut FnMut(usize, usize, CellState)) {
         let cells = &self.gen_states[self.state_index].cells;
         let wall  = &self.gen_states[self.state_index].wall_cells;
@@ -798,7 +886,7 @@ impl Universe {
                     for shift in (0..64).rev() {
                         if (x as isize) >= region.left() &&
                             (x as isize) < (region.left() + region.width() as isize) {
-                            let mut state = CellState::Wall;  // TODO: is this needed? Avoiding error: 'possibly uninitialized'
+                            let mut state = CellState::Wall;
                             let c = (cells_word>>shift)&1 == 1;
                             let w = (wall_word >>shift)&1 == 1;
                             let k = (known_word>>shift)&1 == 1;
@@ -864,7 +952,6 @@ impl Universe {
     /// Iterate over every non-dead cell in the universe for the current generation.
     /// `visibility` is an optional player_id, allowing filtering based on fog.
     /// Callback receives (x, y, cell_state).
-    //TODO: unit test
     pub fn each_non_dead_full(&self, visibility: Option<usize>, callback: &mut FnMut(usize, usize, CellState)) {
         self.each_non_dead(self.region(), visibility, callback);
     }
@@ -877,7 +964,7 @@ impl Universe {
 }
 
 
-#[derive(Eq,PartialEq,Ord,PartialOrd,Copy,Clone)]
+#[derive(Eq,PartialEq,Ord,PartialOrd,Copy,Clone,Debug)]
 pub struct Region {
     left:   isize,
     top:    isize,
@@ -886,7 +973,11 @@ pub struct Region {
 }
 
 impl Region {
+    // A region is described in game coordinates
     pub fn new(left: isize, top: isize, width: usize, height: usize) -> Self {
+        assert!(width != 0);
+        assert!(height != 0);
+
         Region {
             left:   left,
             top:    top,
@@ -919,52 +1010,106 @@ impl Region {
         self.height
     }
 
-    pub fn contains(&self, col: usize, row: usize) -> bool {
-        self.left    <= col as isize &&
-        col as isize <= self.right() &&
-        self.top     <= row as isize &&
-        row as isize <= self.bottom()
+    pub fn contains(&self, col: isize, row: isize) -> bool {
+        self.left    <= col &&
+        col <= self.right() &&
+        self.top     <= row &&
+        row <= self.bottom()
     }
 }
 
 
 #[cfg(test)]
-mod tests {
+mod universe_tests {
     use super::*;
+
+    fn generate_test_universe_with_default_params() -> Universe {
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+ 
+        Universe::new(256,
+                      128,   // height
+                      true, // server_mode
+                      16,   // history
+                      2,    // players
+                      writable_regions
+                      ).unwrap()
+    }
 
     #[test]
     fn new_universe_with_valid_dims() {
-        Universe::new(128,64).unwrap();
+        let uni = generate_test_universe_with_default_params();
+        let universe_as_region = Region::new(0, 0, 256, 128);
+
+        assert_eq!(uni.width(), 256);
+        assert_eq!(uni.height(), 128);
+        assert_eq!(uni.region(), universe_as_region);
     }
 
     #[test]
     fn new_universe_with_bad_dims() {
-        let uni_result1 = Universe::new(123,64);
+
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+
+        let uni_result1 = Universe::new(255,   // width
+                                        128,   // height
+                                        true,  // server_mode
+                                        16,    // history
+                                        2,     // players
+                                        writable_regions.clone()
+                                      );
         assert!(uni_result1.is_err());
 
-        let uni_result2 = Universe::new(0,64);
+        let uni_result2 = Universe::new(256,  // width
+                                        0,    // height
+                                        true, // server_mode
+                                        16,   // history
+                                        2,    // players
+                                        writable_regions.clone()
+                                      );
         assert!(uni_result2.is_err());
 
-        let uni_result3 = Universe::new(128,0);
+        let uni_result3 = Universe::new(0,   // width
+                                        256,   // height
+                                        true,  // server_mode
+                                        16,    // history
+                                        2,     // players
+                                        writable_regions.clone()
+                                      );
         assert!(uni_result3.is_err());
     }
 
     #[test]
-    fn new_universe_latest_gen_is_one() {
-        let uni = Universe::new(128,64).unwrap();
+    fn new_universe_first_gen_is_one() {
+        let uni = generate_test_universe_with_default_params();
         assert_eq!(uni.latest_gen(), 1);
-    }
-    #[test]
-    #[should_panic]
-    fn universe_with_no_gens_panics() {
-        let mut uni = Universe::new(128,64).unwrap();
-        uni.generation_a = None;
-        uni.generation_b = None;
-        uni.latest();
     }
 
     #[test]
-    fn next_single_gen_test_data1() {
+    #[should_panic]
+    fn universe_with_no_gens_panics() {
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+
+
+        let mut uni = Universe::new(128,  // width
+                      64,   // height
+                      true, // server_mode
+                      16,   // history
+                      2,    // players
+                      writable_regions
+                      ).unwrap();
+
+        uni.generation = 0;
+        uni.latest_gen();
+    }
+
+    #[test]
+    fn next_single_gen_test_data1_with_wrapping() {
         // glider, blinker, glider
         let nw = 0x0000000000000000;
         let n  = 0x0000000400000002;
@@ -981,15 +1126,466 @@ mod tests {
 
     #[test]
     fn next_test_data1() {
-        let mut uni = Universe::new(128,64).unwrap();
+        let mut uni = generate_test_universe_with_default_params();
+
         // r-pentomino
-        uni.buffer_a[0][0] = 0x0000000300000000;
-        uni.buffer_a[1][0] = 0x0000000600000000;
-        uni.buffer_a[2][0] = 0x0000000200000000;
+        let _ = uni.toggle(16, 15, 0);
+        let _ = uni.toggle(17, 15, 0);
+        let _ = uni.toggle(15, 16, 0);
+        let _ = uni.toggle(16, 16, 0);
+        let _ = uni.toggle(16, 17, 0);
+
         let gens = 1000;
         for _ in 0..gens {
             uni.next();
         }
         assert_eq!(uni.latest_gen(), gens + 1);
     }
+
+    #[test]
+    fn set_unchecked_with_valid_rows_and_cols() {
+        let mut uni = generate_test_universe_with_default_params();
+        let max_width = uni.width()-1;
+        let max_height = uni.height()-1;
+        let mut cell_state;
+        
+        for x in 0.. max_width {
+            for y in 0..max_height {
+                cell_state = uni.get_cell_state(x,y, None);
+                assert_eq!(cell_state, CellState::Dead);
+            }
+        }
+
+        uni.set_unchecked(0, 0, CellState::Alive(None));
+        cell_state = uni.get_cell_state(0,0, None);
+        assert_eq!(cell_state, CellState::Alive(None));
+
+        uni.set_unchecked(max_width, max_height, CellState::Alive(None));
+        assert_eq!(cell_state, CellState::Alive(None));
+
+        uni.set_unchecked(55, 55, CellState::Alive(None));
+        assert_eq!(cell_state, CellState::Alive(None));
+   }
+
+    #[test]
+    #[should_panic]
+    fn set_unchecked_with_invalid_rols_and_cols_panics() {
+        let mut uni = generate_test_universe_with_default_params();
+        uni.set_unchecked(257, 129, CellState::Alive(None));
+    }
+
+    #[test]
+    fn universe_cell_states_are_dead_on_creation() {
+        let mut uni = generate_test_universe_with_default_params();
+        let max_width = uni.width()-1;
+        let max_height = uni.height()-1;
+        
+        for x in 0..max_width {
+            for y in 0..max_height {
+                let cell_state = uni.get_cell_state(x,y, None);
+                assert_eq!(cell_state, CellState::Dead);
+            }
+        }
+    }
+
+    #[test]
+    fn set_checked_verify_players_remain_within_writable_regions() {
+        let mut uni = generate_test_universe_with_default_params();
+        let max_width = uni.width()-1;
+        let max_height = uni.height()-1;
+        let player_id = 1; // writing into player 1's regions
+        let alive_player_cell = CellState::Alive(Some(player_id));
+        let mut cell_state;
+
+        // Writable region OK, Transitions to Alive
+        uni.set(0, 0, alive_player_cell, player_id);
+        cell_state = uni.get_cell_state(0,0, Some(player_id));
+        assert_eq!(cell_state, alive_player_cell);
+
+        // This should be dead as it is outside the writable region
+        uni.set(max_width, max_height, alive_player_cell, player_id);
+        cell_state = uni.get_cell_state(max_width, max_height, Some(player_id));
+        assert_eq!(cell_state, CellState::Dead);
+
+        // Writable region OK, transitions to Alive
+        uni.set(55, 55, alive_player_cell, player_id);
+        cell_state = uni.get_cell_state(55, 55, Some(player_id));
+        assert_eq!(cell_state, alive_player_cell);
+
+        // Outside of player_id's writable region which will remain unchanged
+        uni.set(81, 81, alive_player_cell, player_id);
+        cell_state = uni.get_cell_state(81, 81, Some(player_id));
+        assert_eq!(cell_state, CellState::Dead);
+    }
+
+    #[test]
+    fn set_checked_cannot_set_a_fog_cell() {
+        let mut uni = generate_test_universe_with_default_params();
+        let player_id = 1; // writing into player 1's regions
+        let alive_player_cell = CellState::Alive(Some(player_id));
+        let state_index = uni.state_index;
+
+        // Let's hardcode this and try to set a fog'd cell
+        // within what was a players writable region.
+        uni.gen_states[state_index].player_states[player_id].fog[0][0] |= 1<<63;
+
+        uni.set(0, 0, alive_player_cell, player_id);
+        let cell_state = uni.get_cell_state(0,0, Some(player_id));
+        assert_eq!(cell_state, CellState::Dead);
+    }
+
+
+    #[test]
+    fn toggle_unchecked_cell_toggled_is_owned_by_player() {
+        let mut uni = generate_test_universe_with_default_params();
+        let state_index = uni.state_index;
+        let row = 0;
+        let col = 0;
+        let bit = 63;
+        let player_one_opt = Some(0);
+        let player_two_opt = Some(1);
+
+        // Should transition from dead to alive. Player one will have their cell set, player two
+        // will not
+        assert_eq!(uni.toggle_unchecked(row, col, player_one_opt), CellState::Alive(player_one_opt));
+        assert_eq!(uni.gen_states[state_index].player_states[player_one_opt.unwrap()].cells[row][col] >> bit, 1);
+        assert_eq!(uni.gen_states[state_index].player_states[player_two_opt.unwrap()].cells[row][col] >> bit, 0);
+    }
+
+    #[test]
+    fn toggle_unchecked_cell_toggled_by_both_players_repetatively() {
+        let mut uni = generate_test_universe_with_default_params();
+        let state_index = uni.state_index;
+        let row = 0;
+        let col = 0;
+        let bit = 63;
+        let player_one_opt = Some(0);
+        let player_two_opt = Some(1);
+
+        // Should transition from dead to alive. Player one will have their cell set, player two
+        // will not
+        assert_eq!(uni.toggle_unchecked(row, col, player_one_opt), CellState::Alive(player_one_opt));
+        assert_eq!(uni.gen_states[state_index].player_states[player_one_opt.unwrap()].cells[row][col] >> bit, 1);
+        assert_eq!(uni.gen_states[state_index].player_states[player_two_opt.unwrap()].cells[row][col] >> bit, 0);
+
+        // Player two will now toggle the cell, killing it as it was previously alive.
+        // Player one will be cleared as a result, the cell will not be set at all.
+        // Notice we are not checking for writable regions here (unchecked doesn't care) so this
+        // runs through
+        assert_eq!(uni.toggle_unchecked(row, col, player_two_opt), CellState::Dead);
+        assert_eq!(uni.gen_states[state_index].player_states[player_one_opt.unwrap()].cells[row][col] >> bit, 0);
+        assert_eq!(uni.gen_states[state_index].player_states[player_two_opt.unwrap()].cells[row][col] >> bit, 0);
+    }
+
+    #[test]
+    fn toggle_checked_outside_a_player_writable_region_fails() {
+        let mut uni = generate_test_universe_with_default_params();
+        let player_one = 0;
+        let player_two = 1;
+        let row = 0;
+        let col = 0;
+
+        assert_eq!(uni.toggle(row, col, player_one), Err(()));
+        assert_eq!(uni.toggle(row, col, player_two).unwrap(), CellState::Alive(Some(player_two)));
+    }
+
+    #[test]
+    fn toggle_checked_players_cannot_toggle_a_wall_cell() {
+        let mut uni = generate_test_universe_with_default_params();
+        let player_one = 0;
+        let player_two = 1;
+        let row = 0;
+        let col = 0;
+        let state_index = uni.state_index;
+
+        modify_cell_bits(&mut uni.gen_states[state_index].wall_cells, row, col, 1<<63, BitOperation::Set);
+
+        assert_eq!(uni.toggle(row, col, player_one), Err(()));
+        assert_eq!(uni.toggle(row, col, player_two), Err(()));
+    }
+
+    #[test]
+    fn toggle_checked_players_can_toggle_an_known_cell_if_writable() {
+        let mut uni = generate_test_universe_with_default_params();
+        let player_one = 0;
+        let player_two = 1;
+        let row = 0;
+        let col = 0;
+        let state_index = uni.state_index;
+
+        modify_cell_bits(&mut uni.gen_states[state_index].known, row, col, 1<<63, BitOperation::Set);
+
+        assert_eq!(uni.toggle(row, col, player_one), Err(()));
+        assert_eq!(uni.toggle(row, col, player_two), Ok(CellState::Alive(Some(player_two))));
+    }
+
+    #[test]
+    fn toggle_checked_players_cannot_toggle_an_unknown_cell() {
+        let mut uni = generate_test_universe_with_default_params();
+        let player_one = 0;
+        let player_two = 1;
+        let row = 0;
+        let col = 0;
+        let state_index = uni.state_index;
+
+        modify_cell_bits(&mut uni.gen_states[state_index].known, row, col, 1<<63, BitOperation::Clear);
+
+        assert_eq!(uni.toggle(row, col, player_one), Err(()));
+        assert_eq!(uni.toggle(row, col, player_two), Err(()));
+    }
+
+    #[test]
+    fn contagious_one_with_all_neighbors_set() {
+        let north = u64::max_value();
+        let northwest = u64::max_value();
+        let northeast = u64::max_value();
+        let west = u64::max_value();
+        let mut center = u64::max_value();
+        let east = u64::max_value();
+        let southwest = u64::max_value();
+        let south = u64::max_value();
+        let southeast = u64::max_value();
+
+
+        let mut output = Universe::contagious_one(northwest, north, northeast, west, center, east, southwest, south, southeast);
+        assert_eq!(output, u64::max_value());
+
+        center &= !(0x0000000F00000000);
+
+        output = Universe::contagious_one(northwest, north, northeast, west, center, east, southwest, south, southeast);
+        // 1 bit surrounding 'F', and inclusive, are cleared
+        assert_eq!(output, 0xFFFFFFFFFFFFFFFF);
+    }
+
+    #[test]
+    fn contagious_zero_with_all_neighbors_set() {
+        let north = u64::max_value();
+        let northwest = u64::max_value();
+        let northeast = u64::max_value();
+        let west = u64::max_value();
+        let mut center = u64::max_value();
+        let east = u64::max_value();
+        let southwest = u64::max_value();
+        let south = u64::max_value();
+        let southeast = u64::max_value();
+
+
+        let mut output = Universe::contagious_zero(northwest, north, northeast, west, center, east, southwest, south, southeast);
+        assert_eq!(output, u64::max_value());
+
+        center &= !(0x0000000F00000000);
+
+        output = Universe::contagious_zero(northwest, north, northeast, west, center, east, southwest, south, southeast);
+        // 1 bit surrounding 'F', and inclusive, are cleared
+        assert_eq!(output, 0xFFFFFFE07FFFFFFF);
+    }
+}
+
+#[cfg(test)]
+mod region_tests {
+    use super::*;
+
+    #[test]
+    fn region_with_valid_dims() {
+        let region = Region::new(1, 10, 100, 200);
+
+        assert_eq!(region.left(), 1);
+        assert_eq!(region.top(), 10);
+        assert_eq!(region.height(), 200);
+        assert_eq!(region.width(), 100);
+        assert_eq!(region.right(), 100);
+        assert_eq!(region.bottom(), 209);
+    }
+    
+    #[test]
+    fn region_with_valid_dims_negative_top_and_left() {
+        let region = Region::new(-1, -10, 100, 200);
+
+        assert_eq!(region.left(), -1);
+        assert_eq!(region.top(), -10);
+        assert_eq!(region.height(), 200);
+        assert_eq!(region.width(), 100);
+        assert_eq!(region.right(), 98);
+        assert_eq!(region.bottom(), 189);
+    }
+
+    #[test]
+    #[should_panic]
+    fn region_with_bad_dims_panics() {
+        Region::new(0, 0, 0, 0);
+    }
+
+    #[test]
+    fn region_contains_a_valid_sub_region() {
+        let region1 = Region::new(1, 10, 100, 200);
+        let region2 = Region::new(-100, -200, 100, 200);
+
+        assert!(region1.contains(50, 50));
+        assert!(region2.contains(-50, -50));
+    }
+    
+    #[test]
+    fn region_does_not_contain_sub_region() {
+        let region1 = Region::new(1, 10, 100, 200);
+        let region2 = Region::new(-100, -200, 100, 200);
+
+        assert!(!region1.contains(-50, -50));
+        assert!(!region2.contains(50, 50));
+    }
+}
+
+#[cfg(test)]
+mod cellstate_tests {
+    use super::*;
+
+    #[test]
+    fn cell_states_as_char() {
+        let dead = CellState::Dead;
+        let alive = CellState::Alive(None);
+        let player1 = CellState::Alive(Some(1));
+        let player2 = CellState::Alive(Some(2));
+        let wall = CellState::Wall;
+        let fog = CellState::Fog;
+
+        assert_eq!(dead.to_char(), 'b');
+        assert_eq!(alive.to_char(), 'o');
+        assert_eq!(player1.to_char(), 'B');
+        assert_eq!(player2.to_char(), 'C');
+        assert_eq!(wall.to_char(), 'W');
+        assert_eq!(fog.to_char(), '?');
+    }
+}
+
+#[cfg(test)]
+mod bitgrid_tests {
+    use super::*;
+
+    #[test]
+    fn create_valid_empty_bitgrid() {
+        let height = 11;
+        let width_in_words = 10;
+        let grid = new_bitgrid(width_in_words, height);
+
+        assert_eq!(grid[0][0], 0);
+        assert_eq!(grid[height-1][width_in_words-1], 0);
+
+        for x in 0..height {
+            for y in 0..width_in_words {
+                assert_eq!(grid[x][y], 0);
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn create_bitgrid_with_invalid_dims() {
+        let height = 0;
+        let width_in_words = 0;
+        let _ = new_bitgrid(width_in_words, height);
+    }
+
+    #[test]
+    fn set_cell_bits_within_a_bitgrid() {
+        let height = 10;
+        let width_in_words = 10;
+        let mut grid = new_bitgrid(width_in_words, height);
+
+        for x in 0..height {
+            for y in 0..width_in_words {
+                assert_eq!(grid[x][y], 0);
+            }
+        }
+
+        modify_cell_bits(&mut grid, height/2, width_in_words/2, 1<<63, BitOperation::Set);
+        assert_eq!(grid[height/2][width_in_words/2] >> 63, 1);
+        
+        modify_cell_bits(&mut grid, height-1, width_in_words-1, 1<<63, BitOperation::Set);
+        assert_eq!(grid[height-1][width_in_words-1] >> 63, 1);
+    }
+
+    #[test]
+    fn clear_cell_bits_within_a_bitgrid() {
+        let height = 10;
+        let width_in_words = 10;
+        let mut grid = new_bitgrid(width_in_words, height);
+
+        for x in 0..height {
+            for y in 0..width_in_words {
+                grid[x][y] = u64::max_value();
+            }
+        }
+
+        modify_cell_bits(&mut grid, height/2, width_in_words/2, 1<<63, BitOperation::Clear);
+        assert_eq!(grid[height/2][width_in_words/2] >> 63, 0);
+        
+        modify_cell_bits(&mut grid, height-1, width_in_words-1, 1<<63, BitOperation::Clear);
+        assert_eq!(grid[height-1][width_in_words-1] >> 63, 0);
+    }
+
+    #[test]
+    fn toggle_cell_bits_within_a_bitgrid() {
+        let height = 10;
+        let width_in_words = 10;
+        let mut grid = new_bitgrid(width_in_words, height);
+
+        for x in 0..height {
+            for y in 0..width_in_words {
+                grid[x][y] = u64::max_value();
+            }
+        }
+
+        modify_cell_bits(&mut grid, height/2, width_in_words/2, 1<<63, BitOperation::Toggle);
+        assert_eq!(grid[height/2][width_in_words/2] >> 63, 0);
+        
+        modify_cell_bits(&mut grid, height/2, width_in_words/2, 1<<63, BitOperation::Toggle);
+        assert_eq!(grid[height/2][width_in_words/2] >> 63, 1);
+    }
+
+    #[test]
+    fn fill_region_within_a_bit_grid() {
+        let height = 10;
+        let width_in_words = 10;
+
+        let region1_w = 7;
+        let region1_h = 7;
+        let region2_w = 3;
+        let region2_h = 3;
+        let region3_h = 4;
+        let region3_w = 4;
+
+        let mut grid = new_bitgrid(width_in_words, height);
+        let region1 = Region::new(0, 0, region1_w, region1_h);
+        let region2 = Region::new(0, 0, region2_w, region2_h);
+        let region3 = Region::new(region2_w as isize, region2_h as isize, region3_w, region3_h);
+
+        fill_region(&mut grid, region1, BitOperation::Set);
+
+        for y in 0..region1_w {
+            assert_eq!(grid[y][0], 0xFE00000000000000);
+        }
+
+        fill_region(&mut grid, region2, BitOperation::Clear);
+        for y in 0..region2_w {
+            assert_eq!(grid[y][0], 0x1E00000000000000);
+        }
+
+        fill_region(&mut grid, region3, BitOperation::Toggle);
+        for x in region2_w..region3_w {
+            for y in region2_h..region3_h {
+                assert_eq!(grid[x][y], 0);
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn fill_grid_with_a_negative_region_panics() {
+        let height = 10;
+        let width_in_words = 10;
+
+        let mut grid = new_bitgrid(width_in_words, height);
+        let region_neg = Region::new(-1, -1, 1, 1);
+        fill_region(&mut grid, region_neg, BitOperation::Set);
+    }
+
 }

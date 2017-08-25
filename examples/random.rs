@@ -6,8 +6,18 @@ use std::{thread, time};
 use conway::*;
 
 fn main() {
-    let mut uni = Universe::new(128,32).unwrap();
-    let step_time = time::Duration::from_millis(30);
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+
+        let mut uni = Universe::new(1200,  // width
+                                    800,   // height
+                                    true, // server_mode
+                                    16,   // history
+                                    2,    // players
+                                    writable_regions
+                                    ).unwrap();
+       let step_time = time::Duration::from_millis(30);
 
     let mut rng = rand::thread_rng();
     loop {
@@ -17,7 +27,7 @@ fn main() {
         for col in 60..64 {
             for row in 15..17 {
                 if rand_word & 1 == 1 {
-                    uni.toggle(col, row);
+                    let _ = uni.toggle(col, row, 0);
                 }
                 rand_word >>= 1;
             }
