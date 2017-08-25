@@ -109,7 +109,11 @@ impl fmt::Display for BitOperation {
         Ok(())
     }
 }
+// -rwxr-xr-x  2 manghi_a  staff  599448 Aug 18 21:42 target/debug/conway
+// -rw-r--r--  2 manghi_a  staff  156832 Aug 24 20:02 target/release/libconway.rlib
 
+
+//#[inline]
 fn modify_cell_bits(bit_grid: &mut BitGrid, row: usize, word_col: usize, mask: u64, op: BitOperation) {
 
     //debug!("Enter Modify ({}).... [{}][{}] = {}", op, row, word_col, bit_grid[row][word_col] & mask);
@@ -1157,6 +1161,52 @@ mod universe_tests {
 
         assert_eq!(uni.toggle(row, col, player_one), Err(()));
         assert_eq!(uni.toggle(row, col, player_two), Err(()));
+    }
+
+    #[test]
+    fn contagious_one_with_all_neighbors_set() {
+        let north = u64::max_value();
+        let northwest = u64::max_value();
+        let northeast = u64::max_value();
+        let west = u64::max_value();
+        let mut center = u64::max_value();
+        let east = u64::max_value();
+        let southwest = u64::max_value();
+        let south = u64::max_value();
+        let southeast = u64::max_value();
+
+
+        let mut output = Universe::contagious_one(northwest, north, northeast, west, center, east, southwest, south, southeast);
+        assert_eq!(output, u64::max_value());
+
+        center &= !(0x0000000F00000000);
+
+        output = Universe::contagious_one(northwest, north, northeast, west, center, east, southwest, south, southeast);
+        // 1 bit surrounding 'F', and inclusive, are cleared
+        assert_eq!(output, 0xFFFFFFFFFFFFFFFF);
+    }
+
+    #[test]
+    fn contagious_zero_with_all_neighbors_set() {
+        let north = u64::max_value();
+        let northwest = u64::max_value();
+        let northeast = u64::max_value();
+        let west = u64::max_value();
+        let mut center = u64::max_value();
+        let east = u64::max_value();
+        let southwest = u64::max_value();
+        let south = u64::max_value();
+        let southeast = u64::max_value();
+
+
+        let mut output = Universe::contagious_zero(northwest, north, northeast, west, center, east, southwest, south, southeast);
+        assert_eq!(output, u64::max_value());
+
+        center &= !(0x0000000F00000000);
+
+        output = Universe::contagious_zero(northwest, north, northeast, west, center, east, southwest, south, southeast);
+        // 1 bit surrounding 'F', and inclusive, are cleared
+        assert_eq!(output, 0xFFFFFFE07FFFFFFF);
     }
 }
 
