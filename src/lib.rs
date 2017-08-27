@@ -1626,6 +1626,30 @@ mod universe_tests {
         uni.generate_fog_circle_bitmap(100);
         assert_eq!(fog_radius_of_hunned, uni.fog_circle);
     }
+
+    #[test]
+    #[should_panic]
+    fn generate_fog_circle_bitmap_fails_with_radius_zero() {
+
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+ 
+        Universe::new(256,
+                      128,   // height
+                      true, // server_mode
+                      16,   // history
+                      2,    // players
+                      writable_regions,
+                      0,    // fog radius
+                      ).unwrap();
+    }
+
+    #[test]
+    fn clear_fog_() {
+    let mut uni = generate_test_universe_with_default_params();
+
+    }
 }
 
 #[cfg(test)]
