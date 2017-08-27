@@ -1033,7 +1033,8 @@ mod universe_tests {
                       true, // server_mode
                       16,   // history
                       2,    // players
-                      writable_regions
+                      writable_regions,
+                      9,    // fog radius
                       ).unwrap()
     }
 
@@ -1059,7 +1060,8 @@ mod universe_tests {
                                         true,  // server_mode
                                         16,    // history
                                         2,     // players
-                                        writable_regions.clone()
+                                        writable_regions.clone(),
+                                        9
                                       );
         assert!(uni_result1.is_err());
 
@@ -1068,7 +1070,8 @@ mod universe_tests {
                                         true, // server_mode
                                         16,   // history
                                         2,    // players
-                                        writable_regions.clone()
+                                        writable_regions.clone(),
+                                        9
                                       );
         assert!(uni_result2.is_err());
 
@@ -1077,7 +1080,8 @@ mod universe_tests {
                                         true,  // server_mode
                                         16,    // history
                                         2,     // players
-                                        writable_regions.clone()
+                                        writable_regions.clone(),
+                                        9
                                       );
         assert!(uni_result3.is_err());
     }
@@ -1101,7 +1105,8 @@ mod universe_tests {
                       true, // server_mode
                       16,   // history
                       2,    // players
-                      writable_regions
+                      writable_regions,
+                      9
                       ).unwrap();
 
         uni.generation = 0;
@@ -1378,6 +1383,248 @@ mod universe_tests {
         output = Universe::contagious_zero(northwest, north, northeast, west, center, east, southwest, south, southeast);
         // 1 bit surrounding 'F', and inclusive, are cleared
         assert_eq!(output, 0xFFFFFFE07FFFFFFF);
+    }
+
+    #[test]
+    fn verify_fog_circle_bitmap_generation() {
+        let mut uni = generate_test_universe_with_default_params();
+
+        let fog_radius_of_nine = vec![
+            vec![0xf007ffffffffffff],
+            vec![0xe003ffffffffffff],
+            vec![0xc001ffffffffffff],
+            vec![0x8000ffffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x8000ffffffffffff],
+            vec![0xc001ffffffffffff],
+            vec![0xe003ffffffffffff],
+            vec![0xf007ffffffffffff]];
+        uni.generate_fog_circle_bitmap(9);
+        assert_eq!(fog_radius_of_nine, uni.fog_circle);
+
+        let fog_radius_of_four = vec![
+            vec![0x83ffffffffffffff],
+            vec![0x01ffffffffffffff],
+            vec![0x01ffffffffffffff],
+            vec![0x01ffffffffffffff],
+            vec![0x01ffffffffffffff],
+            vec![0x01ffffffffffffff],
+            vec![0x83ffffffffffffff],
+        ];
+        uni.generate_fog_circle_bitmap(4);
+        assert_eq!(fog_radius_of_four, uni.fog_circle);
+
+        let fog_radius_of_hunned = vec![
+            vec![0xffffffffffffffff, 0xfffff80000003fff, 0xffffffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffffff, 0xffff0000000001ff, 0xffffffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffffff, 0xffe000000000000f, 0xffffffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffffff, 0xff00000000000001, 0xffffffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffffff, 0xf000000000000000, 0x1fffffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffffff, 0x8000000000000000, 0x03ffffffffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffffffffe, 0x0000000000000000, 0x00ffffffffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffffffff0, 0x0000000000000000, 0x001fffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffffc0, 0x0000000000000000, 0x0007ffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffff00, 0x0000000000000000, 0x0001ffffffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffffffc00, 0x0000000000000000, 0x00007fffffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffffff000, 0x0000000000000000, 0x00001fffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffc000, 0x0000000000000000, 0x000007ffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffff0000, 0x0000000000000000, 0x000001ffffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffffe0000, 0x0000000000000000, 0x000000ffffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffff80000, 0x0000000000000000, 0x0000003fffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffff00000, 0x0000000000000000, 0x0000001fffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffc00000, 0x0000000000000000, 0x00000007ffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffff800000, 0x0000000000000000, 0x00000003ffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffff000000, 0x0000000000000000, 0x00000001ffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffc000000, 0x0000000000000000, 0x000000007fffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffff8000000, 0x0000000000000000, 0x000000003fffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffff0000000, 0x0000000000000000, 0x000000001fffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffe0000000, 0x0000000000000000, 0x000000000fffffff, 0xffffffffffffffff, ],
+            vec![0xffffffff80000000, 0x0000000000000000, 0x0000000003ffffff, 0xffffffffffffffff, ],
+            vec![0xffffffff00000000, 0x0000000000000000, 0x0000000001ffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffe00000000, 0x0000000000000000, 0x0000000000ffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffc00000000, 0x0000000000000000, 0x00000000007fffff, 0xffffffffffffffff, ],
+            vec![0xfffffff800000000, 0x0000000000000000, 0x00000000003fffff, 0xffffffffffffffff, ],
+            vec![0xfffffff000000000, 0x0000000000000000, 0x00000000001fffff, 0xffffffffffffffff, ],
+            vec![0xffffffe000000000, 0x0000000000000000, 0x00000000000fffff, 0xffffffffffffffff, ],
+            vec![0xffffffc000000000, 0x0000000000000000, 0x000000000007ffff, 0xffffffffffffffff, ],
+            vec![0xffffff8000000000, 0x0000000000000000, 0x000000000003ffff, 0xffffffffffffffff, ],
+            vec![0xffffff0000000000, 0x0000000000000000, 0x000000000001ffff, 0xffffffffffffffff, ],
+            vec![0xffffff0000000000, 0x0000000000000000, 0x000000000001ffff, 0xffffffffffffffff, ],
+            vec![0xfffffe0000000000, 0x0000000000000000, 0x000000000000ffff, 0xffffffffffffffff, ],
+            vec![0xfffffc0000000000, 0x0000000000000000, 0x0000000000007fff, 0xffffffffffffffff, ],
+            vec![0xfffff80000000000, 0x0000000000000000, 0x0000000000003fff, 0xffffffffffffffff, ],
+            vec![0xfffff00000000000, 0x0000000000000000, 0x0000000000001fff, 0xffffffffffffffff, ],
+            vec![0xfffff00000000000, 0x0000000000000000, 0x0000000000001fff, 0xffffffffffffffff, ],
+            vec![0xffffe00000000000, 0x0000000000000000, 0x0000000000000fff, 0xffffffffffffffff, ],
+            vec![0xffffc00000000000, 0x0000000000000000, 0x00000000000007ff, 0xffffffffffffffff, ],
+            vec![0xffff800000000000, 0x0000000000000000, 0x00000000000003ff, 0xffffffffffffffff, ],
+            vec![0xffff800000000000, 0x0000000000000000, 0x00000000000003ff, 0xffffffffffffffff, ],
+            vec![0xffff000000000000, 0x0000000000000000, 0x00000000000001ff, 0xffffffffffffffff, ],
+            vec![0xfffe000000000000, 0x0000000000000000, 0x00000000000000ff, 0xffffffffffffffff, ],
+            vec![0xfffe000000000000, 0x0000000000000000, 0x00000000000000ff, 0xffffffffffffffff, ],
+            vec![0xfffc000000000000, 0x0000000000000000, 0x000000000000007f, 0xffffffffffffffff, ],
+            vec![0xfff8000000000000, 0x0000000000000000, 0x000000000000003f, 0xffffffffffffffff, ],
+            vec![0xfff8000000000000, 0x0000000000000000, 0x000000000000003f, 0xffffffffffffffff, ],
+            vec![0xfff0000000000000, 0x0000000000000000, 0x000000000000001f, 0xffffffffffffffff, ],
+            vec![0xfff0000000000000, 0x0000000000000000, 0x000000000000001f, 0xffffffffffffffff, ],
+            vec![0xffe0000000000000, 0x0000000000000000, 0x000000000000000f, 0xffffffffffffffff, ],
+            vec![0xffe0000000000000, 0x0000000000000000, 0x000000000000000f, 0xffffffffffffffff, ],
+            vec![0xffc0000000000000, 0x0000000000000000, 0x0000000000000007, 0xffffffffffffffff, ],
+            vec![0xffc0000000000000, 0x0000000000000000, 0x0000000000000007, 0xffffffffffffffff, ],
+            vec![0xff80000000000000, 0x0000000000000000, 0x0000000000000003, 0xffffffffffffffff, ],
+            vec![0xff80000000000000, 0x0000000000000000, 0x0000000000000003, 0xffffffffffffffff, ],
+            vec![0xff00000000000000, 0x0000000000000000, 0x0000000000000001, 0xffffffffffffffff, ],
+            vec![0xff00000000000000, 0x0000000000000000, 0x0000000000000001, 0xffffffffffffffff, ],
+            vec![0xfe00000000000000, 0x0000000000000000, 0x0000000000000000, 0xffffffffffffffff, ],
+            vec![0xfe00000000000000, 0x0000000000000000, 0x0000000000000000, 0xffffffffffffffff, ],
+            vec![0xfe00000000000000, 0x0000000000000000, 0x0000000000000000, 0xffffffffffffffff, ],
+            vec![0xfc00000000000000, 0x0000000000000000, 0x0000000000000000, 0x7fffffffffffffff, ],
+            vec![0xfc00000000000000, 0x0000000000000000, 0x0000000000000000, 0x7fffffffffffffff, ],
+            vec![0xf800000000000000, 0x0000000000000000, 0x0000000000000000, 0x3fffffffffffffff, ],
+            vec![0xf800000000000000, 0x0000000000000000, 0x0000000000000000, 0x3fffffffffffffff, ],
+            vec![0xf800000000000000, 0x0000000000000000, 0x0000000000000000, 0x3fffffffffffffff, ],
+            vec![0xf000000000000000, 0x0000000000000000, 0x0000000000000000, 0x1fffffffffffffff, ],
+            vec![0xf000000000000000, 0x0000000000000000, 0x0000000000000000, 0x1fffffffffffffff, ],
+            vec![0xf000000000000000, 0x0000000000000000, 0x0000000000000000, 0x1fffffffffffffff, ],
+            vec![0xf000000000000000, 0x0000000000000000, 0x0000000000000000, 0x1fffffffffffffff, ],
+            vec![0xe000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0fffffffffffffff, ],
+            vec![0xe000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0fffffffffffffff, ],
+            vec![0xe000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0fffffffffffffff, ],
+            vec![0xc000000000000000, 0x0000000000000000, 0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0xc000000000000000, 0x0000000000000000, 0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0xc000000000000000, 0x0000000000000000, 0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0xc000000000000000, 0x0000000000000000, 0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0xc000000000000000, 0x0000000000000000, 0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x8000000000000000, 0x0000000000000000, 0x0000000000000000, 0x03ffffffffffffff, ],
+            vec![0x8000000000000000, 0x0000000000000000, 0x0000000000000000, 0x03ffffffffffffff, ],
+            vec![0x8000000000000000, 0x0000000000000000, 0x0000000000000000, 0x03ffffffffffffff, ],
+            vec![0x8000000000000000, 0x0000000000000000, 0x0000000000000000, 0x03ffffffffffffff, ],
+            vec![0x8000000000000000, 0x0000000000000000, 0x0000000000000000, 0x03ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x01ffffffffffffff, ],
+            vec![0x8000000000000000, 0x0000000000000000, 0x0000000000000000, 0x03ffffffffffffff, ],
+            vec![0x8000000000000000, 0x0000000000000000, 0x0000000000000000, 0x03ffffffffffffff, ],
+            vec![0x8000000000000000, 0x0000000000000000, 0x0000000000000000, 0x03ffffffffffffff, ],
+            vec![0x8000000000000000, 0x0000000000000000, 0x0000000000000000, 0x03ffffffffffffff, ],
+            vec![0x8000000000000000, 0x0000000000000000, 0x0000000000000000, 0x03ffffffffffffff, ],
+            vec![0xc000000000000000, 0x0000000000000000, 0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0xc000000000000000, 0x0000000000000000, 0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0xc000000000000000, 0x0000000000000000, 0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0xc000000000000000, 0x0000000000000000, 0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0xc000000000000000, 0x0000000000000000, 0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0xe000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0fffffffffffffff, ],
+            vec![0xe000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0fffffffffffffff, ],
+            vec![0xe000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0fffffffffffffff, ],
+            vec![0xf000000000000000, 0x0000000000000000, 0x0000000000000000, 0x1fffffffffffffff, ],
+            vec![0xf000000000000000, 0x0000000000000000, 0x0000000000000000, 0x1fffffffffffffff, ],
+            vec![0xf000000000000000, 0x0000000000000000, 0x0000000000000000, 0x1fffffffffffffff, ],
+            vec![0xf000000000000000, 0x0000000000000000, 0x0000000000000000, 0x1fffffffffffffff, ],
+            vec![0xf800000000000000, 0x0000000000000000, 0x0000000000000000, 0x3fffffffffffffff, ],
+            vec![0xf800000000000000, 0x0000000000000000, 0x0000000000000000, 0x3fffffffffffffff, ],
+            vec![0xf800000000000000, 0x0000000000000000, 0x0000000000000000, 0x3fffffffffffffff, ],
+            vec![0xfc00000000000000, 0x0000000000000000, 0x0000000000000000, 0x7fffffffffffffff, ],
+            vec![0xfc00000000000000, 0x0000000000000000, 0x0000000000000000, 0x7fffffffffffffff, ],
+            vec![0xfe00000000000000, 0x0000000000000000, 0x0000000000000000, 0xffffffffffffffff, ],
+            vec![0xfe00000000000000, 0x0000000000000000, 0x0000000000000000, 0xffffffffffffffff, ],
+            vec![0xfe00000000000000, 0x0000000000000000, 0x0000000000000000, 0xffffffffffffffff, ],
+            vec![0xff00000000000000, 0x0000000000000000, 0x0000000000000001, 0xffffffffffffffff, ],
+            vec![0xff00000000000000, 0x0000000000000000, 0x0000000000000001, 0xffffffffffffffff, ],
+            vec![0xff80000000000000, 0x0000000000000000, 0x0000000000000003, 0xffffffffffffffff, ],
+            vec![0xff80000000000000, 0x0000000000000000, 0x0000000000000003, 0xffffffffffffffff, ],
+            vec![0xffc0000000000000, 0x0000000000000000, 0x0000000000000007, 0xffffffffffffffff, ],
+            vec![0xffc0000000000000, 0x0000000000000000, 0x0000000000000007, 0xffffffffffffffff, ],
+            vec![0xffe0000000000000, 0x0000000000000000, 0x000000000000000f, 0xffffffffffffffff, ],
+            vec![0xffe0000000000000, 0x0000000000000000, 0x000000000000000f, 0xffffffffffffffff, ],
+            vec![0xfff0000000000000, 0x0000000000000000, 0x000000000000001f, 0xffffffffffffffff, ],
+            vec![0xfff0000000000000, 0x0000000000000000, 0x000000000000001f, 0xffffffffffffffff, ],
+            vec![0xfff8000000000000, 0x0000000000000000, 0x000000000000003f, 0xffffffffffffffff, ],
+            vec![0xfff8000000000000, 0x0000000000000000, 0x000000000000003f, 0xffffffffffffffff, ],
+            vec![0xfffc000000000000, 0x0000000000000000, 0x000000000000007f, 0xffffffffffffffff, ],
+            vec![0xfffe000000000000, 0x0000000000000000, 0x00000000000000ff, 0xffffffffffffffff, ],
+            vec![0xfffe000000000000, 0x0000000000000000, 0x00000000000000ff, 0xffffffffffffffff, ],
+            vec![0xffff000000000000, 0x0000000000000000, 0x00000000000001ff, 0xffffffffffffffff, ],
+            vec![0xffff800000000000, 0x0000000000000000, 0x00000000000003ff, 0xffffffffffffffff, ],
+            vec![0xffff800000000000, 0x0000000000000000, 0x00000000000003ff, 0xffffffffffffffff, ],
+            vec![0xffffc00000000000, 0x0000000000000000, 0x00000000000007ff, 0xffffffffffffffff, ],
+            vec![0xffffe00000000000, 0x0000000000000000, 0x0000000000000fff, 0xffffffffffffffff, ],
+            vec![0xfffff00000000000, 0x0000000000000000, 0x0000000000001fff, 0xffffffffffffffff, ],
+            vec![0xfffff00000000000, 0x0000000000000000, 0x0000000000001fff, 0xffffffffffffffff, ],
+            vec![0xfffff80000000000, 0x0000000000000000, 0x0000000000003fff, 0xffffffffffffffff, ],
+            vec![0xfffffc0000000000, 0x0000000000000000, 0x0000000000007fff, 0xffffffffffffffff, ],
+            vec![0xfffffe0000000000, 0x0000000000000000, 0x000000000000ffff, 0xffffffffffffffff, ],
+            vec![0xffffff0000000000, 0x0000000000000000, 0x000000000001ffff, 0xffffffffffffffff, ],
+            vec![0xffffff0000000000, 0x0000000000000000, 0x000000000001ffff, 0xffffffffffffffff, ],
+            vec![0xffffff8000000000, 0x0000000000000000, 0x000000000003ffff, 0xffffffffffffffff, ],
+            vec![0xffffffc000000000, 0x0000000000000000, 0x000000000007ffff, 0xffffffffffffffff, ],
+            vec![0xffffffe000000000, 0x0000000000000000, 0x00000000000fffff, 0xffffffffffffffff, ],
+            vec![0xfffffff000000000, 0x0000000000000000, 0x00000000001fffff, 0xffffffffffffffff, ],
+            vec![0xfffffff800000000, 0x0000000000000000, 0x00000000003fffff, 0xffffffffffffffff, ],
+            vec![0xfffffffc00000000, 0x0000000000000000, 0x00000000007fffff, 0xffffffffffffffff, ],
+            vec![0xfffffffe00000000, 0x0000000000000000, 0x0000000000ffffff, 0xffffffffffffffff, ],
+            vec![0xffffffff00000000, 0x0000000000000000, 0x0000000001ffffff, 0xffffffffffffffff, ],
+            vec![0xffffffff80000000, 0x0000000000000000, 0x0000000003ffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffe0000000, 0x0000000000000000, 0x000000000fffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffff0000000, 0x0000000000000000, 0x000000001fffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffff8000000, 0x0000000000000000, 0x000000003fffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffc000000, 0x0000000000000000, 0x000000007fffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffff000000, 0x0000000000000000, 0x00000001ffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffff800000, 0x0000000000000000, 0x00000003ffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffc00000, 0x0000000000000000, 0x00000007ffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffff00000, 0x0000000000000000, 0x0000001fffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffff80000, 0x0000000000000000, 0x0000003fffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffffe0000, 0x0000000000000000, 0x000000ffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffff0000, 0x0000000000000000, 0x000001ffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffc000, 0x0000000000000000, 0x000007ffffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffffff000, 0x0000000000000000, 0x00001fffffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffffffc00, 0x0000000000000000, 0x00007fffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffff00, 0x0000000000000000, 0x0001ffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffffc0, 0x0000000000000000, 0x0007ffffffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffffffff0, 0x0000000000000000, 0x001fffffffffffff, 0xffffffffffffffff, ],
+            vec![0xfffffffffffffffe, 0x0000000000000000, 0x00ffffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffffff, 0x8000000000000000, 0x03ffffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffffff, 0xf000000000000000, 0x1fffffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffffff, 0xff00000000000001, 0xffffffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffffff, 0xffe000000000000f, 0xffffffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffffff, 0xffff0000000001ff, 0xffffffffffffffff, 0xffffffffffffffff, ],
+            vec![0xffffffffffffffff, 0xfffff80000003fff, 0xffffffffffffffff, 0xffffffffffffffff, ],
+            ];
+        uni.generate_fog_circle_bitmap(100);
+        assert_eq!(fog_radius_of_hunned, uni.fog_circle);
     }
 }
 
