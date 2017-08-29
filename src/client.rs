@@ -65,7 +65,7 @@ const ZOOM_LEVEL_MAX: u32 = 20;
 const HISTORY_SIZE: usize = 16;
 const NUM_PLAYERS: usize = 2;
 const CURRENT_PLAYER_ID: usize = 1; // TODO: get the player ID from server rather than hardcoding
-const FOG_RADIUS: usize = 9;
+const FOG_RADIUS: usize = 4;
 
 #[derive(PartialEq, Clone)]
 enum Stage {
