@@ -1646,8 +1646,48 @@ mod universe_tests {
     }
 
     #[test]
-    fn clear_fog_() {
-    let mut uni = generate_test_universe_with_default_params();
+    fn clear_fog_with_standard_radius() {
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+        let mut uni = Universe::new(256,
+                                    128,   // height
+                                    true, // server_mode
+                                    16,   // history
+                                    2,    // players
+                                    writable_regions,
+                                    4,    // fog radius
+                                    ).unwrap();
+
+        let history = uni.gen_states.len();
+        let next_state_index = (uni.state_index + 1) % history;
+        let player_id = 0;
+
+        let gen_state_next = if uni.state_index < next_state_index {
+            let (_, p1) = uni.gen_states.split_at_mut(next_state_index);
+            &mut p1[player_id]
+        } else {
+            let (p0, _) = uni.gen_states.split_at_mut(next_state_index + 1);
+            &mut p0[player_id]
+        };
+        let row_index_outside_of_p0_region = 1;
+        let col_index_outside_of_p0_region = 1;
+        let one_bit_to_clear = 1;
+
+        Universe::clear_fog(&mut gen_state_next.player_states[player_id].fog, 
+                            &uni.fog_circle, 
+                            uni.fog_radius, 
+                            uni.width, 
+                            uni.height, 
+                            row_index_outside_of_p0_region, 
+                            col_index_outside_of_p0_region, 
+                            one_bit_to_clear);
+
+        for x in 0..4 {
+            for y in 1..2 {
+                assert_eq!(gen_state_next.player_states[0].fog[x][y], 0b1111111111111111111111111111111111111111111111111111111111110000);
+            }
+        }
 
     }
 }
