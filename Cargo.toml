@@ -5,7 +5,7 @@ authors = [ "mang", "Aaron Miller <aaron.miller04@gmail.com>" ]
 license = "GPL-3.0+"
 
 [dependencies]
-conway     = "0.1.3"  # { git = "https://github.com/conwayste/libconway" } # { path = "../libconway" }
+conway     = "0.1.4"   # { path = "../libconway" } # { git = "https://github.com/conwayste/libconway" }
 ggez       = "0.2.2"
 env_logger = "0.3"
 log        = "0.3"

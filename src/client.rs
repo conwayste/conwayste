@@ -65,6 +65,7 @@ const ZOOM_LEVEL_MAX: u32 = 20;
 const HISTORY_SIZE: usize = 16;
 const NUM_PLAYERS: usize = 2;
 const CURRENT_PLAYER_ID: usize = 1; // TODO: get the player ID from server rather than hardcoding
+const FOG_RADIUS: usize = 4;
 
 #[derive(PartialEq, Clone)]
 enum Stage {
@@ -295,7 +296,7 @@ impl GameState for MainState {
             small_font:          small_font,
             intro_text:          intro_text,
             stage:               Stage::Intro(INTRO_DURATION),
-            uni:                 Universe::new(universe_width_in_cells, universe_height_in_cells, true, HISTORY_SIZE, NUM_PLAYERS, writable_regions).unwrap(),
+            uni:                 Universe::new(universe_width_in_cells, universe_height_in_cells, true, HISTORY_SIZE, NUM_PLAYERS, writable_regions, FOG_RADIUS).unwrap(),
             first_gen_was_drawn: false,
             grid_view:           grid_view,
             color_settings:      color_settings,
