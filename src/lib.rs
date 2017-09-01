@@ -40,6 +40,15 @@ pub struct PlayerBuilder {
     writable_region: Region,
 }
 
+impl PlayerBuilder {
+    pub fn new(region: Region) -> PlayerBuilder {
+        PlayerBuilder {
+            writable_region: region,
+        }
+    }
+
+}
+
 impl BigBang {
 
     pub fn new() -> BigBang {
