@@ -20,8 +20,112 @@ extern crate env_logger;
 
 use std::fmt;
 
-
 type BitGrid = Vec<Vec<u64>>;
+type UniverseError = &'static str;
+
+/// Builder paradigm to create universes
+pub struct BigBang {
+    width:           usize,
+    height:          usize,
+    is_server:       bool,
+    history:         usize,
+    num_players:     usize,
+    player_writable: Vec<Region>,
+    fog_radius:      usize
+}
+
+/// Player builder
+pub struct PlayerBuilder {
+//    client_id: String,        Dunno if we need this, just brainstorming
+    writable_region: Region,
+}
+
+impl BigBang {
+
+    pub fn new() -> BigBang {
+        BigBang {
+            width: 256,
+            height: 128,
+            is_server: true,
+            history: 16,
+            num_players: 0,
+            player_writable: vec![],
+            fog_radius: 6,
+        }
+    }
+
+    /// Update the total number of columns for this Universe
+    pub fn width(mut self, new_width: usize) -> BigBang {
+        assert!(new_width != 0);
+        self.width = new_width;
+        self
+    }
+
+    /// Update the total number of rows for this Universe
+    pub fn height(mut self, new_height: usize) -> BigBang {
+        assert!(new_height != 0);
+        self.height = new_height;
+        self
+    }
+
+    /// Determines whether we are running a Server or a Client
+    /// True - Server
+    /// False - Client
+    pub fn server_mode(mut self, is_server: bool) -> BigBang {
+        self.is_server = is_server;
+        self
+    }
+
+    /// This records the number of generates that will be buffered
+    pub fn history(mut self, history_depth: usize) -> BigBang {
+        assert!(history_depth != 0);
+        self.history = history_depth;
+        self
+    }
+
+    /// This will add a single player to the list of players
+    /// Each player is responsible for providing their details
+    /// through the PlayerBuilder
+    pub fn add_player(mut self, new_player: PlayerBuilder) -> BigBang {
+        self.num_players += 1;
+        self.player_writable.push(new_player.writable_region);
+        assert_eq!(self.num_players, self.player_writable.len()); // These should always match up!
+        self
+    }
+
+    pub fn add_players(mut self, new_player_list: Vec<PlayerBuilder>) -> BigBang {
+        for player in new_player_list {
+            self = self.add_player(player);
+        }
+        self
+    }
+
+    /// Updates the fog to a new visibility radius.
+    /// This is used to grant players visibility into the fog when
+    /// they are competing against other players and they create
+    /// cells outside of their own writiable regions.
+    pub fn fog_radius(mut self, new_radius : usize) -> BigBang {
+        assert!(new_radius != 0);
+        self.fog_radius = new_radius;
+        self
+    }
+
+    /// "Gives life to the universe and the first moment of time."
+    /// Creates a Universe which can then CGoL process generations
+    pub fn birth(&self) -> Result<Universe, UniverseError> {
+        let universe = Universe::new(
+            self.width,
+            self.height,
+            self.is_server,
+            self.history,
+            self.num_players,      // number of players in the game (player numbers are 0-based)
+            self.player_writable.clone(), // writable region (indexed by player_id)
+            self.fog_radius,       // fog radius provides visiblity outside of writable regions
+        );
+        universe
+    }
+}
+
 
 /// Represents a wrapping universe in Conway's game of life.
 pub struct Universe {
@@ -385,7 +489,7 @@ impl Universe {
                history:         usize,
                num_players:     usize,
                player_writable: Vec<Region>,
-               fog_radius:      usize) -> Result<Universe, &'static str> {
+               fog_radius:      usize) -> Result<Universe, UniverseError> {
         if height == 0 {
             return Err("Height must be positive");
         }
