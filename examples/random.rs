@@ -6,31 +6,21 @@ use std::{thread, time};
 use conway::*;
 
 fn main() {
-        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
-        let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
-        let players = vec![player0, player1];
+    let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
+    let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
+    let players = vec![player0, player1];
 
-        let bigbang = BigBang::new()
-            .width(1280)
-            .height(800)
-            .server_mode(true)
-            .history(16)
-            .fog_radius(6)
-            .add_players(players)
-            .birth();
+    let bigbang = BigBang::new()
+        .width(1280)
+        .height(800)
+        .server_mode(true)
+        .history(16)
+        .fog_radius(6)
+        .add_players(players)
+        .birth();
 
-        let mut uni = bigbang.unwrap();
-/*
-        let mut uni = Universe::new(1280,  // width
-                                    800,   // height
-                                    true, // server_mode
-                                    16,   // history
-                                    2,    // players
-                                    writable_regions,
-                                    9     // fog radius
-                                    ).unwrap();
-*/
-       let step_time = time::Duration::from_millis(30);
+    let mut uni = bigbang.unwrap();
+    let step_time = time::Duration::from_millis(30);
 
     let mut rng = rand::thread_rng();
     loop {
