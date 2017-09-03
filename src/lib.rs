@@ -45,11 +45,9 @@ impl PlayerBuilder {
             writable_region: region,
         }
     }
-
 }
 
 impl BigBang {
-
     pub fn new() -> BigBang {
         BigBang {
             width: 256,
@@ -1171,7 +1169,8 @@ mod universe_tests {
         let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
         let players = vec![player0, player1];
 
-        let mut bigbang = BigBang::new().width(256)
+        let mut bigbang = BigBang::new()
+            .width(256)
             .height(128)
             .server_mode(true)
             .history(16)
