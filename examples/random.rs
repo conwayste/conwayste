@@ -10,12 +10,13 @@ fn main() {
         let player1_writable = Region::new(0, 0, 80, 80);
         let writable_regions = vec![player0_writable, player1_writable];
 
-        let mut uni = Universe::new(1200,  // width
+        let mut uni = Universe::new(1280,  // width
                                     800,   // height
                                     true, // server_mode
                                     16,   // history
                                     2,    // players
-                                    writable_regions
+                                    writable_regions,
+                                    9     // fog radius
                                     ).unwrap();
        let step_time = time::Duration::from_millis(30);
 

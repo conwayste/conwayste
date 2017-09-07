@@ -1033,7 +1033,8 @@ mod universe_tests {
                       true, // server_mode
                       16,   // history
                       2,    // players
-                      writable_regions
+                      writable_regions,
+                      9,    // fog radius
                       ).unwrap()
     }
 
@@ -1059,7 +1060,8 @@ mod universe_tests {
                                         true,  // server_mode
                                         16,    // history
                                         2,     // players
-                                        writable_regions.clone()
+                                        writable_regions.clone(),
+                                        9
                                       );
         assert!(uni_result1.is_err());
 
@@ -1068,7 +1070,8 @@ mod universe_tests {
                                         true, // server_mode
                                         16,   // history
                                         2,    // players
-                                        writable_regions.clone()
+                                        writable_regions.clone(),
+                                        9
                                       );
         assert!(uni_result2.is_err());
 
@@ -1077,7 +1080,8 @@ mod universe_tests {
                                         true,  // server_mode
                                         16,    // history
                                         2,     // players
-                                        writable_regions.clone()
+                                        writable_regions.clone(),
+                                        9
                                       );
         assert!(uni_result3.is_err());
     }
@@ -1101,7 +1105,8 @@ mod universe_tests {
                       true, // server_mode
                       16,   // history
                       2,    // players
-                      writable_regions
+                      writable_regions,
+                      9
                       ).unwrap();
 
         uni.generation = 0;
@@ -1378,6 +1383,183 @@ mod universe_tests {
         output = Universe::contagious_zero(northwest, north, northeast, west, center, east, southwest, south, southeast);
         // 1 bit surrounding 'F', and inclusive, are cleared
         assert_eq!(output, 0xFFFFFFE07FFFFFFF);
+    }
+
+    #[test]
+    fn verify_fog_circle_bitmap_generation() {
+        let mut uni = generate_test_universe_with_default_params();
+
+        let fog_radius_of_nine = vec![
+            vec![0xf007ffffffffffff],
+            vec![0xe003ffffffffffff],
+            vec![0xc001ffffffffffff],
+            vec![0x8000ffffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x00007fffffffffff],
+            vec![0x8000ffffffffffff],
+            vec![0xc001ffffffffffff],
+            vec![0xe003ffffffffffff],
+            vec![0xf007ffffffffffff]];
+        uni.generate_fog_circle_bitmap(9);
+        assert_eq!(fog_radius_of_nine, uni.fog_circle);
+
+        let fog_radius_of_four = vec![
+            vec![0x83ffffffffffffff],
+            vec![0x01ffffffffffffff],
+            vec![0x01ffffffffffffff],
+            vec![0x01ffffffffffffff],
+            vec![0x01ffffffffffffff],
+            vec![0x01ffffffffffffff],
+            vec![0x83ffffffffffffff],
+        ];
+        uni.generate_fog_circle_bitmap(4);
+        assert_eq!(fog_radius_of_four, uni.fog_circle);
+
+        let fog_radius_of_thirtyfive = vec![
+            vec![0xffffffc0001fffff, 0xffffffffffffffff, ],
+            vec![0xfffffe000003ffff, 0xffffffffffffffff, ],
+            vec![0xfffff00000007fff, 0xffffffffffffffff, ],
+            vec![0xffffc00000001fff, 0xffffffffffffffff, ],
+            vec![0xffff0000000007ff, 0xffffffffffffffff, ],
+            vec![0xfffe0000000003ff, 0xffffffffffffffff, ],
+            vec![0xfffc0000000001ff, 0xffffffffffffffff, ],
+            vec![0xfff000000000007f, 0xffffffffffffffff, ],
+            vec![0xffe000000000003f, 0xffffffffffffffff, ],
+            vec![0xffc000000000001f, 0xffffffffffffffff, ],
+            vec![0xff8000000000000f, 0xffffffffffffffff, ],
+            vec![0xff00000000000007, 0xffffffffffffffff, ],
+            vec![0xfe00000000000003, 0xffffffffffffffff, ],
+            vec![0xfe00000000000003, 0xffffffffffffffff, ],
+            vec![0xfc00000000000001, 0xffffffffffffffff, ],
+            vec![0xf800000000000000, 0xffffffffffffffff, ],
+            vec![0xf000000000000000, 0x7fffffffffffffff, ],
+            vec![0xf000000000000000, 0x7fffffffffffffff, ],
+            vec![0xe000000000000000, 0x3fffffffffffffff, ],
+            vec![0xe000000000000000, 0x3fffffffffffffff, ],
+            vec![0xc000000000000000, 0x1fffffffffffffff, ],
+            vec![0xc000000000000000, 0x1fffffffffffffff, ],
+            vec![0xc000000000000000, 0x1fffffffffffffff, ],
+            vec![0x8000000000000000, 0x0fffffffffffffff, ],
+            vec![0x8000000000000000, 0x0fffffffffffffff, ],
+            vec![0x8000000000000000, 0x0fffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x0000000000000000, 0x07ffffffffffffff, ],
+            vec![0x8000000000000000, 0x0fffffffffffffff, ],
+            vec![0x8000000000000000, 0x0fffffffffffffff, ],
+            vec![0x8000000000000000, 0x0fffffffffffffff, ],
+            vec![0xc000000000000000, 0x1fffffffffffffff, ],
+            vec![0xc000000000000000, 0x1fffffffffffffff, ],
+            vec![0xc000000000000000, 0x1fffffffffffffff, ],
+            vec![0xe000000000000000, 0x3fffffffffffffff, ],
+            vec![0xe000000000000000, 0x3fffffffffffffff, ],
+            vec![0xf000000000000000, 0x7fffffffffffffff, ],
+            vec![0xf000000000000000, 0x7fffffffffffffff, ],
+            vec![0xf800000000000000, 0xffffffffffffffff, ],
+            vec![0xfc00000000000001, 0xffffffffffffffff, ],
+            vec![0xfe00000000000003, 0xffffffffffffffff, ],
+            vec![0xfe00000000000003, 0xffffffffffffffff, ],
+            vec![0xff00000000000007, 0xffffffffffffffff, ],
+            vec![0xff8000000000000f, 0xffffffffffffffff, ],
+            vec![0xffc000000000001f, 0xffffffffffffffff, ],
+            vec![0xffe000000000003f, 0xffffffffffffffff, ],
+            vec![0xfff000000000007f, 0xffffffffffffffff, ],
+            vec![0xfffc0000000001ff, 0xffffffffffffffff, ],
+            vec![0xfffe0000000003ff, 0xffffffffffffffff, ],
+            vec![0xffff0000000007ff, 0xffffffffffffffff, ],
+            vec![0xffffc00000001fff, 0xffffffffffffffff, ],
+            vec![0xfffff00000007fff, 0xffffffffffffffff, ],
+            vec![0xfffffe000003ffff, 0xffffffffffffffff, ],
+            vec![0xffffffc0001fffff, 0xffffffffffffffff, ],
+            ];
+
+        uni.generate_fog_circle_bitmap(35);
+        assert_eq!(fog_radius_of_thirtyfive, uni.fog_circle);
+    }
+
+    #[test]
+    #[should_panic]
+    fn generate_fog_circle_bitmap_fails_with_radius_zero() {
+
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+ 
+        Universe::new(256,
+                      128,   // height
+                      true, // server_mode
+                      16,   // history
+                      2,    // players
+                      writable_regions,
+                      0,    // fog radius
+                      ).unwrap();
+    }
+
+    #[test]
+    fn clear_fog_with_standard_radius() {
+        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
+        let player1_writable = Region::new(0, 0, 80, 80);
+        let writable_regions = vec![player0_writable, player1_writable];
+        let mut uni = Universe::new(256,
+                                    128,   // height
+                                    true, // server_mode
+                                    16,   // history
+                                    2,    // players
+                                    writable_regions,
+                                    4,    // fog radius
+                                    ).unwrap();
+
+        let history = uni.gen_states.len();
+        let next_state_index = (uni.state_index + 1) % history;
+        let player_id = 0;
+
+        let gen_state_next = if uni.state_index < next_state_index {
+            let (_, p1) = uni.gen_states.split_at_mut(next_state_index);
+            &mut p1[player_id]
+        } else {
+            let (p0, _) = uni.gen_states.split_at_mut(next_state_index + 1);
+            &mut p0[player_id]
+        };
+        let row_index_outside_of_p0_region = 1;
+        let col_index_outside_of_p0_region = 1;
+        let one_bit_to_clear = 1;
+
+        Universe::clear_fog(&mut gen_state_next.player_states[player_id].fog, 
+                            &uni.fog_circle, 
+                            uni.fog_radius, 
+                            uni.width, 
+                            uni.height, 
+                            row_index_outside_of_p0_region, 
+                            col_index_outside_of_p0_region, 
+                            one_bit_to_clear);
+
+        for x in 0..4 {
+            for y in 1..2 {
+                assert_eq!(gen_state_next.player_states[0].fog[x][y], 0b1111111111111111111111111111111111111111111111111111111111110000);
+            }
+        }
+
     }
 }
 
