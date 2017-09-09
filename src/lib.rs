@@ -20,8 +20,114 @@ extern crate env_logger;
 
 use std::fmt;
 
-
 type BitGrid = Vec<Vec<u64>>;
+type UniverseError = &'static str;
+
+/// Builder paradigm to create universes
+pub struct BigBang {
+    width:           usize,
+    height:          usize,
+    is_server:       bool,
+    history:         usize,
+    num_players:     usize,
+    player_writable: Vec<Region>,
+    fog_radius:      usize
+}
+
+/// Player builder
+pub struct PlayerBuilder {
+    writable_region: Region,
+}
+
+impl PlayerBuilder {
+    pub fn new(region: Region) -> PlayerBuilder {
+        PlayerBuilder {
+            writable_region: region,
+        }
+    }
+}
+
+impl BigBang {
+    pub fn new() -> BigBang {
+        BigBang {
+            width: 256,
+            height: 128,
+            is_server: true,
+            history: 16,
+            num_players: 0,
+            player_writable: vec![],
+            fog_radius: 6,
+        }
+    }
+
+    /// Update the total number of columns for this Universe
+    pub fn width(mut self, new_width: usize) -> BigBang {
+        self.width = new_width;
+        self
+    }
+
+    /// Update the total number of rows for this Universe
+    pub fn height(mut self, new_height: usize) -> BigBang {
+        self.height = new_height;
+        self
+    }
+
+    /// Determines whether we are running a Server or a Client
+    /// True - Server
+    /// False - Client
+    pub fn server_mode(mut self, is_server: bool) -> BigBang {
+        self.is_server = is_server;
+        self
+    }
+
+    /// This records the number of generates that will be buffered
+    pub fn history(mut self, history_depth: usize) -> BigBang {
+        self.history = history_depth;
+        self
+    }
+
+    /// This will add a single player to the list of players
+    /// Each player is responsible for providing their details
+    /// through the PlayerBuilder
+    pub fn add_player(mut self, new_player: PlayerBuilder) -> BigBang {
+        self.num_players += 1;
+        self.player_writable.push(new_player.writable_region);
+        assert_eq!(self.num_players, self.player_writable.len()); // These should always match up!
+        self
+    }
+
+    pub fn add_players(mut self, new_player_list: Vec<PlayerBuilder>) -> BigBang {
+        for player in new_player_list {
+            self = self.add_player(player);
+        }
+        self
+    }
+
+    /// Updates the fog to a new visibility radius.
+    /// This is used to grant players visibility into the fog when
+    /// they are competing against other players and they create
+    /// cells outside of their own writiable regions.
+    pub fn fog_radius(mut self, new_radius : usize) -> BigBang {
+        self.fog_radius = new_radius;
+        self
+    }
+
+    /// "Gives life to the universe and the first moment of time."
+    /// Creates a Universe which can then CGoL process generations
+    pub fn birth(&self) -> Result<Universe, UniverseError> {
+        let universe = Universe::new(
+            self.width,
+            self.height,
+            self.is_server,
+            self.history,
+            self.num_players,      // number of players in the game (player numbers are 0-based)
+            self.player_writable.clone(), // writable region (indexed by player_id)
+            self.fog_radius,       // fog radius provides visiblity outside of writable regions
+        );
+        universe
+    }
+}
+
 
 /// Represents a wrapping universe in Conway's game of life.
 pub struct Universe {
@@ -385,7 +491,7 @@ impl Universe {
                history:         usize,
                num_players:     usize,
                player_writable: Vec<Region>,
-               fog_radius:      usize) -> Result<Universe, &'static str> {
+               fog_radius:      usize) -> Result<Universe, UniverseError> {
         if height == 0 {
             return Err("Height must be positive");
         }
@@ -395,6 +501,14 @@ impl Universe {
             return Err("Width must be a multiple of 64");
         } else if width == 0 {
             return Err("Width must be positive");
+        }
+
+        if history == 0 {
+            return Err("History must be positive");
+        }
+
+        if fog_radius == 0 {
+            return Err("Fog radius must be positive");
         }
 
         // Initialize all generational states with the default appropriate bitgrids
@@ -449,10 +563,10 @@ impl Universe {
             state_index:     0,
             gen_states:      gen_states,
             player_writable: player_writable,
-            fog_radius:      0,      // uninitialized
+            fog_radius:      fog_radius,      // uninitialized
             fog_circle:      vec![], // uninitialized
         };
-        uni.generate_fog_circle_bitmap(fog_radius);
+        uni.generate_fog_circle_bitmap();
         Ok(uni)
     }
 
@@ -470,11 +584,8 @@ impl Universe {
     /// * 2: This clears the cell and its neighbors
     /// * 4: Smallest radius at which the cleared fog region is not a square
     /// * 8: Smallest radius at which the cleared fog region is neither square nor octagon
-    fn generate_fog_circle_bitmap(&mut self, fog_radius: usize) {
-        if fog_radius == 0 {
-            panic!("fog_radius must be positive");
-        }
-        self.fog_radius = fog_radius;
+    fn generate_fog_circle_bitmap(&mut self) {
+        let fog_radius = self.fog_radius;
         let height = 2*fog_radius - 1;
         let word_width = (height - 1) / 64 + 1;
         self.fog_circle = new_bitgrid(word_width, height);
@@ -520,6 +631,7 @@ impl Universe {
 
     /// Get the latest generation number (1-based).
     pub fn latest_gen(&self) -> usize {
+        assert!(self.generation != 0);
         self.generation
     }
 
@@ -1024,18 +1136,20 @@ mod universe_tests {
     use super::*;
 
     fn generate_test_universe_with_default_params() -> Universe {
-        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
-        let player1_writable = Region::new(0, 0, 80, 80);
-        let writable_regions = vec![player0_writable, player1_writable];
- 
-        Universe::new(256,
-                      128,   // height
-                      true, // server_mode
-                      16,   // history
-                      2,    // players
-                      writable_regions,
-                      9,    // fog radius
-                      ).unwrap()
+        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
+        let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
+        let players = vec![player0, player1];
+
+        let bigbang = BigBang::new()
+            .width(256)
+            .height(128)
+            .server_mode(true)
+            .history(16)
+            .fog_radius(9)
+            .add_players(players)
+            .birth();
+
+        bigbang.unwrap()
     }
 
     #[test]
@@ -1051,38 +1165,29 @@ mod universe_tests {
     #[test]
     fn new_universe_with_bad_dims() {
 
-        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
-        let player1_writable = Region::new(0, 0, 80, 80);
-        let writable_regions = vec![player0_writable, player1_writable];
+        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
+        let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
+        let players = vec![player0, player1];
 
-        let uni_result1 = Universe::new(255,   // width
-                                        128,   // height
-                                        true,  // server_mode
-                                        16,    // history
-                                        2,     // players
-                                        writable_regions.clone(),
-                                        9
-                                      );
+        let mut bigbang = BigBang::new()
+            .width(256)
+            .height(128)
+            .server_mode(true)
+            .history(16)
+            .fog_radius(9)
+            .add_players(players);
+
+        bigbang = bigbang.width(255);
+
+        let uni_result1 = bigbang.birth();
         assert!(uni_result1.is_err());
 
-        let uni_result2 = Universe::new(256,  // width
-                                        0,    // height
-                                        true, // server_mode
-                                        16,   // history
-                                        2,    // players
-                                        writable_regions.clone(),
-                                        9
-                                      );
+        bigbang = bigbang.width(256).height(0);
+        let uni_result2 = bigbang.birth();
         assert!(uni_result2.is_err());
 
-        let uni_result3 = Universe::new(0,   // width
-                                        256,   // height
-                                        true,  // server_mode
-                                        16,    // history
-                                        2,     // players
-                                        writable_regions.clone(),
-                                        9
-                                      );
+        bigbang = bigbang.width(0).height(256);
+        let uni_result3 = bigbang.birth();
         assert!(uni_result3.is_err());
     }
 
@@ -1095,20 +1200,7 @@ mod universe_tests {
     #[test]
     #[should_panic]
     fn universe_with_no_gens_panics() {
-        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
-        let player1_writable = Region::new(0, 0, 80, 80);
-        let writable_regions = vec![player0_writable, player1_writable];
-
-
-        let mut uni = Universe::new(128,  // width
-                      64,   // height
-                      true, // server_mode
-                      16,   // history
-                      2,    // players
-                      writable_regions,
-                      9
-                      ).unwrap();
-
+        let mut uni = generate_test_universe_with_default_params();
         uni.generation = 0;
         uni.latest_gen();
     }
@@ -1407,7 +1499,8 @@ mod universe_tests {
             vec![0xc001ffffffffffff],
             vec![0xe003ffffffffffff],
             vec![0xf007ffffffffffff]];
-        uni.generate_fog_circle_bitmap(9);
+        uni.fog_radius = 9;
+        uni.generate_fog_circle_bitmap();
         assert_eq!(fog_radius_of_nine, uni.fog_circle);
 
         let fog_radius_of_four = vec![
@@ -1419,7 +1512,8 @@ mod universe_tests {
             vec![0x01ffffffffffffff],
             vec![0x83ffffffffffffff],
         ];
-        uni.generate_fog_circle_bitmap(4);
+        uni.fog_radius = 4;
+        uni.generate_fog_circle_bitmap();
         assert_eq!(fog_radius_of_four, uni.fog_circle);
 
         let fog_radius_of_thirtyfive = vec![
@@ -1494,41 +1588,44 @@ mod universe_tests {
             vec![0xffffffc0001fffff, 0xffffffffffffffff, ],
             ];
 
-        uni.generate_fog_circle_bitmap(35);
+        uni.fog_radius = 35;
+        uni.generate_fog_circle_bitmap();
         assert_eq!(fog_radius_of_thirtyfive, uni.fog_circle);
     }
 
     #[test]
-    #[should_panic]
     fn generate_fog_circle_bitmap_fails_with_radius_zero() {
+        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
+        let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
+        let players = vec![player0, player1];
 
-        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
-        let player1_writable = Region::new(0, 0, 80, 80);
-        let writable_regions = vec![player0_writable, player1_writable];
- 
-        Universe::new(256,
-                      128,   // height
-                      true, // server_mode
-                      16,   // history
-                      2,    // players
-                      writable_regions,
-                      0,    // fog radius
-                      ).unwrap();
+        let uni = BigBang::new()
+            .width(256)
+            .height(128)
+            .server_mode(true)
+            .history(16)
+            .fog_radius(0)
+            .add_players(players)
+            .birth();
+
+        assert!(uni.is_err());
     }
 
     #[test]
     fn clear_fog_with_standard_radius() {
-        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
-        let player1_writable = Region::new(0, 0, 80, 80);
-        let writable_regions = vec![player0_writable, player1_writable];
-        let mut uni = Universe::new(256,
-                                    128,   // height
-                                    true, // server_mode
-                                    16,   // history
-                                    2,    // players
-                                    writable_regions,
-                                    4,    // fog radius
-                                    ).unwrap();
+        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
+        let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
+        let players = vec![player0, player1];
+
+        let mut uni = BigBang::new()
+            .width(256)
+            .height(128)
+            .server_mode(true)
+            .history(16)
+            .fog_radius(4)
+            .add_players(players)
+            .birth()
+            .unwrap();
 
         let history = uni.gen_states.len();
         let next_state_index = (uni.state_index + 1) % history;
