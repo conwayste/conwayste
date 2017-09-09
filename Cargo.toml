@@ -1,6 +1,6 @@
 [package]
 name = "conway"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Aaron Miller <aaron.miller04@gmail.com>", "mang"]
 license = "GPL-3.0+"
 description = "library for multi-player game of life ConWaysteTheEnemy"
