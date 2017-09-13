@@ -17,19 +17,6 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-// TODOs
-// :) detect screen resolution native
-// :) current default resolution
-// :) full screen/ window toggle support
-// :) main menu & settings
-// unit tests
-// :) logging support
-// :) align panning to window border
-// 
-// Modularization
-// :) Menu System
-//
-
 extern crate conway;
 extern crate ggez;
 #[macro_use]
@@ -47,7 +34,7 @@ use ggez::graphics::{Rect, Point, Color};
 use ggez::timer;
 use std::time::Duration;
 use std::fs::File;
-use conway::{Universe, CellState, Region};
+use conway::{BigBang, Universe, CellState, Region, PlayerBuilder};
 use std::collections::BTreeMap;
 
 mod menu;
@@ -63,7 +50,6 @@ const PIXELS_SCROLLED_PER_FRAME: i32 = 50;
 const ZOOM_LEVEL_MIN: u32 = 4;
 const ZOOM_LEVEL_MAX: u32 = 20;
 const HISTORY_SIZE: usize = 16;
-const NUM_PLAYERS: usize = 2;
 const CURRENT_PLAYER_ID: usize = 1; // TODO: get the player ID from server rather than hardcoding
 const FOG_RADIUS: usize = 4;
 
@@ -285,18 +271,34 @@ impl GameState for MainState {
         color_settings.cell_colors.insert(CellState::Wall,           Color::RGB(158, 141, 105));
         color_settings.cell_colors.insert(CellState::Fog,            Color::RGB(200, 200, 200));
 
-        // we're going to have to tear this all out when this becomes a real game
-        let player0_writable = Region::new(100, 70, 34, 16);   // used for the glider gun and predefined patterns
-        let player1_writable = Region::new(0, 0, 80, 80);
-        let writable_regions = vec![player0_writable, player1_writable];
-
         let small_font = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 20).unwrap();
         let menu_font = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 20).unwrap();
+
+        let bigbang = 
+        {
+            // we're going to have to tear this all out when this becomes a real game
+            let player0_writable = Region::new(100, 70, 34, 16);
+            let player1_writable = Region::new(0, 0, 80, 80);
+
+            let player0 = PlayerBuilder::new(player0_writable);
+            let player1 = PlayerBuilder::new(player1_writable);
+            let players = vec![player0, player1];
+
+            BigBang::new()
+            .width(universe_width_in_cells)
+            .height(universe_height_in_cells)
+            .server_mode(true) // TODO will change once we get server support up
+            .history(HISTORY_SIZE)
+            .fog_radius(FOG_RADIUS)
+            .add_players(players)
+            .birth()
+        };
+
         let mut s = MainState {
             small_font:          small_font,
             intro_text:          intro_text,
             stage:               Stage::Intro(INTRO_DURATION),
-            uni:                 Universe::new(universe_width_in_cells, universe_height_in_cells, true, HISTORY_SIZE, NUM_PLAYERS, writable_regions, FOG_RADIUS).unwrap(),
+            uni:                 bigbang.unwrap(),
             first_gen_was_drawn: false,
             grid_view:           grid_view,
             color_settings:      color_settings,
