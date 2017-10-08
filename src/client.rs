@@ -1,4 +1,3 @@
-
 /*  Copyright 2017 the Conwayste Developers.
  *
  *  This file is part of conwayste.
@@ -24,6 +23,7 @@ extern crate version;
 extern crate sdl2;
 #[macro_use] extern crate log;
 extern crate env_logger;
+#[macro_use] extern crate serde_derive;
 
 use ggez::conf;
 use ggez::event::*;
@@ -40,18 +40,18 @@ use std::collections::BTreeMap;
 mod menu;
 mod video;
 mod utils;
+mod config;
 
-
-const FPS: u32 = 25;
-const INTRO_DURATION: f64 = 2.0;
-const DEFAULT_SCREEN_WIDTH: u32 = 1200;
-const DEFAULT_SCREEN_HEIGHT: u32 = 800;
-const PIXELS_SCROLLED_PER_FRAME: i32 = 50;
-const ZOOM_LEVEL_MIN: u32 = 4;
-const ZOOM_LEVEL_MAX: u32 = 20;
-const HISTORY_SIZE: usize = 16;
-const CURRENT_PLAYER_ID: usize = 1; // TODO: get the player ID from server rather than hardcoding
-const FOG_RADIUS: usize = 4;
+const FPS                       : u32   = 25;
+const INTRO_DURATION            : f64   = 2.0;
+const DEFAULT_SCREEN_WIDTH      : u32   = 1200;
+const DEFAULT_SCREEN_HEIGHT     : u32   = 800;
+const PIXELS_SCROLLED_PER_FRAME : i32   = 50;
+const ZOOM_LEVEL_MIN            : u32   = 4;
+const ZOOM_LEVEL_MAX            : u32   = 20;
+const HISTORY_SIZE              : usize = 16;
+const CURRENT_PLAYER_ID         : usize = 1; // TODO :  get the player ID from server rather than hardcoding
+const FOG_RADIUS                : usize = 4;
 
 #[derive(PartialEq, Clone)]
 enum Stage {
@@ -79,6 +79,7 @@ struct MainState {
     running:             bool,
     menu_sys:            menu::MenuSystem,
     video_settings:      video::VideoSettings,
+    config:              config::ConfigFile,
 
     // Input state
     single_step:         bool,
@@ -245,16 +246,33 @@ impl GameState for MainState {
         let universe_width_in_cells  = 256;
         let universe_height_in_cells = 120;
 
+        let mut config = config::ConfigFile::new();
+
         let mut vs = video::VideoSettings::new();
         vs.gather_display_modes(_ctx);
         vs.print_resolutions();
-        // This will set resolution to first supported & discovered res
-        vs.advance_to_next_resolution(_ctx);
+        
+        // On first-run, use default supported resolution
+        let (w, h) = config.get_resolution();
+        if (w,h) != (0,0) {
+            vs.set_active_resolution(_ctx, w, h);
+        } else {
+            vs.advance_to_next_resolution(_ctx);
+
+            // Some duplication here to update the config file
+            // I don't want to do this every load() to avoid
+            // unnecessary file writes
+            let (w,h) = vs.get_active_resolution();
+            config.set_resolution(w,h);
+        }
         let (w,h) = vs.get_active_resolution();
+
+        video::set_fullscreen(_ctx, config.is_fullscreen() == true);
+        vs.is_fullscreen = config.is_fullscreen() == true;
 
         let grid_view = GridView {
             rect:        Rect::new(0, 0, w as u32, h as u32),
-            cell_size:   10,
+            cell_size:   config.get_zoom_level(),
             columns:     universe_width_in_cells,
             rows:        universe_height_in_cells,
             grid_origin: Point::new(0, 0),
@@ -272,7 +290,7 @@ impl GameState for MainState {
         color_settings.cell_colors.insert(CellState::Fog,            Color::RGB(200, 200, 200));
 
         let small_font = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 20).unwrap();
-        let menu_font = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 20).unwrap();
+        let menu_font  = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 20).unwrap();
 
         let bigbang = 
         {
@@ -305,6 +323,7 @@ impl GameState for MainState {
             running:             false,
             menu_sys:            menu::MenuSystem::new(menu_font),
             video_settings:      vs,
+            config:              config,
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -338,6 +357,11 @@ impl GameState for MainState {
             }
             Stage::Menu => {
                 
+
+                if self.config.is_dirty() {
+                    self.config.write();
+                }
+
                 let is_direction_key_pressed = {
                     self.menu_sys.get_controls().is_menu_key_pressed()
                 };
@@ -349,7 +373,7 @@ impl GameState for MainState {
                     let (_,y) = self.arrow_input;
                     {
                         let container = self.menu_sys.get_menu_container(&cur_menu_state); 
-                        let mut mainmenu_md = container.get_metadata();
+                        let mainmenu_md = container.get_metadata();
                         mainmenu_md.adjust_index(y);
                     }
                     self.menu_sys.get_controls().set_menu_key_pressed(true);
@@ -444,11 +468,19 @@ impl GameState for MainState {
                                     menu::MenuItemIdentifier::Fullscreen => {
                                         if !self.escape_key_pressed {
                                             self.video_settings.is_fullscreen = video::toggle_full_screen(_ctx);
+                                            self.config.set_fullscreen(self.video_settings.is_fullscreen == true);
                                         }
                                     }
                                     menu::MenuItemIdentifier::Resolution => {
                                         if !self.escape_key_pressed {
                                             self.video_settings.advance_to_next_resolution(_ctx);
+
+                                            // Update the configuration file and resize the viewing
+                                            // screen
+                                            let (w,h) = self.video_settings.get_active_resolution();
+                                            self.config.set_resolution(w,h);
+                                            self.grid_view.rect.set_width(w as u32);
+                                            self.grid_view.rect.set_height(h as u32);
                                         }
                                     }
                                     _ => {}
@@ -497,7 +529,6 @@ impl GameState for MainState {
                 self.menu_sys.draw_menu(&self.video_settings, _ctx, self.first_gen_was_drawn);
             }
             Stage::Run => {
-                ////////// draw universe
                 self.draw_universe(_ctx);
             }
             Stage::Exit => {
@@ -569,7 +600,9 @@ impl GameState for MainState {
                             self.arrow_input = (1, 0);
                         }
                         Keycode::Return => {
-                            self.return_key_pressed = true;
+                            if !repeat {
+                                self.return_key_pressed = true;
+                            }
                         }
                         Keycode::Escape => {
                             self.escape_key_pressed = true;
@@ -604,9 +637,11 @@ impl GameState for MainState {
                     }
                     Keycode::Plus | Keycode::Equals => {
                         self.adjust_zoom_level(ZoomDirection::ZoomIn);
+                        self.config.set_zoom_level(self.grid_view.cell_size);
                     }
                     Keycode::Minus | Keycode::Underscore => {
                         self.adjust_zoom_level(ZoomDirection::ZoomOut);
+                        self.config.set_zoom_level(self.grid_view.cell_size);
                     }
                     Keycode::Num1 => {
                        self.win_resize = 1;
@@ -616,6 +651,9 @@ impl GameState for MainState {
                     }
                     Keycode::Num3 => {
                        self.win_resize = 3;
+                    }
+                    Keycode::P => {
+                        self.config.print_to_screen();
                     }
                     Keycode::LGui => {
                     
@@ -919,9 +957,6 @@ struct WindowCornersInGameCoords {
     bottom_right: Point,
 }
 
-
-
-
 // Controls the mapping between window and game coordinates
 struct GridView {
     rect:        Rect,  // the area the game grid takes up on screen
@@ -935,8 +970,6 @@ struct GridView {
 
 
 impl GridView {
-
-
 
     fn game_coords_from_window_unchecked(&self, point: Point) -> (isize, isize) {
         let col: isize = ((point.x() - self.grid_origin.x()) / self.cell_size as i32) as isize;
@@ -954,8 +987,6 @@ impl GridView {
         }
         Some((col , row ))
     }
-
-
 
     // Attempt to return a rectangle for the on-screen area of the specified cell.
     // If partially in view, will be clipped by the bounding rectangle.
@@ -1002,7 +1033,7 @@ pub fn main() {
     c.window_title  = "💥 conwayste 💥".to_string();
 
     // save conf to .toml file
-    let mut f = File::create("conwayste.toml").unwrap(); //XXX
+    let mut f = File::create("ggez.toml").unwrap(); //XXX
     c.to_toml_file(&mut f).unwrap();
 
     let mut game: Game<MainState> = Game::new("conwayste", c).unwrap();

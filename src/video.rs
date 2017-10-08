@@ -1,5 +1,20 @@
-extern crate ggez;
-extern crate env_logger;
+/*  Copyright 2017 the Conwayste Developers.
+ *
+ *  This file is part of conwayste.
+ *
+ *  conwayste is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  conwayste is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with conwayste.  If not, see
+ *  <http://www.gnu.org/licenses/>. */
 
 use ggez::Context;
 use sdl2::video::{FullscreenType, DisplayMode};
@@ -75,16 +90,16 @@ impl VideoSettings {
         self.resolution
     }
 
-    pub fn set_active_resolution(&mut self, w: i32, h: i32) {
+    pub fn set_active_resolution(&mut self, _ctx: &mut Context, w: i32, h: i32) {
         self.resolution = (w,h);
+        refresh_game_resolution(_ctx, w, h);
     }
 
     pub fn advance_to_next_resolution(&mut self, _ctx: &mut Context) {
         let (width, height) = self.res_manager.set_next_supported_resolution();
-        self.set_active_resolution(width, height);
+        self.set_active_resolution(_ctx, width, height);
 
-        refresh_game_resolution(_ctx, width, height);
-        println!("{:?}", (width, height));
+        info!("{:?}", (width, height));
     }
 
 }
@@ -100,6 +115,20 @@ pub fn toggle_full_screen(_ctx: &mut Context) -> bool {
         FullscreenType::Off => {new_fs_type = FullscreenType::True;}
         FullscreenType::True => {new_fs_type = FullscreenType::Off;}
         _ => {}
+    }
+    let _ = window.set_fullscreen(new_fs_type);
+    
+    new_fs_type == FullscreenType::True
+}
+
+pub fn set_fullscreen(_ctx: &mut Context, fullscreen: bool) -> bool {
+    let renderer = &mut _ctx.renderer;
+    let window = renderer.window_mut().unwrap();
+    let new_fs_type;
+
+    match fullscreen {
+        true => {new_fs_type = FullscreenType::True;}
+        false => {new_fs_type = FullscreenType::Off;}
     }
     let _ = window.set_fullscreen(new_fs_type);
     
