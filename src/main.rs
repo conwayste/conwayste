@@ -1,62 +1,70 @@
 extern crate futures;
-#[macro_use]
+extern crate env_logger;
 extern crate tokio_core;
 
-use std::{env, io};
+use std::io;
 use std::net::SocketAddr;
+use std::str;
 
-use futures::{Future, Poll};
-use tokio_core::net::UdpSocket;
+use futures::{Future, Stream, Sink};
+use tokio_core::net::{UdpSocket, UdpCodec};
 use tokio_core::reactor::Core;
 
-struct Server {
-    socket:  UdpSocket,
-    buf:     Vec<u8>,
-    to_send: Option<(usize, SocketAddr)>,
-}
+pub struct LineCodec;
 
-impl Future for Server {
-    type Item = ();
-    type Error = io::Error;
+impl UdpCodec for LineCodec {
+    type In = (SocketAddr, Vec<u8>);
+    type Out = (SocketAddr, Vec<u8>);
 
-    fn poll(&mut self) -> Poll<(), io::Error> {
-        let mut n = 0;
-        loop {
-            n += 1;
-            println!("loop {} within poll", n);
-            // First we check to see if there's a message we need to echo back.
-            // If so then we try to send it back to the original source, waiting
-            // until it's writable and we're able to do so.
-            if let Some((size, peer)) = self.to_send {
-                let amt = try_nb!(self.socket.send_to(&self.buf[..size], &peer));
-                println!("Echoed {}/{} bytes to {}", amt, size, peer);
-                self.to_send = None;
-            }
+    fn decode(&mut self, addr: &SocketAddr, buf: &[u8]) -> io::Result<Self::In> {
+        Ok((*addr, buf.to_vec()))
+    }
 
-            // If we're here then `to_send` is `None`, so we take a look for the
-            // next message we're going to echo back.
-            self.to_send = Some(try_nb!(self.socket.recv_from(&mut self.buf)));
-            println!("got to end of loop {}", n);
-        }
+    fn encode(&mut self, (addr, buf): Self::Out, into: &mut Vec<u8>) -> SocketAddr {
+        into.extend(buf);
+        addr
     }
 }
 
 fn main() {
-    let addr = env::args().nth(1).unwrap_or("[::1]:12345".to_string());
-    let addr = addr.parse::<SocketAddr>().unwrap();
+    drop(env_logger::init());
 
-    // Create the event loop that will drive this server, and also bind the socket we'll be
-    // listening to.
-    let mut l = Core::new().unwrap();
-    let handle = l.handle();
-    let socket = UdpSocket::bind(&addr, &handle).unwrap();
-    println!("Listening on: {}", socket.local_addr().unwrap());
+    let mut core = Core::new().unwrap();
+    let handle = core.handle();
 
-    // Next we'll create a future to spawn (the one we defined above) and then we'll run the event
-    // loop by running the future.
-    l.run(Server {
-        socket: socket,
-        buf: vec![0; 1024],
-        to_send: None,
-    }).unwrap();
+    let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();  // port 0 means "pick a port for me" :)
+
+    // Bind both our sockets and then figure out what ports we got.
+    let a = UdpSocket::bind(&addr, &handle).unwrap();
+    let b = UdpSocket::bind(&addr, &handle).unwrap();
+    let b_addr = b.local_addr().unwrap();
+
+    // We're parsing each socket with the `LineCodec` defined above, and then we
+    // `split` each codec into the sink/stream halves.
+    let (a_sink, a_stream) = a.framed(LineCodec).split();
+    let (b_sink, b_stream) = b.framed(LineCodec).split();
+
+    // Start off by sending a ping from a to b, afterwards we just print out
+    // what they send us and continually send pings
+    // let pings = stream::iter((0..5).map(Ok));
+    let a = a_sink.send((b_addr, b"PING".to_vec())).and_then(|a_sink| {
+        let mut i = 0;
+        let new_a_stream = a_stream.take(4).map(move |(addr, msg)| {
+            i += 1;
+            println!("[a] i={} recv: {}", i, String::from_utf8_lossy(&msg));
+            (addr, b"PONG".to_vec())
+        });
+        a_sink.send_all(new_a_stream)
+    });
+
+    // The second client we have will receive the pings from `a` and then send back pongs.
+    let new_b_stream = b_stream.map(|(addr, msg)| {
+        println!("[b].recv: {}", String::from_utf8_lossy(&msg));
+        (addr, b"PONG".to_vec())
+    });
+    let b = b_sink.send_all(new_b_stream);
+
+    // Spawn the sender of pongs and then wait for our pinger to finish.
+    handle.spawn(b.then(|_| Ok(())));
+    drop(core.run(a));
 }
