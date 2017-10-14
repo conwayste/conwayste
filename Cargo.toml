@@ -1,0 +1,8 @@
+[package]
+name = "tokio_udp_test"
+version = "0.1.0"
+authors = ["Aaron Miller <aaron.miller04@gmail.com>"]
+
+[dependencies]
+futures    = "0.1.16"
+tokio-core = "0.1.9"
