@@ -110,7 +110,7 @@ impl ColorSettings {
 fn init_patterns(s: &mut MainState) -> Result<(), ()> {
     /*
     // R pentomino
-s.uni.toggle(16, 15, 0)?;
+    s.uni.toggle(16, 15, 0)?;
     s.uni.toggle(17, 15, 0)?;
     s.uni.toggle(15, 16, 0)?;
     s.uni.toggle(16, 16, 0)?;
@@ -175,57 +175,19 @@ s.uni.toggle(16, 15, 0)?;
     s.uni.toggle(132, 82, 0)?;
 
     //Wall!
-    s.uni.set_unchecked(25, 18, CellState::Wall);
-    s.uni.set_unchecked(25, 17, CellState::Wall);
-    s.uni.set_unchecked(25, 16, CellState::Wall);
-    s.uni.set_unchecked(25, 15, CellState::Wall);
-    s.uni.set_unchecked(25, 14, CellState::Wall);
-    s.uni.set_unchecked(25, 13, CellState::Wall);
-    s.uni.set_unchecked(25, 12, CellState::Wall);
-    s.uni.set_unchecked(25, 11, CellState::Wall);
-    s.uni.set_unchecked(25, 10, CellState::Wall);
-    s.uni.set_unchecked(24, 10, CellState::Wall);
-    s.uni.set_unchecked(23, 10, CellState::Wall);
-    s.uni.set_unchecked(22, 10, CellState::Wall);
-    s.uni.set_unchecked(21, 10, CellState::Wall);
-    s.uni.set_unchecked(20, 10, CellState::Wall);
-    s.uni.set_unchecked(19, 10, CellState::Wall);
-    s.uni.set_unchecked(18, 10, CellState::Wall);
-    s.uni.set_unchecked(17, 10, CellState::Wall);
-    s.uni.set_unchecked(16, 10, CellState::Wall);
-    s.uni.set_unchecked(15, 10, CellState::Wall);
-    s.uni.set_unchecked(14, 10, CellState::Wall);
-    s.uni.set_unchecked(13, 10, CellState::Wall);
-    s.uni.set_unchecked(12, 10, CellState::Wall);
-    s.uni.set_unchecked(11, 10, CellState::Wall);
-    s.uni.set_unchecked(10, 10, CellState::Wall);
-    s.uni.set_unchecked(10, 11, CellState::Wall);
-    s.uni.set_unchecked(10, 12, CellState::Wall);
-    s.uni.set_unchecked(10, 13, CellState::Wall);
-    s.uni.set_unchecked(10, 14, CellState::Wall);
-    s.uni.set_unchecked(10, 15, CellState::Wall);
-    s.uni.set_unchecked(10, 16, CellState::Wall);
-    s.uni.set_unchecked(10, 17, CellState::Wall);
-    s.uni.set_unchecked(10, 18, CellState::Wall);
-    s.uni.set_unchecked(10, 19, CellState::Wall);
-    s.uni.set_unchecked(10, 20, CellState::Wall);
-    s.uni.set_unchecked(10, 21, CellState::Wall);
-    s.uni.set_unchecked(10, 22, CellState::Wall);
-    s.uni.set_unchecked(11, 22, CellState::Wall);
-    s.uni.set_unchecked(12, 22, CellState::Wall);
-    s.uni.set_unchecked(13, 22, CellState::Wall);
-    s.uni.set_unchecked(14, 22, CellState::Wall);
-    s.uni.set_unchecked(15, 22, CellState::Wall);
-    s.uni.set_unchecked(16, 22, CellState::Wall);
-    s.uni.set_unchecked(17, 22, CellState::Wall);
-    s.uni.set_unchecked(18, 22, CellState::Wall);
-    s.uni.set_unchecked(19, 22, CellState::Wall);
-    s.uni.set_unchecked(20, 22, CellState::Wall);
-    s.uni.set_unchecked(21, 22, CellState::Wall);
-    s.uni.set_unchecked(22, 22, CellState::Wall);
-    s.uni.set_unchecked(23, 22, CellState::Wall);
-    s.uni.set_unchecked(24, 22, CellState::Wall);
-    s.uni.set_unchecked(25, 22, CellState::Wall);
+    for row in 10..19 {
+        s.uni.set_unchecked(25, row, CellState::Wall);
+    }
+    for col in 10..25 {
+        s.uni.set_unchecked(col, 10, CellState::Wall);
+    }
+    for row in 11..23 {
+        s.uni.set_unchecked(10, row, CellState::Wall);
+    }
+    for col in 11..26 {
+        s.uni.set_unchecked(col, 22, CellState::Wall);
+    }
+
     Ok(())
 }
 
