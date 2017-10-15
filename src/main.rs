@@ -14,7 +14,6 @@ use tokio_core::net::{UdpSocket, UdpCodec};
 use tokio_core::reactor::Core;
 use bincode::{serialize, deserialize, Infinite};
 
-struct LineCodec;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 enum Action {
@@ -29,6 +28,8 @@ struct PlayerPacket {
     action:      Action,
 }
 
+
+struct LineCodec;
 impl UdpCodec for LineCodec {
     type In = (SocketAddr, PlayerPacket);
     type Out = (SocketAddr, PlayerPacket);
