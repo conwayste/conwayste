@@ -6,8 +6,8 @@ Multiplayer Conway's Game of Life!
 `conwayste` depends on `SDL2`, `SDL2_Mixer` and `SDL2_Image`. We do plan on bundling these libraries with the binary at some point in the future, but for now you'll need to manually install them. The versions needed are:
 
 * `SDL2 v2.0.5`
-* `SDL2\_Mixer v2.0.1`
-* `SDL2\_Image v2.0.1`
+* `SDL2_Mixer v2.0.1`
+* `SDL2_Image v2.0.1`
 
 Make sure your Rust is up to date! The easiest way is through rustup.
 
@@ -25,21 +25,21 @@ brew install sdl2_image
 brew install sdl2_mixer --with-libvorbis
 ```
 
-On Fedora you can use yum:
+On Fedora you can use `dnf`; this will install pretty much everything you'll need:
 
 ```
-TBD
+sudo dnf install SDL2*
 ```
 
 Debian stable only supports SDL2 v.2.0.4 so you'll need to compile SDL2 from source.
-If you're compiling from source the steps will be very similar.
+If you're compiling from source make sure you specify vorbis support.
 
 ```
 ...
 ./configure --with-vorbis
 ```
 
-And then add the libraries to your path. This step is necessary if cargo fails to link against theSDL2 libraries.
+**(If necessary)** Add the libraries to your path. This step is necessary if cargo fails to link against the SDL2 libraries.
  
 Under Linux, I had to export `$LD_LIBRARY_PATH`, but in Mac it was `$LIBRARY_PATH`.
 Homebrew will install the libraries to the Cellar. 
@@ -80,7 +80,7 @@ cargo update -p conway
 
 ## Contributors
 
-* mang
+* manghi
 
 * aaronm04
 
