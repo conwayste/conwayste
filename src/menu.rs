@@ -307,12 +307,12 @@ impl MenuSystem {
     }
 
     fn draw_general_menu_view(&mut self, _ctx: &mut Context, index: &i32, cur_menu_state: &MenuState, has_game_started: bool) {
-        /// Menu Navigation 
+        // Menu Navigation 
         /////////////////////////////////////////
         match self.menu_state {
              MenuState::MainMenu | MenuState::Options | MenuState::Audio | MenuState::Gameplay | MenuState::Video => {
 
-                /// Draw all menu Items
+                // Draw all menu Items
                 ////////////////////////////////////////////////
                 {
                     let container = self.menus.get(cur_menu_state).unwrap();
@@ -333,7 +333,7 @@ impl MenuSystem {
                     }
                 }
 
-                /// Denote Current Selection
+                // Denote Current Selection
                 ////////////////////////////////////////////////////
                 {
                     let cur_option_str = " >";
@@ -351,14 +351,14 @@ impl MenuSystem {
     fn draw_specific_menu_view(&mut self, video_settings: &video::VideoSettings,_ctx: &mut Context) {
         match self.menu_state {
             ////////////////////////////////////
-            /// V I D E O
+            // V I D E O
             ///////////////////////////////////
             MenuState::Video => {
                 let ref container = self.menus.get(&MenuState::Video).unwrap();
                 let anchor = container.get_anchor();
 
                 ///////////////////////////////
-                //// Fullscreen
+                // Fullscreen
                 ///////////////////////////////
                 {
                     let coords = Point::new(anchor.x() + 200, anchor.y());
@@ -368,7 +368,7 @@ impl MenuSystem {
                }
 
                 ////////////////////////////////
-                //// Resolution
+                // Resolution
                 ///////////////////////////////
                 {
                     let coords = Point::new(anchor.x() + 200, anchor.y() + 50);
