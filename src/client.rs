@@ -47,7 +47,7 @@ const INTRO_DURATION            : f64   = 2.0;
 const DEFAULT_SCREEN_WIDTH      : u32   = 1200;
 const DEFAULT_SCREEN_HEIGHT     : u32   = 800;
 const PIXELS_SCROLLED_PER_FRAME : i32   = 50;
-const ZOOM_LEVEL_MIN            : u32   = 4;
+const ZOOM_LEVEL_MIN            : u32   = 5;
 const ZOOM_LEVEL_MAX            : u32   = 20;
 const HISTORY_SIZE              : usize = 16;
 const CURRENT_PLAYER_ID         : usize = 1; // TODO :  get the player ID from server rather than hardcoding
@@ -111,7 +111,7 @@ impl ColorSettings {
 fn init_patterns(s: &mut MainState) -> Result<(), ()> {
     /*
     // R pentomino
-s.uni.toggle(16, 15, 0)?;
+    s.uni.toggle(16, 15, 0)?;
     s.uni.toggle(17, 15, 0)?;
     s.uni.toggle(15, 16, 0)?;
     s.uni.toggle(16, 16, 0)?;
@@ -176,57 +176,19 @@ s.uni.toggle(16, 15, 0)?;
     s.uni.toggle(132, 82, 0)?;
 
     //Wall!
-    s.uni.set_unchecked(25, 18, CellState::Wall);
-    s.uni.set_unchecked(25, 17, CellState::Wall);
-    s.uni.set_unchecked(25, 16, CellState::Wall);
-    s.uni.set_unchecked(25, 15, CellState::Wall);
-    s.uni.set_unchecked(25, 14, CellState::Wall);
-    s.uni.set_unchecked(25, 13, CellState::Wall);
-    s.uni.set_unchecked(25, 12, CellState::Wall);
-    s.uni.set_unchecked(25, 11, CellState::Wall);
-    s.uni.set_unchecked(25, 10, CellState::Wall);
-    s.uni.set_unchecked(24, 10, CellState::Wall);
-    s.uni.set_unchecked(23, 10, CellState::Wall);
-    s.uni.set_unchecked(22, 10, CellState::Wall);
-    s.uni.set_unchecked(21, 10, CellState::Wall);
-    s.uni.set_unchecked(20, 10, CellState::Wall);
-    s.uni.set_unchecked(19, 10, CellState::Wall);
-    s.uni.set_unchecked(18, 10, CellState::Wall);
-    s.uni.set_unchecked(17, 10, CellState::Wall);
-    s.uni.set_unchecked(16, 10, CellState::Wall);
-    s.uni.set_unchecked(15, 10, CellState::Wall);
-    s.uni.set_unchecked(14, 10, CellState::Wall);
-    s.uni.set_unchecked(13, 10, CellState::Wall);
-    s.uni.set_unchecked(12, 10, CellState::Wall);
-    s.uni.set_unchecked(11, 10, CellState::Wall);
-    s.uni.set_unchecked(10, 10, CellState::Wall);
-    s.uni.set_unchecked(10, 11, CellState::Wall);
-    s.uni.set_unchecked(10, 12, CellState::Wall);
-    s.uni.set_unchecked(10, 13, CellState::Wall);
-    s.uni.set_unchecked(10, 14, CellState::Wall);
-    s.uni.set_unchecked(10, 15, CellState::Wall);
-    s.uni.set_unchecked(10, 16, CellState::Wall);
-    s.uni.set_unchecked(10, 17, CellState::Wall);
-    s.uni.set_unchecked(10, 18, CellState::Wall);
-    s.uni.set_unchecked(10, 19, CellState::Wall);
-    s.uni.set_unchecked(10, 20, CellState::Wall);
-    s.uni.set_unchecked(10, 21, CellState::Wall);
-    s.uni.set_unchecked(10, 22, CellState::Wall);
-    s.uni.set_unchecked(11, 22, CellState::Wall);
-    s.uni.set_unchecked(12, 22, CellState::Wall);
-    s.uni.set_unchecked(13, 22, CellState::Wall);
-    s.uni.set_unchecked(14, 22, CellState::Wall);
-    s.uni.set_unchecked(15, 22, CellState::Wall);
-    s.uni.set_unchecked(16, 22, CellState::Wall);
-    s.uni.set_unchecked(17, 22, CellState::Wall);
-    s.uni.set_unchecked(18, 22, CellState::Wall);
-    s.uni.set_unchecked(19, 22, CellState::Wall);
-    s.uni.set_unchecked(20, 22, CellState::Wall);
-    s.uni.set_unchecked(21, 22, CellState::Wall);
-    s.uni.set_unchecked(22, 22, CellState::Wall);
-    s.uni.set_unchecked(23, 22, CellState::Wall);
-    s.uni.set_unchecked(24, 22, CellState::Wall);
-    s.uni.set_unchecked(25, 22, CellState::Wall);
+    for row in 10..19 {
+        s.uni.set_unchecked(25, row, CellState::Wall);
+    }
+    for col in 10..25 {
+        s.uni.set_unchecked(col, 10, CellState::Wall);
+    }
+    for row in 11..23 {
+        s.uni.set_unchecked(10, row, CellState::Wall);
+    }
+    for col in 11..26 {
+        s.uni.set_unchecked(col, 22, CellState::Wall);
+    }
+
     Ok(())
 }
 
@@ -507,9 +469,7 @@ impl GameState for MainState {
                     self.pause_or_resume_game();
                 }
 
-                if self.arrow_input != (0, 0) {
-                    self.adjust_panning();
-                }
+                self.adjust_panning(false);
             }
             Stage::Exit => {
                let _ = _ctx.quit();
@@ -781,8 +741,8 @@ impl MainState {
     }
 
     fn adjust_zoom_level(&mut self, direction : ZoomDirection) {
-        if (direction == ZoomDirection::ZoomIn && self.grid_view.cell_size < ZOOM_LEVEL_MAX) ||
-           (direction == ZoomDirection::ZoomOut && self.grid_view.cell_size > ZOOM_LEVEL_MIN) {
+        if (direction == ZoomDirection::ZoomIn && self.grid_view.cell_size < MAX_CELL_SIZE) ||
+           (direction == ZoomDirection::ZoomOut && self.grid_view.cell_size > MIN_CELL_SIZE) {
 
             let zoom_dir: i32;
             match direction {
@@ -794,8 +754,8 @@ impl MainState {
             debug!("Origin Before: ({},{})", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
             debug!("Cell Size Before: {},", self.grid_view.cell_size);
 
-            let old_cell_size = self.grid_view.cell_size;
             let next_cell_size = self.grid_view.cell_size as i32 + zoom_dir;
+            let old_cell_size = self.grid_view.cell_size as i32;
 
             let window_center = Point::new((self.grid_view.rect.width()/2) as i32, (self.grid_view.rect.height()/2) as i32);
 
@@ -808,7 +768,16 @@ impl MainState {
 
                 self.grid_view.cell_size = next_cell_size as u32;
 
-                self.grid_view.grid_origin = self.grid_view.grid_origin.offset(-zoom_dir * (delta_x as i32), -zoom_dir * (delta_y as i32));
+                let columns = self.grid_view.columns as u32;
+
+                let phi = columns as i32 * old_cell_size as i32;
+                let alpha = self.grid_view.rect.width() as i32;
+
+                if phi > alpha {
+                    self.grid_view.grid_origin = self.grid_view.grid_origin.offset(-zoom_dir * (delta_x as i32), -zoom_dir * (delta_y as i32));
+                }
+
+                self.adjust_panning(true);
 
                 debug!("Origin After: ({},{})\n", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
                 debug!("Cell Size After: {},", self.grid_view.cell_size);
@@ -816,24 +785,8 @@ impl MainState {
         }
     }
 
-    fn adjust_panning(&mut self) {
-        let cell_size = self.grid_view.cell_size;
+    fn adjust_panning(&mut self, recenter_after_zoom: bool) {
         let (columns, rows) = (self.grid_view.columns as u32, self.grid_view.rows as u32);
-
-        // When qualifying a new origin for movement, we need to always keep 
-        // in mind where it, and the bottom/right corner, stand with respect to the boundaries of the virtual window edges.
-        //
-        //   Universe
-        // ---------------               
-        // |                             
-        // |     Window      Window      
-        // |   +====                :   |
-        // |   :                    :   |
-        // |   :                ====+   |
-        // |                            |
-        // |                -------------
-        //                     Universe  
-        //
 
         debug!("\n\nP A N N I N G:");
         debug!("Columns, Rows = {:?}", (columns, rows));
@@ -845,87 +798,92 @@ impl MainState {
         let cur_origin_x = self.grid_view.grid_origin.x();
         let cur_origin_y = self.grid_view.grid_origin.y();
 
-        let mut new_origin_x = cur_origin_x + dx_in_pixels;
-        let mut new_origin_y = cur_origin_y + dy_in_pixels;
+        let new_origin_x = cur_origin_x + dx_in_pixels;
+        let new_origin_y = cur_origin_y + dy_in_pixels;
 
-        let cur_origin_x_in_gc = cur_origin_x/cell_size as i32 + 1;
-        let cur_origin_y_in_gc = cur_origin_y/cell_size as i32 + 1;
-
-        let new_origin_x_in_gc = new_origin_x/cell_size as i32 + 1;
-        let new_origin_y_in_gc = new_origin_y/cell_size as i32 + 1;
-
+        let cell_size = self.grid_view.cell_size;
         let border_in_cells = 10;
+        let border_in_px = border_in_cells * cell_size as i32;
 
         debug!("Cell Size: {:?}", (cell_size));
 
-        let right_boundary_in_gc = columns as i32;
-        let bottom_boundary_in_gc = rows  as i32;
+        let mut pan = true;
+        let mut limit_x = self.grid_view.grid_origin.x();
+        let mut limit_y = self.grid_view.grid_origin.y();
+        // Here we check if we're at our limits. In all other cases, we'll fallthrough to the
+        // bottom grid_origin offsetting
 
-        debug!("Cur Origin in GC: {:?}", (cur_origin_x_in_gc, cur_origin_y_in_gc));
-        debug!("Bottom Right Corner in GC: {:?}", (right_boundary_in_gc, bottom_boundary_in_gc));
-
-        // Get the game coordinates of the two corners
-        if let Some(w_in_gc) = self.get_all_window_coords_in_game_coords() { // use w_in_gc to calculate the distance between
-            let (mut offset_x, mut offset_y) = (dx_in_pixels, dy_in_pixels);
-            let mut pan_x = true;
-            let mut pan_y = true;
-
-            debug!("[X] Top Left Window::{:?}  |  TL Universe::{:?}", w_in_gc.top_left.x(), new_origin_x_in_gc);
-            if (w_in_gc.top_left.x() < new_origin_x_in_gc)
-            && (new_origin_x_in_gc - w_in_gc.top_left.x() > border_in_cells) {
-                offset_x = -10;
-                pan_x = true;
-                debug!("Could not pan [Top_Left_X]");
-            }
-
-             debug!("[Y] Top Left Window::{:?}  |  TL Universe::{:?}", w_in_gc.top_left.y(), new_origin_y_in_gc);
-            if (w_in_gc.top_left.y() < new_origin_y_in_gc)
-            && (new_origin_y_in_gc - w_in_gc.top_left.y() > border_in_cells) {
-                offset_y = -10;
-                pan_y = true;
-                debug!("Could not pan [Top_Left_Y]");
-            }
-            
-            debug!("[X] Bot Right Window::{:?}  |  BR Universe::{:?}", w_in_gc.bottom_right.x(), right_boundary_in_gc);
-            if (w_in_gc.bottom_right.x() > right_boundary_in_gc)
-            && (w_in_gc.bottom_right.x() - right_boundary_in_gc > border_in_cells) {
-                offset_x = 10;
-                pan_x = true;
-                debug!("Could not pan [Bot_Right_X]");
-            }
-
-            debug!("[Y] Bot Right Window::{:?}  |  BR Universe::{:?}", w_in_gc.bottom_right.y(), bottom_boundary_in_gc);
-            if (w_in_gc.bottom_right.y() > bottom_boundary_in_gc)
-            && (w_in_gc.bottom_right.y() - bottom_boundary_in_gc > border_in_cells) {
-                offset_y = 10;
-                pan_y = true;
-                debug!("Could not pan [Bot_Right_Y]");
-            }
-            
-            debug!("TwoCanPan [X|Y]: {:?}", (pan_x, pan_y));
-            debug!("Panning Offsets: {:?}", (offset_x, offset_y));
-            
-            if pan_x {
-                self.grid_view.grid_origin = self.grid_view.grid_origin.offset(offset_x, 0);
-            }
-
-            if pan_y {
-                self.grid_view.grid_origin = self.grid_view.grid_origin.offset(0, offset_y);
-            }
-
-            if pan_y || pan_x {
-                debug!("New Origin: {:?}", self.grid_view.grid_origin);
+        // Panning left
+        if self.arrow_input.0 == -1 || recenter_after_zoom {
+            if new_origin_x > 0 {
+                if new_origin_x > border_in_px {
+                    pan = false;
+                    limit_x = border_in_px;
+                }
             }
         }
 
-        new_origin_x = self.grid_view.grid_origin.x();
-        new_origin_y = self.grid_view.grid_origin.y();
+        // Panning right
+        //
+        //  /      α     \
+        //                  v------ includes the border
+        //  |------------|----|
+        //  |            |    |
+        //  |            |    |
+        //  |            |    |
+        //  |------------|----|
+        //
+        //  \        ϕ        /
+        //
+        if self.arrow_input.0 == 1 || recenter_after_zoom {
+            let phi = (border_in_cells + columns as i32)*(cell_size as i32);
+            let alpha = self.grid_view.rect.width() as i32;
 
-        debug!("New Origin: {:?}", (new_origin_x, new_origin_y));
-        debug!("Bottom Right Corner In Cells: {:?}", (right_boundary_in_gc, bottom_boundary_in_gc));
+            if phi > alpha && i32::abs(new_origin_x) >= phi - alpha {
+                pan = false;
+                limit_x = -(phi - alpha);
+            }
+
+            if phi < alpha {
+                pan = false;
+            }
+        }
+
+        // Panning up
+        if self.arrow_input.1 == -1 || recenter_after_zoom {
+            if new_origin_y > 0 && new_origin_y > border_in_px {
+                pan = false;
+                limit_y = border_in_px;
+            }
+        }
+
+        // Panning down
+        if self.arrow_input.1 == 1 || recenter_after_zoom {
+            let phi = (border_in_cells + rows as i32)*(cell_size as i32);
+            let alpha = self.grid_view.rect.height() as i32;
+
+            if phi > alpha && i32::abs(new_origin_y) >= phi - alpha {
+                pan = false;
+                limit_y = -(phi - alpha);
+            }
+
+            if phi < alpha {
+                pan = false;
+            }
+        }
+
+        if pan {
+            self.grid_view.grid_origin = self.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
+        }
+        else {
+            // We cannot pan as we are out of bounds, but let us ensure we maintain a border
+            self.grid_view.grid_origin = Point::new(limit_x, limit_y);
+        }
+
     }
 
-     fn get_all_window_coords_in_game_coords(&mut self) -> Option<WindowCornersInGameCoords> {
+    // TODO reevaluate necessity
+     fn _get_all_window_coords_in_game_coords(&mut self) -> Option<WindowCornersInGameCoords> {
         let resolution = self.video_settings.get_active_resolution();
         let win_width_px = resolution.0 as i32;
         let win_height_px = resolution.1 as i32;

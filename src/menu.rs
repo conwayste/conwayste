@@ -366,14 +366,14 @@ impl MenuSystem {
     fn draw_specific_menu_view(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context) {
         match self.menu_state {
             ////////////////////////////////////
-            //// V I D E O
+            // V I D E O
             ///////////////////////////////////
             MenuState::Video => {
                 let ref container = self.menus.get(&MenuState::Video).unwrap();
                 let anchor = container.get_anchor();
 
                 ///////////////////////////////
-                //// Fullscreen
+                // Fullscreen
                 ///////////////////////////////
                 {
                     let coords = Point::new(anchor.x() + 200, anchor.y());
@@ -383,7 +383,7 @@ impl MenuSystem {
                 }
 
                 ////////////////////////////////
-                //// Resolution
+                // Resolution
                 ///////////////////////////////
                 {
                     let coords = Point::new(anchor.x() + 200, anchor.y() + 50);
