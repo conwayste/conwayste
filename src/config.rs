@@ -221,6 +221,7 @@ impl ConfigFile {
         self.settings.gameplay.zoom
     }
 
+/*
     pub fn get_player_name(&self) -> String {
         self.settings.user.name.clone()
     }
@@ -229,4 +230,5 @@ impl ConfigFile {
         self.settings.user.name = name;
         self.set_dirty();
     }
+*/
 }
