@@ -1,5 +1,20 @@
-
-extern crate ggez;
+/*  Copyright 2017 the Conwayste Developers.
+ *
+ *  This file is part of conwayste.
+ *
+ *  conwayste is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  conwayste is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with conwayste.  If not, see
+ *  <http://www.gnu.org/licenses/>. */
 
 use ggez::Context;
 use ggez::graphics;
@@ -215,17 +230,17 @@ impl MenuSystem {
         menu_sys.menus.insert(MenuState::Audio,    MenuContainer::new(200, 100));
         menu_sys.menus.insert(MenuState::Gameplay, MenuContainer::new(200, 100));
 
-        let menu_off    = MenuItem::new(MenuItemIdentifier::None, String::from("NULL"),       false, MenuItemValue::ValNone());
-        let start_game  = MenuItem::new(MenuItemIdentifier::StartGame, String::from("Start Game"), false, MenuItemValue::ValNone());
-        let options     = MenuItem::new(MenuItemIdentifier::Options, String::from("Options"),    false, MenuItemValue::ValNone());
-        let video       = MenuItem::new(MenuItemIdentifier::VideoSettings, String::from("Video"),      false, MenuItemValue::ValNone());
-        let audio       = MenuItem::new(MenuItemIdentifier::AudioSettings, String::from("Audio"),      false, MenuItemValue::ValNone());
-        let gameplay    = MenuItem::new(MenuItemIdentifier::GameplaySettings, String::from("Gameplay"),   false, MenuItemValue::ValNone());
-        let goback      = MenuItem::new(MenuItemIdentifier::ReturnToPreviousMenu, String::from("Back"), false, MenuItemValue::ValNone());
-        let quit        = MenuItem::new(MenuItemIdentifier::ExitGame, String::from("Quit"),       false, MenuItemValue::ValNone());
+        let menu_off    = MenuItem::new(MenuItemIdentifier::None,                 String ::from("NULL"),       false, MenuItemValue::ValNone());
+        let start_game  = MenuItem::new(MenuItemIdentifier::StartGame,            String ::from("Start Game"), false, MenuItemValue::ValNone());
+        let options     = MenuItem::new(MenuItemIdentifier::Options,              String ::from("Options"),    false, MenuItemValue::ValNone());
+        let video       = MenuItem::new(MenuItemIdentifier::VideoSettings,        String ::from("Video"),      false, MenuItemValue::ValNone());
+        let audio       = MenuItem::new(MenuItemIdentifier::AudioSettings,        String ::from("Audio"),      false, MenuItemValue::ValNone());
+        let gameplay    = MenuItem::new(MenuItemIdentifier::GameplaySettings,     String ::from("Gameplay"),   false, MenuItemValue::ValNone());
+        let goback      = MenuItem::new(MenuItemIdentifier::ReturnToPreviousMenu, String ::from("Back"),       false, MenuItemValue::ValNone());
+        let quit        = MenuItem::new(MenuItemIdentifier::ExitGame,             String ::from("Quit"),       false, MenuItemValue::ValNone());
 
-        let fullscreen  = MenuItem::new(MenuItemIdentifier::Fullscreen, String::from("Fullscreen:"), true, MenuItemValue::ValBool(false));
-        let resolution  = MenuItem::new(MenuItemIdentifier::Resolution, String::from("Resolution:"), true, MenuItemValue::ValNone());
+        let fullscreen  = MenuItem::new(MenuItemIdentifier::Fullscreen,           String ::from("Fullscreen:"), true, MenuItemValue::ValBool(false));
+        let resolution  = MenuItem::new(MenuItemIdentifier::Resolution,           String ::from("Resolution:"), true, MenuItemValue::ValNone());
 
         {
             let container = menu_sys.menus.get_mut(&MenuState::MenuOff).unwrap();
@@ -348,7 +363,7 @@ impl MenuSystem {
         }
     }
 
-    fn draw_specific_menu_view(&mut self, video_settings: &video::VideoSettings,_ctx: &mut Context) {
+    fn draw_specific_menu_view(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context) {
         match self.menu_state {
             ////////////////////////////////////
             // V I D E O
@@ -365,7 +380,7 @@ impl MenuSystem {
                     let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
 
                     utils::Graphics::draw_text(_ctx, &self.menu_font, &is_fullscreen_str, &coords, None);
-               }
+                }
 
                 ////////////////////////////////
                 // Resolution
@@ -392,7 +407,5 @@ impl MenuSystem {
         self.draw_general_menu_view(_ctx, &index, cur_menu_state, has_game_started);
         self.draw_specific_menu_view(video_settings, _ctx);
     }
-
-
 }
 
