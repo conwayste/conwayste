@@ -3,9 +3,18 @@ name = "tokio_udp_test"
 version = "0.1.0"
 authors = ["Aaron Miller <aaron.miller04@gmail.com>"]
 
+[[bin]]
+name = "server"
+path = "src/server.rs"
+
+[[bin]]
+name = "client"
+path = "src/client.rs"
+
 [dependencies]
 futures      = "0.1.16"
 tokio-core   = "0.1.9"
+log          = "*"
 env_logger   = "0.4.3"
 serde        = "*"
 serde_derive = "1.0.15"
