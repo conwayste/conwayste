@@ -29,6 +29,10 @@ fn main() {
         (addr, packet) //XXX echo???
     });
 
+    // https://docs.rs/futures/0.1.14/futures/sink/trait.Sink.html#method.send_all :
+    //   "This future will drive the stream to keep producing items until it is exhausted, sending
+    //   each item to the sink. It will complete once both the stream is exhausted, the sink has
+    //   received all items, the sink has been flushed, and the sink has been closed."
     let sink_future = sink.send_all(stream_map);
 
     drop(core.run(sink_future));
