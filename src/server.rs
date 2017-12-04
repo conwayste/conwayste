@@ -24,17 +24,12 @@ fn main() {
                 });
     //XXX need to move this boilerplate to net as much as possible
     let (sink, stream) = sock.framed(LineCodec).split();
-    let stream_map = stream.map(|(addr, packet)| {
-        //XXX
-        (addr, packet) //XXX echo???
+    let server = stream.for_each(|(addr, opt_packet)| {
+        println!("got {:?} and {:?}!", addr, opt_packet);
+        //XXX use handle.spawn on a function that puts outgoing (addr, packet) tuples in the sink
+        Ok(())
     });
 
-    // https://docs.rs/futures/0.1.14/futures/sink/trait.Sink.html#method.send_all :
-    //   "This future will drive the stream to keep producing items until it is exhausted, sending
-    //   each item to the sink. It will complete once both the stream is exhausted, the sink has
-    //   received all items, the sink has been flushed, and the sink has been closed."
-    let sink_future = sink.send_all(stream_map);
-
-    drop(core.run(sink_future));
+    drop(core.run(server));
 }
 

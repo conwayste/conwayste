@@ -51,15 +51,15 @@ pub struct PlayerPacket {
 
 pub struct LineCodec;
 impl UdpCodec for LineCodec {
-    type In = (SocketAddr, PlayerPacket);
+    type In = (SocketAddr, Option<PlayerPacket>);   // if 2nd element is None, it means deserialization failure
     type Out = (SocketAddr, PlayerPacket);
 
     fn decode(&mut self, addr: &SocketAddr, buf: &[u8]) -> io::Result<Self::In> {
-        //XXX need to catch failures better
         match deserialize(buf) {
-            Ok(decoded) => Ok((*addr, decoded)),
+            Ok(decoded) => Ok((*addr, Some(decoded))),
             Err(e) => {
-                Err(io::Error::new(io::ErrorKind::InvalidInput, e))
+                println!("WARNING: error during packet deserialization: {:?}", e);
+                Ok((*addr, None))
             }
         }
     }
