@@ -1,15 +1,15 @@
 [package]
 name = "conwayste"
-version = "0.0.3"
+version = "0.0.4"
 authors = [ "mang", "Aaron Miller <aaron.miller04@gmail.com>" ]
 license = "GPL-3.0+"
 
 [dependencies]
 conway       = { git = "https://github.com/conwayste/libconway" }
-ggez         = "0.2.2"
+ggez         = { git = "https://github.com/ggez/ggez"}
 env_logger   = "0.3"
 log          = "0.3"
-sdl2         = "0.27.3"
+sdl2         = "0.30.0"
 version      = "2.0.1"
 toml         = "0.4.5"
 serde        = "1.0"

@@ -55,7 +55,7 @@ struct AudioConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct GameplayConfig {
-    zoom: u32,
+    zoom: f32,
 }
 
 impl Config {
@@ -84,7 +84,7 @@ impl Config {
                 name: String::from("JohnConway"),
             },
             gameplay: GameplayConfig {
-                zoom: 5u32,
+                zoom: 5.0f32,
             },
             video: VideoConfig {
                 fullscreen: false,
@@ -212,12 +212,12 @@ impl ConfigFile {
     }
     */
 
-    pub fn set_zoom_level(&mut self, level: u32) {
+    pub fn set_zoom_level(&mut self, level: f32) {
         self.settings.gameplay.zoom = level;
         self.set_dirty();
     }
 
-    pub fn get_zoom_level(&self) -> u32 {
+    pub fn get_zoom_level(&self) -> f32 {
         self.settings.gameplay.zoom
     }
 

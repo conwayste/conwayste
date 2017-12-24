@@ -18,7 +18,7 @@
 
 use ggez::Context;
 use ggez::graphics;
-use ggez::graphics::{Point, Color};
+use ggez::graphics::{Point2, Color};
 use std::collections::{HashMap};
 
 use video;
@@ -84,7 +84,7 @@ pub struct MenuControls {
 
 #[derive(Debug, Clone)]
 pub struct MenuContainer {
-    anchor:     Point,
+    anchor:     Point2,
     menu_items: Vec<MenuItem>,
     metadata:   MenuMetaData,
     bg_color:   Color,
@@ -92,13 +92,13 @@ pub struct MenuContainer {
 }
 
 impl MenuContainer {
-    pub fn new(x: i32, y: i32) -> MenuContainer {
+    pub fn new(x: f32, y: f32) -> MenuContainer {
         MenuContainer {
-            anchor: Point::new(x, y),
+            anchor: Point2::new(x, y),
             menu_items: Vec::<MenuItem>::new(),
             metadata: MenuMetaData::new(0, 0),
-            bg_color: Color::RGB(100, 100, 100),
-            fg_color: Color::RGB(0, 255, 255),
+            bg_color: Color::new(100.0, 100.0, 100.0, 1.0),
+            fg_color: Color::new(0.0, 255.0, 255.0, 1.0),
         }
     }
 
@@ -125,7 +125,7 @@ impl MenuContainer {
         &self.menu_items
     }
 
-    pub fn get_anchor(&self) -> Point {
+    pub fn get_anchor(&self) -> Point2 {
         self.anchor
     }
 
@@ -223,12 +223,12 @@ impl MenuSystem {
             menu_font: font,
         };
 
-        menu_sys.menus.insert(MenuState::MenuOff,  MenuContainer::new(0, 0));
-        menu_sys.menus.insert(MenuState::MainMenu, MenuContainer::new(400, 300));
-        menu_sys.menus.insert(MenuState::Options,  MenuContainer::new(400, 300));
-        menu_sys.menus.insert(MenuState::Video,    MenuContainer::new(200, 100));
-        menu_sys.menus.insert(MenuState::Audio,    MenuContainer::new(200, 100));
-        menu_sys.menus.insert(MenuState::Gameplay, MenuContainer::new(200, 100));
+        menu_sys.menus.insert(MenuState::MenuOff,  MenuContainer::new(0.0, 0.0));
+        menu_sys.menus.insert(MenuState::MainMenu, MenuContainer::new(400.0, 300.0));
+        menu_sys.menus.insert(MenuState::Options,  MenuContainer::new(400.0, 300.0));
+        menu_sys.menus.insert(MenuState::Video,    MenuContainer::new(200.0, 100.0));
+        menu_sys.menus.insert(MenuState::Audio,    MenuContainer::new(200.0, 100.0));
+        menu_sys.menus.insert(MenuState::Gameplay, MenuContainer::new(200.0, 100.0));
 
         let menu_off    = MenuItem::new(MenuItemIdentifier::None,                 String ::from("NULL"),       false, MenuItemValue::ValNone());
         let start_game  = MenuItem::new(MenuItemIdentifier::StartGame,            String ::from("Start Game"), false, MenuItemValue::ValNone());
@@ -332,7 +332,7 @@ impl MenuSystem {
                 {
                     let container = self.menus.get(cur_menu_state).unwrap();
                     let coords = container.get_anchor();
-                    let mut offset = Point::new(0,0);
+                    let mut offset = Point2::new(0.0,0.0);
 
                     for menu_item in container.get_menu_item_list().iter() {
                         let menu_option_string = menu_item.get_text();
@@ -344,7 +344,7 @@ impl MenuSystem {
 
                         utils::Graphics::draw_text(_ctx, &self.menu_font, &menu_option_str, &coords, Some(&offset));
 
-                        offset = offset.offset(0, 50);
+                        offset = utils::Graphics::point_offset(offset, 0.0, 50.0);
                     }
                 }
 
@@ -354,7 +354,7 @@ impl MenuSystem {
                     let cur_option_str = " >";
                     let ref container = self.menus.get(&cur_menu_state).unwrap();
                     let coords = container.get_anchor();
-                    let offset = Point::new(-50, index*50);
+                    let offset = Point2::new(-50.0, (*index) as f32 * 50.0);
 
                     utils::Graphics::draw_text(_ctx, &self.menu_font, &cur_option_str, &coords, Some(&offset));
                 }
@@ -376,7 +376,7 @@ impl MenuSystem {
                 // Fullscreen
                 ///////////////////////////////
                 {
-                    let coords = Point::new(anchor.x() + 200, anchor.y());
+                    let coords = Point2::new(anchor.x + 200.0, anchor.y);
                     let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
 
                     utils::Graphics::draw_text(_ctx, &self.menu_font, &is_fullscreen_str, &coords, None);
@@ -386,7 +386,7 @@ impl MenuSystem {
                 // Resolution
                 ///////////////////////////////
                 {
-                    let coords = Point::new(anchor.x() + 200, anchor.y() + 50);
+                    let coords = Point2::new(anchor.x + 200.0, anchor.y + 50.0);
                     let (width, height) = video_settings.get_active_resolution();
                     let cur_res_str = format!("{}x{}", width, height);
 

@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::Context;
+use ggez::{Context, graphics};
 use sdl2::video::{FullscreenType, DisplayMode};
 use std::num::Wrapping;
 
@@ -105,22 +105,20 @@ impl VideoSettings {
 }
 
 pub fn toggle_full_screen(_ctx: &mut Context) -> bool {
-    let renderer = &mut _ctx.renderer;
-    let window = renderer.window_mut().unwrap();
-    let wlflags = window.window_flags();
-    let fullscreen_type = FullscreenType::from_window_flags(wlflags);
-    let mut new_fs_type = FullscreenType::Off;
-
-    match fullscreen_type {
-        FullscreenType::Off => {new_fs_type = FullscreenType::True;}
-        FullscreenType::True => {new_fs_type = FullscreenType::Off;}
-        _ => {}
+    let is_fullscreen;
+    if graphics::is_fullscreen(_ctx) {
+        is_fullscreen = false;
+        graphics::set_fullscreen(_ctx, is_fullscreen);
     }
-    let _ = window.set_fullscreen(new_fs_type);
-    
-    new_fs_type == FullscreenType::True
+    else
+    {
+        is_fullscreen = true;
+        graphics::set_fullscreen(_ctx, is_fullscreen);
+    }
+    is_fullscreen
 }
 
+/*
 pub fn set_fullscreen(_ctx: &mut Context, fullscreen: bool) -> bool {
     let renderer = &mut _ctx.renderer;
     let window = renderer.window_mut().unwrap();
@@ -134,7 +132,7 @@ pub fn set_fullscreen(_ctx: &mut Context, fullscreen: bool) -> bool {
     
     new_fs_type == FullscreenType::True
 }
-
+*/
 /*
 pub fn get_display_mode(_ctx: &mut Context) -> bool {
     let renderer = &mut _ctx.renderer;
@@ -166,12 +164,15 @@ pub fn get_current_display_mode(_ctx: &mut Context) -> bool {
 
 fn refresh_game_resolution(_ctx: &mut Context, w: i32, h: i32) {
     if w != 0 && h != 0 {
+        graphics::set_resolution(_ctx, w as u32, h as u32);
+/*
         let ref mut renderer = _ctx.renderer;
         let _ = renderer.set_logical_size(w as u32, h as u32);
         {
             let window = renderer.window_mut().unwrap();
             let _ = window.set_size(w as u32, h as u32);
         }
+*/
     }
 }
 
