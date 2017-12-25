@@ -704,16 +704,11 @@ impl MainState {
         let full_width  = self.grid_view.grid_width() as f32;
         let full_height = self.grid_view.grid_height() as f32;
 
-        origin.x = 200.0;
-        origin.y = 200.0;
-
         let full_rect = Rect::new(origin.x, origin.y, full_width, full_height);
 
         println!("Full rect: {:?}", full_rect);
 
         if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.grid_view.rect) {
-//            full_rect.intersection(self.grid_view.rect) {
-            //println!("Clipped rect: {:?}", clipped_rect);
             graphics::set_color(_ctx, self.color_settings.get_color(Some(CellState::Wall)));
             graphics::rectangle(_ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
         }
