@@ -215,7 +215,8 @@ impl MainState {
         let mut config = config::ConfigFile::new();
 
         let mut vs = video::VideoSettings::new();
-        vs.gather_display_modes(_ctx);
+/*        vs.gather_display_modes(_ctx);
+
         vs.print_resolutions();
         
         // On first-run, use default supported resolution
@@ -235,9 +236,9 @@ impl MainState {
 
         graphics::set_fullscreen(_ctx, config.is_fullscreen() == true);
         vs.is_fullscreen = config.is_fullscreen() == true;
-
+*/
         let grid_view = GridView {
-            rect:        Rect::new(0.0, 0.0, w as f32, h as f32),
+            rect:        Rect::new(0.0, 0.0, DEFAULT_SCREEN_WIDTH as f32, DEFAULT_SCREEN_HEIGHT as f32),
             cell_size:   config.get_zoom_level(),
             columns:     universe_width_in_cells,
             rows:        universe_height_in_cells,
@@ -319,7 +320,7 @@ impl EventHandler for MainState {
                 if remaining > 0.0 {
                     self.stage = Stage::Intro(remaining);
                 } else {
-                    self.stage = Stage::Menu;
+                    self.stage = Stage::Run;
                     self.menu_sys.menu_state = menu::MenuState::MainMenu;
                 }
             }
@@ -484,7 +485,9 @@ impl EventHandler for MainState {
     }
 
     fn draw(&mut self, _ctx: &mut Context) -> GameResult<()> {
-       graphics::clear(_ctx);
+        graphics::clear(_ctx);
+        graphics::set_background_color(_ctx, (0, 0, 0, 1).into());
+
         match self.stage {
             Stage::Intro(_) => {
                 try!(graphics::draw(_ctx, &mut self.intro_text, Point2::new(0.0, 0.0), 0.0));
@@ -495,12 +498,10 @@ impl EventHandler for MainState {
             Stage::Run => {
                 self.draw_universe(_ctx);
             }
-            Stage::Exit => {
-
-            }
+            Stage::Exit => {}
         }
 
-       graphics::present(_ctx);
+        graphics::present(_ctx);
         timer::yield_now();
         Ok(())
     }
@@ -639,6 +640,9 @@ impl EventHandler for MainState {
                     Keycode::LGui => {
                     
                     }
+                    Keycode::Escape => {
+                        self.quit_event(_ctx);
+                    }
                     _ => {
                         println!("Unrecognized keycode {}", keycode);
                     }
@@ -666,7 +670,7 @@ impl EventHandler for MainState {
         }
     }
 
-    fn quit_event(&mut self, _tcx: &mut Context) -> bool {
+    fn quit_event(&mut self, _ctx: &mut Context) -> bool {
         let mut do_not_quit = true;
 
         match self.stage {
@@ -689,11 +693,11 @@ impl EventHandler for MainState {
 }
 
 impl MainState {
-    fn draw_universe(&mut self, _ctx: &mut Context) {
+    fn draw_universe(&mut self, _ctx: &mut Context) -> GameResult<()> {
         // grid background
-        graphics::set_color(_ctx, self.color_settings.get_color(None));
-        graphics::rectangle(_ctx,  graphics::DrawMode::Fill, self.grid_view.rect).unwrap();
-
+        graphics::set_color(_ctx, self.color_settings.get_color(None))?;
+        graphics::rectangle(_ctx,  graphics::DrawMode::Fill, self.grid_view.rect)?;
+/*
         // grid foreground (dead cells)
         //TODO: put in its own function (of GridView); also make this less ugly
         let origin = self.grid_view.grid_origin;
@@ -701,8 +705,11 @@ impl MainState {
         let full_height = self.grid_view.grid_height() as f32;
         let full_rect = Rect::new(origin.x, origin.y, full_width, full_height);
 
+        println!("Full rect: {:?}", full_rect);
+
         if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.grid_view.rect) {
 //            full_rect.intersection(self.grid_view.rect) {
+            println!("Clipped rect: {:?}", clipped_rect);
             graphics::set_color(_ctx, self.color_settings.get_color(Some(CellState::Dead)));
             graphics::rectangle(_ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
         }
@@ -717,15 +724,17 @@ impl MainState {
                 graphics::rectangle(_ctx,  graphics::DrawMode::Fill, rect).unwrap();
             }
         });
-
+*/
         ////////// draw generation counter
         let gen_counter_str = self.uni.latest_gen().to_string();
+        graphics::set_color(_ctx, Color::new(255.0, 0.0, 0.0, 1.0));
         utils::Graphics::draw_text(_ctx, &self.small_font, &gen_counter_str, &Point2::new(0.0, 0.0), None);
 
         ////////////////////// END
         graphics::set_color(_ctx, Color::new(0.0, 0.0, 0.0, 1.0)); // do this at end; not sure why...?
         self.first_gen_was_drawn = true;
 
+        Ok(())
     }
 
     fn pause_or_resume_game(&mut self) {
@@ -811,8 +820,8 @@ impl MainState {
     fn adjust_panning(&mut self, recenter_after_zoom: bool) {
         let (columns, rows) = (self.grid_view.columns as u32, self.grid_view.rows as u32);
 
-        debug!("\n\nP A N N I N G:");
-        debug!("Columns, Rows = {:?}", (columns, rows));
+//        debug!("\n\nP A N N I N G:");
+//        debug!("Columns, Rows = {:?}", (columns, rows));
 
         let (dx, dy) = self.arrow_input;
         let dx_in_pixels = (-dx * PIXELS_SCROLLED_PER_FRAME) as f32;
@@ -828,7 +837,7 @@ impl MainState {
         let border_in_cells = 10.0;
         let border_in_px = border_in_cells * cell_size;
 
-        debug!("Cell Size: {:?}", (cell_size));
+//        debug!("Cell Size: {:?}", (cell_size));
 
         let mut pan = true;
         let mut limit_x = self.grid_view.grid_origin.x;
@@ -901,6 +910,7 @@ impl MainState {
         else {
             // We cannot pan as we are out of bounds, but let us ensure we maintain a border
             self.grid_view.grid_origin = Point2::new(limit_x as f32, limit_y as f32);
+            println!("NoPan {:?}", self.grid_view.grid_origin);
         }
 
     }
