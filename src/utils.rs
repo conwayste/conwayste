@@ -36,31 +36,55 @@ impl Graphics {
         let _ = draw(_ctx, &mut graphics_text, dst, 0.0);
     }
 
-    pub fn intersection(r1: Rect, r2: Rect) -> Option<Rect> {
-        let xmin = f32::min(r1.x, r2.x);
-        let xmax1 = r1.x + r1.w;
-        let xmax2 = r2.x + r2.w;
-        let xmax = f32::max(xmax1, xmax2);
+    pub fn intersection(A: Rect, B: Rect) -> Option<Rect> {
 
-        if (xmax > xmin) {
-            let ymin = f32::min(r1.y, r2.y);
-            let ymax1 = r1.y + r1.h;
-            let ymax2 = r2.y + r2.h;
-            let ymax = f32::max(ymax1, ymax2);
-
-            if (ymax > ymin) {
-                return Some(
-                    Rect {
-                        x: xmin,
-                        y: ymin,
-                        w: xmax - xmin,
-                        h: ymax - ymin
-                    }
-                );
-            }
+        fn EmptyRect(R: Rect) -> bool {
+            R.w <= 0.0 || R.h <= 0.0
         }
 
-        None
+        let mut result = Rect::zero();
+
+        if EmptyRect(A) || EmptyRect(B) {
+            return None;
+        }
+
+        let mut A_min = A.x;
+        let mut A_max = A_min + A.w;
+        let mut B_min = B.x;
+        let mut B_max = B_min + B.w;
+
+        /* Horizontal Intersection*/
+        if B_min > A_min {
+            A_min = B_min;
+        }
+        result.x = A_min;
+
+        if B_max < A_max {
+            A_max = B_max;
+        }
+        result.w = A_max - A_min;
+
+        /* Veritcal Intersection */
+        A_min = A.y;
+        A_max = A_min + A.h;
+        B_min = B.y;
+        B_max = B_min + B.h;
+
+        if B_min > A_min {
+            A_min = B_min;
+        }
+        result.y = A_min;
+
+        if B_max < A_max {
+            A_max = B_max;
+        }
+        result.h = A_max - A_min;
+
+        if EmptyRect(result) {
+            return None;
+        } else {
+            return Some(result);
+        }
     }
 
     pub fn point_offset(p1: Point2, x: f32, y: f32) -> Point2 {

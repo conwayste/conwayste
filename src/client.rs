@@ -247,14 +247,14 @@ impl MainState {
 
         let mut color_settings = ColorSettings {
             cell_colors: BTreeMap::new(),
-            background:  Color::new( 64.0,  64.0,  64.0, 1.0),
+            background:  Color::new( 0.25,  0.25,  0.25, 1.0),
         };
-        color_settings.cell_colors.insert(CellState::Dead,           Color::new(224.0, 224.0, 224.0, 1.0));
+        color_settings.cell_colors.insert(CellState::Dead,           Color::new(0.875, 0.875, 0.875, 1.0));
         color_settings.cell_colors.insert(CellState::Alive(None),    Color::new(  0.0,   0.0,   0.0, 1.0));
-        color_settings.cell_colors.insert(CellState::Alive(Some(0)), Color::new(255.0,   0.0,   0.0, 1.0));  // 0 is red
-        color_settings.cell_colors.insert(CellState::Alive(Some(1)), Color::new(  0.0,   0.0, 255.0, 1.0));  // 1 is blue
-        color_settings.cell_colors.insert(CellState::Wall,           Color::new(158.0, 141.0, 105.0, 1.0));
-        color_settings.cell_colors.insert(CellState::Fog,            Color::new(200.0, 200.0, 200.0, 1.0));
+        color_settings.cell_colors.insert(CellState::Alive(Some(0)), Color::new(  1.0,   0.0,   0.0, 1.0));  // 0 is red
+        color_settings.cell_colors.insert(CellState::Alive(Some(1)), Color::new(  0.0,   0.0,   1.0, 1.0));  // 1 is blue
+        color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
+        color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
 
         let small_font = graphics::Font::new(_ctx, "\\DejaVuSerif.ttf", 20).unwrap();
         let menu_font  = graphics::Font::new(_ctx, "\\DejaVuSerif.ttf", 20).unwrap();
@@ -697,23 +697,27 @@ impl MainState {
         // grid background
         graphics::set_color(_ctx, self.color_settings.get_color(None))?;
         graphics::rectangle(_ctx,  graphics::DrawMode::Fill, self.grid_view.rect)?;
-/*
+
         // grid foreground (dead cells)
         //TODO: put in its own function (of GridView); also make this less ugly
-        let origin = self.grid_view.grid_origin;
+        let mut origin = self.grid_view.grid_origin;
         let full_width  = self.grid_view.grid_width() as f32;
         let full_height = self.grid_view.grid_height() as f32;
+
+        origin.x = 200.0;
+        origin.y = 200.0;
+
         let full_rect = Rect::new(origin.x, origin.y, full_width, full_height);
 
         println!("Full rect: {:?}", full_rect);
 
         if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.grid_view.rect) {
 //            full_rect.intersection(self.grid_view.rect) {
-            println!("Clipped rect: {:?}", clipped_rect);
-            graphics::set_color(_ctx, self.color_settings.get_color(Some(CellState::Dead)));
+            //println!("Clipped rect: {:?}", clipped_rect);
+            graphics::set_color(_ctx, self.color_settings.get_color(Some(CellState::Wall)));
             graphics::rectangle(_ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
         }
-
+/*
         // grid non-dead cells
         let visibility = Some(1); //XXX
         self.uni.each_non_dead_full(visibility, &mut |col, row, state| {
