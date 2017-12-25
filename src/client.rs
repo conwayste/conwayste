@@ -237,6 +237,7 @@ impl MainState {
         graphics::set_fullscreen(_ctx, config.is_fullscreen() == true);
         vs.is_fullscreen = config.is_fullscreen() == true;
 */
+
         let grid_view = GridView {
             rect:        Rect::new(0.0, 0.0, DEFAULT_SCREEN_WIDTH as f32, DEFAULT_SCREEN_HEIGHT as f32),
             cell_size:   config.get_zoom_level(),
@@ -706,33 +707,44 @@ impl MainState {
 
         let full_rect = Rect::new(origin.x, origin.y, full_width, full_height);
 
-        println!("Full rect: {:?}", full_rect);
-
         if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.grid_view.rect) {
-            graphics::set_color(_ctx, self.color_settings.get_color(Some(CellState::Wall)));
+            graphics::set_color(_ctx, self.color_settings.get_color(Some(CellState::Dead)));
             graphics::rectangle(_ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
         }
-/*
+
         // grid non-dead cells
-        let visibility = Some(1); //XXX
+        let visibility = Some(1); //XXX, Player One
+
+        let image = graphics::Image::solid(_ctx, 1u16, Color::new(1.0, 1.0, 1.0, 1.0))?; // 1x1 square
+        let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
+
         self.uni.each_non_dead_full(visibility, &mut |col, row, state| {
             let color = self.color_settings.get_color(Some(state));
             graphics::set_color(_ctx, color);
 
             if let Some(rect) = self.grid_view.window_coords_from_game(col, row) {
-                graphics::rectangle(_ctx,  graphics::DrawMode::Fill, rect).unwrap();
+                let p = graphics::DrawParam {
+                    dest: Point2::new(rect.x, rect.y),
+                    scale: Point2::new(rect.w, rect.h), // scaling a 1x1 Image to correct cell size
+                    color: Some(color),
+                    ..Default::default()
+                };
+
+                spritebatch.add(p);
             }
         });
-*/
+
         ////////// draw generation counter
         let gen_counter_str = self.uni.latest_gen().to_string();
-        graphics::set_color(_ctx, Color::new(255.0, 0.0, 0.0, 1.0));
+        graphics::set_color(_ctx, Color::new(1.0, 0.0, 0.0, 1.0));
         utils::Graphics::draw_text(_ctx, &self.small_font, &gen_counter_str, &Point2::new(0.0, 0.0), None);
 
         ////////////////////// END
         graphics::set_color(_ctx, Color::new(0.0, 0.0, 0.0, 1.0)); // do this at end; not sure why...?
         self.first_gen_was_drawn = true;
 
+        graphics::draw_ex(_ctx, &spritebatch, graphics::DrawParam{ dest: Point2::new(0.0, 0.0), .. Default::default()} )?;
+        spritebatch.clear();
         Ok(())
     }
 
@@ -909,7 +921,6 @@ impl MainState {
         else {
             // We cannot pan as we are out of bounds, but let us ensure we maintain a border
             self.grid_view.grid_origin = Point2::new(limit_x as f32, limit_y as f32);
-            println!("NoPan {:?}", self.grid_view.grid_origin);
         }
 
     }
@@ -989,6 +1000,7 @@ impl GridView {
 
         assert!(left < right);
         assert!(top < bottom);
+        // The 'minus one' for right and bottom give it that grid-like feel :)
         let rect = Rect::new(left, top, (right - left), (bottom - top));
         utils::Graphics::intersection(rect, self.rect)
     }
@@ -1017,13 +1029,14 @@ pub fn main() {
 
     let mut cb = ContextBuilder::new("conwayste", "Aaronm04Manghi")
         .window_setup(conf::WindowSetup::default()
-                      .title("💥 conwayste 💥")
+                      .title(format!("{} {} {}", "💥 conwayste", version!().to_owned(),"💥").as_str())
                       .icon("\\conwayste.ico")
                       .resizable(false)
-                //      .allow_highdpi(true)
+                      .allow_highdpi(true)
                       )
         .window_mode(conf::WindowMode::default()
                      .dimensions(DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT)
+                     .vsync(true)
                      );
 
     if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
