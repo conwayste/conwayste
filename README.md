@@ -3,18 +3,23 @@
 Multiplayer Conway's Game of Life!
 
 ## Installing Dependencies
-`conwayste` depends on `SDL2`, `SDL2_Mixer` and `SDL2_Image`. We do plan on bundling these libraries with the binary at some point in the future, but for now you'll need to manually install them. The versions needed are:
+`conwayste` depends on `SDL2`, `SDL2_Mixer` and `SDL2_Image`. We do plan on bundling these libraries with the binary at some point in the future, but for now you will need to manually install them. The versions (at least) needed are:
 
 * `SDL2 v2.0.5`
 * `SDL2_Mixer v2.0.1`
 * `SDL2_Image v2.0.1`
 
-Make sure your Rust is up to date! The easiest way is through rustup.
+Please follow the instructions listed on the [rust-sdl2](https://github.com/Rust-SDL2/rust-sdl2) bindings page for your specific platform.
 
-`rustup update`
+Make sure your Rust is up to date! The easiest way is through `rustup update`.
 
 ### Windows
-TBD...
+_Note: This has been validated as working on Windows 10; tread carefully elsewhere_:smile:_._
+
+Grab the development libraries for SDL2, SDL2 Mixer, and SDL2 Image and place each of them in your toolchain's library folder. An example of this may be `~\.multirust\toolchains\stable-x86_64-pc-windows-msvc\lib\rustlib\x86_64-pc-windows-msvc\lib`.
+Also place the `SDL2.dll` within the crate root folder.
+
+You will not need to do this step once there is proper binary release of Conwayste (TBD).
 
 ### Mac/Linux
 _Note: I used homebrew on Mac to accomplish these steps._
@@ -25,14 +30,14 @@ brew install sdl2_image
 brew install sdl2_mixer --with-libvorbis
 ```
 
-On Fedora you can use `dnf`; this will install pretty much everything you'll need:
+On Fedora you can use `dnf`; this will install pretty much everything you will need:
 
 ```
 sudo dnf install SDL2*
 ```
 
-Debian stable only supports SDL2 v.2.0.4 so you'll need to compile SDL2 from source.
-If you're compiling from source make sure you specify vorbis support.
+**Note:** Debian stable only supports SDL2 v.2.0.4 so you will need to compile SDL2 from source.
+If you are compiling from source make sure you specify vorbis support.
 
 ```
 ...
@@ -50,12 +55,10 @@ I ended up adding these to my `~/.profile` .
 
 ## Building
 
-**TODO: OpenGL development packages, etc.**
-
 ```
 cargo build
-ln -s ../resources target    # Needed only for the Client. 
-                             # Run this if you're getting an error regarding resources
+ln -s ../resources target    # Needed only for the Client
+                             # Run this if you are getting a ResourceNotFound error
 ```
 
 ## Running the server
@@ -77,6 +80,24 @@ cargo run --bin client
 ```
 cargo update -p conway
 ```
+
+## FAQ
+
+### When will this be ready?
+
+The developers have busy lives and enjoy working on this in their spare time. If you are waiting for a release, then you should find something else to do. We always accept dontains in liquid form, such as cup of coffee.
+
+### ResourceNotFound Error
+```
+λ cargo run --bin client                                                                                                
+    Finished dev [unoptimized + debuginfo] target(s) in 0.2 secs                                                        
+     Running `target\debug\client.exe`                                                                                  
+thread 'main' panicked at 'called `Result::unwrap()` on an `Err` value: ResourceNotFound("conwayste.ico")', src\libcore\
+result.rs:906:4                                                                                                         
+note: Run with `RUST_BACKTRACE=1` for a backtrace.                                                                      
+error: process didn't exit successfully: `target\debug\client.exe` (exit code: 101)                                     
+```
+You need to link your resources folder. Please see the Build section above.
 
 ## Contributors
 
