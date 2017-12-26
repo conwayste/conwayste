@@ -36,21 +36,18 @@ use ggez::timer;
 use std::env;
 use std::fs::File;
 use std::path;
-use std::time::Duration;
 use std::collections::BTreeMap;
 
 mod menu;
 mod video;
 mod utils;
 mod config;
+mod viewport;
+
+use viewport::ZoomDirection;
 
 const FPS                       : u32   = 25;
 const INTRO_DURATION            : f64   = 2.0;
-const DEFAULT_SCREEN_WIDTH      : u32   = 1200;
-const DEFAULT_SCREEN_HEIGHT     : u32   = 800;
-const PIXELS_SCROLLED_PER_FRAME : i32   = 50;
-const MAX_CELL_SIZE             : f32   = 20.0;
-const MIN_CELL_SIZE             : f32   = 5.0;
 const HISTORY_SIZE              : usize = 16;
 const CURRENT_PLAYER_ID         : usize = 1; // TODO :  get the player ID from server rather than hardcoding
 const FOG_RADIUS                : usize = 4;
@@ -63,12 +60,6 @@ enum Stage {
     Exit,         // We're getting ready to quit the game, WRAP IT UP SON
 }
 
-#[derive(PartialEq)]
-enum ZoomDirection {
-    ZoomOut,
-    ZoomIn
-}
-
 // All game state
 struct MainState {
     small_font:          graphics::Font,
@@ -76,12 +67,12 @@ struct MainState {
     stage:               Stage,             // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
-    grid_view:           GridView,
     color_settings:      ColorSettings,
     running:             bool,
     menu_sys:            menu::MenuSystem,
     video_settings:      video::VideoSettings,
     config:              config::ConfigFile,
+    viewport:            viewport::Viewport,
 
     // Input state
     single_step:         bool,
@@ -238,12 +229,9 @@ impl MainState {
         vs.is_fullscreen = config.is_fullscreen() == true;
 */
 
-        let grid_view = GridView {
-            rect:        Rect::new(0.0, 0.0, DEFAULT_SCREEN_WIDTH as f32, DEFAULT_SCREEN_HEIGHT as f32),
-            cell_size:   config.get_zoom_level(),
-            columns:     universe_width_in_cells,
-            rows:        universe_height_in_cells,
-            grid_origin: Point2::new(0.0, 0.0),
+        let viewport = 
+        {
+            viewport::Viewport::new(config.get_zoom_level(), universe_width_in_cells, universe_height_in_cells)
         };
 
         let mut color_settings = ColorSettings {
@@ -286,12 +274,12 @@ impl MainState {
             stage:               Stage::Intro(INTRO_DURATION),
             uni:                 bigbang.unwrap(),
             first_gen_was_drawn: false,
-            grid_view:           grid_view,
             color_settings:      color_settings,
             running:             false,
             menu_sys:            menu::MenuSystem::new(menu_font),
             video_settings:      vs,
             config:              config,
+            viewport:            viewport,
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -447,8 +435,7 @@ impl EventHandler for MainState {
                                             // screen
                                             let (w,h) = self.video_settings.get_active_resolution();
                                             self.config.set_resolution(w,h);
-                                            self.grid_view.rect.w = w as f32;
-                                            self.grid_view.rect.h = h as f32;
+                                            self.viewport.set_dimensions(w as f32, h as f32);
                                         }
                                     }
                                     _ => {}
@@ -475,7 +462,7 @@ impl EventHandler for MainState {
                     self.pause_or_resume_game();
                 }
 
-                self.adjust_panning(false);
+                self.viewport.update(self.arrow_input); // TODO needs input reference
             }
             Stage::Exit => {
                let _ = _ctx.quit();
@@ -491,13 +478,13 @@ impl EventHandler for MainState {
 
         match self.stage {
             Stage::Intro(_) => {
-                try!(graphics::draw(_ctx, &mut self.intro_text, Point2::new(0.0, 0.0), 0.0));
+                graphics::draw(_ctx, &mut self.intro_text, Point2::new(0.0, 0.0), 0.0)?;
             }
             Stage::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, _ctx, self.first_gen_was_drawn);
             }
             Stage::Run => {
-                self.draw_universe(_ctx);
+                self.draw_universe(_ctx)?;
             }
             Stage::Exit => {}
         }
@@ -516,8 +503,8 @@ impl EventHandler for MainState {
         match self.stage {
             Stage::Run => {
                 if button == MouseButton::Left {
-                    if let Some((col, row)) = self.grid_view.game_coords_from_window(Point2::new(x as f32, y as f32)) {
-                        let result = self.uni.toggle(col as usize, row  as usize, CURRENT_PLAYER_ID);
+                    if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
+                        let result = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID);
                         self.drag_draw = match result {
                             Ok(state) => Some(state),
                             Err(_)    => None,
@@ -538,9 +525,9 @@ impl EventHandler for MainState {
                           _yrel: i32
                           ) {
         if state.left() && self.drag_draw != None {
-            if let Some((col, row)) = self.grid_view.game_coords_from_window(Point2::new(x as f32, y as f32)) {
+            if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
                 let cell_state = self.drag_draw.unwrap();
-                self.uni.set(col as usize, row  as usize, cell_state, CURRENT_PLAYER_ID);
+                self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
             }
         }
     }
@@ -619,12 +606,12 @@ impl EventHandler for MainState {
                         self.arrow_input = (1, 0);
                     }
                     Keycode::Plus | Keycode::Equals => {
-                        self.adjust_zoom_level(ZoomDirection::ZoomIn);
-                        self.config.set_zoom_level(self.grid_view.cell_size);
+                        self.viewport.adjust_zoom_level(ZoomDirection::ZoomIn);
+                        self.config.set_zoom_level(self.viewport.get_cell_size());
                     }
                     Keycode::Minus | Keycode::Underscore => {
-                        self.adjust_zoom_level(ZoomDirection::ZoomOut);
-                        self.config.set_zoom_level(self.grid_view.cell_size);
+                        self.viewport.adjust_zoom_level(ZoomDirection::ZoomOut);
+                        self.config.set_zoom_level(self.viewport.get_cell_size());
                     }
                     Keycode::Num1 => {
                         self.win_resize = 1;
@@ -697,19 +684,19 @@ impl MainState {
     fn draw_universe(&mut self, _ctx: &mut Context) -> GameResult<()> {
         // grid background
         graphics::set_color(_ctx, self.color_settings.get_color(None))?;
-        graphics::rectangle(_ctx,  graphics::DrawMode::Fill, self.grid_view.rect)?;
+        graphics::rectangle(_ctx,  graphics::DrawMode::Fill, self.viewport.get_viewport())?;
 
         // grid foreground (dead cells)
         //TODO: put in its own function (of GridView); also make this less ugly
-        let mut origin = self.grid_view.grid_origin;
-        let full_width  = self.grid_view.grid_width() as f32;
-        let full_height = self.grid_view.grid_height() as f32;
+        let origin = self.viewport.get_origin();
+        let full_width  = self.viewport.grid_width() as f32;
+        let full_height = self.viewport.grid_height() as f32;
 
         let full_rect = Rect::new(origin.x, origin.y, full_width, full_height);
 
-        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.grid_view.rect) {
-            graphics::set_color(_ctx, self.color_settings.get_color(Some(CellState::Dead)));
-            graphics::rectangle(_ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
+        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
+            graphics::set_color(_ctx, self.color_settings.get_color(Some(CellState::Dead)))?;
+            graphics::rectangle(_ctx,  graphics::DrawMode::Fill, clipped_rect)?;
         }
 
         // grid non-dead cells
@@ -720,9 +707,10 @@ impl MainState {
 
         self.uni.each_non_dead_full(visibility, &mut |col, row, state| {
             let color = self.color_settings.get_color(Some(state));
-            graphics::set_color(_ctx, color);
+            let _ = graphics::set_color(_ctx, color);
 
-            if let Some(rect) = self.grid_view.window_coords_from_game(col, row) {
+            if let Some(rect) = self.viewport.get_screen_area(col, row) {
+
                 let p = graphics::DrawParam {
                     dest: Point2::new(rect.x, rect.y),
                     scale: Point2::new(rect.w, rect.h), // scaling a 1x1 Image to correct cell size
@@ -736,11 +724,11 @@ impl MainState {
 
         ////////// draw generation counter
         let gen_counter_str = self.uni.latest_gen().to_string();
-        graphics::set_color(_ctx, Color::new(1.0, 0.0, 0.0, 1.0));
+        graphics::set_color(_ctx, Color::new(1.0, 0.0, 0.0, 1.0))?;
         utils::Graphics::draw_text(_ctx, &self.small_font, &gen_counter_str, &Point2::new(0.0, 0.0), None);
 
         ////////////////////// END
-        graphics::set_color(_ctx, Color::new(0.0, 0.0, 0.0, 1.0)); // do this at end; not sure why...?
+        graphics::set_color(_ctx, Color::new(0.0, 0.0, 0.0, 1.0))?; // Clear color residue
         self.first_gen_was_drawn = true;
 
         graphics::draw_ex(_ctx, &spritebatch, graphics::DrawParam{ dest: Point2::new(0.0, 0.0), .. Default::default()} )?;
@@ -780,240 +768,8 @@ impl MainState {
         self.toggle_paused_game = false;
     }
 
-    fn adjust_zoom_level(&mut self, direction : ZoomDirection) {
-        if (direction == ZoomDirection::ZoomIn && self.grid_view.cell_size < MAX_CELL_SIZE) ||
-           (direction == ZoomDirection::ZoomOut && self.grid_view.cell_size > MIN_CELL_SIZE) {
-
-            let zoom_dir: f32;
-            match direction {
-                ZoomDirection::ZoomIn => zoom_dir = 1.0,
-                ZoomDirection::ZoomOut => zoom_dir = -1.0,
-            }
-
-            debug!("Window Size: ({}, {})", self.grid_view.rect.w, self.grid_view.rect.h);
-            debug!("Origin Before: ({},{})", self.grid_view.grid_origin.x, self.grid_view.grid_origin.y);
-            debug!("Cell Size Before: {},", self.grid_view.cell_size);
-
-            let next_cell_size = self.grid_view.cell_size + zoom_dir;
-            let old_cell_size = self.grid_view.cell_size;
-
-            let window_center = Point2::new(self.grid_view.rect.w/2.0, self.grid_view.rect.h/2.0);
-
-            if let Some((old_cell_count_for_x, old_cell_count_for_y)) = self.grid_view.game_coords_from_window(window_center) {
-                let delta_x = zoom_dir * (old_cell_count_for_x as f32 * next_cell_size as f32 - old_cell_count_for_x as f32 * old_cell_size as f32);
-                let delta_y = zoom_dir * (old_cell_count_for_y as f32 * next_cell_size as f32 - old_cell_count_for_y as f32 * old_cell_size as f32);
-
-                debug!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
-                debug!("delta in win coords: {}, {}", delta_x, delta_y);
-
-                self.grid_view.cell_size = next_cell_size;
-
-                let columns = self.grid_view.columns as u32;
-
-                let phi = columns as i32 * old_cell_size as i32;
-                let alpha = self.grid_view.rect.w as i32;
-
-                if phi > alpha {
-                    self.grid_view.grid_origin = utils::Graphics::point_offset(self.grid_view.grid_origin,
-                                                                         -zoom_dir * delta_x,
-                                                                         -zoom_dir * delta_y
-                                                                         );
-                }
-
-                self.adjust_panning(true);
-
-                debug!("Origin After: ({},{})\n", self.grid_view.grid_origin.x, self.grid_view.grid_origin.y);
-                debug!("Cell Size After: {},", self.grid_view.cell_size);
-            }
-        }
-    }
-
-    fn adjust_panning(&mut self, recenter_after_zoom: bool) {
-        let (columns, rows) = (self.grid_view.columns as u32, self.grid_view.rows as u32);
-
-//        debug!("\n\nP A N N I N G:");
-//        debug!("Columns, Rows = {:?}", (columns, rows));
-
-        let (dx, dy) = self.arrow_input;
-        let dx_in_pixels = (-dx * PIXELS_SCROLLED_PER_FRAME) as f32;
-        let dy_in_pixels = (-dy * PIXELS_SCROLLED_PER_FRAME) as f32;
-
-        let cur_origin_x = self.grid_view.grid_origin.x;
-        let cur_origin_y = self.grid_view.grid_origin.y;
-
-        let new_origin_x = cur_origin_x + dx_in_pixels;
-        let new_origin_y = cur_origin_y + dy_in_pixels;
-
-        let cell_size = self.grid_view.cell_size;
-        let border_in_cells = 10.0;
-        let border_in_px = border_in_cells * cell_size;
-
-//        debug!("Cell Size: {:?}", (cell_size));
-
-        let mut pan = true;
-        let mut limit_x = self.grid_view.grid_origin.x;
-        let mut limit_y = self.grid_view.grid_origin.y;
-        // Here we check if we're at our limits. In all other cases, we'll fallthrough to the
-        // bottom grid_origin offsetting
-
-        // Panning left
-        if self.arrow_input.0 == -1 || recenter_after_zoom {
-            if new_origin_x > 0.0 {
-                if new_origin_x > border_in_px {
-                    pan = false;
-                    limit_x = border_in_px;
-                }
-            }
-        }
-
-        // Panning right
-        //
-        //  /      α     \
-        //                  v------ includes the border
-        //  |------------|----|
-        //  |            |    |
-        //  |            |    |
-        //  |            |    |
-        //  |------------|----|
-        //
-        //  \        ϕ        /
-        //
-        if self.arrow_input.0 == 1 || recenter_after_zoom {
-            let phi = (border_in_cells + columns as f32)*(cell_size);
-            let alpha = self.grid_view.rect.w;
-
-            if phi > alpha && f32::abs(new_origin_x) >= phi - alpha {
-                pan = false;
-                limit_x = -(phi - alpha);
-            }
-
-            if phi < alpha {
-                pan = false;
-            }
-        }
-
-        // Panning up
-        if self.arrow_input.1 == -1 || recenter_after_zoom {
-            if new_origin_y > 0.0 && new_origin_y > border_in_px {
-                pan = false;
-                limit_y = border_in_px;
-            }
-        }
-
-        // Panning down
-        if self.arrow_input.1 == 1 || recenter_after_zoom {
-            let phi = (border_in_cells + rows as f32)*(cell_size);
-            let alpha = self.grid_view.rect.h;
-
-            if phi > alpha && f32::abs(new_origin_y) >= phi - alpha {
-                pan = false;
-                limit_y = -(phi - alpha);
-            }
-
-            if phi < alpha {
-                pan = false;
-            }
-        }
-
-        if pan {
-            self.grid_view.grid_origin = utils::Graphics::point_offset(self.grid_view.grid_origin, dx_in_pixels, dy_in_pixels);
-        }
-        else {
-            // We cannot pan as we are out of bounds, but let us ensure we maintain a border
-            self.grid_view.grid_origin = Point2::new(limit_x as f32, limit_y as f32);
-        }
-
-    }
-
-    // TODO reevaluate necessity
-     fn _get_all_window_coords_in_game_coords(&mut self) -> Option<WindowCornersInGameCoords> {
-        let resolution = self.video_settings.get_active_resolution();
-        let win_width_px = resolution.0 as f32;
-        let win_height_px = resolution.1 as f32;
-
-        debug!("\tWindow: {:?} px", (win_width_px, win_height_px));
-
-        let result : Option<WindowCornersInGameCoords>;
-
-        let (origin_x, origin_y) = self.grid_view.game_coords_from_window_unchecked(Point2::new(0.0, 0.0));
-        {
-            let (win_width_px, win_height_px) = self.grid_view.game_coords_from_window_unchecked(Point2::new(win_width_px, win_height_px));
-            {
-                result = Some(WindowCornersInGameCoords {
-                    top_left : Point2::new(origin_x as f32, origin_y as f32),
-                    bottom_right : Point2::new(win_width_px as f32, win_height_px as f32),
-                });
-                debug!("\tReturning... {:?}", result);
-            }
-        }
-
-        result
-    }
 }
 
-
-#[derive(Debug, Clone)]
-struct WindowCornersInGameCoords {
-    top_left : Point2,
-    bottom_right: Point2,
-}
-
-// Controls the mapping between window and game coordinates
-struct GridView {
-    rect:        Rect,  // the area the game grid takes up on screen
-    cell_size:   f32,   // zoom level in window coordinates
-    columns:     usize, // width in game coords (should match bitmap/universe width)
-    rows:        usize, // height in game coords (should match bitmap/universe height)
-    // The grid origin point tells us where the top-left of the universe is with respect to the
-    // window.
-    grid_origin: Point2, // top-left corner of grid in window coords. (may be outside rect)
-}
-
-
-impl GridView {
-
-    fn game_coords_from_window_unchecked(&self, point: Point2) -> (isize, isize) {
-        let col: isize = ((point.x - self.grid_origin.x) / self.cell_size) as isize;
-        let row: isize = ((point.y - self.grid_origin.y) / self.cell_size) as isize;
-        
-        (col , row )
-    }
-
-    // Given a Point2(x,y), we determine a col/row tuple in cell units
-    fn game_coords_from_window(&self, point: Point2) -> Option<(isize, isize)> {
-        let (col, row) = self.game_coords_from_window_unchecked(point);
-
-        if col < 0 || col >= self.columns as isize || row < 0 || row >= self.rows as isize {
-            return None;
-        }
-        Some((col , row ))
-    }
-
-    // Attempt to return a rectangle for the on-screen area of the specified cell.
-    // If partially in view, will be clipped by the bounding rectangle.
-    // Caller must ensure that col and row are within bounds.
-    fn window_coords_from_game(&self, col: usize, row: usize) -> Option<Rect> {
-        let left   = self.grid_origin.x + (col as f32)     * self.cell_size;
-        let right  = self.grid_origin.x + (col + 1) as f32 * self.cell_size - 1.0;
-        let top    = self.grid_origin.y + (row as f32)     * self.cell_size;
-        let bottom = self.grid_origin.y + (row + 1) as f32 * self.cell_size - 1.0;
-
-        assert!(left < right);
-        assert!(top < bottom);
-        // The 'minus one' for right and bottom give it that grid-like feel :)
-        let rect = Rect::new(left, top, (right - left), (bottom - top));
-        utils::Graphics::intersection(rect, self.rect)
-    }
-
-    fn grid_width(&self) -> u32 {
-        self.columns as u32 * self.cell_size as u32
-    }
-
-    fn grid_height(&self) -> u32 {
-        self.rows as u32 * self.cell_size as u32
-    }
-
-}
 
 
 // Now our main function, which does three things:
@@ -1035,7 +791,7 @@ pub fn main() {
                       .allow_highdpi(true)
                       )
         .window_mode(conf::WindowMode::default()
-                     .dimensions(DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT)
+                     .dimensions(config::DEFAULT_SCREEN_WIDTH as u32, config::DEFAULT_SCREEN_HEIGHT as u32)
                      .vsync(true)
                      );
 

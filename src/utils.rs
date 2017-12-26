@@ -36,51 +36,51 @@ impl Graphics {
         let _ = draw(_ctx, &mut graphics_text, dst, 0.0);
     }
 
-    pub fn intersection(A: Rect, B: Rect) -> Option<Rect> {
+    pub fn intersection(a: Rect, b: Rect) -> Option<Rect> {
 
-        fn EmptyRect(R: Rect) -> bool {
-            R.w <= 0.0 || R.h <= 0.0
+        fn empty_rect(r: Rect) -> bool {
+            r.w <= 0.0 || r.h <= 0.0
         }
 
         let mut result = Rect::zero();
 
-        if EmptyRect(A) || EmptyRect(B) {
+        if empty_rect(a) || empty_rect(b) {
             return None;
         }
 
-        let mut A_min = A.x;
-        let mut A_max = A_min + A.w;
-        let mut B_min = B.x;
-        let mut B_max = B_min + B.w;
+        let mut a_min = a.x;
+        let mut a_max = a_min + a.w;
+        let mut b_min = b.x;
+        let mut b_max = b_min + b.w;
 
-        /* Horizontal Intersection*/
-        if B_min > A_min {
-            A_min = B_min;
+        /* horizontal intersection*/
+        if b_min > a_min {
+            a_min = b_min;
         }
-        result.x = A_min;
+        result.x = a_min;
 
-        if B_max < A_max {
-            A_max = B_max;
+        if b_max < a_max {
+            a_max = b_max;
         }
-        result.w = A_max - A_min;
+        result.w = a_max - a_min;
 
-        /* Veritcal Intersection */
-        A_min = A.y;
-        A_max = A_min + A.h;
-        B_min = B.y;
-        B_max = B_min + B.h;
+        /* veritcal intersection */
+        a_min = a.y;
+        a_max = a_min + a.h;
+        b_min = b.y;
+        b_max = b_min + b.h;
 
-        if B_min > A_min {
-            A_min = B_min;
+        if b_min > a_min {
+            a_min = b_min;
         }
-        result.y = A_min;
+        result.y = a_min;
 
-        if B_max < A_max {
-            A_max = B_max;
+        if b_max < a_max {
+            a_max = b_max;
         }
-        result.h = A_max - A_min;
+        result.h = a_max - a_min;
 
-        if EmptyRect(result) {
+        if empty_rect(result) {
             return None;
         } else {
             return Some(result);

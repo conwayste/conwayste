@@ -22,6 +22,9 @@ use std::fs::OpenOptions;
 use std::io::{Write, Read};
 use std::path::Path;
 
+pub const DEFAULT_SCREEN_WIDTH      : f32   = 1200.0;
+pub const DEFAULT_SCREEN_HEIGHT     : f32   = 800.0;
+
 // Top-level view of config toml file
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct Config {
