@@ -44,8 +44,6 @@ mod utils;
 mod config;
 mod viewport;
 
-use viewport::ZoomDirection;
-
 const FPS                       : u32   = 25;
 const INTRO_DURATION            : f64   = 2.0;
 const HISTORY_SIZE              : usize = 16;
@@ -606,11 +604,11 @@ impl EventHandler for MainState {
                         self.arrow_input = (1, 0);
                     }
                     Keycode::Plus | Keycode::Equals => {
-                        self.viewport.adjust_zoom_level(ZoomDirection::ZoomIn);
+                        self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
                         self.config.set_zoom_level(self.viewport.get_cell_size());
                     }
                     Keycode::Minus | Keycode::Underscore => {
-                        self.viewport.adjust_zoom_level(ZoomDirection::ZoomOut);
+                        self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
                         self.config.set_zoom_level(self.viewport.get_cell_size());
                     }
                     Keycode::Num1 => {
@@ -710,7 +708,6 @@ impl MainState {
             let _ = graphics::set_color(_ctx, color);
 
             if let Some(rect) = self.viewport.get_screen_area(col, row) {
-
                 let p = graphics::DrawParam {
                     dest: Point2::new(rect.x, rect.y),
                     scale: Point2::new(rect.w, rect.h), // scaling a 1x1 Image to correct cell size

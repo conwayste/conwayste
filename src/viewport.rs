@@ -316,7 +316,7 @@ impl GridView {
     }
 
     fn window_coords_from_game(&self, col: usize, row: usize) -> Option<Rect> {
-        if row > self.rows || col > self.columns {
+        if row < self.rows && col < self.columns {
             return self.window_coords_from_game_unchecked(col, row);
         }
         return None;
