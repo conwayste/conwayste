@@ -43,6 +43,7 @@ mod video;
 mod utils;
 mod config;
 mod viewport;
+mod input;
 
 const FPS                       : u32   = 25;
 const INTRO_DURATION            : f64   = 2.0;
@@ -71,6 +72,7 @@ struct MainState {
     video_settings:      video::VideoSettings,
     config:              config::ConfigFile,
     viewport:            viewport::Viewport,
+    input_manager:       input::InputManager,
 
     // Input state
     single_step:         bool,
@@ -278,6 +280,7 @@ impl MainState {
             video_settings:      vs,
             config:              config,
             viewport:            viewport,
+            input_manager:       input::InputManager::new(input::InputDeviceType::PRIMARY),
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -451,6 +454,27 @@ impl EventHandler for MainState {
                     self.running = false;
                 }
 
+                //self.input_manager.print_raw();
+                self.input_manager.handle_inputs();
+                
+                
+                if let Some(input) = self.input_manager.peek_next() {
+                    match *input {
+                        input::InputAction::MouseClick(MouseButton::Left, x, y) => {
+                            if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
+                                let result = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID);
+                                self.drag_draw = match result {
+                                    Ok(state) => Some(state),
+                                    Err(_)    => None,
+                                };
+                            }
+                        }
+                        _ => {},
+                    }
+                }
+
+                self.input_manager.expunge();
+
                 if self.first_gen_was_drawn && (self.running || self.single_step) {
                     self.uni.next();     // next generation
                     self.single_step = false;
@@ -500,6 +524,7 @@ impl EventHandler for MainState {
                                ) {
         match self.stage {
             Stage::Run => {
+                /*
                 if button == MouseButton::Left {
                     if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
                         let result = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID);
@@ -509,6 +534,8 @@ impl EventHandler for MainState {
                         };
                     }
                 }
+                */
+                self.input_manager.add(input::InputAction::MouseClick(button, x, y));
             }
             _ => {}
         }
@@ -625,6 +652,9 @@ impl EventHandler for MainState {
                     }
                     Keycode::LGui => {
                     
+                    }
+                    Keycode::A => {
+                        self.input_manager.add(input::InputAction::KeyPress(Keycode::A));
                     }
                     Keycode::Escape => {
                         self.quit_event(_ctx);
