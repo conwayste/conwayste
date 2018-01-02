@@ -1,34 +1,46 @@
+/*  Copyright 2017-2018 the Conwayste Developers.
+ *
+ *  This file is part of conwayste.
+ *
+ *  conwayste is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  conwayste is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with conwayste.  If not, see
+ *  <http://www.gnu.org/licenses/>. */
+
 // FIFO to handle key inputs chronologically
 // Each input may result in different actions based on the game stage
 //
 
 use std::collections::VecDeque;
-use ggez::event::{Keycode, MouseButton, Button, Axis};
+use ggez::event::{Keycode, MouseButton};
+//use ggez::event::{Button, Axis};
 
 const NUM_OF_INPUTS: usize = 10;
 
-pub type PrimaryInput = (Option<Keycode>, Option<MouseButton>);
-pub type GamepadInput = (Option<Button>, Option<Axis>);
-
 pub enum InputDeviceType {
     PRIMARY,
-    GAMEPAD,
-    CHINCHILLA
-}
-
-pub enum InputDevices {
-    PrimaryInput,
-    GamepadInput,
+//    GAMEPAD,
+//    CHINCHILLA
 }
 
 #[derive(Debug)]
 pub enum InputAction {
-    KeyPress(Keycode),
+    KeyPress(Keycode, bool),
     KeyRelease(Keycode),
 
     MouseClick(MouseButton, i32, i32),
+    MouseDrag(MouseButton, i32, i32),
     MouseRelease(MouseButton),
-    MouseMovement(MouseButton),
+    MouseMovement(i32, i32),
 
 //    Gamepad((Button, Axis)),
 }
@@ -39,18 +51,24 @@ pub struct InputManager {
 }
 
 impl InputManager {
-    pub fn new(deviceType: InputDeviceType) -> InputManager {
+    pub fn new(device_type: InputDeviceType) -> InputManager {
         InputManager {
-            device: deviceType,
+            device: device_type,
             events: VecDeque::<InputAction>::new(),
         }
     }
 
     pub fn add(&mut self, input: InputAction) {
+        // Curious to see if we actually can hit this condition
+        if self.events.len() >= NUM_OF_INPUTS {
+            println!("{:?}", self.events);
+            assert!(false);
+        }
+
         self.events.push_back(input);
     }
 
-    pub fn peek_next(&self) -> Option<&InputAction> {
+    pub fn _peek_next(&self) -> Option<&InputAction> {
         self.events.front()
     }
     
@@ -62,20 +80,8 @@ impl InputManager {
         self.events.clear();
     }
 
-    pub fn handle_inputs(&mut self) {
-        self.events.iter().for_each(|x| {
-            match *x {
-                InputAction::KeyPress(k) => println!("Key Pressed: {:?}", k),
-                InputAction::KeyRelease(k) => println!("Key Released: {:?}", k),
-                InputAction::MouseClick(b, x, y) => println!("Mouse Button: {:?}", b),
-                _ => {},
-            }
-        });
+    pub fn has_more(&mut self) -> bool {
+        !self.events.is_empty()
     }
 
-    pub fn print_raw(&self) {
-        if !self.events.is_empty() {
-            println!("{:?}", self.events);
-        }
-    }
 }
