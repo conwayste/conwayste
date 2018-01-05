@@ -206,7 +206,10 @@ impl MainState {
         let config = config::ConfigFile::new();
 
         let vs = video::VideoSettings::new();
-/*        vs.gather_display_modes(_ctx);
+/*
+ *  FIXME Disabling video module temporarily as we can now leverage ggez 0.4
+ *  
+        vs.gather_display_modes(_ctx);
 
         vs.print_resolutions();
         
@@ -229,10 +232,7 @@ impl MainState {
         vs.is_fullscreen = config.is_fullscreen() == true;
 */
 
-        let viewport = 
-        {
-            viewport::Viewport::new(config.get_zoom_level(), universe_width_in_cells, universe_height_in_cells)
-        };
+        let viewport = viewport::Viewport::new(config.get_zoom_level(), universe_width_in_cells, universe_height_in_cells);
 
         let mut color_settings = ColorSettings {
             cell_colors: BTreeMap::new(),
@@ -261,7 +261,8 @@ impl MainState {
             BigBang::new()
             .width(universe_width_in_cells)
             .height(universe_height_in_cells)
-            .server_mode(true) // TODO will change once we get server support up
+            .server_mode(true) // TODO will change to false once we get server support up
+                               // Currently 'client' is technically both client and server
             .history(HISTORY_SIZE)
             .fog_radius(FOG_RADIUS)
             .add_players(players)
@@ -286,7 +287,7 @@ impl MainState {
             drag_draw:           None,
             win_resize:          0,
             return_key_pressed:  false,
-            escape_key_pressed:  false, // Action flag, available for use
+            escape_key_pressed:  false,
             toggle_paused_game:  false,
         };
 
@@ -310,7 +311,7 @@ impl EventHandler for MainState {
                 if remaining > 0.0 {
                     self.stage = Stage::Intro(remaining);
                 } else {
-                    self.stage = Stage::Run;
+                    self.stage = Stage::Run; // Menu Stage is disabled for the time being
                     self.menu_sys.menu_state = menu::MenuState::MainMenu;
                 }
             }
@@ -512,7 +513,6 @@ impl EventHandler for MainState {
                                x: i32,
                                y: i32
                                ) {
-
         self.input_manager.add(input::InputAction::MouseClick(button, x, y));
     }
 
@@ -607,7 +607,6 @@ impl MainState {
         graphics::rectangle(_ctx,  graphics::DrawMode::Fill, self.viewport.get_viewport())?;
 
         // grid foreground (dead cells)
-        //TODO: put in its own function (of GridView); also make this less ugly
         let origin = self.viewport.get_origin();
         let full_width  = self.viewport.grid_width() as f32;
         let full_height = self.viewport.grid_height() as f32;
@@ -619,7 +618,7 @@ impl MainState {
             graphics::rectangle(_ctx,  graphics::DrawMode::Fill, clipped_rect)?;
         }
 
-        // grid non-dead cells
+        // grid non-dead cells (walls, players, etc.)
         let visibility = Some(1); //XXX, Player One
 
         let image = graphics::Image::solid(_ctx, 1u16, Color::new(1.0, 1.0, 1.0, 1.0))?; // 1x1 square
@@ -672,7 +671,7 @@ impl MainState {
                 }
             }
             Stage::Run => {
-                if menu::MenuState::MenuOff == cur_menu_state {
+                if cur_menu_state == menu::MenuState::MenuOff {
                     self.stage = Stage::Menu;
                     self.menu_sys.menu_state = menu::MenuState::MainMenu;
                     self.running = false;
@@ -687,12 +686,19 @@ impl MainState {
         self.toggle_paused_game = false;
     }
 
+    // TODO
+    // Just had an idea... transform the user inputs events into game events
+    // That way differnt user inputs (gamepad, keyboard/mouse) resolve to a single game event
+    // This logic would be agnostic from how the user is interacting with the game
     fn process_running_inputs(&mut self) {
         while self.input_manager.has_more() {
             if let Some(input) = self.input_manager.remove() {
                 match input {
+
+                    // MOUSE EVENTS
                     input::InputAction::MouseClick(MouseButton::Left, x, y) => {
                         // Need to go through UI manager to determine what we are interacting with, TODO
+                        // Could be UI element (drawpad) or playing field
                         if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
                             let result = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID);
                             self.drag_draw = match result {
@@ -701,12 +707,8 @@ impl MainState {
                             };
                         }
                     }
-                    input::InputAction::MouseClick(MouseButton::Right, _x, _y) => {
-
-                    }
-                    input::InputAction::MouseMovement(_x, _y) => {
-
-                    }
+                    input::InputAction::MouseClick(MouseButton::Right, _x, _y) => { }
+                    input::InputAction::MouseMovement(_x, _y) => { }
                     input::InputAction::MouseDrag(MouseButton::Left, x, y) => {
                         if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
                             if let Some(cell_state) = self.drag_draw {
@@ -715,6 +717,7 @@ impl MainState {
                         }
                     }
 
+                    // KEYBOARD EVENTS
                     input::InputAction::KeyPress(keycode, repeat) => {
                         match keycode {
                             Keycode::Return => {
@@ -773,7 +776,6 @@ impl MainState {
     }
 
     fn process_menu_inputs(&mut self) {
-
         while self.input_manager.has_more() {
             if let Some(input) = self.input_manager.remove() {
                 match input {

@@ -1,3 +1,21 @@
+/*  Copyright 2017-2018 the Conwayste Developers.
+ *
+ *  This file is part of conwayste.
+ *
+ *  conwayste is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  conwayste is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with conwayste.  If not, see
+ *  <http://www.gnu.org/licenses/>. */
+
 extern crate ggez;
 
 use ggez::graphics::{Point2, Rect};
@@ -10,9 +28,11 @@ const MIN_CELL_SIZE             : f32   = 5.0;
 const PIXELS_SCROLLED_PER_FRAME : i32   = 50;
 const NO_INPUT                  : (i32, i32) = (0, 0);
 const LEFT                      : i32   = -1;
-const RIGHT                     : i32   = 1;
+const RIGHT                     : i32   =  1;
 const UP                        : i32   = -1;
-const DOWN                      : i32   = 1;
+const DOWN                      : i32   =  1;
+const ZOOM_IN                   : f32   =  1.0;
+const ZOOM_OUT                  : f32   = -1.0;
 
 pub struct Cell {
     pub row: usize,
@@ -51,13 +71,13 @@ impl Viewport {
 
             let zoom_dir: f32;
             match direction {
-                ZoomDirection::ZoomIn => zoom_dir = 1.0,
-                ZoomDirection::ZoomOut => zoom_dir = -1.0,
+                ZoomDirection::ZoomIn => zoom_dir = ZOOM_IN,
+                ZoomDirection::ZoomOut => zoom_dir = ZOOM_OUT,
             }
 
-            debug!("Window Size: ({}, {})", self.grid_view.rect.w, self.grid_view.rect.h);
-            debug!("Origin Before: ({},{})", self.grid_view.grid_origin.x, self.grid_view.grid_origin.y);
-            debug!("Cell Size Before: {},", self.grid_view.cell_size);
+//            debug!("Window Size: ({}, {})", self.grid_view.rect.w, self.grid_view.rect.h);
+//            debug!("Origin Before: ({},{})", self.grid_view.grid_origin.x, self.grid_view.grid_origin.y);
+//            debug!("Cell Size Before: {},", self.grid_view.cell_size);
 
             let next_cell_size = self.grid_view.cell_size + zoom_dir;
             let old_cell_size = self.grid_view.cell_size;
@@ -69,8 +89,8 @@ impl Viewport {
                 let delta_x = zoom_dir * (old_cell_count_for_x as f32 * next_cell_size as f32 - old_cell_count_for_x as f32 * old_cell_size as f32);
                 let delta_y = zoom_dir * (old_cell_count_for_y as f32 * next_cell_size as f32 - old_cell_count_for_y as f32 * old_cell_size as f32);
 
-                debug!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
-                debug!("delta in win coords: {}, {}", delta_x, delta_y);
+//                debug!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
+//                debug!("delta in win coords: {}, {}", delta_x, delta_y);
 
                 self.grid_view.cell_size = next_cell_size;
 
@@ -88,8 +108,8 @@ impl Viewport {
 
                 self.adjust_panning(true, NO_INPUT);
 
-                debug!("Origin After: ({},{})\n", self.grid_view.grid_origin.x, self.grid_view.grid_origin.y);
-                debug!("Cell Size After: {},", self.grid_view.cell_size);
+//                debug!("Origin After: ({},{})\n", self.grid_view.grid_origin.x, self.grid_view.grid_origin.y);
+//                debug!("Cell Size After: {},", self.grid_view.cell_size);
             }
         }
     }
@@ -329,6 +349,4 @@ impl GridView {
     pub fn set_height(&mut self, height: f32) {
         self.rect.h = height;
     }
-
-
 }

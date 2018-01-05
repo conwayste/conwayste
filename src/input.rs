@@ -46,14 +46,14 @@ pub enum InputAction {
 }
 
 pub struct InputManager {
-    device: InputDeviceType,
+    _device: InputDeviceType,
     events: VecDeque<InputAction>,
 }
 
 impl InputManager {
     pub fn new(device_type: InputDeviceType) -> InputManager {
         InputManager {
-            device: device_type,
+            _device: device_type,
             events: VecDeque::<InputAction>::new(),
         }
     }
