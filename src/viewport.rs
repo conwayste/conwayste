@@ -27,10 +27,10 @@ const MAX_CELL_SIZE             : f32   = 20.0;
 const MIN_CELL_SIZE             : f32   = 5.0;
 const PIXELS_SCROLLED_PER_FRAME : i32   = 50;
 const NO_INPUT                  : (i32, i32) = (0, 0);
-const LEFT                      : i32   = -1;
-const RIGHT                     : i32   =  1;
-const UP                        : i32   = -1;
-const DOWN                      : i32   =  1;
+const PAN_LEFT                  : i32   = -1;
+const PAN_RIGHT                 : i32   =  1;
+const PAN_UP                    : i32   = -1;
+const PAN_DOWN                  : i32   =  1;
 const ZOOM_IN                   : f32   =  1.0;
 const ZOOM_OUT                  : f32   = -1.0;
 
@@ -143,7 +143,7 @@ impl Viewport {
         // bottom grid_origin offsetting
 
         // Panning left
-        if dx == LEFT || recenter_after_zoom {
+        if dx == PAN_LEFT || recenter_after_zoom {
             if new_origin_x > 0.0 {
                 if new_origin_x > border_in_px {
                     pan = false;
@@ -164,7 +164,7 @@ impl Viewport {
         //
         //  \        ϕ        /
         //
-        if dx == RIGHT || recenter_after_zoom {
+        if dx == PAN_RIGHT || recenter_after_zoom {
             let phi = (border_in_cells + columns as f32)*(cell_size);
             let alpha = self.grid_view.rect.w;
 
@@ -179,7 +179,7 @@ impl Viewport {
         }
 
         // Panning up
-        if dy == UP || recenter_after_zoom {
+        if dy == PAN_UP || recenter_after_zoom {
             if new_origin_y > 0.0 && new_origin_y > border_in_px {
                 pan = false;
                 limit_y = border_in_px;
@@ -187,7 +187,7 @@ impl Viewport {
         }
 
         // Panning down
-        if dy == DOWN || recenter_after_zoom {
+        if dy == PAN_DOWN || recenter_after_zoom {
             let phi = (border_in_cells + rows as f32)*(cell_size);
             let alpha = self.grid_view.rect.h;
 
