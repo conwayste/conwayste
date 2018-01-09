@@ -64,7 +64,7 @@ impl Graphics {
         }
         result.w = a_max - a_min;
 
-        /* veritcal intersection */
+        /* vertical intersection */
         a_min = a.y;
         a_max = a_min + a.h;
         b_min = b.y;

@@ -29,7 +29,6 @@ const NUM_OF_INPUTS: usize = 10;
 pub enum InputDeviceType {
     PRIMARY,
 //    GAMEPAD,
-//    CHINCHILLA
 }
 
 #[derive(Debug)]

@@ -194,31 +194,32 @@ fn init_patterns(s: &mut MainState) -> Result<(), ()> {
 // that you can override if you wish, but the defaults are fine.
 impl MainState {
 
-    fn new(_ctx: &mut Context) -> GameResult<MainState> {
-        _ctx.print_resource_stats();
+    fn new(ctx: &mut Context) -> GameResult<MainState> {
+        ctx.print_resource_stats();
 
-        let intro_font = graphics::Font::new(_ctx, "\\DejaVuSerif.ttf", 32).unwrap();
-        let intro_text = graphics::Text::new(_ctx, "WAYSTE EM!", &intro_font).unwrap();
+        let intro_font = graphics::Font::new(ctx, "\\DejaVuSerif.ttf", 32).unwrap();
+        let intro_text = graphics::Text::new(ctx, "WAYSTE EM!", &intro_font).unwrap();
 
         let universe_width_in_cells  = 256;
         let universe_height_in_cells = 120;
 
         let config = config::ConfigFile::new();
 
-        let vs = video::VideoSettings::new();
+        let mut vs = video::VideoSettings::new();
 /*
  *  FIXME Disabling video module temporarily as we can now leverage ggez 0.4
- *  
-        vs.gather_display_modes(_ctx);
+ */
+        vs.gather_display_modes(ctx);
 
         vs.print_resolutions();
-        
+
+/*
         // On first-run, use default supported resolution
         let (w, h) = config.get_resolution();
         if (w,h) != (0,0) {
-            vs.set_active_resolution(_ctx, w, h);
+            vs.set_active_resolution(ctx, w, h);
         } else {
-            vs.advance_to_next_resolution(_ctx);
+            vs.advance_to_next_resolution(ctx);
 
             // Some duplication here to update the config file
             // I don't want to do this every load() to avoid
@@ -228,7 +229,7 @@ impl MainState {
         }
         let (w,h) = vs.get_active_resolution();
 
-        graphics::set_fullscreen(_ctx, config.is_fullscreen() == true);
+        graphics::set_fullscreen(ctx, config.is_fullscreen() == true);
         vs.is_fullscreen = config.is_fullscreen() == true;
 */
 
@@ -245,8 +246,8 @@ impl MainState {
         color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
         color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
 
-        let small_font = graphics::Font::new(_ctx, "\\DejaVuSerif.ttf", 20).unwrap();
-        let menu_font  = graphics::Font::new(_ctx, "\\DejaVuSerif.ttf", 20).unwrap();
+        let small_font = graphics::Font::new(ctx, "\\DejaVuSerif.ttf", 20).unwrap();
+        let menu_font  = graphics::Font::new(ctx, "\\DejaVuSerif.ttf", 20).unwrap();
 
         let bigbang = 
         {
@@ -438,8 +439,8 @@ impl EventHandler for MainState {
                                             // Update the configuration file and resize the viewing
                                             // screen
                                             let (w,h) = self.video_settings.get_active_resolution();
-                                            self.config.set_resolution(w,h);
-                                            self.viewport.set_dimensions(w as f32, h as f32);
+                                            self.config.set_resolution(w as i32, h as i32);
+                                            self.viewport.set_dimensions(w, h);
                                         }
                                     }
                                     _ => {}
@@ -508,7 +509,7 @@ impl EventHandler for MainState {
     }
 
     fn mouse_button_down_event(&mut self,
-                               _ctx: &mut Context,
+                               ctx: &mut Context,
                                button: MouseButton,
                                x: i32,
                                y: i32
@@ -517,7 +518,7 @@ impl EventHandler for MainState {
     }
 
     fn mouse_motion_event(&mut self,
-                          _ctx: &mut Context,
+                          ctx: &mut Context,
                           state: MouseState,
                           x: i32,
                           y: i32,
@@ -538,7 +539,7 @@ impl EventHandler for MainState {
     }
 
     fn mouse_button_up_event(&mut self,
-                             _ctx: &mut Context,
+                             ctx: &mut Context,
                              _button: MouseButton,
                              _x: i32,
                              _y: i32
@@ -570,7 +571,7 @@ impl EventHandler for MainState {
     }
 
     fn key_up_event(&mut self,
-                    _ctx: &mut Context,
+                    ctx: &mut Context,
                     keycode: Keycode,
                     _keymod: Mod,
                     _repeat: bool
@@ -578,7 +579,7 @@ impl EventHandler for MainState {
         self.input_manager.add(input::InputAction::KeyRelease(keycode));
     }
 
-    fn quit_event(&mut self, _ctx: &mut Context) -> bool {
+    fn quit_event(&mut self, ctx: &mut Context) -> bool {
         let mut do_not_quit = true;
 
         match self.stage {
@@ -601,10 +602,10 @@ impl EventHandler for MainState {
 }
 
 impl MainState {
-    fn draw_universe(&mut self, _ctx: &mut Context) -> GameResult<()> {
+    fn draw_universe(&mut self, ctx: &mut Context) -> GameResult<()> {
         // grid background
-        graphics::set_color(_ctx, self.color_settings.get_color(None))?;
-        graphics::rectangle(_ctx,  graphics::DrawMode::Fill, self.viewport.get_viewport())?;
+        graphics::set_color(ctx, self.color_settings.get_color(None))?;
+        graphics::rectangle(ctx,  graphics::DrawMode::Fill, self.viewport.get_viewport())?;
 
         // grid foreground (dead cells)
         let origin = self.viewport.get_origin();
@@ -614,19 +615,19 @@ impl MainState {
         let full_rect = Rect::new(origin.x, origin.y, full_width, full_height);
 
         if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
-            graphics::set_color(_ctx, self.color_settings.get_color(Some(CellState::Dead)))?;
-            graphics::rectangle(_ctx,  graphics::DrawMode::Fill, clipped_rect)?;
+            graphics::set_color(ctx, self.color_settings.get_color(Some(CellState::Dead)))?;
+            graphics::rectangle(ctx,  graphics::DrawMode::Fill, clipped_rect)?;
         }
 
         // grid non-dead cells (walls, players, etc.)
         let visibility = Some(1); //XXX, Player One
 
-        let image = graphics::Image::solid(_ctx, 1u16, Color::new(1.0, 1.0, 1.0, 1.0))?; // 1x1 square
+        let image = graphics::Image::solid(ctx, 1u16, Color::new(1.0, 1.0, 1.0, 1.0))?; // 1x1 square
         let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
 
         self.uni.each_non_dead_full(visibility, &mut |col, row, state| {
             let color = self.color_settings.get_color(Some(state));
-            let _ = graphics::set_color(_ctx, color);
+            let _ = graphics::set_color(ctx, color);
 
             if let Some(rect) = self.viewport.get_screen_area(col, row) {
                 let p = graphics::DrawParam {
@@ -642,14 +643,14 @@ impl MainState {
 
         ////////// draw generation counter
         let gen_counter_str = self.uni.latest_gen().to_string();
-        graphics::set_color(_ctx, Color::new(1.0, 0.0, 0.0, 1.0))?;
-        utils::Graphics::draw_text(_ctx, &self.small_font, &gen_counter_str, &Point2::new(0.0, 0.0), None);
+        graphics::set_color(ctx, Color::new(1.0, 0.0, 0.0, 1.0))?;
+        utils::Graphics::draw_text(ctx, &self.small_font, &gen_counter_str, &Point2::new(0.0, 0.0), None);
 
         ////////////////////// END
-        graphics::set_color(_ctx, Color::new(0.0, 0.0, 0.0, 1.0))?; // Clear color residue
+        graphics::set_color(ctx, Color::new(0.0, 0.0, 0.0, 1.0))?; // Clear color residue
         self.first_gen_was_drawn = true;
 
-        graphics::draw_ex(_ctx, &spritebatch, graphics::DrawParam{ dest: Point2::new(0.0, 0.0), .. Default::default()} )?;
+        graphics::draw_ex(ctx, &spritebatch, graphics::DrawParam{ dest: Point2::new(0.0, 0.0), .. Default::default()} )?;
         spritebatch.clear();
         Ok(())
     }
