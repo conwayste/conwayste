@@ -23,6 +23,7 @@ extern crate ggez;
 extern crate sdl2;
 #[macro_use] extern crate serde_derive;
 #[macro_use] extern crate version;
+extern crate rand;
 
 use conway::{BigBang, Universe, CellState, Region, PlayerBuilder};
 
@@ -46,7 +47,7 @@ mod viewport;
 mod input;
 
 const FPS                       : u32   = 25;
-const INTRO_DURATION            : f64   = 2.0;
+const INTRO_DURATION            : f64   = 10.0;
 const HISTORY_SIZE              : usize = 16;
 const CURRENT_PLAYER_ID         : usize = 1; // TODO :  get the player ID from server rather than hardcoding
 const FOG_RADIUS                : usize = 4;
@@ -62,9 +63,9 @@ enum Stage {
 // All game state
 struct MainState {
     small_font:          graphics::Font,
-    intro_text:          graphics::Text,
     stage:               Stage,             // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
+    intro_uni:           Universe,
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
     color_settings:      ColorSettings,
     running:             bool,
@@ -186,6 +187,134 @@ fn init_patterns(s: &mut MainState) -> Result<(), ()> {
 }
 
 
+enum Orientation {
+    Vertical,
+    Horizontal,
+    Diagonal
+}
+
+fn toggle_line(s: &mut MainState, orientation: Orientation, col: usize, row: usize, width: usize, height: usize) {
+    match orientation {
+        Orientation::Vertical => {
+            for r in row..(height+row) {
+                let _ = s.intro_uni.toggle(col, r, 0);
+            }
+        }
+        Orientation::Horizontal => {
+            for c in col..(width+col) {
+                let _ = s.intro_uni.toggle(c, row, 0);
+            }
+        }
+        Orientation::Diagonal => {
+            for x in 0..width-1 {
+                let _ = s.intro_uni.toggle(col+x, row+x, 0);
+            }
+        }
+    }
+}
+
+fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
+
+    // 1) Calculate width and height of rectangle which represents the intro logo
+    // 2) Determine height and width of the window
+    // 3) Center it
+    // 4) get offset for row and column to draw at
+
+//  let resolution = s.video_settings.get_active_resolution();
+    let resolution = (config::DEFAULT_SCREEN_WIDTH, config::DEFAULT_SCREEN_HEIGHT);
+    let win_width = resolution.0 as i32 / s.viewport.get_cell_size() as i32;
+    let win_height = resolution.1  as i32 / s.viewport.get_cell_size() as i32;
+
+    let letter_width = 5;
+    let letter_height = 6;
+
+    // 9 letters; account for width and spacing
+    let logo_width = 9*5 + 9*5;
+    let logo_height = letter_height as i32;
+
+    let mut offset_col = ((win_width/2) - (logo_width/2)) as usize;
+    let offset_row = ((win_height/2) - (logo_height/2)) as usize;
+
+    // C
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
+
+    offset_col += 2*letter_width;
+
+    // O
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width-1, offset_row+1, letter_width,letter_height-1);
+
+    offset_col += 2*letter_width;
+
+    // N
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row, letter_width,letter_height+1);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
+    toggle_line(s, Orientation::Diagonal, offset_col+1, offset_row+1, letter_width,letter_height);
+
+    offset_col += 2*letter_width;
+
+    // W
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height, letter_width,letter_height);
+    let _ = s.intro_uni.toggle(offset_col+letter_width/2, offset_row+letter_height-1, 0);
+    let _ = s.intro_uni.toggle(offset_col+letter_width/2, offset_row+letter_height-2, 0);
+    let _ = s.intro_uni.toggle(offset_col+letter_width/2+1, offset_row+letter_height-1, 0);
+    let _ = s.intro_uni.toggle(offset_col+letter_width/2+1, offset_row+letter_height-2, 0);
+
+    offset_col += 2*letter_width;
+
+    // A
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height/2, letter_width-1,letter_height);
+
+    offset_col += 2*letter_width;
+
+    // Y
+    let _ = s.intro_uni.toggle(offset_col, offset_row, 0);
+    let _ = s.intro_uni.toggle(offset_col, offset_row+1, 0);
+    let _ = s.intro_uni.toggle(offset_col, offset_row+2, 0);
+    let _ = s.intro_uni.toggle(offset_col+letter_height, offset_row, 0);
+    let _ = s.intro_uni.toggle(offset_col+letter_height, offset_row+1, 0);
+    let _ = s.intro_uni.toggle(offset_col+letter_height, offset_row+2, 0);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_height/2, offset_row+letter_width/2+2, letter_width,letter_height-3);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height/2, letter_width+2,letter_height-1);
+
+    offset_col += 2*letter_width;
+
+    // S
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height/2, letter_width,letter_height);
+    let _ = s.intro_uni.toggle(offset_col, offset_row+1, 0);
+    let _ = s.intro_uni.toggle(offset_col, offset_row+2, 0);
+    let _ = s.intro_uni.toggle(offset_col+letter_width-1, offset_row+4, 0);
+    let _ = s.intro_uni.toggle(offset_col+letter_width-1, offset_row+5, 0);
+
+    offset_col += 2*letter_width;
+
+    // T
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width/2, offset_row+1, letter_width,letter_height);
+
+    offset_col += 2*letter_width;
+
+    // E
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height/2, letter_width-2,letter_height);
+
+    Ok(())
+}
+
+
 // Then we implement the `ggez::game::GameState` trait on it, which
 // requires callbacks for creating the game state, updating it each
 // frame, and drawing it.
@@ -198,7 +327,6 @@ impl MainState {
         ctx.print_resource_stats();
 
         let intro_font = graphics::Font::new(ctx, "\\DejaVuSerif.ttf", 32).unwrap();
-        let intro_text = graphics::Text::new(ctx, "WAYSTE EM!", &intro_font).unwrap();
 
         let universe_width_in_cells  = 256;
         let universe_height_in_cells = 120;
@@ -206,13 +334,13 @@ impl MainState {
         let config = config::ConfigFile::new();
 
         let mut vs = video::VideoSettings::new();
-/*
- *  FIXME Disabling video module temporarily as we can now leverage ggez 0.4
- */
         vs.gather_display_modes(ctx);
 
         vs.print_resolutions();
 
+/*
+ *  FIXME Disabling video module temporarily as we can now leverage ggez 0.4
+ */
 /*
         // On first-run, use default supported resolution
         let (w, h) = config.get_resolution();
@@ -270,11 +398,23 @@ impl MainState {
             .birth()
         };
 
+        let intro_universe = 
+        {
+            let player = PlayerBuilder::new(Region::new(0, 0, 256, 256));
+            BigBang::new()
+                .width(256)
+                .height(256)
+                .server_mode(true)
+                .fog_radius(100)
+                .add_players(vec![player])
+                .birth()
+        };
+
         let mut s = MainState {
             small_font:          small_font,
-            intro_text:          intro_text,
             stage:               Stage::Intro(INTRO_DURATION),
             uni:                 bigbang.unwrap(),
+            intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
             color_settings:      color_settings,
             running:             false,
@@ -293,6 +433,7 @@ impl MainState {
         };
 
         init_patterns(&mut s).unwrap();
+        init_title_screen(&mut s).unwrap();
 
         Ok(s)
     }
@@ -308,12 +449,21 @@ impl EventHandler for MainState {
 
         match self.stage {
             Stage::Intro(mut remaining) => {
+                const START_UNI_GEN_IN_SECONDS : f64 = 3.0;
+
                 remaining -= duration;
-                if remaining > 0.0 {
+                if remaining > START_UNI_GEN_IN_SECONDS {
                     self.stage = Stage::Intro(remaining);
-                } else {
-                    self.stage = Stage::Run; // Menu Stage is disabled for the time being
-                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                } 
+                else {
+                    if remaining > 0.0 && remaining <= START_UNI_GEN_IN_SECONDS {
+                        self.intro_uni.next();
+                        self.stage = Stage::Intro(remaining);
+                    }
+                    else {
+                        self.stage = Stage::Run; // Menu Stage is disabled for the time being
+                        self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                    }
                 }
             }
             Stage::Menu => {
@@ -492,7 +642,7 @@ impl EventHandler for MainState {
 
         match self.stage {
             Stage::Intro(_) => {
-                graphics::draw(ctx, &mut self.intro_text, Point2::new(0.0, 0.0), 0.0)?;
+                self.draw_intro(ctx);
             }
             Stage::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn);
@@ -602,6 +752,49 @@ impl EventHandler for MainState {
 }
 
 impl MainState {
+    
+    fn draw_intro(&mut self, _ctx: &mut Context) {
+        // grid background
+        graphics::set_color(_ctx, Color::new(0.0, 0.0, 0.0, 1.0));
+        graphics::rectangle(_ctx,  graphics::DrawMode::Fill, self.viewport.get_viewport()).unwrap();
+
+        // grid foreground (dead cells)
+        let resolution = self.video_settings.get_active_resolution();
+
+        let origin = self.viewport.get_origin();;
+        let full_width  = self.viewport.grid_width() as f32;
+        let full_height = self.viewport.grid_height() as f32;
+        let full_rect = Rect::new(origin.x, origin.y, full_width, full_height);
+
+        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
+            graphics::set_color(_ctx, Color::new(0.0, 0.0, 0.0, 1.0));
+            graphics::rectangle(_ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
+        }
+
+        use rand::distributions::{IndependentSample, Range};
+        let range = Range::new(0.0, 1.0);
+
+        // grid non-dead cells
+        let visibility = Some(0);
+        self.intro_uni.each_non_dead_full(visibility, &mut |col, row, _state| {
+            let mut colors = vec![1.0, 2.0, 3.0];
+            let mut rng = rand::thread_rng();
+
+            for x in colors.iter_mut() {
+                *x = range.ind_sample(&mut rng);
+            }
+            graphics::set_color(_ctx, Color::new(colors[0], colors[1], colors[2], 1.0));
+
+            if let Some(rect) = self.viewport.get_screen_area(col, row) {
+                graphics::rectangle(_ctx,  graphics::DrawMode::Fill, rect).unwrap();
+            }
+        });
+
+        ////////////////////// END
+        graphics::set_color(_ctx, Color::new(0.0, 0.0, 0.0, 0.0)); // do this at end; not sure why...?
+
+    }
+
     fn draw_universe(&mut self, ctx: &mut Context) -> GameResult<()> {
         // grid background
         graphics::set_color(ctx, self.color_settings.get_color(None))?;

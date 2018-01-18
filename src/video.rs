@@ -108,7 +108,7 @@ impl VideoSettings {
             let display_mode = sdl_video.display_mode(0, x)?;
 
             self.res_manager.add_mode(Resolution{
-                w: display_mode.w as f32, 
+                w: display_mode.w as f32,
                 h: display_mode.h as f32
                 });
 
@@ -120,7 +120,7 @@ impl VideoSettings {
         Ok(())
     }
 
-    pub fn print_resolutions(&self) { 
+    pub fn print_resolutions(&self) {
         self.res_manager.print_supported_modes();
     }
 
