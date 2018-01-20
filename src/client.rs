@@ -31,11 +31,10 @@ use ggez::conf;
 use ggez::event::*;
 use ggez::{GameResult, Context, ContextBuilder};
 use ggez::graphics;
-use ggez::graphics::{Rect, Point2, Color};
+use ggez::graphics::{Point2, Color};
 use ggez::timer;
 
 use std::env;
-use std::fs::File;
 use std::path;
 use std::collections::BTreeMap;
 
@@ -98,6 +97,20 @@ impl ColorSettings {
             Some(cell) => self.cell_colors[&cell],
             None       => self.background
         }
+    }
+
+    fn get_random_color(&self) -> Color {
+        use rand::distributions::{IndependentSample, Range};
+        let range = Range::new(0.0, 1.0);
+        let mut colors = vec![1.0, 2.0, 3.0];
+        let mut rng = rand::thread_rng();
+
+        for x in colors.iter_mut() {
+            *x = range.ind_sample(&mut rng);
+        }
+        let mut iter = colors.into_iter();
+        Color::new(iter.next().unwrap(), iter.next().unwrap(), iter.next().unwrap(), 1.0)
+
     }
 }
 
@@ -326,7 +339,7 @@ impl MainState {
     fn new(ctx: &mut Context) -> GameResult<MainState> {
         ctx.print_resource_stats();
 
-        let intro_font = graphics::Font::new(ctx, "\\DejaVuSerif.ttf", 32).unwrap();
+        let intro_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 32).unwrap();
 
         let universe_width_in_cells  = 256;
         let universe_height_in_cells = 120;
@@ -374,8 +387,8 @@ impl MainState {
         color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
         color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
 
-        let small_font = graphics::Font::new(ctx, "\\DejaVuSerif.ttf", 20).unwrap();
-        let menu_font  = graphics::Font::new(ctx, "\\DejaVuSerif.ttf", 20).unwrap();
+        let small_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20).unwrap();
+        let menu_font  = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20).unwrap();
 
         let bigbang = 
         {
@@ -707,7 +720,7 @@ impl EventHandler for MainState {
 
         match self.stage {
             Stage::Intro(_) => {
-                self.stage = Stage::Menu;
+                self.stage = Stage::Run; // TODO lets just go to the game for now...
             }
             Stage::Menu | Stage::Run => {
                 // TODO for now just quit the game
@@ -751,76 +764,55 @@ impl EventHandler for MainState {
 
 }
 
+
+struct GameOfLifeDrawParams {
+    bg_color: Color,
+    fg_color: Color,
+    player_id: isize, // Player color >=0, Playerless < 0
+    draw_counter: bool,
+}
+
 impl MainState {
-    
-    fn draw_intro(&mut self, _ctx: &mut Context) {
+
+    fn draw_game_of_life(&self, 
+                         ctx: &mut Context,
+                         universe: &Universe,
+                         draw_params: &GameOfLifeDrawParams
+                         ) -> GameResult<()> {
+
         // grid background
-        graphics::set_color(_ctx, Color::new(0.0, 0.0, 0.0, 1.0));
-        graphics::rectangle(_ctx,  graphics::DrawMode::Fill, self.viewport.get_viewport()).unwrap();
-
-        // grid foreground (dead cells)
-        let resolution = self.video_settings.get_active_resolution();
-
-        let origin = self.viewport.get_origin();;
-        let full_width  = self.viewport.grid_width() as f32;
-        let full_height = self.viewport.grid_height() as f32;
-        let full_rect = Rect::new(origin.x, origin.y, full_width, full_height);
-
-        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
-            graphics::set_color(_ctx, Color::new(0.0, 0.0, 0.0, 1.0));
-            graphics::rectangle(_ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
-        }
-
-        use rand::distributions::{IndependentSample, Range};
-        let range = Range::new(0.0, 1.0);
-
-        // grid non-dead cells
-        let visibility = Some(0);
-        self.intro_uni.each_non_dead_full(visibility, &mut |col, row, _state| {
-            let mut colors = vec![1.0, 2.0, 3.0];
-            let mut rng = rand::thread_rng();
-
-            for x in colors.iter_mut() {
-                *x = range.ind_sample(&mut rng);
-            }
-            graphics::set_color(_ctx, Color::new(colors[0], colors[1], colors[2], 1.0));
-
-            if let Some(rect) = self.viewport.get_screen_area(col, row) {
-                graphics::rectangle(_ctx,  graphics::DrawMode::Fill, rect).unwrap();
-            }
-        });
-
-        ////////////////////// END
-        graphics::set_color(_ctx, Color::new(0.0, 0.0, 0.0, 0.0)); // do this at end; not sure why...?
-
-    }
-
-    fn draw_universe(&mut self, ctx: &mut Context) -> GameResult<()> {
-        // grid background
-        graphics::set_color(ctx, self.color_settings.get_color(None))?;
+        graphics::set_color(ctx, draw_params.bg_color);
         graphics::rectangle(ctx,  graphics::DrawMode::Fill, self.viewport.get_viewport())?;
 
         // grid foreground (dead cells)
-        let origin = self.viewport.get_origin();
-        let full_width  = self.viewport.grid_width() as f32;
-        let full_height = self.viewport.grid_height() as f32;
-
-        let full_rect = Rect::new(origin.x, origin.y, full_width, full_height);
+        let full_rect = self.viewport.get_rect_from_origin();
 
         if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
-            graphics::set_color(ctx, self.color_settings.get_color(Some(CellState::Dead)))?;
+            graphics::set_color(ctx, draw_params.fg_color);
             graphics::rectangle(ctx,  graphics::DrawMode::Fill, clipped_rect)?;
         }
 
-        // grid non-dead cells (walls, players, etc.)
-        let visibility = Some(1); //XXX, Player One
-
-        let image = graphics::Image::solid(ctx, 1u16, Color::new(1.0, 1.0, 1.0, 1.0))?; // 1x1 square
+        let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
         let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
 
-        self.uni.each_non_dead_full(visibility, &mut |col, row, state| {
-            let color = self.color_settings.get_color(Some(state));
-            let _ = graphics::set_color(ctx, color);
+        // grid non-dead cells (walls, players, etc.)
+        let visibility = if draw_params.player_id >= 0 {
+            Some(draw_params.player_id as usize) //XXX, Player One
+        } else {
+            Some(0)
+        };
+
+        let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
+        let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
+
+        universe.each_non_dead_full(visibility, &mut |col, row, state| {
+            let color = if draw_params.player_id >= 0 {
+                self.color_settings.get_color(Some(state))
+            } else {
+                self.color_settings.get_random_color()
+            };
+
+            // let _ = graphics::set_color(ctx, color);
 
             if let Some(rect) = self.viewport.get_screen_area(col, row) {
                 let p = graphics::DrawParam {
@@ -834,18 +826,46 @@ impl MainState {
             }
         });
 
-        ////////// draw generation counter
-        let gen_counter_str = self.uni.latest_gen().to_string();
-        graphics::set_color(ctx, Color::new(1.0, 0.0, 0.0, 1.0))?;
-        utils::Graphics::draw_text(ctx, &self.small_font, &gen_counter_str, &Point2::new(0.0, 0.0), None);
-
-        ////////////////////// END
-        graphics::set_color(ctx, Color::new(0.0, 0.0, 0.0, 1.0))?; // Clear color residue
-        self.first_gen_was_drawn = true;
-
         graphics::draw_ex(ctx, &spritebatch, graphics::DrawParam{ dest: Point2::new(0.0, 0.0), .. Default::default()} )?;
         spritebatch.clear();
+        
+
+        ////////// draw generation counter
+        if draw_params.draw_counter {
+            let gen_counter_str = universe.latest_gen().to_string();
+            graphics::set_color(ctx, Color::new(1.0, 0.0, 0.0, 1.0))?;
+            utils::Graphics::draw_text(ctx, &self.small_font, &gen_counter_str, &Point2::new(0.0, 0.0), None);
+        }
+
+        ////////////////////// END
+        graphics::set_color(ctx, graphics::BLACK)?; // Clear color residue
+
         Ok(())
+    }
+
+    fn draw_intro(&mut self, ctx: &mut Context) -> GameResult<()>{
+
+        let draw_params = GameOfLifeDrawParams {
+            bg_color: graphics::BLACK,
+            fg_color: graphics::BLACK,
+            player_id: -1,
+            draw_counter: true,
+        };
+
+        self.draw_game_of_life(ctx, &self.intro_uni, &draw_params)
+    }
+
+    fn draw_universe(&mut self, ctx: &mut Context) -> GameResult<()> {
+
+        let draw_params = GameOfLifeDrawParams {
+            bg_color: self.color_settings.get_color(None),
+            fg_color: self.color_settings.get_color(Some(CellState::Dead)),
+            player_id: 1, // Current player, TODO sync with Server's CLIENT ID
+            draw_counter: true,
+        };
+
+        self.first_gen_was_drawn = true;
+        self.draw_game_of_life(ctx, &self.uni, &draw_params)
     }
 
     fn pause_or_resume_game(&mut self) {
@@ -1040,7 +1060,7 @@ pub fn main() {
     let mut cb = ContextBuilder::new("conwayste", "Aaronm04Manghi")
         .window_setup(conf::WindowSetup::default()
                       .title(format!("{} {} {}", "💥 conwayste", version!().to_owned(),"💥").as_str())
-                      .icon("\\conwayste.ico")
+                      .icon("//conwayste.ico")
                       .resizable(false)
                       .allow_highdpi(true)
                       )

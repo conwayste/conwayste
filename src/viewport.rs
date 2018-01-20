@@ -246,6 +246,14 @@ impl Viewport {
         self.grid_view.rows as u32 * self.grid_view.cell_size as u32
     }
 
+    pub fn get_rect_from_origin(&self) -> Rect {
+        let origin = self.get_origin();
+        let full_width  = self.grid_width() as f32;
+        let full_height = self.grid_height() as f32;
+
+        Rect::new(origin.x, origin.y, full_width, full_height)
+    }
+
     /*
     // TODO reevaluate necessity
      fn _get_all_window_coords_in_game_coords(&mut self) -> Option<WindowCornersInGameCoords> {
