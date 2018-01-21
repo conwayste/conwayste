@@ -146,12 +146,12 @@ pub fn toggle_full_screen(_ctx: &mut Context) -> bool {
     let is_fullscreen;
     if graphics::is_fullscreen(_ctx) {
         is_fullscreen = false;
-        graphics::set_fullscreen(_ctx, is_fullscreen);
+        let _ = graphics::set_fullscreen(_ctx, is_fullscreen);
     }
     else
     {
         is_fullscreen = true;
-        graphics::set_fullscreen(_ctx, is_fullscreen);
+        let _ = graphics::set_fullscreen(_ctx, is_fullscreen);
     }
     is_fullscreen
 }
@@ -202,7 +202,7 @@ pub fn get_current_display_mode(_ctx: &mut Context) -> bool {
 
 fn refresh_game_resolution(_ctx: &mut Context, w: i32, h: i32) {
     if w != 0 && h != 0 {
-        graphics::set_resolution(_ctx, w as u32, h as u32);
+        let _ = graphics::set_resolution(_ctx, w as u32, h as u32);
     }
 }
 

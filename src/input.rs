@@ -21,10 +21,11 @@
 //
 
 use std::collections::VecDeque;
+
 use ggez::event::{Keycode, MouseButton};
 //use ggez::event::{Button, Axis};
 
-const NUM_OF_INPUTS: usize = 10;
+const NUM_OF_QUEUED_INPUTS: usize = 10;
 
 pub enum InputDeviceType {
     PRIMARY,
@@ -59,7 +60,7 @@ impl InputManager {
 
     pub fn add(&mut self, input: InputAction) {
         // Curious to see if we actually can hit this condition
-        if self.events.len() >= NUM_OF_INPUTS {
+        if self.events.len() >= NUM_OF_QUEUED_INPUTS {
             println!("{:?}", self.events);
             assert!(false);
         }
@@ -67,7 +68,7 @@ impl InputManager {
         self.events.push_back(input);
     }
 
-    pub fn _peek_next(&self) -> Option<&InputAction> {
+    pub fn peek(&self) -> Option<&InputAction> {
         self.events.front()
     }
     

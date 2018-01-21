@@ -339,15 +339,13 @@ impl MainState {
     fn new(ctx: &mut Context) -> GameResult<MainState> {
         ctx.print_resource_stats();
 
-        let intro_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 32).unwrap();
-
         let universe_width_in_cells  = 256;
         let universe_height_in_cells = 120;
 
         let config = config::ConfigFile::new();
 
         let mut vs = video::VideoSettings::new();
-        vs.gather_display_modes(ctx);
+        let _ = vs.gather_display_modes(ctx);
 
         vs.print_resolutions();
 
@@ -636,7 +634,7 @@ impl EventHandler for MainState {
                         self.pause_or_resume_game();
                     }
 
-                    self.viewport.update(self.arrow_input); // TODO needs input reference
+                    self.viewport.update(self.arrow_input);
                 }
             }
             Stage::Exit => {
@@ -644,7 +642,7 @@ impl EventHandler for MainState {
             }
         }
 
-        self.input_manager.expunge();
+        let _ = self.post_update();
 
         Ok(())
     }
@@ -655,7 +653,7 @@ impl EventHandler for MainState {
 
         match self.stage {
             Stage::Intro(_) => {
-                self.draw_intro(ctx);
+                self.draw_intro(ctx)?;
             }
             Stage::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn);
@@ -672,7 +670,7 @@ impl EventHandler for MainState {
     }
 
     fn mouse_button_down_event(&mut self,
-                               ctx: &mut Context,
+                               _ctx: &mut Context,
                                button: MouseButton,
                                x: i32,
                                y: i32
@@ -681,7 +679,7 @@ impl EventHandler for MainState {
     }
 
     fn mouse_motion_event(&mut self,
-                          ctx: &mut Context,
+                          _ctx: &mut Context,
                           state: MouseState,
                           x: i32,
                           y: i32,
@@ -702,7 +700,7 @@ impl EventHandler for MainState {
     }
 
     fn mouse_button_up_event(&mut self,
-                             ctx: &mut Context,
+                             _ctx: &mut Context,
                              _button: MouseButton,
                              _x: i32,
                              _y: i32
@@ -727,6 +725,7 @@ impl EventHandler for MainState {
                 if keycode == Keycode::Escape {
                     self.quit_event(ctx);
                 }
+
                 self.input_manager.add(input::InputAction::KeyPress(keycode, repeat));
             }
             Stage::Exit => {}
@@ -734,15 +733,16 @@ impl EventHandler for MainState {
     }
 
     fn key_up_event(&mut self,
-                    ctx: &mut Context,
+                    _ctx: &mut Context,
                     keycode: Keycode,
                     _keymod: Mod,
                     _repeat: bool
                     ) {
+        //self.input_manager.clear_input_start_time();
         self.input_manager.add(input::InputAction::KeyRelease(keycode));
     }
 
-    fn quit_event(&mut self, ctx: &mut Context) -> bool {
+    fn quit_event(&mut self, _ctx: &mut Context) -> bool {
         let mut do_not_quit = true;
 
         match self.stage {
@@ -781,14 +781,14 @@ impl MainState {
                          ) -> GameResult<()> {
 
         // grid background
-        graphics::set_color(ctx, draw_params.bg_color);
+        graphics::set_color(ctx, draw_params.bg_color)?;
         graphics::rectangle(ctx,  graphics::DrawMode::Fill, self.viewport.get_viewport())?;
 
         // grid foreground (dead cells)
         let full_rect = self.viewport.get_rect_from_origin();
 
         if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
-            graphics::set_color(ctx, draw_params.fg_color);
+            graphics::set_color(ctx, draw_params.fg_color)?;
             graphics::rectangle(ctx,  graphics::DrawMode::Fill, clipped_rect)?;
         }
 
@@ -801,9 +801,6 @@ impl MainState {
         } else {
             Some(0)
         };
-
-        let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
-        let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
 
         universe.each_non_dead_full(visibility, &mut |col, row, state| {
             let color = if draw_params.player_id >= 0 {
@@ -905,6 +902,7 @@ impl MainState {
     // That way differnt user inputs (gamepad, keyboard/mouse) resolve to a single game event
     // This logic would be agnostic from how the user is interacting with the game
     fn process_running_inputs(&mut self) {
+
         while self.input_manager.has_more() {
             if let Some(input) = self.input_manager.remove() {
                 match input {
@@ -995,7 +993,7 @@ impl MainState {
                 match input {
                     input::InputAction::MouseClick(MouseButton::Left, _x, _y) => {}
                     input::InputAction::MouseClick(MouseButton::Right, _x, _y) => {}
-                    input::InputAction::MouseMovement(x, y) => {}
+                    input::InputAction::MouseMovement(_x, _y) => {}
                     input::InputAction::MouseDrag(MouseButton::Left, _x, _y) => {}
                     input::InputAction::MouseRelease(_) => {}
 
@@ -1041,6 +1039,38 @@ impl MainState {
             }
         }
 
+    }
+
+    fn post_update(&mut self) -> GameResult<()> {
+        /*
+        match self.input_manager.peek() {
+            Some(&input::InputAction::KeyPress(keycode, repeat)) => {
+                if repeat {
+                    match keycode {
+                        Keycode::Up => {
+                            self.arrow_input = (0, -1);
+                        }
+                        Keycode::Down => {
+                            self.arrow_input = (0, 1);
+                        }
+                        Keycode::Left => {
+                            self.arrow_input = (-1, 0);
+                        }
+                        Keycode::Right => {
+                            self.arrow_input = (1, 0);
+                        }
+                        _ => self.arrow_input = (0, 0)
+                    }
+                }
+            }
+            _ => self.arrow_input = (0,0),
+        }
+        */
+
+        self.arrow_input = (0, 0);
+        self.input_manager.expunge();
+
+        Ok(())
     }
 }
 

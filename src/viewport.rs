@@ -43,14 +43,6 @@ pub struct Viewport {
     grid_view:           GridView,
 }
 
-/*
-#[derive(Debug, Clone)]
-struct WindowCornersInGameCoords {
-    top_left : Point2,
-    bottom_right: Point2,
-}
-*/
-
 #[derive(PartialEq)]
 pub enum ZoomDirection {
     ZoomOut,
@@ -75,9 +67,9 @@ impl Viewport {
                 ZoomDirection::ZoomOut => zoom_dir = ZOOM_OUT,
             }
 
-//            debug!("Window Size: ({}, {})", self.grid_view.rect.w, self.grid_view.rect.h);
-//            debug!("Origin Before: ({},{})", self.grid_view.grid_origin.x, self.grid_view.grid_origin.y);
-//            debug!("Cell Size Before: {},", self.grid_view.cell_size);
+            //debug!("Window Size: ({}, {})", self.grid_view.rect.w, self.grid_view.rect.h);
+            //debug!("Origin Before: ({},{})", self.grid_view.grid_origin.x, self.grid_view.grid_origin.y);
+            //debug!("Cell Size Before: {},", self.grid_view.cell_size);
 
             let next_cell_size = self.grid_view.cell_size + zoom_dir;
             let old_cell_size = self.grid_view.cell_size;
@@ -89,8 +81,8 @@ impl Viewport {
                 let delta_x = zoom_dir * (old_cell_count_for_x as f32 * next_cell_size as f32 - old_cell_count_for_x as f32 * old_cell_size as f32);
                 let delta_y = zoom_dir * (old_cell_count_for_y as f32 * next_cell_size as f32 - old_cell_count_for_y as f32 * old_cell_size as f32);
 
-//                debug!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
-//                debug!("delta in win coords: {}, {}", delta_x, delta_y);
+                //debug!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
+                //debug!("delta in win coords: {}, {}", delta_x, delta_y);
 
                 self.grid_view.cell_size = next_cell_size;
 
@@ -108,8 +100,8 @@ impl Viewport {
 
                 self.adjust_panning(true, NO_INPUT);
 
-//                debug!("Origin After: ({},{})\n", self.grid_view.grid_origin.x, self.grid_view.grid_origin.y);
-//                debug!("Cell Size After: {},", self.grid_view.cell_size);
+                //debug!("Origin After: ({},{})\n", self.grid_view.grid_origin.x, self.grid_view.grid_origin.y);
+                //debug!("Cell Size After: {},", self.grid_view.cell_size);
             }
         }
     }
@@ -117,8 +109,8 @@ impl Viewport {
     fn adjust_panning(&mut self, recenter_after_zoom: bool, arrow_input: (i32, i32)) {
         let (columns, rows) = (self.grid_view.columns as u32, self.grid_view.rows as u32);
 
-//        debug!("\n\nP A N N I N G:");
-//        debug!("Columns, Rows = {:?}", (columns, rows));
+        //debug!("\n\nP A N N I N G:");
+        //debug!("Columns, Rows = {:?}", (columns, rows));
 
         let (dx, dy) = arrow_input;
         let dx_in_pixels = (-dx * PIXELS_SCROLLED_PER_FRAME) as f32;
@@ -134,7 +126,7 @@ impl Viewport {
         let border_in_cells = 10.0;
         let border_in_px = border_in_cells * cell_size;
 
-//        debug!("Cell Size: {:?}", (cell_size));
+        //debug!("Cell Size: {:?}", (cell_size));
 
         let mut pan = true;
         let mut limit_x = self.grid_view.grid_origin.x;
@@ -253,33 +245,6 @@ impl Viewport {
 
         Rect::new(origin.x, origin.y, full_width, full_height)
     }
-
-    /*
-    // TODO reevaluate necessity
-     fn _get_all_window_coords_in_game_coords(&mut self) -> Option<WindowCornersInGameCoords> {
-        let resolution = self.video_settings.get_active_resolution();
-        let win_width_px = resolution.0 as f32;
-        let win_height_px = resolution.1 as f32;
-
-        debug!("\tWindow: {:?} px", (win_width_px, win_height_px));
-
-        let result : Option<WindowCornersInGameCoords>;
-
-        let (origin_x, origin_y) = self.grid_view.game_coords_from_window_unchecked(Point2::new(0.0, 0.0));
-        {
-            let (win_width_px, win_height_px) = self.grid_view.game_coords_from_window_unchecked(Point2::new(win_width_px, win_height_px));
-            {
-                result = Some(WindowCornersInGameCoords {
-                    top_left : Point2::new(origin_x as f32, origin_y as f32),
-                    bottom_right : Point2::new(win_width_px as f32, win_height_px as f32),
-                });
-                debug!("\tReturning... {:?}", result);
-            }
-        }
-
-        result
-    }
-    */
 
     pub fn get_screen_area(&self, col: usize, row: usize) -> Option<Rect> {
         self.grid_view.window_coords_from_game(col, row)

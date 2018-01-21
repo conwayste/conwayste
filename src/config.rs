@@ -171,7 +171,7 @@ impl ConfigFile {
         self.set_clean();
     }
 
-    pub fn get_resolution(&self) -> (i32, i32) {
+    pub fn _get_resolution(&self) -> (i32, i32) {
         (self.settings.video.resolution_x, self.settings.video.resolution_y)
     }
 
@@ -181,7 +181,7 @@ impl ConfigFile {
         self.set_dirty();
     }
 
-    pub fn is_fullscreen(&self) -> bool {
+    pub fn _is_fullscreen(&self) -> bool {
         self.settings.video.fullscreen == true
     }
 
