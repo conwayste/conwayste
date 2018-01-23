@@ -27,12 +27,13 @@ use ggez::event::{Keycode, MouseButton};
 
 const NUM_OF_QUEUED_INPUTS: usize = 10;
 
+#[derive(Debug, PartialEq)]
 pub enum InputDeviceType {
     PRIMARY,
 //    GAMEPAD,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum InputAction {
     KeyPress(Keycode, bool),
     KeyRelease(Keycode),
@@ -80,8 +81,81 @@ impl InputManager {
         self.events.clear();
     }
 
-    pub fn has_more(&mut self) -> bool {
+    pub fn has_more(&self) -> bool {
         !self.events.is_empty()
     }
 
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_empty_inputmanager() {
+        let im = InputManager::new(InputDeviceType::PRIMARY);
+
+        assert_eq!(im._device, InputDeviceType::PRIMARY);
+        assert_eq!(im.events.len(), 0);
+        assert_eq!(im.has_more(), false);
+    }
+
+    #[test]
+    fn test_dequeue_empty_inputmanager() {
+        let mut im = InputManager::new(InputDeviceType::PRIMARY);
+
+        assert_eq!(im.has_more(), false);
+        assert_eq!(im.remove(), None);
+    }
+
+    #[test]
+    fn test_enqueue() {
+        let mut im = InputManager::new(InputDeviceType::PRIMARY);
+
+        let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
+        im.add(action);
+        
+        let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
+        assert_eq!(im.peek(), Some(&action));
+    }
+
+    #[test]
+    fn test_dequeue() {
+        let mut im = InputManager::new(InputDeviceType::PRIMARY);
+        assert_eq!(im.has_more(), false);
+
+        let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
+        im.add(action);
+        assert_eq!(im.has_more(), true);
+        
+        let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
+        assert_eq!(im.remove(), Some(action));
+        assert_eq!(im.has_more(), false);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_fill_up_queue() {
+        let mut im = InputManager::new(InputDeviceType::PRIMARY);
+
+        let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
+        for _ in 0..NUM_OF_QUEUED_INPUTS+1{
+            im.add(action.clone());
+        }
+    }
+
+    #[test]
+    fn test_clear_queue() {
+        let mut im = InputManager::new(InputDeviceType::PRIMARY);
+
+        let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
+        for _ in 0..NUM_OF_QUEUED_INPUTS{
+            im.add(action.clone());
+        }
+
+        im.expunge();
+        assert_eq!(im.remove(), None);
+        assert_eq!(im.has_more(), false);
+    }
 }
