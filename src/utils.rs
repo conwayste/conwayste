@@ -19,10 +19,14 @@
 use ggez::graphics::{Rect, draw, Font, Text, Point2};
 use ggez::Context;
 
+/// Provides graphic-related utilities functions that are built upon the `ggez` library.
 pub struct Graphics;
 
 impl Graphics {
 
+    /// Helper function to draw text onto the screen.
+    /// Given the string `str`, it will be drawn at the point coordinates specified by `coords`.
+    /// An offset can be specified by an optional `adjustment` point.
     pub fn draw_text(_ctx: &mut Context, font: &Font, text: &str, coords: &Point2, adjustment: Option<&Point2>) {
         let mut graphics_text = Text::new(_ctx, text, font).unwrap();
         let dst;
@@ -36,7 +40,10 @@ impl Graphics {
         let _ = draw(_ctx, &mut graphics_text, dst, 0.0);
     }
 
-    pub fn intersection(a: Rect, b: Rect) -> Option<Rect> {
+    /// Determines if two rectangles overlap, and if so, 
+    /// will return `Some` rectangle which spans that overlap.
+    /// This is a clone of the SDL2 intersection API.
+    pub fn intersection(a Rect, b: Rect) -> Option<Rect> {
 
         fn empty_rect(r: Rect) -> bool {
             r.w <= 0.0 || r.h <= 0.0
@@ -87,7 +94,40 @@ impl Graphics {
         }
     }
 
+    /// Provides a new `Point2` from the specified point a the specified offset.
     pub fn point_offset(p1: Point2, x: f32, y: f32) -> Point2 {
         Point2::new(p1.x + x, p1.y + y)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_point_offset() {
+        let point = Point2::new(1.0, 1.0);
+        let point2 = Graphics::point_offset(point, 5.0, 5.0);
+        let point3 = Graphics::point_offset(point, -5.0, -5.0);
+
+        assert_eq!(point2, Point2::new(6.0, 6.0));
+        assert_eq!(point3, Point2::new(-4.0, -4.0));
+    }
+
+    #[test]
+    fn test_rectangle_intersection_overlap() {
+        let rect1 = Rect::new(0.0, 0.0, 100.0, 100.0);
+        let rect2 = Rect::new(50.0, 50.0, 150.0, 150.0);
+        let rect3 = Rect::new(50.0, 50.0, 50.0, 50.0);
+
+        assert_eq!(Graphics::intersection(rect1, rect2), Some(rect3));
+    }
+
+    #[test]
+    fn test_rectangle_intersection_no_overlap() {
+        let rect1 = Rect::new(0.0, 0.0, 100.0, 100.0);
+        let rect2 = Rect::new(150.0, 150.0, 150.0, 150.0);
+
+        assert_eq!(Graphics::intersection(rect1, rect2), None);
     }
 }
