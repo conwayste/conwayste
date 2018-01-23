@@ -1,10 +1,10 @@
 pub extern crate futures;
-extern crate tokio_core;
+pub extern crate tokio_core;
 extern crate bincode;
 
 use std::io;
 use std::net;
-use std::net::SocketAddr;
+pub use std::net::SocketAddr;
 use std::str;
 
 pub use self::futures::{Future, Stream, Sink};
@@ -35,17 +35,17 @@ impl From<io::Error> for NetError {
 
 
 //////////////// Packet (de)serialization ////////////////
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Action {
     Click,
     Delete,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct PlayerPacket {
-    player_name: String,
-    number:      u64,
-    action:      Action,
+    pub player_name: String,
+    pub number:      u64,
+    pub action:      Action,
 }
 
 
