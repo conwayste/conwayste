@@ -171,7 +171,7 @@ impl ConfigFile {
         self.set_clean();
     }
 
-    pub fn _get_resolution(&self) -> (i32, i32) {
+    pub fn get_resolution(&self) -> (i32, i32) {
         (self.settings.video.resolution_x, self.settings.video.resolution_y)
     }
 
@@ -181,7 +181,7 @@ impl ConfigFile {
         self.set_dirty();
     }
 
-    pub fn _is_fullscreen(&self) -> bool {
+    pub fn is_fullscreen(&self) -> bool {
         self.settings.video.fullscreen == true
     }
 
@@ -234,4 +234,139 @@ impl ConfigFile {
         self.set_dirty();
     }
 */
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_init_default_config() {
+        let config = Config::new();
+
+        assert_eq!(config.audio.master, 100);
+        assert_eq!(config.audio.music, 100);
+        assert_eq!(config.video.fullscreen, false);
+        assert_eq!(config.video.resolution_x, 0);
+        assert_eq!(config.video.resolution_y, 0);
+        assert_eq!(config.gameplay.zoom, 5.0);
+        assert_eq!(config.user.name, "JohnConway");
+    }
+
+    #[test]
+    fn test_update_config() {
+        let mut config = Config::new();
+        assert_eq!(config.audio.master, 100);
+        assert_eq!(config.audio.music, 100);
+        assert_eq!(config.video.fullscreen, false);
+        assert_eq!(config.video.resolution_x, 0);
+        assert_eq!(config.video.resolution_y, 0);
+        assert_eq!(config.gameplay.zoom, 5.0);
+        assert_eq!(config.user.name, "JohnConway");
+
+        let mut secondary_config = Config::new();
+        assert_eq!(secondary_config.audio.master, 100);
+        assert_eq!(secondary_config.audio.music, 100);
+        assert_eq!(secondary_config.video.fullscreen, false);
+        assert_eq!(secondary_config.video.resolution_x, 0);
+        assert_eq!(secondary_config.video.resolution_y, 0);
+        assert_eq!(secondary_config.gameplay.zoom, 5.0);
+        assert_eq!(secondary_config.user.name, "JohnConway");
+
+        secondary_config.user.name = String::from("TestUser");
+        secondary_config.audio.master = 50;
+        secondary_config.audio.music = 50;
+        secondary_config.video.fullscreen = true;
+        secondary_config.gameplay.zoom = 1000.0;
+
+        config.update_config(secondary_config);
+        assert_eq!(config.audio.master, 50);
+        assert_eq!(config.audio.music, 50);
+        assert_eq!(config.video.fullscreen, true);
+        assert_eq!(config.video.resolution_x, 0);
+        assert_eq!(config.video.resolution_y, 0);
+        assert_eq!(config.gameplay.zoom, 1000.0);
+        assert_eq!(config.user.name, "TestUser");
+    }
+
+    #[test]
+    fn test_config_file_cleanliness() {
+        let mut configfile = ConfigFile::new();
+
+        assert_eq!(configfile.is_dirty(), false);
+
+        configfile.set_dirty();
+        assert_eq!(configfile.is_dirty(), true);
+
+        configfile.write();
+        assert_eq!(configfile.is_dirty(), false);
+    }
+
+    #[test]
+    fn test_modify_default_config_and_write() {
+        let mut configfile = ConfigFile::new();
+
+        assert_eq!(configfile.is_dirty(), false);
+
+        configfile.set_zoom_level(10.0);
+        assert_eq!(configfile.get_zoom_level(), 10.0);
+        assert_eq!(configfile.is_dirty(), true);
+
+        configfile.write();
+        assert_eq!(configfile.is_dirty(), false);
+    }
+
+    #[test]
+    fn test_zoom_level() {
+        let mut configfile = ConfigFile::new();
+        assert_eq!(configfile.is_dirty(), false);
+
+        configfile.set_zoom_level(10.0);
+        assert_eq!(configfile.get_zoom_level(), 10.0);
+        assert_eq!(configfile.is_dirty(), true);
+
+        configfile.set_zoom_level(0.0);
+        assert_eq!(configfile.get_zoom_level(), 0.0);
+
+        configfile.set_zoom_level(21.0);
+        assert_eq!(configfile.get_zoom_level(), 21.0);
+
+        configfile.write();
+        assert_eq!(configfile.is_dirty(), false);
+    }
+
+    #[test]
+    fn test_resolution() {
+        let mut configfile = ConfigFile::new();
+        assert_eq!(configfile.is_dirty(), false);
+
+        configfile.set_resolution(1920, 1080);
+        assert_eq!(configfile.get_resolution(), (1920, 1080));
+        assert_eq!(configfile.is_dirty(), true);
+
+        configfile.set_resolution(800, 600);
+        assert_eq!(configfile.get_resolution(), (800, 600));
+        assert_eq!(configfile.is_dirty(), true);
+
+        configfile.write();
+        assert_eq!(configfile.is_dirty(), false);
+    }
+
+    #[test]
+    fn test_fullscreen() {
+        let mut configfile = ConfigFile::new();
+
+        assert_eq!(configfile.is_dirty(), false);
+
+        configfile.set_fullscreen(true);
+        assert_eq!(configfile.is_fullscreen(), true);
+        assert_eq!(configfile.is_dirty(), true);
+
+        configfile.set_fullscreen(false);
+        assert_eq!(configfile.is_fullscreen(), false);
+        assert_eq!(configfile.is_dirty(), true);
+
+        configfile.write();
+        assert_eq!(configfile.is_dirty(), false);
+    }
 }

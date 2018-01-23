@@ -809,8 +809,6 @@ impl MainState {
                 self.color_settings.get_random_color()
             };
 
-            // let _ = graphics::set_color(ctx, color);
-
             if let Some(rect) = self.viewport.get_screen_area(col, row) {
                 let p = graphics::DrawParam {
                     dest: Point2::new(rect.x, rect.y),
@@ -825,7 +823,6 @@ impl MainState {
 
         graphics::draw_ex(ctx, &spritebatch, graphics::DrawParam{ dest: Point2::new(0.0, 0.0), .. Default::default()} )?;
         spritebatch.clear();
-        
 
         ////////// draw generation counter
         if draw_params.draw_counter {
@@ -1087,7 +1084,7 @@ impl MainState {
 pub fn main() {
     env_logger::init().unwrap();
 
-    let mut cb = ContextBuilder::new("conwayste", "Aaronm04Manghi")
+    let mut cb = ContextBuilder::new("conwayste", "Aaronm04|Manghi")
         .window_setup(conf::WindowSetup::default()
                       .title(format!("{} {} {}", "💥 conwayste", version!().to_owned(),"💥").as_str())
                       .icon("//conwayste.ico")
