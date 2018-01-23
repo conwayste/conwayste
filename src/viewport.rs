@@ -34,9 +34,19 @@ const PAN_DOWN                  : i32   =  1;
 const ZOOM_IN                   : f32   =  1.0;
 const ZOOM_OUT                  : f32   = -1.0;
 
+#[derive(Debug, PartialEq)]
 pub struct Cell {
     pub row: usize,
     pub col: usize,
+}
+
+impl Cell {
+    pub fn new(row: usize, col: usize) -> Cell {
+        Cell {
+            row: row,
+            col: col
+        }
+    }
 }
 
 pub struct Viewport {
@@ -60,7 +70,13 @@ impl Viewport {
         }
     }
 
-    /// 
+    /// Adjusting the zoom level is a two step process:
+    ///
+    /// 1) The cell size controls the rectangle size of each cell. 
+    ///   Zooming in increments, out decrements.
+    ///
+    /// 2) The offset needs to be repositioned so that the center of the screen 
+    ///   holds after the cell size change.
     pub fn adjust_zoom_level(&mut self, direction : ZoomDirection) {
         if (direction == ZoomDirection::ZoomIn && self.grid_view.cell_size < MAX_CELL_SIZE) ||
            (direction == ZoomDirection::ZoomOut && self.grid_view.cell_size > MIN_CELL_SIZE) {
@@ -272,8 +288,8 @@ impl Viewport {
         Rect::new(origin.x, origin.y, full_width, full_height)
     }
 
-    pub fn get_screen_area(&self, col: usize, row: usize) -> Option<Rect> {
-        self.grid_view.window_coords_from_game(col, row)
+    pub fn get_screen_area(&self, cell: Cell) -> Option<Rect> {
+        self.grid_view.window_coords_from_game(cell)
     }
 }
 
@@ -324,13 +340,13 @@ impl GridView {
         if col < 0 || col >= self.columns as isize || row < 0 || row >= self.rows as isize {
             return None;
         }
-        Some(Cell {col: col as usize , row: row as usize })
+        Some( Cell::new(col as usize , row as usize) )
     }
 
     /// Attempt to return a rectangle for the on-screen area of the specified cell.
     /// If partially in view, will be clipped by the bounding rectangle.
     /// Caller must ensure that column and row are within bounds.
-    fn window_coords_from_game_unchecked(&self, col: usize, row: usize) -> Option<Rect> {
+    fn window_coords_from_game_unchecked(&self, col: isize, row: isize) -> Option<Rect> {
         let left   = self.grid_origin.x + (col as f32)     * self.cell_size;
         let right  = self.grid_origin.x + (col + 1) as f32 * self.cell_size - 1.0;
         let top    = self.grid_origin.y + (row as f32)     * self.cell_size;
@@ -338,16 +354,17 @@ impl GridView {
 
         assert!(left < right);
         assert!(top < bottom);
-        // The 'minus one' for right and bottom give it that grid-like feel :)
+
+        // The 'minus one' above for right and bottom give it that grid-like feel :)
         let rect = Rect::new(left, top, (right - left), (bottom - top));
         utils::Graphics::intersection(rect, self.rect)
     }
 
     /// The column and row supplied lies is `None` outside of the grid.
-    // Otherwise we'll translate a row/column pair into pixel coordinates.
-    fn window_coords_from_game(&self, col: usize, row: usize) -> Option<Rect> {
-        if row < self.rows && col < self.columns {
-            return self.window_coords_from_game_unchecked(col, row);
+    // Otherwise we'll translate a row/column pair into its representative rectangle.
+    fn window_coords_from_game(&self, cell: Cell) -> Option<Rect> {
+        if cell.row < self.rows && cell.col < self.columns {
+            return self.window_coords_from_game_unchecked( cell.row as isize, cell.col as isize);
         }
         return None;
     }
@@ -360,5 +377,81 @@ impl GridView {
     /// Sets the height of the viewport.
     pub fn set_height(&mut self, height: f32) {
         self.rect.h = height;
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn gen_default_gridview() -> GridView {
+        let cell_size = 10.0;
+        let universe_height_in_cells = 128;
+        let universe_width_in_cells = 256;
+
+        GridView::new(cell_size, universe_width_in_cells, universe_height_in_cells)
+    }
+
+    #[test]
+    fn test_gridview_default_instantiation() {
+        let gv = gen_default_gridview();
+        let rect = Rect::new(0.0, 0.0, config::DEFAULT_SCREEN_WIDTH, config::DEFAULT_SCREEN_HEIGHT);
+
+        assert_eq!(gv.cell_size, 10.0);
+        assert_eq!(gv.rect, rect);
+        assert_eq!(gv.grid_origin, Point2::new(0.0, 0.0));
+        assert_eq!(gv.columns, 256);
+        assert_eq!(gv.rows, 128);
+    }
+
+    #[test]
+    fn test_gridview_game_coords_unchecked() {
+        let gv = gen_default_gridview();
+        let inside = Point2::new(5.0, 5.0);
+        let corner = Point2::new(config::DEFAULT_SCREEN_WIDTH as f32 * gv.cell_size, config::DEFAULT_SCREEN_HEIGHT as f32 * gv.cell_size);
+        let outside = Point2::new(-10.0, -10.0);
+        
+        assert_eq!(gv.game_coords_from_window_unchecked(inside), (0, 0));
+        assert_eq!(gv.game_coords_from_window_unchecked(corner), (1200, 800));
+        assert_eq!(gv.game_coords_from_window_unchecked(outside), (-1, -1));
+    }
+
+    #[test]
+    fn test_gridview_game_coords_checked() {
+        let gv = gen_default_gridview();
+        let inside = Point2::new(5.0, 5.0);
+        let corner1 = Point2::new( (config::DEFAULT_SCREEN_WIDTH-1.0) * gv.cell_size, (config::DEFAULT_SCREEN_HEIGHT-1.0) * gv.cell_size);
+        let corner2 = Point2::new( config::DEFAULT_SCREEN_WIDTH * gv.cell_size, config::DEFAULT_SCREEN_HEIGHT * gv.cell_size);
+        let outside = Point2::new(-10.0, -10.0);
+        let edge_point = Point2::new(1200.0, 800.0);
+        
+        assert_eq!(gv.game_coords_from_window(inside), Some(Cell::new(0, 0)));
+        assert_eq!(gv.game_coords_from_window(corner1), None);
+        assert_eq!(gv.game_coords_from_window(corner2), None);
+        assert_eq!(gv.game_coords_from_window(outside), None);
+        assert_eq!(gv.game_coords_from_window(edge_point), Some(Cell::new(120, 80)));
+    }
+
+    #[test]
+    fn test_gridview_window_coords_from_game_unchecked() {
+        let gv = gen_default_gridview();
+
+        assert_eq!(gv.window_coords_from_game_unchecked(0, 0), Some(Rect::new(0.0, 0.0, 9.0, 9.0)));
+        assert_eq!(gv.window_coords_from_game_unchecked(120, 80), None); // Creates a rectangle with 0 dimensions
+        assert_eq!(gv.window_coords_from_game_unchecked(-1, -1), None);
+    }
+
+    #[test]
+    fn test_gridview_window_coords_from_game_checked() {
+        let gv = gen_default_gridview();
+        let inside = Cell::new(0, 0);
+        let corner = Cell::new(120, 80);
+        let outside1 = Cell::new(121, 80);
+        let outside2 = Cell::new(120, 81);
+        
+        assert_eq!(gv.window_coords_from_game(inside), Some(Rect::new(0.0, 0.0, 9.0, 9.0)) );
+        assert_eq!(gv.window_coords_from_game(corner), None);
+        assert_eq!(gv.window_coords_from_game(outside1), None);
+        assert_eq!(gv.window_coords_from_game(outside2), None);
     }
 }

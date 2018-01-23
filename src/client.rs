@@ -809,7 +809,7 @@ impl MainState {
                 self.color_settings.get_random_color()
             };
 
-            if let Some(rect) = self.viewport.get_screen_area(col, row) {
+            if let Some(rect) = self.viewport.get_screen_area(viewport::Cell::new(col, row)) {
                 let p = graphics::DrawParam {
                     dest: Point2::new(rect.x, rect.y),
                     scale: Point2::new(rect.w, rect.h), // scaling a 1x1 Image to correct cell size
