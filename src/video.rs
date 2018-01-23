@@ -26,7 +26,7 @@ struct Resolution {
     h: f32
 }
 
-// For now, supporting 16:9
+/// For now, conwayste supports a `16:9` aspect ratios only.
 const DISPLAY_MODES         : [Resolution; 5]  = [
     Resolution {w: 1280.0, h: 720.0},
     Resolution {w: 1366.0, h: 768.0},
@@ -37,6 +37,7 @@ const DISPLAY_MODES         : [Resolution; 5]  = [
 
 const INVALID_REFRESH_RATE  : i32       = -1i32;
 
+/// This manages the supported resolutions.
 #[derive(Debug, Clone)]
 struct DisplayModeManager {
     index: Wrapping<usize>,
@@ -53,6 +54,7 @@ impl DisplayModeManager {
         }
     }
 
+    /// Adds a new display mode and removes duplicates.
     pub fn add_mode(&mut self, new_mode: Resolution) {
         for mode in DISPLAY_MODES.iter() {
             if mode == &new_mode {
@@ -62,10 +64,12 @@ impl DisplayModeManager {
         self.modes.dedup();
     }
 
+    /// Sets the game refresh rate. Right now this does not do anything.
     pub fn set_refresh_rate(&mut self, refresh_rate: i32) {
         self.refresh_rate = refresh_rate;
     }
 
+    /// Prints the supported display modes in debug mode.
     pub fn print_supported_modes(&self) {
         println!("Supported Resolutions Determined:");
 
@@ -74,6 +78,7 @@ impl DisplayModeManager {
         }
     }
 
+    /// Advances to the next resolution.
     pub fn set_next_supported_resolution(&mut self) -> (f32, f32) {
         self.index = (self.index + Wrapping(1usize)) % Wrapping(self.modes.len());
         let display_mode = self.modes.get(self.index.0).unwrap();
@@ -98,6 +103,8 @@ impl VideoSettings {
         }
     }
 
+    /// We query the SDL context to see what resolutions are supported.
+    /// This intersected with the `DISPLAY_MODES` list.
     pub fn gather_display_modes(&mut self, ctx: &Context) -> GameResult<()>  {
         let sdl_context =  &ctx.sdl_context;
         let sdl_video = sdl_context.video()?;
@@ -106,11 +113,12 @@ impl VideoSettings {
 
         for x in  0..num_of_display_modes {
             let display_mode = sdl_video.display_mode(0, x)?;
-
-            self.res_manager.add_mode(Resolution{
+            let resolution = Resolution {
                 w: display_mode.w as f32,
                 h: display_mode.h as f32
-                });
+            };
+
+            self.res_manager.add_mode(resolution);
 
             if self.res_manager.refresh_rate == INVALID_REFRESH_RATE {
                 self.res_manager.set_refresh_rate(display_mode.refresh_rate);
@@ -120,89 +128,48 @@ impl VideoSettings {
         Ok(())
     }
 
+    /// For debug, we have the option to print the supported resolutions.
     pub fn print_resolutions(&self) {
         self.res_manager.print_supported_modes();
     }
 
+    /// Gets the current active resolution.
     pub fn get_active_resolution(&self) -> (f32, f32) {
         self.resolution
     }
 
+    /// Sets the current active resolution and updates the SDL context.
     pub fn set_active_resolution(&mut self, _ctx: &mut Context, w: f32, h: f32) {
         self.resolution = (w,h);
-        refresh_game_resolution(_ctx, w as i32, h as i32);
+        self.refresh_game_resolution(_ctx, w as i32, h as i32);
     }
 
-    pub fn advance_to_next_resolution(&mut self, _ctx: &mut Context) {
+    /// Advances to the next supported game resolution, in-order.
+    pub fn advance_to_next_resolution(&mut self, ctx: &mut Context) {
         let (width, height) = self.res_manager.set_next_supported_resolution();
-        self.set_active_resolution(_ctx, width, height);
+        self.set_active_resolution(ctx, width, height);
 
         info!("{:?}", (width, height));
     }
 
-}
-
-pub fn toggle_full_screen(_ctx: &mut Context) -> bool {
-    let is_fullscreen;
-    if graphics::is_fullscreen(_ctx) {
-        is_fullscreen = false;
-        let _ = graphics::set_fullscreen(_ctx, is_fullscreen);
-    }
-    else
-    {
-        is_fullscreen = true;
-        let _ = graphics::set_fullscreen(_ctx, is_fullscreen);
-    }
-    is_fullscreen
-}
-
-/*
-pub fn set_fullscreen(_ctx: &mut Context, fullscreen: bool) -> bool {
-    let renderer = &mut _ctx.renderer;
-    let window = renderer.window_mut().unwrap();
-    let new_fs_type;
-
-    match fullscreen {
-        true => {new_fs_type = FullscreenType::True;}
-        false => {new_fs_type = FullscreenType::Off;}
-    }
-    let _ = window.set_fullscreen(new_fs_type);
-    
-    new_fs_type == FullscreenType::True
-}
-*/
-/*
-pub fn get_display_mode(_ctx: &mut Context) -> bool {
-    let renderer = &mut _ctx.renderer;
-    let window = renderer.window_mut().unwrap();
-
-    match window.display_mode() {
-        Ok(x) => {
-            println!("Format: {}, W: {}, H: {}", x.format, x.w, x.h);
+    /// Updates the SDL video context to the supplied resolution.
+    fn refresh_game_resolution(&mut self, ctx: &mut Context, w: i32, h: i32) {
+        if w != 0 && h != 0 {
+            let _ = graphics::set_resolution(ctx, w as u32, h as u32);
         }
-        Err(x) => { println!("There was nothing to be found for the VSS: {}", x) }
     }
-    true
-}
 
-pub fn get_current_display_mode(_ctx: &mut Context) -> bool {
-    let sdl_context = &mut _ctx.sdl_context;
-    let video_subsystem = sdl_context.video().unwrap();
-   // let video_subsystem = window.subsystem();
+    /// Toggles fullscreen mode within the SDL video context
+    pub fn toggle_fullscreen(&mut self, ctx: &mut Context) {
+        let is_fullscreen = graphics::is_fullscreen(ctx);
+        assert_eq!(is_fullscreen, self.is_fullscreen);
 
-    match video_subsystem.current_display_mode(0) {
-        Ok(x) => {
-            println!("Format: {}, W: {}, H: {}", x.format, x.w, x.h);
-        }
-        Err(x) => { println!("There was nothing to be found for the VSS: {}", x) }
+        let _ = graphics::set_fullscreen(ctx, !is_fullscreen);
+        self.is_fullscreen = !is_fullscreen;
     }
-    true
-}
-*/
 
-fn refresh_game_resolution(_ctx: &mut Context, w: i32, h: i32) {
-    if w != 0 && h != 0 {
-        let _ = graphics::set_resolution(_ctx, w as u32, h as u32);
+    /// Queries if we are fullscreen or otherwise.
+    pub fn is_fullscreen(&self) -> bool {
+        self.is_fullscreen
     }
 }
-

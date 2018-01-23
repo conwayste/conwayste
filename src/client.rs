@@ -589,8 +589,8 @@ impl EventHandler for MainState {
                                     }
                                     menu::MenuItemIdentifier::Fullscreen => {
                                         if !self.escape_key_pressed {
-                                            self.video_settings.is_fullscreen = video::toggle_full_screen(ctx);
-                                            self.config.set_fullscreen(self.video_settings.is_fullscreen == true);
+                                            self.video_settings.toggle_fullscreen(ctx);
+                                            self.config.set_fullscreen(self.video_settings.is_fullscreen());
                                         }
                                     }
                                     menu::MenuItemIdentifier::Resolution => {

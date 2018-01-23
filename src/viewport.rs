@@ -44,6 +44,7 @@ pub struct Viewport {
 }
 
 #[derive(PartialEq)]
+/// Whether the user is zooming in our out.
 pub enum ZoomDirection {
     ZoomOut,
     ZoomIn
@@ -51,12 +52,15 @@ pub enum ZoomDirection {
 
 impl Viewport {
 
+    /// Creates a new Viewport which manages how the how things
+    /// are displayed within the Window. 
     pub fn new(cell_size: f32, length: usize, width: usize) -> Viewport {
         Viewport {
             grid_view : GridView::new(cell_size, length, width),
         }
     }
 
+    /// 
     pub fn adjust_zoom_level(&mut self, direction : ZoomDirection) {
         if (direction == ZoomDirection::ZoomIn && self.grid_view.cell_size < MAX_CELL_SIZE) ||
            (direction == ZoomDirection::ZoomOut && self.grid_view.cell_size > MIN_CELL_SIZE) {
@@ -106,6 +110,18 @@ impl Viewport {
         }
     }
 
+    /// Panning moves the grid_origin around, if it can.
+    /// We always keep a border of ten pixels on each side.
+    /// This works by checking to see how much of the grid (or lack thereof) is
+    /// displayed on the onscreen. 
+    ///
+    /// We need to re-adjust the grid origin if the cell size changes or if 
+    /// the user moves around.
+    ///
+    /// The panning Left and Up cases are straightforward as the origin does not move.
+    /// The Down and Right cases look at how much of the Grid is displayed on screen (`ϕ`, `phi`).
+    /// This is compared against the size of the screen, `α`, `alpha`, to see if we can 
+    /// adjust the grid origin.
     fn adjust_panning(&mut self, recenter_after_zoom: bool, arrow_input: (i32, i32)) {
         let (columns, rows) = (self.grid_view.columns as u32, self.grid_view.rows as u32);
 
@@ -132,7 +148,7 @@ impl Viewport {
         let mut limit_x = self.grid_view.grid_origin.x;
         let mut limit_y = self.grid_view.grid_origin.y;
         // Here we check if we're at our limits. In all other cases, we'll fallthrough to the
-        // bottom grid_origin offsetting
+        // bottom grid_origin offsetting.
 
         // Panning left
         if dx == PAN_LEFT || recenter_after_zoom {
@@ -203,10 +219,14 @@ impl Viewport {
 
     }
 
+    /// Parent viewport handler update. Currently we update the following, in-order:
+    /// # Pan around the grid view.
     pub fn update(&mut self, direction: (i32, i32)) {
         self.adjust_panning(false, direction);
     }
 
+    /// Set dimensions of the grid. This may cause unintended consequences if modified during run-time. 
+    /// Be mindful of the window size.
     pub fn set_dimensions(&mut self, w: f32, h: f32) {
         self.grid_view.set_width(w);
         self.grid_view.set_height(h);
@@ -214,26 +234,32 @@ impl Viewport {
         self.grid_view.rect.h = h;
     }
 
+    /// Given a point, find the nearest Cell specified by a row and column.
     pub fn get_cell(&self, point: Point2) -> Option<Cell> {
         self.grid_view.game_coords_from_window(point)
     }
 
+    /// Get the cell size, which directly correlates to the zoom level.
     pub fn get_cell_size(&self) -> f32 {
         self.grid_view.cell_size
     }
 
+    /// Gets a rectangle representing the grid.
     pub fn get_viewport(&self) -> Rect {
         self.grid_view.rect
     }
 
+    /// Returns the origin of the grid.
     pub fn get_origin(&self) -> Point2 {
         self.grid_view.grid_origin
     }
 
+    /// Returns the width of the grid in pixels.
     pub fn grid_width(&self) -> u32 {
         self.grid_view.columns as u32 * self.grid_view.cell_size as u32
     }
 
+    /// Returns the height of the grid in pixels.
     pub fn grid_height(&self) -> u32 {
         self.grid_view.rows as u32 * self.grid_view.cell_size as u32
     }
@@ -251,7 +277,9 @@ impl Viewport {
     }
 }
 
-// Controls the mapping between window and game coordinates
+/// Controls the mapping between window and game coordinates.
+/// This should always  be sized with respect to the window, otherwise we'll
+/// get black bars.
 struct GridView {
     rect:        Rect,  // the area the game grid takes up on screen
     cell_size:   f32,   // zoom level in window coordinates
@@ -265,6 +293,8 @@ struct GridView {
 
 impl GridView {
 
+    /// Creates a new Gridview which maintains control over how the conwayste universe is positioned within
+    /// respect to the window.
     pub fn new(cell_size: f32, universe_width_in_cells: usize, universe_height_in_cells: usize) -> GridView {
         GridView {
             rect:        Rect::new(0.0, 0.0, config::DEFAULT_SCREEN_WIDTH, config::DEFAULT_SCREEN_HEIGHT),
@@ -275,13 +305,18 @@ impl GridView {
         }
     }
 
+    /// Attempt to return a tuple of cell coordinates within the game space.
+    /// Can be outside of the playble space, it is the responsibility of the caller
+    /// to sanitize the output.
     fn game_coords_from_window_unchecked(&self, point: Point2) -> (isize, isize) {
         let col: isize = ((point.x - self.grid_origin.x) / self.cell_size) as isize;
         let row: isize = ((point.y - self.grid_origin.y) / self.cell_size) as isize;
-        
-        (col , row )
+
+        (col , row)
     }
 
+    /// Given a window point in pixels, we'll determine the nearest intersecting
+    /// row, column pair.
     // Given a Point2(x,y), we determine a col/row tuple in cell units
     fn game_coords_from_window(&self, point: Point2) -> Option<Cell> {
         let (col, row) = self.game_coords_from_window_unchecked(point);
@@ -292,9 +327,9 @@ impl GridView {
         Some(Cell {col: col as usize , row: row as usize })
     }
 
-    // Attempt to return a rectangle for the on-screen area of the specified cell.
-    // If partially in view, will be clipped by the bounding rectangle.
-    // Caller must ensure that col and row are within bounds.
+    /// Attempt to return a rectangle for the on-screen area of the specified cell.
+    /// If partially in view, will be clipped by the bounding rectangle.
+    /// Caller must ensure that column and row are within bounds.
     fn window_coords_from_game_unchecked(&self, col: usize, row: usize) -> Option<Rect> {
         let left   = self.grid_origin.x + (col as f32)     * self.cell_size;
         let right  = self.grid_origin.x + (col + 1) as f32 * self.cell_size - 1.0;
@@ -308,6 +343,8 @@ impl GridView {
         utils::Graphics::intersection(rect, self.rect)
     }
 
+    /// The column and row supplied lies is `None` outside of the grid.
+    // Otherwise we'll translate a row/column pair into pixel coordinates.
     fn window_coords_from_game(&self, col: usize, row: usize) -> Option<Rect> {
         if row < self.rows && col < self.columns {
             return self.window_coords_from_game_unchecked(col, row);
@@ -315,10 +352,12 @@ impl GridView {
         return None;
     }
 
+    /// Sets the width of the viewport.
     pub fn set_width(&mut self, width: f32) {
         self.rect.w = width;
     }
 
+    /// Sets the height of the viewport.
     pub fn set_height(&mut self, height: f32) {
         self.rect.h = height;
     }

@@ -16,10 +16,6 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-// FIFO to handle key inputs chronologically
-// Each input may result in different actions based on the game stage
-//
-
 use std::collections::VecDeque;
 
 use ggez::event::{Keycode, MouseButton};
@@ -46,12 +42,15 @@ pub enum InputAction {
 //    Gamepad((Button, Axis)),
 }
 
+/// InputManager maps input from devices to in-game events.
 pub struct InputManager {
     _device: InputDeviceType,
     events: VecDeque<InputAction>,
 }
 
 impl InputManager {
+    /// Instantiates the InputManager for the specified device
+    /// and handles the associated events.
     pub fn new(device_type: InputDeviceType) -> InputManager {
         InputManager {
             _device: device_type,
@@ -59,6 +58,8 @@ impl InputManager {
         }
     }
 
+    /// Adds an event to the queue.
+    /// This will panic if we fill up the queue past `NUM_OF_QUEUED_INPUTS`.
     pub fn add(&mut self, input: InputAction) {
         // Curious to see if we actually can hit this condition
         if self.events.len() >= NUM_OF_QUEUED_INPUTS {
@@ -69,18 +70,22 @@ impl InputManager {
         self.events.push_back(input);
     }
 
+    /// Pokes at the head of the queue and returns an event if available.
     pub fn peek(&self) -> Option<&InputAction> {
         self.events.front()
     }
     
+    /// Dequeues can input event.
     pub fn remove(&mut self) -> Option<InputAction> {
         self.events.pop_front()
     }
 
+    /// Clears all events received during this frame.
     pub fn expunge(&mut self) {
         self.events.clear();
     }
-
+    
+    /// Checks to see if there are any more input events in this frame to process.
     pub fn has_more(&self) -> bool {
         !self.events.is_empty()
     }

@@ -43,7 +43,7 @@ impl Graphics {
     /// Determines if two rectangles overlap, and if so, 
     /// will return `Some` rectangle which spans that overlap.
     /// This is a clone of the SDL2 intersection API.
-    pub fn intersection(a Rect, b: Rect) -> Option<Rect> {
+    pub fn intersection(a: Rect, b: Rect) -> Option<Rect> {
 
         fn empty_rect(r: Rect) -> bool {
             r.w <= 0.0 || r.h <= 0.0
