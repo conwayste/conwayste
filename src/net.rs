@@ -7,7 +7,7 @@ use std::net;
 pub use std::net::SocketAddr;
 use std::str;
 
-pub use self::futures::{Future, Stream, Sink};
+pub use self::futures::{Future, Stream, Sink, stream};
 use self::tokio_core::net::{UdpSocket, UdpCodec};
 pub use self::tokio_core::reactor::{Core, Handle, Timeout};
 use self::bincode::{serialize, deserialize, Infinite};

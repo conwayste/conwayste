@@ -9,22 +9,23 @@ mod net;
 use net::Core;
 use net::{Action, PlayerPacket, LineCodec, Stream, SocketAddr};
 use net::futures::*;
+use net::futures::future::ok;
 use std::process::exit;
+use std::io;
 
-type PacketSink = stream::SplitSink<net::tokio_core::net::UdpFramed<net::LineCodec>>;
-
-fn send_packets(sink: PacketSink, addr: SocketAddr) -> Box<Future<Item = (), Error = ()>> {
+fn get_responses(addr: SocketAddr) -> Box<Future<Item = Vec<Result<(SocketAddr, PlayerPacket), std::io::Error>>, Error = std::io::Error>> {
     let mut source_packet = PlayerPacket {
         player_name: "from server".to_owned(),
         number:      1,
         action:      Action::Click,
     };
+    let mut responses = Vec::<_>::new();
     for _ in 0..3 {
         let packet = source_packet.clone();
-        sink.send((addr, packet));
+        responses.push(Ok((addr.clone(), packet)));
         source_packet.number += 1;
     }
-    Box::new(sink.flush().then(|_| Ok(())))
+    Box::new(ok(responses))
 }
 
 fn main() {
@@ -38,14 +39,19 @@ fn main() {
                     error!("Error while trying to bind UDP socket: {:?}", e);
                     exit(1);
                 });
-    //XXX need to move this boilerplate to net as much as possible
     let (sink, stream) = sock.framed(LineCodec).split();
-    let server = stream.for_each(|(addr, opt_packet)| {
+    let server = stream.and_then(|(addr, opt_packet)| {
         println!("got {:?} and {:?}!", addr, opt_packet);
-        //XXX use handle.spawn on a function that puts outgoing (addr, packet) tuples in the sink
-        handle.spawn(send_packets(sink, addr));
+        get_responses(addr)
+    })
+    .and_then(|responses| {
+        let responses_stream = stream::iter_result(responses).map_err(|_| io::Error::new(io::ErrorKind::Other, "someerr"));
+        let sender = sink.send_all(responses_stream)
+            .then(|_| Ok(()));
+        handle.spawn(sender);
         Ok(())
-    });
+    })
+    .for_each(|_| Ok(()));
 
     drop(core.run(server));
 }
