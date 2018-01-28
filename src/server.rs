@@ -3,15 +3,19 @@ extern crate serde_derive;
 #[macro_use]
 extern crate log;
 extern crate env_logger;
+extern crate futures;
+extern crate tokio_core;
 
 mod net;
 
-use net::Core;
-use net::{Action, PlayerPacket, LineCodec, Stream, SocketAddr};
-use net::futures::*;
-use net::futures::future::ok;
+use net::{Action, PlayerPacket, LineCodec};
+use std::net::SocketAddr;
 use std::process::exit;
 use std::io;
+use futures::*;
+use futures::future::ok;
+use tokio_core::reactor::Core; // Handle, Timeout too?
+
 
 fn get_responses(addr: SocketAddr) -> Box<Future<Item = Vec<Result<(SocketAddr, PlayerPacket), std::io::Error>>, Error = std::io::Error>> {
     let mut source_packet = PlayerPacket {
