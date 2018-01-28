@@ -17,7 +17,7 @@ use futures::future::ok;
 use tokio_core::reactor::Core; // Handle, Timeout too?
 
 
-fn get_responses(addr: SocketAddr) -> Box<Future<Item = Vec<Result<(SocketAddr, PlayerPacket), std::io::Error>>, Error = std::io::Error>> {
+fn get_responses(addr: SocketAddr) -> Box<Future<Item = Vec<(SocketAddr, PlayerPacket)>, Error = std::io::Error>> {
     let mut source_packet = PlayerPacket {
         player_name: "from server".to_owned(),
         number:      1,
@@ -26,7 +26,7 @@ fn get_responses(addr: SocketAddr) -> Box<Future<Item = Vec<Result<(SocketAddr, 
     let mut responses = Vec::<_>::new();
     for _ in 0..3 {
         let packet = source_packet.clone();
-        responses.push(Ok((addr.clone(), packet)));
+        responses.push((addr.clone(), packet));
         source_packet.number += 1;
     }
     Box::new(ok(responses))
@@ -49,7 +49,7 @@ fn main() {
         get_responses(addr)
     })
     .and_then(|responses| {
-        let responses_stream = stream::iter_result(responses).map_err(|_| io::Error::new(io::ErrorKind::Other, "someerr"));
+        let responses_stream = stream::iter_ok::<_, io::Error>(responses);
         let sender = sink.send_all(responses_stream)
             .then(|_| Ok(()));
         handle.spawn(sender);
