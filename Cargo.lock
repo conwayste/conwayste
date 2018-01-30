@@ -280,7 +280,7 @@ dependencies = [
 
 [[package]]
 name = "tokio_udp_test"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bincode 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",

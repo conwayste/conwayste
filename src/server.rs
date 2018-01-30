@@ -65,7 +65,7 @@ fn main() {
         sink
     }).map(|_| ()).map_err(|_| ());
 
-    let combined_fut = server.map(|_| ()).select(sink_fut).map(|_| ());
+    let combined_fut = server.map(|_| ()).select(sink_fut).map(|_| ());   // wait for either server or sink_fut to complete
 
     drop(core.run(combined_fut));
 }

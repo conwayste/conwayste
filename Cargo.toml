@@ -1,6 +1,6 @@
 [package]
 name = "tokio_udp_test"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Aaron Miller <aaron.miller04@gmail.com>"]
 
 [[bin]]
