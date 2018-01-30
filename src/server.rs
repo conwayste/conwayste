@@ -14,6 +14,7 @@ use std::process::exit;
 use std::io;
 use futures::*;
 use futures::future::ok;
+use futures::sync::mpsc;
 use tokio_core::reactor::Core; // Handle, Timeout too?
 
 
@@ -38,6 +39,8 @@ fn main() {
     let mut core = Core::new().unwrap();
     let handle = core.handle();
 
+    let (tx, rx) = mpsc::unbounded();
+
     let sock = net::bind(&handle, None, None)
                 .unwrap_or_else(|e| {
                     error!("Error while trying to bind UDP socket: {:?}", e);
@@ -49,14 +52,21 @@ fn main() {
         get_responses(addr)
     })
     .and_then(|responses| {
-        let responses_stream = stream::iter_ok::<_, io::Error>(responses);
-        let sender = sink.send_all(responses_stream)
-            .then(|_| Ok(()));
-        handle.spawn(sender);
+        for outgoing_item in responses {
+            tx.unbounded_send(outgoing_item).unwrap();
+        }
         Ok(())
     })
-    .for_each(|_| Ok(()));
+    .for_each(|_| Ok(()))
+    .map_err(|_| ());
 
-    drop(core.run(server));
+    let sink_fut = rx.fold(sink, |sink, outgoing_item| {
+        let sink = sink.send(outgoing_item).map_err(|_| ());    // this method flushes (if too slow, use send_all)
+        sink
+    }).map(|_| ()).map_err(|_| ());
+
+    let combined_fut = server.map(|_| ()).select(sink_fut).map(|_| ());
+
+    drop(core.run(combined_fut));
 }
 
