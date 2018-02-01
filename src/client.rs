@@ -23,7 +23,6 @@ use futures::future::ok;
 use futures::sync::mpsc;
 
 struct ClientState {
-    addr: SocketAddr,
     ctr: u64
 }
 
@@ -60,13 +59,12 @@ fn main() {
     println!("About to start sending to remote {:?} from local {:?}...", addr, local_addr);
 
     // initialize state
-    let initial_client_state = ClientState { addr: addr.clone(), ctr: 0 };
+    let initial_client_state = ClientState { ctr: 0 };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat(())); // just a Stream that emits () forever
     let main_loop_fut = iter_stream.fold((udp_tx, initial_client_state), move |(udp_tx, mut client_state), _| {
         let timeout = Timeout::new(Duration::from_millis(1000), &handle).unwrap();
-        timeout.and_then(|_| {
-            let addr = client_state.addr.clone();
+        timeout.and_then(move |_| {
             // send a packet with ctr
             let packet = PlayerPacket {
                 player_name: "Joe".to_owned(),
@@ -74,7 +72,7 @@ fn main() {
                 action:      Action::Click
             };
             // send packet
-            udp_tx.unbounded_send((addr, packet));
+            udp_tx.unbounded_send((addr.clone(), packet));
             println!("Sent a packet! ctr is {}", client_state.ctr);
 
             // just for fun, change our client state
