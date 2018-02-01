@@ -62,7 +62,7 @@ fn main() {
     let initial_client_state = ClientState { ctr: 0 };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat(())); // just a Stream that emits () forever
-    let main_loop_fut = iter_stream.fold((udp_tx, initial_client_state), move |(udp_tx, mut client_state), _| {
+    let main_loop_fut = iter_stream.fold((udp_tx.clone(), initial_client_state), move |(udp_tx, mut client_state), _| {
         let timeout = Timeout::new(Duration::from_millis(1000), &handle).unwrap();
         timeout.and_then(move |_| {
             // send a packet with ctr
@@ -88,7 +88,7 @@ fn main() {
         udp_sink.send(outgoing_item).map_err(|_| ())    // this method flushes (if too slow, use send_all)
     }).map(|_| ()).map_err(|_| ());
 
-    let combined_fut = sink_fut.select(main_loop_fut).map(|_| ()).map_err(|_| ());
+    let combined_fut = sink_fut.select(main_loop_fut).map_err(|_| ());
 
     core.run(combined_fut).unwrap();
 }
