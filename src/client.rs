@@ -52,6 +52,7 @@ const MIN_CELL_SIZE             : u32   = 5;
 const HISTORY_SIZE              : usize = 16;
 const CURRENT_PLAYER_ID         : usize = 1; // TODO :  get the player ID from server rather than hardcoding
 const FOG_RADIUS                : usize = 4;
+const GRID_DRAW_STYLE           : graphics::DrawMode = graphics::DrawMode::Line;    // Fill or Line
 
 #[derive(PartialEq, Clone)]
 enum Stage {
@@ -247,7 +248,7 @@ impl GameState for MainState {
         color_settings.cell_colors.insert(CellState::Dead,           Color::RGB(224, 224, 224));
         color_settings.cell_colors.insert(CellState::Alive(None),    Color::RGB(  0,   0,   0));
         color_settings.cell_colors.insert(CellState::Alive(Some(0)), Color::RGB(255,   0,   0));  // 0 is red
-        color_settings.cell_colors.insert(CellState::Alive(Some(1)), Color::RGB(  0,   0, 255));  // 1 is blue
+        color_settings.cell_colors.insert(CellState::Alive(Some(1)), Color::RGB( 96, 160, 255));  // 1 is blue
         color_settings.cell_colors.insert(CellState::Wall,           Color::RGB(158, 141, 105));
         color_settings.cell_colors.insert(CellState::Fog,            Color::RGB(200, 200, 200));
 
@@ -673,7 +674,7 @@ impl MainState {
     fn draw_universe(&mut self, _ctx: &mut Context) {
         // grid background
         graphics::set_color(_ctx, self.color_settings.get_color(None));
-        graphics::rectangle(_ctx,  graphics::DrawMode::Fill, self.grid_view.rect).unwrap();
+        graphics::rectangle(_ctx,  GRID_DRAW_STYLE, self.grid_view.rect).unwrap();
 
         // grid foreground (dead cells)
         //TODO: put in its own function (of GridView); also make this less ugly
@@ -684,7 +685,7 @@ impl MainState {
 
         if let Some(clipped_rect) = full_rect.intersection(self.grid_view.rect) {
             graphics::set_color(_ctx, self.color_settings.get_color(Some(CellState::Dead)));
-            graphics::rectangle(_ctx,  graphics::DrawMode::Fill, clipped_rect).unwrap();
+            graphics::rectangle(_ctx,  GRID_DRAW_STYLE, clipped_rect).unwrap();
         }
 
         // grid non-dead cells
@@ -694,7 +695,7 @@ impl MainState {
             graphics::set_color(_ctx, color);
 
             if let Some(rect) = self.grid_view.window_coords_from_game(col, row) {
-                graphics::rectangle(_ctx,  graphics::DrawMode::Fill, rect).unwrap();
+                graphics::rectangle(_ctx,  GRID_DRAW_STYLE, rect).unwrap();
             }
         });
 
