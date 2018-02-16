@@ -26,6 +26,11 @@ struct ClientState {
     ctr: u64
 }
 
+enum Event {
+    TickEvent,
+    PacketEvent((SocketAddr, Option<PlayerPacket>)),
+}
+
 fn main() {
     drop(env_logger::init());
 
@@ -62,26 +67,45 @@ fn main() {
     let initial_client_state = ClientState { ctr: 0 };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat(())); // just a Stream that emits () forever
-    let main_loop_fut = iter_stream.fold((udp_tx.clone(), initial_client_state), move |(udp_tx, mut client_state), _| {
+    let tick_stream = iter_stream.map(|_| {
         let timeout = Timeout::new(Duration::from_millis(1000), &handle).unwrap();
         timeout.and_then(move |_| {
-            // send a packet with ctr
-            let packet = PlayerPacket {
-                player_name: "Joe".to_owned(),
-                number:      client_state.ctr,
-                action:      Action::Click
-            };
-            // send packet
-            udp_tx.unbounded_send((addr.clone(), packet));
-            println!("Sent a packet! ctr is {}", client_state.ctr);
+            ok(Event::TickEvent)  //XXX most likely the problem is here
+        })
+    }).map_err(|_| ());
 
-            // just for fun, change our client state
-            client_state.ctr += 1;
+    let packet_stream = udp_stream.map(|packet_tuple| {
+        ok(Event::PacketEvent(packet_tuple))
+    }).map_err(|_| ());
+
+    let main_loop_fut = tick_stream
+        .select(packet_stream)
+        .fold((udp_tx.clone(), initial_client_state), move |(udp_tx, mut client_state), event| {
+            match event {
+                Event::PacketEvent(packet_tuple) => {
+                    println!("Got packet from server! {:?}", packet_tuple);
+                }
+                Event::TickEvent => {
+                    // send a packet with ctr
+                    let packet = PlayerPacket {
+                        player_name: "Joe".to_owned(),
+                        number:      client_state.ctr,
+                        action:      Action::Click
+                    };
+                    // send packet
+                    udp_tx.unbounded_send((addr.clone(), packet));
+                    println!("Sent a packet! ctr is {}", client_state.ctr);
+
+                    // just for fun, change our client state
+                    client_state.ctr += 1;
+                }
+            }
 
             // finally, return the updated client state for the next iteration
             ok((udp_tx, client_state))
         })
-    }).map(|_| ()).map_err(|_| ());
+        .map(|_| ())
+        .map_err(|_| ());
 
     // listen on the channel created above and send it to the UDP sink
     let sink_fut = udp_rx.fold(udp_sink, |udp_sink, outgoing_item| {
