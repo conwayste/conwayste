@@ -71,15 +71,17 @@ fn main() {
         let timeout = Timeout::new(Duration::from_millis(1000), &handle).unwrap();
         timeout.and_then(move |_| {
             ok(Event::TickEvent)  //XXX most likely the problem is here
+                                  //XXX I believe this is returning an AndThen Future but we want a tick Stream
         })
     }).map_err(|_| ());
 
     let packet_stream = udp_stream.map(|packet_tuple| {
-        ok(Event::PacketEvent(packet_tuple))
+        ok(Event::PacketEvent(packet_tuple))    //XXX FutureResult
     }).map_err(|_| ());
 
     let main_loop_fut = tick_stream
-        .select(packet_stream)
+        .select(packet_stream)                  //XXX So then down here we cannot select a packet stream w/ AndThen Future
+                                                //XXX but select2 (to select two diff types) doesn't work either.
         .fold((udp_tx.clone(), initial_client_state), move |(udp_tx, mut client_state), event| {
             match event {
                 Event::PacketEvent(packet_tuple) => {
