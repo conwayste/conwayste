@@ -71,7 +71,7 @@ fn main() {
         let timeout = Timeout::new(Duration::from_millis(1000), &handle).unwrap();
         timeout.and_then(move |_| {
             ok(Event::TickEvent)  //XXX most likely the problem is here
-                                  //XXX I believe this is returning an AndThen Future but we want a tick Stream
+                                  //XXX We're thinking that we're getting a stream out of this but its AndThen Future
         })
     }).map_err(|_| ());
 
