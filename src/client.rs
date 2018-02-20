@@ -67,7 +67,14 @@ fn main() {
     let initial_client_state = ClientState { ctr: 0 };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat(())); // just a Stream that emits () forever
+    // XXX unfortunately you can't return a Future as the return value of a .map closure. Well, you
+    // _can_, but it won't get resolved. If we can find another way to generate our tick_stream,
+    // this will compile for sure :-) --Aaron
     let tick_stream = iter_stream.map(|_| {
+        // XXX if the rest of this block is replaced with following line, it'll compile (but will
+        // behave incorrectly:
+        //      Event::TickEvent
+        //  --Aaron
         let timeout = Timeout::new(Duration::from_millis(1000), &handle).unwrap();
         timeout.and_then(move |_| {
             ok(Event::TickEvent)  //XXX most likely the problem is here
@@ -76,7 +83,7 @@ fn main() {
     }).map_err(|_| ());
 
     let packet_stream = udp_stream.map(|packet_tuple| {
-        ok(Event::PacketEvent(packet_tuple))    //XXX FutureResult
+        Event::PacketEvent(packet_tuple)
     }).map_err(|_| ());
 
     let main_loop_fut = tick_stream
