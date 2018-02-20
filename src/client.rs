@@ -67,18 +67,11 @@ fn main() {
     let initial_client_state = ClientState { ctr: 0 };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat(())); // just a Stream that emits () forever
-    // XXX unfortunately you can't return a Future as the return value of a .map closure. Well, you
-    // _can_, but it won't get resolved. If we can find another way to generate our tick_stream,
-    // this will compile for sure :-) --Aaron
-    let tick_stream = iter_stream.map(|_| {
-        // XXX if the rest of this block is replaced with following line, it'll compile (but will
-        // behave incorrectly:
-        //      Event::TickEvent
-        //  --Aaron
+    // .and_then is like .map except that it processes returned Futures
+    let tick_stream = iter_stream.and_then(|_| {
         let timeout = Timeout::new(Duration::from_millis(1000), &handle).unwrap();
         timeout.and_then(move |_| {
-            ok(Event::TickEvent)  //XXX most likely the problem is here
-                                  //XXX We're thinking that we're getting a stream out of this but its AndThen Future
+            ok(Event::TickEvent)
         })
     }).map_err(|_| ());
 
@@ -87,8 +80,7 @@ fn main() {
     }).map_err(|_| ());
 
     let main_loop_fut = tick_stream
-        .select(packet_stream)                  //XXX So then down here we cannot select a packet stream w/ AndThen Future
-                                                //XXX but select2 (to select two diff types) doesn't work either.
+        .select(packet_stream)
         .fold((udp_tx.clone(), initial_client_state), move |(udp_tx, mut client_state), event| {
             match event {
                 Event::PacketEvent(packet_tuple) => {
