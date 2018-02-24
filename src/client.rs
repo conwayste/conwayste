@@ -75,9 +75,14 @@ fn main() {
         })
     }).map_err(|_| ());
 
-    let packet_stream = udp_stream.map(|packet_tuple| {
-        Event::PacketEvent(packet_tuple)
-    }).map_err(|_| ());
+    let packet_stream = udp_stream
+        .filter(|&(_, ref opt_packet)| {
+            *opt_packet != None
+        })
+        .map(|packet_tuple| {
+           Event::PacketEvent(packet_tuple)
+        })
+        .map_err(|_| ());
 
     let main_loop_fut = tick_stream
         .select(packet_stream)
