@@ -46,7 +46,6 @@ pub struct PlayerPacket {
     pub action:      Action,
 }
 
-
 pub struct LineCodec;
 impl UdpCodec for LineCodec {
     type In = (SocketAddr, Option<PlayerPacket>);   // if 2nd element is None, it means deserialization failure
@@ -84,3 +83,9 @@ pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> R
 
 pub const HOST: &str = "0.0.0.0";
 pub const PORT: u16 = 12345;
+
+//////////////// Event Handling /////////////////
+pub enum Event {
+    TickEvent,
+    PacketEvent((SocketAddr, Option<PlayerPacket>)),
+}

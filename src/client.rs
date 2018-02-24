@@ -15,7 +15,7 @@ use std::net::SocketAddr;
 use std::process::exit;
 use std::thread;
 use std::time::Duration;
-use net::{Action, PlayerPacket, LineCodec};
+use net::{Action, PlayerPacket, LineCodec, Event};
 use tokio_core::net::UdpSocket;
 use tokio_core::reactor::{Core, Handle, Timeout};
 use futures::{Future, Sink, Stream, stream};
@@ -24,11 +24,6 @@ use futures::sync::mpsc;
 
 struct ClientState {
     ctr: u64
-}
-
-enum Event {
-    TickEvent,
-    PacketEvent((SocketAddr, Option<PlayerPacket>)),
 }
 
 fn main() {
@@ -66,7 +61,7 @@ fn main() {
     // initialize state
     let initial_client_state = ClientState { ctr: 0 };
 
-    let iter_stream = stream::iter_ok::<_, Error>(iter::repeat(())); // just a Stream that emits () forever
+    let iter_stream = stream::iter_ok::<_, Error>(iter::repeat( () )); // just a Stream that emits () forever
     // .and_then is like .map except that it processes returned Futures
     let tick_stream = iter_stream.and_then(|_| {
         let timeout = Timeout::new(Duration::from_millis(1000), &handle).unwrap();
@@ -80,7 +75,7 @@ fn main() {
             *opt_packet != None
         })
         .map(|packet_tuple| {
-           Event::PacketEvent(packet_tuple)
+            Event::PacketEvent(packet_tuple)
         })
         .map_err(|_| ());
 
@@ -120,7 +115,7 @@ fn main() {
 
     let combined_fut = sink_fut.select(main_loop_fut).map_err(|_| ());
 
-    core.run(combined_fut).unwrap();
+    drop(core.run(combined_fut));
 }
 
 
