@@ -35,6 +35,7 @@ impl From<io::Error> for NetError {
 //////////////// Packet (de)serialization ////////////////
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Action {
+    Connect,
     Click,
     Delete,
 }

@@ -9,18 +9,46 @@ extern crate tokio_core;
 mod net;
 
 use net::{Action, PlayerPacket, LineCodec, Event};
-use std::net::SocketAddr;
-use std::process::exit;
 use std::io::{Error};
 use std::iter;
+use std::net::SocketAddr;
+use std::process::exit;
 use std::time::Duration;
 use futures::*;
 use futures::future::ok;
 use futures::sync::mpsc;
 use tokio_core::reactor::{Core, Handle, Timeout};
 
+#[derive(PartialEq, Debug, Clone)]
+struct Player {
+    player_name: String,
+    player_id: u32,
+    addr: SocketAddr,
+    in_game: bool,
+}
+
+impl Player {
+    fn new(name: String, id: u32, addr: SocketAddr) -> Player {
+        Player {
+            player_name: name,
+            player_id: id,
+            addr: addr,
+            in_game: false,
+        }
+    }
+}
+
+struct Connection {
+    player_a: Player,
+    player_b: Player,
+    universe: u64,    // Temp until we integrate
+}
+
 struct ServerState {
-    ctr: u64
+    tick: u64,
+    ctr: u64,
+    players: Box<Vec<Player>>,
+   // connections: Box<Vec<Connection>>,
 }
 
 fn get_responses(addr: SocketAddr) -> Box<Future<Item = Vec<(SocketAddr, PlayerPacket)>, Error = std::io::Error>> {
@@ -36,6 +64,27 @@ fn get_responses(addr: SocketAddr) -> Box<Future<Item = Vec<(SocketAddr, PlayerP
         source_packet.number += 1;
     }
     Box::new(ok(responses))
+}
+
+impl ServerState {
+    fn decode_packet(&mut self, addr: SocketAddr, packet: PlayerPacket) {
+        let player_name = packet.player_name;
+        let action = packet.action;
+
+        match action {
+            Action::Connect => {
+                self.players.iter().for_each(|player| {
+                    assert_eq!(true, player.addr != addr && player.player_name != player_name);
+                });
+
+                let id = self.ctr as u32; // TODO Hash player_name and addr
+                self.players.push(Player::new(player_name, id, addr));
+                self.ctr+=1;
+            },
+            Action::Click => {},
+            Action::Delete => {},
+        }
+    }
 }
 
 fn main() {
@@ -54,11 +103,16 @@ fn main() {
 
     let (udp_sink, udp_stream) = udp.framed(LineCodec).split();
 
-    let initial_server_state = ServerState { ctr: 0 };
+    let initial_server_state = ServerState { 
+        tick: 0,
+        ctr: 0,
+        players: Box::new(Vec::<Player>::new())
+        //connections: Box::new(Vec::<Connection>::new()) 
+    };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat( () ));
     let tick_stream = iter_stream.and_then(|_| {
-        let timeout = Timeout::new(Duration::from_millis(10), &handle).unwrap();
+        let timeout = Timeout::new(Duration::from_millis(1), &handle).unwrap();
         timeout.and_then(move |_| {
             ok(Event::TickEvent)
         })
@@ -78,8 +132,13 @@ fn main() {
         .fold((tx.clone(), initial_server_state), move |(tx, mut server_state), event| {
             match event {
                 Event::PacketEvent(packet_tuple) => {
+                     // With the above filter, `packet` should never be None
                     let (addr, opt_packet) = packet_tuple;
                     println!("got {:?} and {:?}!", addr, opt_packet);
+
+                    if let Some(packet) = opt_packet {
+                        server_state.decode_packet(addr, packet);
+                    }
 
                     let packet = PlayerPacket {
                         player_name: "from server".to_owned(),
@@ -92,7 +151,7 @@ fn main() {
                 Event::TickEvent => {
                     // Server tick
                     // Likely spawn off work to handle server tasks here
-                    server_state.ctr += 1;
+                    server_state.tick += 1;
                 }
             }
 
