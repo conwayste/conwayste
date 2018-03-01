@@ -19,7 +19,7 @@ use std::time::Duration;
 use futures::*;
 use futures::future::ok;
 use futures::sync::mpsc;
-use tokio_core::reactor::{Core, Handle, Timeout};
+use tokio_core::reactor::{Core, Timeout};
 
 #[derive(PartialEq, Debug, Clone)]
 struct PlayerID {
@@ -60,11 +60,21 @@ struct Connection {
     universe: u64,    // Temp until we integrate
 }
 
+impl Connection {
+    fn new(player_a: Player, player_b: Player) -> Self {
+        Connection {
+            player_a: player_a,
+            player_b: player_b,
+            universe: 0
+        }
+    }
+}
+
 struct ServerState {
     tick: u64,
     ctr: u64,
     players: Box<Vec<Player>>,
-   // connections: Box<Vec<Connection>>,
+    connections: Box<Vec<Connection>>,
 }
 
 //////////////// Utilities ///////////////////////
@@ -102,10 +112,32 @@ impl ServerState {
                 });
 
                 self.players.push(Player::new(player_name, addr));
-                self.ctr+=1;
             },
             Action::Click => {},
             Action::Delete => {},
+        }
+    }
+
+    fn has_pending_players(&self) -> bool {
+        !self.players.is_empty() && self.players.len() % 2 == 0
+    }
+
+    fn initiate_player_session(&mut self) {
+        if self.has_pending_players() {}
+            if let Some(mut a) = self.players.pop() {
+                if let Some(mut b) = self.players.pop() {
+                    a.in_game = true;
+                    b.in_game = true;
+                    self.connections.push(Connection::new(a, b));
+                    self.ctr+=1;
+                }
+                else {
+                    panic!("Unavailable player B");
+                }
+            }
+            else {
+                    panic!("Unavailable player A");
+            }
         }
     }
 }
@@ -129,7 +161,8 @@ fn main() {
     let initial_server_state = ServerState { 
         tick: 0,
         ctr: 0,
-        players: Box::new(Vec::<Player>::new())
+        players: Box::new(Vec::<Player>::new()),
+        connections: Box::new(Vec::<Connection>::new())
     };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat( () ));
@@ -174,6 +207,25 @@ fn main() {
                     // Server tick
                     // Likely spawn off work to handle server tasks here
                     server_state.tick += 1;
+
+                    server_state.initiate_player_session();
+
+                    if server_state.ctr == 1 {
+                        // Connection tick
+                        server_state.connections.iter()
+                            .filter(|ref conn| conn.player_a.in_game && conn.player_b.in_game)
+                            .for_each(|ref conn| {
+                                let player_a = &conn.player_a;
+                                let player_b = &conn.player_b;
+                                let uni = &conn.universe;
+                                println!("Session: {}({:x}) versus {}({:x}), generation: {}",
+                                    player_a.player_name, player_a.player_id,
+                                    player_b.player_name, player_b.player_id,
+                                    uni);
+                            });
+
+                        server_state.ctr += 1;
+                    }
                 }
             }
 

@@ -56,9 +56,9 @@ impl UdpCodec for LineCodec {
         match deserialize(buf) {
             Ok(decoded) => Ok((*addr, Some(decoded))),
             Err(e) => {
-                let LOCAL: SocketAddr = format!("{}:{}", "127.0.0.1", PORT.to_string()).parse().unwrap();
+                let local: SocketAddr = format!("{}:{}", "127.0.0.1", PORT.to_string()).parse().unwrap();
                 // We only want to warn when the incoming packet is external to the host system
-                if LOCAL != *addr {
+                if local != *addr {
                     println!("WARNING: error during packet deserialization: {:?}", e);
                 }
                 Ok((*addr, None))
