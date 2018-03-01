@@ -123,7 +123,7 @@ impl ServerState {
     }
 
     fn initiate_player_session(&mut self) {
-        if self.has_pending_players() {}
+        if self.has_pending_players() {
             if let Some(mut a) = self.players.pop() {
                 if let Some(mut b) = self.players.pop() {
                     a.in_game = true;
