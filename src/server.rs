@@ -9,6 +9,8 @@ extern crate tokio_core;
 mod net;
 
 use net::{Action, PlayerPacket, LineCodec, Event};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::io::{Error};
 use std::iter;
 use std::net::SocketAddr;
@@ -20,21 +22,35 @@ use futures::sync::mpsc;
 use tokio_core::reactor::{Core, Handle, Timeout};
 
 #[derive(PartialEq, Debug, Clone)]
+struct PlayerID {
+    name: String,
+    addr: SocketAddr,
+}
+
+#[derive(PartialEq, Debug, Clone)]
 struct Player {
+    player_id: u64,
     player_name: String,
-    player_id: u32,
     addr: SocketAddr,
     in_game: bool,
 }
 
 impl Player {
-    fn new(name: String, id: u32, addr: SocketAddr) -> Player {
+    fn new(name: String, addr: SocketAddr) -> Player {
+        let id = calculate_hash(&PlayerID {name: name.clone(), addr: addr});
         Player {
             player_name: name,
             player_id: id,
             addr: addr,
             in_game: false,
         }
+    }
+}
+
+impl Hash for PlayerID {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.addr.hash(state);
     }
 }
 
@@ -49,6 +65,14 @@ struct ServerState {
     ctr: u64,
     players: Box<Vec<Player>>,
    // connections: Box<Vec<Connection>>,
+}
+
+//////////////// Utilities ///////////////////////
+
+fn calculate_hash<T: Hash>(t: &T) -> u64 {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
 }
 
 fn get_responses(addr: SocketAddr) -> Box<Future<Item = Vec<(SocketAddr, PlayerPacket)>, Error = std::io::Error>> {
@@ -77,8 +101,7 @@ impl ServerState {
                     assert_eq!(true, player.addr != addr && player.player_name != player_name);
                 });
 
-                let id = self.ctr as u32; // TODO Hash player_name and addr
-                self.players.push(Player::new(player_name, id, addr));
+                self.players.push(Player::new(player_name, addr));
                 self.ctr+=1;
             },
             Action::Click => {},
@@ -107,7 +130,6 @@ fn main() {
         tick: 0,
         ctr: 0,
         players: Box::new(Vec::<Player>::new())
-        //connections: Box::new(Vec::<Connection>::new()) 
     };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat( () ));
@@ -160,20 +182,7 @@ fn main() {
         })
         .map(|_| ())
         .map_err(|_| ());
-/*
-    let server = udp_stream.and_then(|(addr, opt_packet)| {
-            println!("got {:?} and {:?}!", addr, opt_packet);
-            get_responses(addr)
-        })
-        .and_then(|responses| {
-            for outgoing_item in responses {
-                tx.unbounded_send(outgoing_item).unwrap();
-            }
-            Ok(())
-        })
-        .for_each(|_| Ok(()))
-        .map_err(|_| ());
-*/
+
     let sink_fut = rx.fold(udp_sink, |udp_sink, outgoing_item| {
             let udp_sink = udp_sink.send(outgoing_item).map_err(|_| ());    // this method flushes (if too slow, use send_all)
             udp_sink

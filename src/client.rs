@@ -88,10 +88,16 @@ fn main() {
                 }
                 Event::TickEvent => {
                     // send a packet with ctr
+                    let act = if client_state.ctr == 0 {
+                         Action::Connect
+                    }
+                    else {
+                        Action::Click
+                    };
                     let packet = PlayerPacket {
                         player_name: "Joe".to_owned(),
                         number:      client_state.ctr,
-                        action:      Action::Click
+                        action:      act
                     };
                     // send packet
                     udp_tx.unbounded_send((addr.clone(), packet));
