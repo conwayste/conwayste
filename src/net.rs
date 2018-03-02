@@ -93,4 +93,5 @@ pub const PORT: u16 = 12345;
 pub enum Event {
     TickEvent,
     PacketEvent((SocketAddr, Option<PlayerPacket>)),
+    StdinEvent(String),
 }

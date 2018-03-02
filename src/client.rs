@@ -41,8 +41,7 @@ fn main() {
     let handle = core.handle();
 
     // Have separate thread read from stdin
-    let (stdin_tx, stdin_rx) = mpsc::channel(0);
-    thread::spawn(|| read_stdin(stdin_tx));
+    let (stdin_tx, stdin_rx) = mpsc::unbounded();
     let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
 
     // Bind to a UDP socket
@@ -54,8 +53,11 @@ fn main() {
     let udp = UdpSocket::bind(&addr_to_bind, &handle)
         .expect("failed to bind socket");
     let local_addr = udp.local_addr().unwrap();
+
+    // Channels
     let (udp_sink, udp_stream) = udp.framed(LineCodec).split();
     let (udp_tx, udp_rx) = mpsc::unbounded();    // create a channel because we can't pass the sink around everywhere
+
     println!("About to start sending to remote {:?} from local {:?}...", addr, local_addr);
 
     // initialize state
@@ -79,8 +81,14 @@ fn main() {
         })
         .map_err(|_| ());
 
+    let stdin_stream = stdin_rx.map(|buf| {
+        let string = String::from_utf8(buf).unwrap();
+        Event::StdinEvent(string)
+    }).map_err(|_| ());
+
     let main_loop_fut = tick_stream
         .select(packet_stream)
+        .select(stdin_stream)
         .fold((udp_tx.clone(), initial_client_state), move |(udp_tx, mut client_state), event| {
             match event {
                 Event::PacketEvent(packet_tuple) => {
@@ -106,6 +114,9 @@ fn main() {
                     // just for fun, change our client state
                     client_state.ctr += 1;
                 }
+                Event::StdinEvent(string) => {
+                    println!("User input: {:?}", string);
+                }
             }
 
             // finally, return the updated client state for the next iteration
@@ -121,14 +132,17 @@ fn main() {
 
     let combined_fut = sink_fut.select(main_loop_fut).map_err(|_| ());
 
-    drop(core.run(combined_fut));
+    thread::spawn(move || {
+        read_stdin(stdin_tx);
+    });
+    drop(core.run(combined_fut).unwrap());
 }
 
 
 
 // Our helper method which will read data from stdin and send it along the
-// sender provided.
-fn read_stdin(mut tx: mpsc::Sender<Vec<u8>>) {
+// sender provided. This is blocking so should be on separate thread.
+fn read_stdin(mut tx: mpsc::UnboundedSender<Vec<u8>>) {
     let mut stdin = io::stdin();
     loop {
         let mut buf = vec![0; 1024];
