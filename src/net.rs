@@ -35,7 +35,13 @@ impl From<io::Error> for NetError {
 //////////////// Packet (de)serialization ////////////////
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Action {
+    Ack,
     Connect,
+    Disconnect,
+    ListPlayers,
+    Help,
+    Message,
+    JoinGame,
     Click,
     Delete,
 }
@@ -92,6 +98,9 @@ pub const PORT: u16 = 12345;
 //////////////// Event Handling /////////////////
 pub enum Event {
     TickEvent,
-    PacketEvent((SocketAddr, Option<PlayerPacket>)),
+    Request((SocketAddr, Option<PlayerPacket>)),
+    Response((SocketAddr, Option<PlayerPacket>)),
+//    Notify((SocketAddr, Option<PlayerPacket>)),
+//    NotifyAck((SocketAddr, Option<PlayerPacket>)),
     StdinEvent(String),
 }

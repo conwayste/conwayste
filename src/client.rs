@@ -77,7 +77,7 @@ fn main() {
             *opt_packet != None
         })
         .map(|packet_tuple| {
-            Event::PacketEvent(packet_tuple)
+            Event::Response(packet_tuple)
         })
         .map_err(|_| ());
 
@@ -91,9 +91,10 @@ fn main() {
         .select(stdin_stream)
         .fold((udp_tx.clone(), initial_client_state), move |(udp_tx, mut client_state), event| {
             match event {
-                Event::PacketEvent(packet_tuple) => {
+                Event::Response(packet_tuple) => {
                     println!("Got packet from server! {:?}", packet_tuple);
                 }
+                Event::Request(_) => {panic!("Why did we get a Request from Server?");}
                 Event::TickEvent => {
                     // send a packet with ctr
                     let act = if client_state.ctr == 0 {

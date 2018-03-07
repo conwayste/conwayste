@@ -85,6 +85,7 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
     s.finish()
 }
 
+/*
 fn get_responses(addr: SocketAddr) -> Box<Future<Item = Vec<(SocketAddr, PlayerPacket)>, Error = std::io::Error>> {
     let mut source_packet = PlayerPacket {
         player_name: "from server".to_owned(),
@@ -99,6 +100,7 @@ fn get_responses(addr: SocketAddr) -> Box<Future<Item = Vec<(SocketAddr, PlayerP
     }
     Box::new(ok(responses))
 }
+*/
 
 impl ServerState {
     fn decode_packet(&mut self, addr: SocketAddr, packet: PlayerPacket) {
@@ -115,6 +117,12 @@ impl ServerState {
             },
             Action::Click => {},
             Action::Delete => {},
+            Action::Ack => {},
+            Action::Disconnect => {},
+            Action::Help => {},
+            Action::JoinGame => {},
+            Action::ListPlayers => {},
+            Action::Message => {},
         }
     }
 
@@ -178,7 +186,7 @@ fn main() {
             *opt_packet != None
         })
         .map(|packet_tuple| {
-            Event::PacketEvent(packet_tuple)
+            Event::Request(packet_tuple)
         })
         .map_err(|_| ());
 
@@ -186,22 +194,29 @@ fn main() {
         .select(packet_stream)
         .fold((tx.clone(), initial_server_state), move |(tx, mut server_state), event| {
             match event {
-                Event::PacketEvent(packet_tuple) => {
+                Event::Request(packet_tuple) => {
                      // With the above filter, `packet` should never be None
                     let (addr, opt_packet) = packet_tuple;
                     println!("got {:?} and {:?}!", addr, opt_packet);
 
                     if let Some(packet) = opt_packet {
-                        server_state.decode_packet(addr, packet);
-                    }
+                        server_state.decode_packet(addr, packet.clone());
 
-                    let packet = PlayerPacket {
-                        player_name: "from server".to_owned(),
-                        number:      1,
-                        action:      Action::Click,
-                    };
-                    let response = (addr.clone(), packet);
-                    tx.unbounded_send(response).unwrap();
+                        // Ack back
+                        let ack_packet = PlayerPacket {
+                            player_name: "from server".to_owned(),
+                            number:      packet.number,
+                            action:      Action::Ack,
+                        };
+                        let response = (addr.clone(), ack_packet);
+                        tx.unbounded_send(response).unwrap();
+                    }
+                }
+                Event::Response(_) => {
+                    panic!("Why did we get a Response from a client?");
+                }
+                Event::StdinEvent(_) => {
+                    panic!("Why did we get a Stdin from a client?");
                 }
                 Event::TickEvent => {
                     // Server tick
