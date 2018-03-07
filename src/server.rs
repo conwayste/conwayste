@@ -123,6 +123,7 @@ impl ServerState {
             Action::JoinGame => {},
             Action::ListPlayers => {},
             Action::Message => {},
+            Action::None => {},
         }
     }
 

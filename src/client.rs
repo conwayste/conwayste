@@ -104,6 +104,7 @@ fn main() {
                 }
                 Event::Request(_) => {panic!("Why did we get a Request from Server?");}
                 Event::TickEvent => {
+                    /*
                     // send a packet with ctr
                     let act = if client_state.ctr == 0 {
                          Action::Connect
@@ -117,20 +118,30 @@ fn main() {
                         action:      act
                     };
                     // send packet
-                    udp_tx.unbounded_send((addr.clone(), packet));
+                    let _ = udp_tx.unbounded_send((addr.clone(), packet));
                     println!("Sent a packet! ctr is {}", client_state.ctr);
 
                     // just for fun, change our client state
                     client_state.ctr += 1;
+                    */
                 }
                 Event::StdinEvent(string) => {
                     let action = parse_stdin(&string);
-                    let packet = PlayerPacket {
-                        player_name: "Joe".to_owned(),
-                        number:      client_state.ctr,
-                        action:      action
-                    };
-                    println!("User input: {:?}", string);
+                    match action {
+                        Action::None => {
+                            println!("Command not recognized: {}", string);
+                        },
+                        all_others => {
+                            let packet = PlayerPacket {
+                                player_name: "Joe".to_owned(),
+                                number:      client_state.ctr,
+                                action:      all_others
+                            };
+                            println!("User input: {:?}", string);
+                            let _ = udp_tx.unbounded_send((addr.clone(), packet));
+                            client_state.ctr += 1;
+                        }
+                    }
                 }
             }
 
@@ -176,6 +187,28 @@ fn read_stdin(mut tx: mpsc::UnboundedSender<Vec<u8>>) {
 
 // At this point we should only have command or message to work with
 fn parse_stdin(input: &String) -> Action {
-//   if input.get(0)
-   Action::Message
+   if input.get(0..1) == Some("/") {
+        let mut input = input.clone();
+        input.remove(0);
+
+        let input = input.to_lowercase();
+        let mut iter = input.split_whitespace();
+        let mut action = Action::None;
+
+        if let Some(command) = iter.next() {
+            match command {
+                "help" => {
+                    action = Action::Help;
+                }
+                "connect" => {
+                    action = Action::Connect;
+                }
+                _ => {}
+            }
+        }
+        action
+   }
+   else {
+        Action::Message
+   }
 }
