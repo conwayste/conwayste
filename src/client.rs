@@ -13,6 +13,7 @@ use std::io::{self, Read, Write, Error};
 use std::iter;
 use std::net::SocketAddr;
 use std::process::exit;
+use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
 use net::{Action, PlayerPacket, LineCodec, Event};
@@ -41,7 +42,7 @@ fn main() {
     let handle = core.handle();
 
     // Have separate thread read from stdin
-    let (stdin_tx, stdin_rx) = mpsc::unbounded();
+    let (stdin_tx, stdin_rx) = mpsc::unbounded::<Vec<u8>>();
     let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
 
     // Bind to a UDP socket
@@ -81,10 +82,17 @@ fn main() {
         })
         .map_err(|_| ());
 
-    let stdin_stream = stdin_rx.map(|buf| {
-        let string = String::from_utf8(buf).unwrap();
-        Event::StdinEvent(string)
-    }).map_err(|_| ());
+    let stdin_stream = stdin_rx
+        .filter(|buf| {
+            let input = String::from_utf8(buf.to_vec().clone()).unwrap();
+            let input = input.trim();
+            !input.is_empty() && input != ""
+        })
+        .map(|buf| {
+            let string = String::from_utf8(buf).unwrap();
+            let string = String::from_str(string.trim()).unwrap();
+            Event::StdinEvent(string)
+        }).map_err(|_| ());
 
     let main_loop_fut = tick_stream
         .select(packet_stream)
@@ -116,6 +124,12 @@ fn main() {
                     client_state.ctr += 1;
                 }
                 Event::StdinEvent(string) => {
+                    let action = parse_stdin(&string);
+                    let packet = PlayerPacket {
+                        player_name: "Joe".to_owned(),
+                        number:      client_state.ctr,
+                        action:      action
+                    };
                     println!("User input: {:?}", string);
                 }
             }
@@ -158,4 +172,10 @@ fn read_stdin(mut tx: mpsc::UnboundedSender<Vec<u8>>) {
             Err(_) => break,
         };
     }
+}
+
+// At this point we should only have command or message to work with
+fn parse_stdin(input: &String) -> Action {
+//   if input.get(0)
+   Action::Message
 }
