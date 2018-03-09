@@ -36,7 +36,7 @@ struct Player {
 }
 
 impl Player {
-    fn new(name: String, addr: SocketAddr) -> Player {
+    fn new(name: String, addr: SocketAddr) -> Self {
         let id = calculate_hash(&PlayerID {name: name.clone(), addr: addr});
         Player {
             player_name: name,
@@ -73,8 +73,8 @@ impl Connection {
 struct ServerState {
     tick: u64,
     ctr: u64,
-    players: Box<Vec<Player>>,
-    connections: Box<Vec<Connection>>,
+    players: Vec<Player>,
+    connections: Vec<Connection>,
 }
 
 //////////////// Utilities ///////////////////////
@@ -98,13 +98,14 @@ impl ServerState {
 
                 self.players.push(Player::new(player_name, addr));
             },
-            Action::Ack => {},
-            Action::Disconnect => {},
-            Action::Help => {},
-            Action::JoinGame => {},
+            Action::Ack         => {},
+            Action::Disconnect  => {},
+            Action::Help        => {},
+            Action::JoinGame    => {},
             Action::ListPlayers => {},
-            Action::Message => {},
-            Action::None => {},
+            Action::Message     => {},
+            Action::Name(_)     => { panic!("Clients should not send Name actions!"); },
+            Action::None        => {},
         }
     }
 
@@ -126,7 +127,7 @@ impl ServerState {
                 }
             }
             else {
-                    panic!("Unavailable player A");
+                panic!("Unavailable player A");
             }
         }
     }
@@ -151,8 +152,8 @@ fn main() {
     let initial_server_state = ServerState { 
         tick: 0,
         ctr: 0,
-        players: Box::new(Vec::<Player>::new()),
-        connections: Box::new(Vec::<Connection>::new())
+        players: Vec::<Player>::new(),
+        connections: Vec::<Connection>::new()
     };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat( () ));

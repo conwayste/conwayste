@@ -43,6 +43,7 @@ pub enum Action {
     Help,
     Message,
     JoinGame,
+    Name(String),     // TODO: this is an internal client action -- not sent by server
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]

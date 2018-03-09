@@ -24,7 +24,8 @@ use futures::future::ok;
 use futures::sync::mpsc;
 
 struct ClientState {
-    ctr: u64
+    ctr: u64,
+    name: String,
 }
 
 fn main() {
@@ -62,7 +63,7 @@ fn main() {
     println!("About to start sending to remote {:?} from local {:?}...", addr, local_addr);
 
     // initialize state
-    let initial_client_state = ClientState { ctr: 0 };
+    let initial_client_state = ClientState { ctr: 0, name: "<noname>".to_owned() };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat( () )); // just a Stream that emits () forever
     // .and_then is like .map except that it processes returned Futures
@@ -131,9 +132,13 @@ fn main() {
                         Action::None => {
                             println!("Command not recognized: {}", string);
                         },
+                        Action::Name(s) => {
+                            client_state.name = s;
+                            println!("Set client name to {:?}", client_state.name);
+                        }
                         all_others => {
                             let packet = PlayerPacket {
-                                player_name: "Joe".to_owned(),
+                                player_name: client_state.name.clone(),
                                 number:      client_state.ctr,
                                 action:      all_others
                             };
@@ -191,19 +196,31 @@ fn parse_stdin(input: &String) -> Action {
         let mut input = input.clone();
         input.remove(0);
 
-        let input = input.to_lowercase();
         let mut iter = input.split_whitespace();
         let mut action = Action::None;
+        let mut await_name: bool = false;     // this is kind of hacky but oh well
 
         if let Some(command) = iter.next() {
-            match command {
+            let command = command.to_lowercase();
+            match command.as_str() {
                 "help" => {
                     action = Action::Help;
                 }
                 "connect" => {
                     action = Action::Connect;
                 }
+                "name" => {
+                    await_name = true;
+                }
                 _ => {}
+            }
+        }
+        if await_name {
+            if let Some(name) = iter.next() {
+                action = Action::Name(name.to_owned());
+            } else {
+                println!("ERROR: no name was given");
+                action = Action::None;
             }
         }
         action
