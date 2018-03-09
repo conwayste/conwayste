@@ -85,23 +85,6 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
     s.finish()
 }
 
-/*
-fn get_responses(addr: SocketAddr) -> Box<Future<Item = Vec<(SocketAddr, PlayerPacket)>, Error = std::io::Error>> {
-    let mut source_packet = PlayerPacket {
-        player_name: "from server".to_owned(),
-        number:      1,
-        action:      Action::Click,
-    };
-    let mut responses = Vec::<_>::new();
-    for _ in 0..3 {
-        let packet = source_packet.clone();
-        responses.push((addr.clone(), packet));
-        source_packet.number += 1;
-    }
-    Box::new(ok(responses))
-}
-*/
-
 impl ServerState {
     fn decode_packet(&mut self, addr: SocketAddr, packet: PlayerPacket) {
         let player_name = packet.player_name;
@@ -115,8 +98,6 @@ impl ServerState {
 
                 self.players.push(Player::new(player_name, addr));
             },
-            Action::Click => {},
-            Action::Delete => {},
             Action::Ack => {},
             Action::Disconnect => {},
             Action::Help => {},

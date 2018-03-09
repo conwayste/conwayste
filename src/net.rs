@@ -43,8 +43,6 @@ pub enum Action {
     Help,
     Message,
     JoinGame,
-    Click,
-    Delete,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]

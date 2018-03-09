@@ -110,7 +110,7 @@ fn main() {
                          Action::Connect
                     }
                     else {
-                        Action::Click
+                        Action::None
                     };
                     let packet = PlayerPacket {
                         player_name: "Joe".to_owned(),
