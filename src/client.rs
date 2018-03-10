@@ -16,7 +16,7 @@ use std::process::exit;
 use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
-use net::{Action, PlayerPacket, LineCodec, Event};
+use net::{Action, PlayerPacket, LineCodec};
 use tokio_core::net::UdpSocket;
 use tokio_core::reactor::{Core, Handle, Timeout};
 use futures::{Future, Sink, Stream, stream};
@@ -28,6 +28,20 @@ struct ClientState {
     name: String,
 }
 
+//////////////// Event Handling /////////////////
+enum UserInput {
+    Command{cmd: String, args: Vec<String>},   // command with arguments
+    Chat(String),
+}
+
+enum Event {
+    TickEvent,   // note: currently unused
+    UserInputEvent(UserInput),
+    Response((SocketAddr, Option<PlayerPacket>)),
+//    NotifyAck((SocketAddr, Option<PlayerPacket>)),
+}
+
+//////////////////// Main /////////////////////
 fn main() {
     drop(env_logger::init());
 
@@ -84,15 +98,22 @@ fn main() {
         .map_err(|_| ());
 
     let stdin_stream = stdin_rx
-        .filter(|buf| {
-            let input = String::from_utf8(buf.to_vec().clone()).unwrap();
-            let input = input.trim();
-            !input.is_empty() && input != ""
-        })
         .map(|buf| {
             let string = String::from_utf8(buf).unwrap();
             let string = String::from_str(string.trim()).unwrap();
-            Event::StdinEvent(string)
+            if !string.is_empty() && string != "" {
+                Some(string)
+            } else {
+                None        // empty line; will be filtered out in next step
+            }
+        })
+        .filter(|opt_string| {
+            *opt_string != None
+        })
+        .map(|opt_string| {
+            let string = opt_string.unwrap();
+            let user_input = parse_stdin(string);
+            Event::UserInputEvent(user_input)
         }).map_err(|_| ());
 
     let main_loop_fut = tick_stream
@@ -103,7 +124,6 @@ fn main() {
                 Event::Response(packet_tuple) => {
                     println!("Got packet from server! {:?}", packet_tuple);
                 }
-                Event::Request(_) => {panic!("Why did we get a Request from Server?");}
                 Event::TickEvent => {
                     /*
                     // send a packet with ctr
@@ -126,26 +146,46 @@ fn main() {
                     client_state.ctr += 1;
                     */
                 }
-                Event::StdinEvent(string) => {
-                    let action = parse_stdin(&string);
-                    match action {
-                        Action::None => {
-                            println!("Command not recognized: {}", string);
+                Event::UserInputEvent(user_input) => {
+                    let mut action = Action::None;
+                    match user_input {
+                        UserInput::Chat(string) => {
+                            unimplemented!();
+                        }
+                        UserInput::Command{cmd, args} => {
+                            match cmd.as_str() {
+                                "help" => {
+                                    unimplemented!();
+                                },
+                                "connect" => {
+                                    if args.len() == 0 {
+                                        action = Action::Connect;
+                                    } else {
+                                        println!("ERROR: extra arguments to connect");
+                                    }
+                                },
+                                "name" => {
+                                    if args.len() == 1 {
+                                        client_state.name = args[0].clone();
+                                        println!("Set client name to {:?}", client_state.name);
+                                    } else {
+                                        println!("ERROR: expected one argument to name");
+                                    }
+                                }
+                                _ => {
+                                    println!("ERROR: command not recognized: {}", cmd);
+                                },
+                            }
                         },
-                        Action::Name(s) => {
-                            client_state.name = s;
-                            println!("Set client name to {:?}", client_state.name);
-                        }
-                        all_others => {
-                            let packet = PlayerPacket {
-                                player_name: client_state.name.clone(),
-                                number:      client_state.ctr,
-                                action:      all_others
-                            };
-                            println!("User input: {:?}", string);
-                            let _ = udp_tx.unbounded_send((addr.clone(), packet));
-                            client_state.ctr += 1;
-                        }
+                    }
+                    if action != Action::None {
+                        let packet = PlayerPacket {
+                            player_name: client_state.name.clone(),
+                            number:      client_state.ctr,
+                            action:      action
+                        };
+                        let _ = udp_tx.unbounded_send((addr.clone(), packet));
+                        client_state.ctr += 1;
                     }
                 }
             }
@@ -190,42 +230,22 @@ fn read_stdin(mut tx: mpsc::UnboundedSender<Vec<u8>>) {
     }
 }
 
-// At this point we should only have command or message to work with
-fn parse_stdin(input: &String) -> Action {
-   if input.get(0..1) == Some("/") {
-        let mut input = input.clone();
-        input.remove(0);
+// At this point we should only have command or chat message to work with
+fn parse_stdin(mut input: String) -> UserInput {
+    if input.get(0..1) == Some("/") {
+        // this is a command
+        input.remove(0);  // remove initial slash
 
-        let mut iter = input.split_whitespace();
-        let mut action = Action::None;
-        let mut await_name: bool = false;     // this is kind of hacky but oh well
+        let mut words: Vec<String> = input.split_whitespace().map(|w| w.to_owned()).collect();
 
-        if let Some(command) = iter.next() {
-            let command = command.to_lowercase();
-            match command.as_str() {
-                "help" => {
-                    action = Action::Help;
-                }
-                "connect" => {
-                    action = Action::Connect;
-                }
-                "name" => {
-                    await_name = true;
-                }
-                _ => {}
-            }
-        }
-        if await_name {
-            if let Some(name) = iter.next() {
-                action = Action::Name(name.to_owned());
-            } else {
-                println!("ERROR: no name was given");
-                action = Action::None;
-            }
-        }
-        action
-   }
-   else {
-        Action::Message
+        let command = if words.len() > 0 {
+                          words.remove(0).to_lowercase()
+                      } else {
+                          "".to_owned()
+                      };
+
+        UserInput::Command{cmd: command, args: words}
+   } else {
+        UserInput::Chat(input)
    }
 }

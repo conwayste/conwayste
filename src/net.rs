@@ -43,7 +43,6 @@ pub enum Action {
     Help,
     Message,
     JoinGame,
-    Name(String),     // TODO: this is an internal client action -- not sent by server
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -94,13 +93,3 @@ pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> R
 
 pub const HOST: &str = "0.0.0.0";
 pub const PORT: u16 = 12345;
-
-//////////////// Event Handling /////////////////
-pub enum Event {
-    TickEvent,
-    Request((SocketAddr, Option<PlayerPacket>)),
-    Response((SocketAddr, Option<PlayerPacket>)),
-//    Notify((SocketAddr, Option<PlayerPacket>)),
-//    NotifyAck((SocketAddr, Option<PlayerPacket>)),
-    StdinEvent(String),
-}

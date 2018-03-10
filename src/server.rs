@@ -8,7 +8,7 @@ extern crate tokio_core;
 
 mod net;
 
-use net::{Action, PlayerPacket, LineCodec, Event};
+use net::{Action, PlayerPacket, LineCodec};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io::{Error};
@@ -104,7 +104,6 @@ impl ServerState {
             Action::JoinGame    => {},
             Action::ListPlayers => {},
             Action::Message     => {},
-            Action::Name(_)     => { panic!("Clients should not send Name actions!"); },
             Action::None        => {},
         }
     }
@@ -133,6 +132,14 @@ impl ServerState {
     }
 }
 
+//////////////// Event Handling /////////////////
+enum Event {
+    TickEvent,
+    Request((SocketAddr, Option<PlayerPacket>)),
+//    Notify((SocketAddr, Option<PlayerPacket>)),
+}
+
+//////////////////// Main /////////////////////
 fn main() {
     drop(env_logger::init());
 
@@ -195,12 +202,7 @@ fn main() {
                         tx.unbounded_send(response).unwrap();
                     }
                 }
-                Event::Response(_) => {
-                    panic!("Why did we get a Response from a client?");
-                }
-                Event::StdinEvent(_) => {
-                    panic!("Why did we get a Stdin from a client?");
-                }
+
                 Event::TickEvent => {
                     // Server tick
                     // Likely spawn off work to handle server tasks here
