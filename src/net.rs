@@ -31,31 +31,121 @@ impl From<io::Error> for NetError {
 }
 
 
+////////////////////// Data model ////////////////////////
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum RequestAction {
+    None,   // never actually sent
+    Connect{name: String, client_version: String},
+    Disconnect,
+    KeepAlive,
+    ListPlayers,
+    ChatMessage(String),
+    JoinGame(String),
+    LeaveGame,
+}
+
+// server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum ResponseCode {
+    OK,                              // 200
+    BadRequest(Option<String>),      // 400 unspecified error that is client's fault
+    Unauthorized(Option<String>),    // 401 not logged in
+    TooManyRequests(Option<String>), // 429
+    ServerError(Option<String>),     // 500
+    NotConnected(Option<String>),    // no equivalent in HTTP due to handling at lower (TCP) level
+    PleaseUpgrade(Option<String>),   // client should upgrade
+}
+
+// chat messages sent from server to all clients other than originating client
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct BroadcastChatMessage {
+    pub chat_seq: Option<u64>,     // Some(<number>) when sent to clients (starts at 0 for first
+                                   // chat message sent to this client in this game); None when
+                                   // internal to server
+    pub name:     String,
+    pub message:  String,          // should not contain newlines
+}
+
+// TODO: adapt or import following from libconway
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct GenState {
+    // state of the Universe
+    pub gen:        u64,
+    pub dummy_data: u64,
+}
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct GenDiff  {
+    // difference between states of Universe
+    pub old_gen:    u64,
+    pub new_gen:    u64,
+    pub dummy_data: u64,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct GameResolution {
+    pub winner: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum GameUpdateType {
+    GameStart,
+    NewUserList(Vec<String>),   // list of names of all users including current user
+    GameFinish(GameResolution),
+    GameClose,   // kicks user back to arena
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct GameUpdate {
+    pub game_update_seq: Option<u64>,  // see BroadCastMessage chat_seq field for Some/None meaning
+    update_type:         GameUpdateType,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum UniUpdateType {
+    State(GenState),
+    Diff(GenDiff),
+    NoChange,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum PacketBody {
+    Request {
+        // sent by client
+        response_ack:         Option<u64>,    // most recent response sequence number received
+        cookie:               Option<String>, // present if and only if action != connect
+        action:               RequestAction,
+    },
+    Response {
+        // sent by server in reply to client
+        request_ack:          Option<u64>,     // most recent request sequence number received
+        code:                 ResponseCode,
+    },
+    Update {
+        // in-game: sent by server
+        chats:                Vec<BroadcastChatMessage>,
+        game_updates:         Vec<GameUpdate>,
+        universe_update:      UniUpdateType,
+    },
+    UpdateReply {
+        // in-game: sent by client in reply to server
+        last_chat_seq:        Option<u64>, // sequence number of latest chat msg. received from server
+        last_game_update_seq: Option<u64>, // seq. number of latest game update from server
+        last_gen:             Option<u64>, // generation number client is currently at
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct Packet {
+    pub sequence: u64,
+    pub body: PacketBody,
+}
+
 
 //////////////// Packet (de)serialization ////////////////
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub enum Action {
-    None,
-    Ack,
-    Connect,
-    Disconnect,
-    ListPlayers,
-    Help,
-    Message,
-    JoinGame,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct PlayerPacket {
-    pub player_name: String,
-    pub number:      u64,
-    pub action:      Action,
-}
-
 pub struct LineCodec;
 impl UdpCodec for LineCodec {
-    type In = (SocketAddr, Option<PlayerPacket>);   // if 2nd element is None, it means deserialization failure
-    type Out = (SocketAddr, PlayerPacket);
+    type In = (SocketAddr, Option<Packet>);   // if 2nd element is None, it means deserialization failure
+    type Out = (SocketAddr, Packet);
 
     fn decode(&mut self, addr: &SocketAddr, buf: &[u8]) -> io::Result<Self::In> {
         match deserialize(buf) {

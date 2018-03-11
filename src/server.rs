@@ -8,7 +8,7 @@ extern crate tokio_core;
 
 mod net;
 
-use net::{Action, PlayerPacket, LineCodec};
+use net::{RequestAction, Packet, LineCodec};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io::{Error};
@@ -86,25 +86,24 @@ fn calculate_hash<T: Hash>(t: &T) -> u64 {
 }
 
 impl ServerState {
-    fn decode_packet(&mut self, addr: SocketAddr, packet: PlayerPacket) {
+    fn decode_packet(&mut self, addr: SocketAddr, packet: Packet) {
         let player_name = packet.player_name;
         let action = packet.action;
 
         match action {
-            Action::Connect => {
+            RequestAction::Connect => {
                 self.players.iter().for_each(|player| {
                     assert_eq!(true, player.addr != addr && player.player_name != player_name);
                 });
 
                 self.players.push(Player::new(player_name, addr));
             },
-            Action::Ack         => {},
-            Action::Disconnect  => {},
-            Action::Help        => {},
-            Action::JoinGame    => {},
-            Action::ListPlayers => {},
-            Action::Message     => {},
-            Action::None        => {},
+            RequestAction::Ack                 => {},
+            RequestAction::Disconnect          => {},
+            RequestAction::JoinGame            => {},
+            RequestAction::ListPlayers         => {},
+            RequestAction::ChatMessage(String) => {},
+            RequestAction::None                => {},
         }
     }
 
@@ -135,8 +134,8 @@ impl ServerState {
 //////////////// Event Handling /////////////////
 enum Event {
     TickEvent,
-    Request((SocketAddr, Option<PlayerPacket>)),
-//    Notify((SocketAddr, Option<PlayerPacket>)),
+    Request((SocketAddr, Option<Packet>)),
+//    Notify((SocketAddr, Option<Packet>)),
 }
 
 //////////////////// Main /////////////////////
@@ -193,10 +192,10 @@ fn main() {
                         server_state.decode_packet(addr, packet.clone());
 
                         // Ack back
-                        let ack_packet = PlayerPacket {
+                        let ack_packet = Packet {
                             player_name: "from server".to_owned(),
                             number:      packet.number,
-                            action:      Action::Ack,
+                            action:      RequestAction::Ack,
                         };
                         let response = (addr.clone(), ack_packet);
                         tx.unbounded_send(response).unwrap();

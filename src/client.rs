@@ -16,7 +16,7 @@ use std::process::exit;
 use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
-use net::{Action, PlayerPacket, LineCodec};
+use net::{RequestAction, Packet, LineCodec};
 use tokio_core::net::UdpSocket;
 use tokio_core::reactor::{Core, Handle, Timeout};
 use futures::{Future, Sink, Stream, stream};
@@ -37,8 +37,8 @@ enum UserInput {
 enum Event {
     TickEvent,   // note: currently unused
     UserInputEvent(UserInput),
-    Response((SocketAddr, Option<PlayerPacket>)),
-//    NotifyAck((SocketAddr, Option<PlayerPacket>)),
+    Response((SocketAddr, Option<Packet>)),
+//    NotifyAck((SocketAddr, Option<Packet>)),
 }
 
 //////////////////// Main /////////////////////
@@ -128,12 +128,12 @@ fn main() {
                     /*
                     // send a packet with ctr
                     let act = if client_state.ctr == 0 {
-                         Action::Connect
+                         RequestAction::Connect
                     }
                     else {
-                        Action::None
+                        RequestAction::None
                     };
-                    let packet = PlayerPacket {
+                    let packet = Packet {
                         player_name: "Joe".to_owned(),
                         number:      client_state.ctr,
                         action:      act
@@ -147,7 +147,7 @@ fn main() {
                     */
                 }
                 Event::UserInputEvent(user_input) => {
-                    let mut action = Action::None;
+                    let mut action = RequestAction::None;
                     match user_input {
                         UserInput::Chat(string) => {
                             unimplemented!();
@@ -159,7 +159,7 @@ fn main() {
                                 },
                                 "connect" => {
                                     if args.len() == 0 {
-                                        action = Action::Connect;
+                                        action = RequestAction::Connect;
                                     } else {
                                         println!("ERROR: extra arguments to connect");
                                     }
@@ -178,8 +178,8 @@ fn main() {
                             }
                         },
                     }
-                    if action != Action::None {
-                        let packet = PlayerPacket {
+                    if action != RequestAction::None {
+                        let packet = Packet {
                             player_name: client_state.name.clone(),
                             number:      client_state.ctr,
                             action:      action
