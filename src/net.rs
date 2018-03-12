@@ -35,25 +35,31 @@ impl From<io::Error> for NetError {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum RequestAction {
     None,   // never actually sent
-    Connect{name: String, client_version: String},
+    Connect{name: String, client_version: String},      // server replies w/ OK/PleaseUpgrade; TODO: password
     Disconnect,
     KeepAlive,
     ListPlayers,
     ChatMessage(String),
-    JoinGame(String),
-    LeaveGame,
+    ListGameSlots,
+    NewGameSlot(String),
+    JoinGameSlot(String),
+    LeaveGameSlot,
 }
 
 // server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum ResponseCode {
-    OK,                              // 200
+    // success - these are all 200 in HTTP
+    OK,                              // 200 no data
+    PlayerList(Vec<String>),
+    GameSlotList(Vec<(String, u64, bool)>), // (game name, # players, started?)
+    // errors
     BadRequest(Option<String>),      // 400 unspecified error that is client's fault
     Unauthorized(Option<String>),    // 401 not logged in
     TooManyRequests(Option<String>), // 429
     ServerError(Option<String>),     // 500
     NotConnected(Option<String>),    // no equivalent in HTTP due to handling at lower (TCP) level
-    PleaseUpgrade(Option<String>),   // client should upgrade
+    PleaseUpgrade(Option<String>),   // client should give upgrade msg to user, but continue as if OK
 }
 
 // chat messages sent from server to all clients other than originating client
@@ -71,19 +77,19 @@ pub struct BroadcastChatMessage {
 pub struct GenState {
     // state of the Universe
     pub gen:        u64,
-    pub dummy_data: u64,
+    pub dummy_data: u8,
 }
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GenDiff  {
     // difference between states of Universe
     pub old_gen:    u64,
     pub new_gen:    u64,
-    pub dummy_data: u64,
+    pub dummy_data: u8,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GameResolution {
-    pub winner: Option<String>,
+    pub winner: Option<String>,     // Some(<name>) if winner, or None, meaning it was a tie/forfeit
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -108,36 +114,33 @@ pub enum UniUpdateType {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub enum PacketBody {
+pub enum Packet {
     Request {
         // sent by client
-        response_ack:         Option<u64>,    // most recent response sequence number received
-        cookie:               Option<String>, // present if and only if action != connect
-        action:               RequestAction,
+        sequence:        u64,
+        response_ack:    Option<u64>,    // most recent response sequence number received
+        cookie:          Option<String>, // present if and only if action != connect
+        action:          RequestAction,
     },
     Response {
         // sent by server in reply to client
-        request_ack:          Option<u64>,     // most recent request sequence number received
-        code:                 ResponseCode,
+        sequence:        u64,
+        request_ack:     Option<u64>,     // most recent request sequence number received
+        code:            ResponseCode,
     },
     Update {
         // in-game: sent by server
-        chats:                Vec<BroadcastChatMessage>,
-        game_updates:         Vec<GameUpdate>,
-        universe_update:      UniUpdateType,
+        chats:           Vec<BroadcastChatMessage>,
+        game_updates:    Vec<GameUpdate>,
+        universe_update: UniUpdateType,
     },
     UpdateReply {
         // in-game: sent by client in reply to server
+        cookie:               String,
         last_chat_seq:        Option<u64>, // sequence number of latest chat msg. received from server
         last_game_update_seq: Option<u64>, // seq. number of latest game update from server
         last_gen:             Option<u64>, // generation number client is currently at
     }
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct Packet {
-    pub sequence: u64,
-    pub body: PacketBody,
 }
 
 

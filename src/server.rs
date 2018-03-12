@@ -5,12 +5,15 @@ extern crate log;
 extern crate env_logger;
 extern crate futures;
 extern crate tokio_core;
+extern crate base64;
 
 mod net;
 
 use net::{RequestAction, Packet, LineCodec};
+/*
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+*/
 use std::io::{Error};
 use std::iter;
 use std::net::SocketAddr;
@@ -20,22 +23,25 @@ use futures::*;
 use futures::future::ok;
 use futures::sync::mpsc;
 use tokio_core::reactor::{Core, Timeout};
+use base64;
+use rand;
 
-#[derive(PartialEq, Debug, Clone)]
-struct PlayerID {
-    name: String,
-    addr: SocketAddr,
-}
+const TICK_INTERVAL: u64 = 40; // milliseconds
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+struct PlayerID(usize);
 
 #[derive(PartialEq, Debug, Clone)]
 struct Player {
-    player_id: u64,
-    player_name: String,
-    addr: SocketAddr,
-    in_game: bool,
+    player_id:    PlayerID,
+    player_name:  String,
+    cookie:       String,
+    addr:         SocketAddr,
+    game_slot_id: Option<usize>,   // None means in lobby
 }
 
 impl Player {
+    /*
     fn new(name: String, addr: SocketAddr) -> Self {
         let id = calculate_hash(&PlayerID {name: name.clone(), addr: addr});
         Player {
@@ -45,44 +51,56 @@ impl Player {
             in_game: false,
         }
     }
+    */
 }
 
+/*
 impl Hash for PlayerID {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
         self.addr.hash(state);
     }
 }
+*/
 
-struct Connection {
-    player_a: Player,
-    player_b: Player,
-    universe: u64,    // Temp until we integrate
+struct GameSlot {
+    player_ids:   Vec<PlayerID>,
+    game_running: bool,
+    universe:     u64,    // Temp until we integrate
 }
 
-impl Connection {
-    fn new(player_a: Player, player_b: Player) -> Self {
-        Connection {
-            player_a: player_a,
-            player_b: player_b,
-            universe: 0
+impl GameSlot {
+    fn new(player_ids: Vec<PlayerID>) -> Self {
+        GameSlot {
+            player_ids:   player_ids,
+            game_running: false,
+            universe:     0,
         }
     }
 }
 
 struct ServerState {
-    tick: u64,
-    ctr: u64,
-    players: Vec<Player>,
-    connections: Vec<Connection>,
+    tick:           u64,
+    ctr:            u64,
+    players:        Vec<Player>,
+    game_slots:     Vec<GameSlot>,
+    next_player_id: PlayerID(usize),  // index into players
 }
 
 //////////////// Utilities ///////////////////////
 
+/*
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();
     t.hash(&mut s);
     s.finish()
+}
+*/
+
+fn new_cookie() -> String {
+    let mut buf = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut buf);
+    base64::encode(&buf)
 }
 
 impl ServerState {
@@ -117,7 +135,7 @@ impl ServerState {
                 if let Some(mut b) = self.players.pop() {
                     a.in_game = true;
                     b.in_game = true;
-                    self.connections.push(Connection::new(a, b));
+                    self.game_slots.push(GameSlot::new(a, b));
                     self.ctr+=1;
                 }
                 else {
@@ -127,6 +145,19 @@ impl ServerState {
             else {
                 panic!("Unavailable player A");
             }
+        }
+    }
+
+    fn new_player(&mut self, name: String, addr, SocketAddr) -> Player {
+        let id = self.next_player_id;
+        self.next_player_id = PlayerID(id.0 + 1);
+        let cookie = new_cookie();
+        Player {
+            player_name: name,
+            cookie:      cookie,
+            player_id:   id,
+            addr:        addr,
+            in_game:     false,
         }
     }
 }
@@ -159,12 +190,12 @@ fn main() {
         tick: 0,
         ctr: 0,
         players: Vec::<Player>::new(),
-        connections: Vec::<Connection>::new()
+        game_slots: Vec::<GameSlot>::new()
     };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat( () ));
     let tick_stream = iter_stream.and_then(|_| {
-        let timeout = Timeout::new(Duration::from_millis(1), &handle).unwrap();
+        let timeout = Timeout::new(Duration::from_millis(TICK_INTERVAL), &handle).unwrap();
         timeout.and_then(move |_| {
             ok(Event::TickEvent)
         })
@@ -207,11 +238,12 @@ fn main() {
                     // Likely spawn off work to handle server tasks here
                     server_state.tick += 1;
 
+                    /*
                     server_state.initiate_player_session();
 
                     if server_state.ctr == 1 {
-                        // Connection tick
-                        server_state.connections.iter()
+                        // GameSlot tick
+                        server_state.game_slots.iter()
                             .filter(|ref conn| conn.player_a.in_game && conn.player_b.in_game)
                             .for_each(|ref conn| {
                                 let player_a = &conn.player_a;
@@ -225,6 +257,7 @@ fn main() {
 
                         server_state.ctr += 1;
                     }
+                    */
                 }
             }
 

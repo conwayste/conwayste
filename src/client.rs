@@ -23,9 +23,14 @@ use futures::{Future, Sink, Stream, stream};
 use futures::future::ok;
 use futures::sync::mpsc;
 
+const CLIENT_VERSION: &str = "0.0.1";
+
 struct ClientState {
-    ctr: u64,
-    name: String,
+    sequence:     u64,   // sequence number of requests
+    response_ack: Option<u64>,  // last acknowledged response sequence number from server
+    name:         Option<String>,
+    in_game:      bool,
+    cookie:       Option<String>,
 }
 
 //////////////// Event Handling /////////////////
@@ -39,6 +44,18 @@ enum Event {
     UserInputEvent(UserInput),
     Response((SocketAddr, Option<Packet>)),
 //    NotifyAck((SocketAddr, Option<Packet>)),
+}
+
+////////////////// Utilities //////////////////
+fn print_help() {
+    println!("/help                  - print this text");
+    println!("/connect <player_name> - connect to server");
+    println!("/disconnect            - disconnect from server");
+    println!("/list                  - list game slots when in lobby, or players when in game");
+    println!("/new <slot_name>       - create a new game slot (when not in game)");
+    println!("/join <slot_name>      - join a game slot (when not in game)");
+    println!("/leave                 - leave a game slot (when in game)");
+    println!("...or just type text to chat!");
 }
 
 //////////////////// Main /////////////////////
@@ -77,7 +94,13 @@ fn main() {
     println!("About to start sending to remote {:?} from local {:?}...", addr, local_addr);
 
     // initialize state
-    let initial_client_state = ClientState { ctr: 0, name: "<noname>".to_owned() };
+    let initial_client_state = ClientState {
+        sequence:     0,
+        response_ack: None,
+        name:         None,
+        in_game:      false,
+        cookie:       None,      // not connected yet
+    };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat( () )); // just a Stream that emits () forever
     // .and_then is like .map except that it processes returned Futures
@@ -123,6 +146,7 @@ fn main() {
             match event {
                 Event::Response(packet_tuple) => {
                     println!("Got packet from server! {:?}", packet_tuple);
+                    //XXX
                 }
                 Event::TickEvent => {
                     /*
@@ -150,42 +174,70 @@ fn main() {
                     let mut action = RequestAction::None;
                     match user_input {
                         UserInput::Chat(string) => {
-                            unimplemented!();
+                            action = RequestAction::ChatMessage(string);
                         }
                         UserInput::Command{cmd, args} => {
+                            // keep these in sync with print_help function
                             match cmd.as_str() {
                                 "help" => {
-                                    unimplemented!();
-                                },
+                                    print_help();
+                                }
                                 "connect" => {
-                                    if args.len() == 0 {
-                                        action = RequestAction::Connect;
-                                    } else {
-                                        println!("ERROR: extra arguments to connect");
-                                    }
-                                },
-                                "name" => {
                                     if args.len() == 1 {
-                                        client_state.name = args[0].clone();
-                                        println!("Set client name to {:?}", client_state.name);
-                                    } else {
-                                        println!("ERROR: expected one argument to name");
-                                    }
+                                        client_state.name = Some(args[0].clone());
+                                        println!("Set client name to {:?}", client_state.name.clone().unwrap());
+                                        action = RequestAction::Connect{
+                                            name:           args[0].clone(),
+                                            client_version: CLIENT_VERSION.to_owned(),
+                                        };
+                                    } else { println!("ERROR: expected one argument to connect"); }
+                                }
+                                "disconnect" => {
+                                    if args.len() == 0 {
+                                        action = RequestAction::Disconnect;
+                                    } else { println!("ERROR: expected no arguments to disconnect"); }
+                                }
+                                "list" => {
+                                    if args.len() == 0 {
+                                        // players or game slots
+                                        if client_state.in_game {
+                                            action = RequestAction::ListPlayers;
+                                        } else {
+                                            // lobby
+                                            action = RequestAction::ListGameSlots;
+                                        }
+                                    } else { println!("ERROR: expected no arguments to list"); }
+                                }
+                                "new" => {
+                                    if args.len() == 1 {
+                                        action = RequestAction::NewGameSlot(args[0].clone());
+                                    } else { println!("ERROR: expected one argument to new"); }
+                                }
+                                "join" => {
+                                    if args.len() == 1 {
+                                        action = RequestAction::JoinGameSlot(args[0].clone());
+                                    } else { println!("ERROR: expected one argument to join"); }
+                                }
+                                "leave" => {
+                                    if args.len() == 0 {
+                                        action = RequestAction::LeaveGameSlot;
+                                    } else { println!("ERROR: expected no arguments to leave"); }
                                 }
                                 _ => {
                                     println!("ERROR: command not recognized: {}", cmd);
-                                },
+                                }
                             }
                         },
                     }
                     if action != RequestAction::None {
-                        let packet = Packet {
-                            player_name: client_state.name.clone(),
-                            number:      client_state.ctr,
-                            action:      action
+                        let packet = Packet::Request {
+                            sequence:     client_state.sequence,
+                            response_ack: client_state.response_ack,
+                            cookie:       client_state.cookie.clone(),
+                            action:       action,
                         };
                         let _ = udp_tx.unbounded_send((addr.clone(), packet));
-                        client_state.ctr += 1;
+                        client_state.sequence += 1;
                     }
                 }
             }
