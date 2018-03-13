@@ -6,25 +6,27 @@ extern crate env_logger;
 extern crate futures;
 extern crate tokio_core;
 extern crate base64;
+extern crate rand;
 
 mod net;
 
-use net::{RequestAction, Packet, LineCodec};
+use net::{RequestAction, ResponseCode, Packet, LineCodec};
 /*
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 */
-use std::io::{Error};
+use std::error::Error;
+use std::io::{self, ErrorKind};
 use std::iter;
 use std::net::SocketAddr;
 use std::process::exit;
 use std::time::Duration;
+use std::collections::HashMap;
 use futures::*;
 use futures::future::ok;
 use futures::sync::mpsc;
 use tokio_core::reactor::{Core, Timeout};
-use base64;
-use rand;
+use rand::Rng;
 
 const TICK_INTERVAL: u64 = 40; // milliseconds
 
@@ -33,11 +35,21 @@ struct PlayerID(usize);
 
 #[derive(PartialEq, Debug, Clone)]
 struct Player {
-    player_id:    PlayerID,
-    player_name:  String,
-    cookie:       String,
-    addr:         SocketAddr,
-    game_slot_id: Option<usize>,   // None means in lobby
+    player_id:     PlayerID,
+    cookie:        String,
+    addr:          SocketAddr,
+    player_name:   String,
+    request_ack:   Option<u64>,          // most recent request sequence number received
+    next_resp_seq: u64,                  // next response sequence number
+    game:          Option<GamePlayer>,   // none means in lobby
+}
+
+// info for a player as it relates to a game/gameslot
+#[derive(PartialEq, Debug, Clone)]
+struct GamePlayer {
+    game_slot_id: u64,
+    //XXX PlayerGenState ID within Universe
+    //XXX update statuses
 }
 
 impl Player {
@@ -64,27 +76,20 @@ impl Hash for PlayerID {
 */
 
 struct GameSlot {
+    game_slot_id: u64,
     player_ids:   Vec<PlayerID>,
     game_running: bool,
     universe:     u64,    // Temp until we integrate
-}
-
-impl GameSlot {
-    fn new(player_ids: Vec<PlayerID>) -> Self {
-        GameSlot {
-            player_ids:   player_ids,
-            game_running: false,
-            universe:     0,
-        }
-    }
 }
 
 struct ServerState {
     tick:           u64,
     ctr:            u64,
     players:        Vec<Player>,
+    player_map:     HashMap<String, PlayerID>,      // map cookie to player ID
     game_slots:     Vec<GameSlot>,
-    next_player_id: PlayerID(usize),  // index into players
+    next_player_id: PlayerID,  // index into players
+    next_game_slot_id: u64,
 }
 
 //////////////// Utilities ///////////////////////
@@ -104,10 +109,61 @@ fn new_cookie() -> String {
 }
 
 impl ServerState {
-    fn decode_packet(&mut self, addr: SocketAddr, packet: Packet) {
-        let player_name = packet.player_name;
-        let action = packet.action;
+    // not used for connect
+    fn process_request_action(&mut self, action: RequestAction) -> ResponseCode {
+        //XXX
+    }
 
+    // always returs either Ok(Some(Packet::Response{...})), Ok(None), or error
+    fn decode_packet(&mut self, addr: SocketAddr, packet: Packet) -> Result<Option<Packet>, Box<Error>> {
+        match packet {
+            pkt @ Packet::Response{..} | pkt @ Packet::Update{..} => {
+                return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "invalid packet - server-only")));
+            }
+            Packet::Request{sequence, response_ack, cookie, action} => {
+                match action {
+                    RequestAction::Connect{..} => (),
+                    _ => {
+                        if cookie == None {
+                            return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "no cookie")));
+                        }
+                    }
+                }
+
+                // handle connect (create user, and save cookie)
+                if let RequestAction::Connect{name, client_version} = action {
+                    if self.is_unique_name(&name) {
+                        let player = self.new_player(name.clone(), addr.clone());
+                        let cookie = player.cookie.clone();
+                        let sequence = player.next_resp_seq;
+                        player.next_resp_seq += 1;
+
+                        // save player into players vec, and save player ID into hash map using cookie
+                        self.player_map.insert(cookie.clone(), player.player_id);
+                        self.players.push(player);
+
+                        let response = Packet::Response{
+                            sequence:    sequence,
+                            request_ack: None,
+                            code:        ResponseCode::LoggedIn(cookie),
+                        };
+                        return Ok(Some(response));
+                    } else {
+                        return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "not a unique name")));
+                    }
+                } else {
+                    //XXX look up player by cookie
+                    match action {
+                        //XXX all actions other than Connect
+                        RequestAction::Connect{..} => unreachable!(),
+                    }
+                }
+            }
+            Packet::UpdateReply{..} => {
+                unimplemented!();
+            }
+        }
+        /*
         match action {
             RequestAction::Connect => {
                 self.players.iter().for_each(|player| {
@@ -123,6 +179,7 @@ impl ServerState {
             RequestAction::ChatMessage(String) => {},
             RequestAction::None                => {},
         }
+        */
     }
 
     fn has_pending_players(&self) -> bool {
@@ -135,7 +192,7 @@ impl ServerState {
                 if let Some(mut b) = self.players.pop() {
                     a.in_game = true;
                     b.in_game = true;
-                    self.game_slots.push(GameSlot::new(a, b));
+                    self.game_slots.push(self.new_game_slot(vec![a.player_id, b.player_id]));
                     self.ctr+=1;
                 }
                 else {
@@ -148,16 +205,41 @@ impl ServerState {
         }
     }
 
-    fn new_player(&mut self, name: String, addr, SocketAddr) -> Player {
+    fn new_player(&mut self, name: String, addr: SocketAddr) -> Player {
         let id = self.next_player_id;
         self.next_player_id = PlayerID(id.0 + 1);
         let cookie = new_cookie();
         Player {
-            player_name: name,
-            cookie:      cookie,
-            player_id:   id,
-            addr:        addr,
-            in_game:     false,
+            player_id:     id,
+            cookie:        cookie,
+            addr:          addr,
+            player_name:   name,
+            request_ack:   None,
+            next_resp_seq: 0,
+            game:          None,
+        }
+    }
+
+    fn new_game_slot(&mut self, player_ids: Vec<PlayerID>) -> GameSlot {
+        let id = self.next_game_slot_id;
+        self.next_game_slot_id += 1;
+        GameSlot {
+            game_slot_id: id,
+            player_ids:   player_ids,
+            game_running: false,
+            universe:     0,
+        }
+    }
+
+    fn new() -> Self {
+        ServerState {
+            tick:              0,
+            ctr:               0,
+            players:           Vec::<Player>::new(),
+            game_slots:        Vec::<GameSlot>::new(),
+            player_map:        HashMap::<String, PlayerID>::new(),
+            next_player_id:    PlayerID(0),
+            next_game_slot_id: 0,
         }
     }
 }
@@ -186,14 +268,9 @@ fn main() {
 
     let (udp_sink, udp_stream) = udp.framed(LineCodec).split();
 
-    let initial_server_state = ServerState { 
-        tick: 0,
-        ctr: 0,
-        players: Vec::<Player>::new(),
-        game_slots: Vec::<GameSlot>::new()
-    };
+    let initial_server_state = ServerState::new();
 
-    let iter_stream = stream::iter_ok::<_, Error>(iter::repeat( () ));
+    let iter_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () ));
     let tick_stream = iter_stream.and_then(|_| {
         let timeout = Timeout::new(Duration::from_millis(TICK_INTERVAL), &handle).unwrap();
         timeout.and_then(move |_| {
@@ -220,16 +297,18 @@ fn main() {
                     println!("got {:?} and {:?}!", addr, opt_packet);
 
                     if let Some(packet) = opt_packet {
-                        server_state.decode_packet(addr, packet.clone());
-
-                        // Ack back
-                        let ack_packet = Packet {
-                            player_name: "from server".to_owned(),
-                            number:      packet.number,
-                            action:      RequestAction::Ack,
-                        };
-                        let response = (addr.clone(), ack_packet);
-                        tx.unbounded_send(response).unwrap();
+                        let decode_result = server_state.decode_packet(addr, packet.clone());
+                        if decode_result.is_ok() {
+                            let opt_response_packet = decode_result.unwrap();
+                            //XXX send packet
+                            if let Some(response_packet) = opt_response_packet {
+                                let response = (addr.clone(), response_packet);
+                                tx.unbounded_send(response).unwrap();
+                            }
+                        } else {
+                            let err = decode_result.unwrap_err();
+                            println!("ERROR decoding packet from {:?}: {}", addr, err.description());
+                        }
                     }
                 }
 

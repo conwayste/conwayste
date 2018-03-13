@@ -51,6 +51,7 @@ pub enum RequestAction {
 pub enum ResponseCode {
     // success - these are all 200 in HTTP
     OK,                              // 200 no data
+    LoggedIn(String),                // player is logged in -- provide cookie
     PlayerList(Vec<String>),
     GameSlotList(Vec<(String, u64, bool)>), // (game name, # players, started?)
     // errors
