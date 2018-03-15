@@ -89,7 +89,7 @@ pub struct GenDiff  {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct GameResolution {
+pub struct GameOutcome {
     pub winner: Option<String>,     // Some(<name>) if winner, or None, meaning it was a tie/forfeit
 }
 
@@ -97,7 +97,7 @@ pub struct GameResolution {
 pub enum GameUpdateType {
     GameStart,
     NewUserList(Vec<String>),   // list of names of all users including current user
-    GameFinish(GameResolution),
+    GameFinish(GameOutcome),
     GameClose,   // kicks user back to arena
 }
 

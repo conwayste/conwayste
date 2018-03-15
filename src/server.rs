@@ -111,7 +111,34 @@ fn new_cookie() -> String {
 impl ServerState {
     // not used for connect
     fn process_request_action(&mut self, action: RequestAction) -> ResponseCode {
-        //XXX
+        match action {
+            RequestAction::Disconnect      => unimplemented!(),
+            RequestAction::KeepAlive       => unimplemented!(),
+            RequestAction::ListPlayers     => unimplemented!(),
+            RequestAction::ChatMessage(_)  => unimplemented!(),
+            RequestAction::ListGameSlots   => unimplemented!(),
+            RequestAction::NewGameSlot(_)  => unimplemented!(),
+            RequestAction::JoinGameSlot(_) => unimplemented!(),
+            RequestAction::LeaveGameSlot   => unimplemented!(),
+            RequestAction::Connect{..}     => panic!(),
+            RequestAction::None            => panic!(),
+        }
+    }
+
+    fn is_unique_name(&self, name: &str) -> bool {
+        for ref player in self.players.iter() {
+            if player.player_name == name {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn get_player_id_by_cookie(&self, cookie: &str) -> Option<PlayerID> {
+        match self.player_map.get(cookie) {
+            Some(player_id) => Some(*player_id),
+            None => None
+        }
     }
 
     // always returs either Ok(Some(Packet::Response{...})), Ok(None), or error
@@ -133,7 +160,7 @@ impl ServerState {
                 // handle connect (create user, and save cookie)
                 if let RequestAction::Connect{name, client_version} = action {
                     if self.is_unique_name(&name) {
-                        let player = self.new_player(name.clone(), addr.clone());
+                        let mut player = self.new_player(name.clone(), addr.clone());
                         let cookie = player.cookie.clone();
                         let sequence = player.next_resp_seq;
                         player.next_resp_seq += 1;
@@ -152,10 +179,34 @@ impl ServerState {
                         return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "not a unique name")));
                     }
                 } else {
-                    //XXX look up player by cookie
+                    // look up player by cookie
+                    let cookie = match cookie {
+                        Some(cookie) => cookie,
+                        None => {
+                            return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "cookie required for non-connect actions")));
+                        }
+                    };
+                    let player_id = match self.get_player_id_by_cookie(cookie.as_str()) {
+                        Some(player_id) => player_id,
+                        None => {
+                            return Err(Box::new(io::Error::new(ErrorKind::PermissionDenied, "invalid cookie")));
+                        }
+                    };
+                    //XXX same thing as get_player_id_by_cookie
+                    let player: &mut Player = self.players.get_mut(player_id.0).unwrap();
                     match action {
-                        //XXX all actions other than Connect
                         RequestAction::Connect{..} => unreachable!(),
+                        _ => {
+                            let response_code = self.process_request_action(action);
+                            let sequence = player.next_resp_seq;
+                            player.next_resp_seq += 1;
+                            let response = Packet::Response{
+                                sequence:    sequence,
+                                request_ack: None,
+                                code:        response_code,
+                            };
+                            Ok(Some(response))
+                        }
                     }
                 }
             }
@@ -187,12 +238,14 @@ impl ServerState {
     }
 
     fn initiate_player_session(&mut self) {
+        //XXX
         if self.has_pending_players() {
             if let Some(mut a) = self.players.pop() {
                 if let Some(mut b) = self.players.pop() {
-                    a.in_game = true;
-                    b.in_game = true;
-                    self.game_slots.push(self.new_game_slot(vec![a.player_id, b.player_id]));
+                    let game_slot = self.new_game_slot(vec![a.player_id, b.player_id]);
+                    a.game = Some(GamePlayer{ game_slot_id: game_slot.game_slot_id });
+                    b.game = Some(GamePlayer{ game_slot_id: game_slot.game_slot_id });
+                    self.game_slots.push(game_slot);
                     self.ctr+=1;
                 }
                 else {
