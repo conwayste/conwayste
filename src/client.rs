@@ -16,7 +16,7 @@ use std::process::exit;
 use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
-use net::{RequestAction, Packet, LineCodec};
+use net::{RequestAction, ResponseCode, Packet, LineCodec};
 use tokio_core::net::UdpSocket;
 use tokio_core::reactor::{Core, Handle, Timeout};
 use futures::{Future, Sink, Stream, stream};
@@ -144,9 +144,31 @@ fn main() {
         .select(stdin_stream)
         .fold((udp_tx.clone(), initial_client_state), move |(udp_tx, mut client_state), event| {
             match event {
-                Event::Response(packet_tuple) => {
-                    println!("Got packet from server! {:?}", packet_tuple);
-                    //XXX
+                Event::Response((addr, opt_packet)) => {
+                    let packet = opt_packet.unwrap();
+                    println!("Got packet from server {:?}: {:?}", addr, packet);
+                    match packet {
+                        Packet::Response{sequence, request_ack, code} => {
+                            // XXX sequence
+                            // XXX request_ack
+                            match code {
+                                ResponseCode::LoggedIn(cookie) => {
+                                    client_state.cookie = Some(cookie);
+                                    println!("Now logged into server.");
+                                }
+                                _ => unimplemented!()
+                            }
+                        }
+                        Packet::Update{chats, game_updates, universe_update} => {
+                            unimplemented!();
+                        }
+                        Packet::Request{..} => {
+                            warn!("Ignoring packet from server normally sent by clients: {:?}", packet);
+                        }
+                        Packet::UpdateReply{..} => {
+                            warn!("Ignoring packet from server normally sent by clients: {:?}", packet);
+                        }
+                    }
                 }
                 Event::TickEvent => {
                     /*
