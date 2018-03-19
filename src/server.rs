@@ -110,7 +110,8 @@ fn new_cookie() -> String {
 
 impl ServerState {
     // not used for connect
-    fn process_request_action(&mut self, action: RequestAction) -> ResponseCode {
+    fn process_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> ResponseCode {
+        let player: &mut Player = self.players.get_mut(player_id.0).unwrap();
         match action {
             RequestAction::Disconnect      => unimplemented!(),
             RequestAction::KeepAlive       => unimplemented!(),
@@ -192,14 +193,16 @@ impl ServerState {
                             return Err(Box::new(io::Error::new(ErrorKind::PermissionDenied, "invalid cookie")));
                         }
                     };
-                    //XXX same thing as get_player_id_by_cookie
-                    let player: &mut Player = self.players.get_mut(player_id.0).unwrap();
                     match action {
                         RequestAction::Connect{..} => unreachable!(),
                         _ => {
-                            let response_code = self.process_request_action(action);
-                            let sequence = player.next_resp_seq;
-                            player.next_resp_seq += 1;
+                            let response_code = self.process_request_action(player_id, action);
+                            let sequence = {
+                                let player: &mut Player = self.players.get_mut(player_id.0).unwrap();
+                                let sequence = player.next_resp_seq;
+                                player.next_resp_seq += 1;
+                                sequence
+                            };
                             let response = Packet::Response{
                                 sequence:    sequence,
                                 request_ack: None,
