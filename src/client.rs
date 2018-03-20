@@ -152,11 +152,30 @@ fn main() {
                             // XXX sequence
                             // XXX request_ack
                             match code {
+                                ResponseCode::OK => {
+                                    println!("OK :)");
+                                }
                                 ResponseCode::LoggedIn(cookie) => {
                                     client_state.cookie = Some(cookie);
                                     println!("Now logged into server.");
                                 }
-                                _ => unimplemented!()
+                                ResponseCode::PlayerList(strings) => {
+                                    unimplemented!();
+                                }
+                                ResponseCode::GameSlotList(slots) => {
+                                    println!("---BEGIN GAME SLOT LIST---");
+                                    for (game_name, num_players, game_running) in slots {
+                                        println!("#players: {},\trunning? {:?},\tname: {:?}",
+                                                 num_players,
+                                                 game_running,
+                                                 game_name);
+                                    }
+                                    println!("---END GAME SLOT LIST---");
+                                }
+                                // errors
+                                code @ _ => {
+                                    error!("response from server: {:?}", code);
+                                }
                             }
                         }
                         Packet::Update{chats, game_updates, universe_update} => {
