@@ -149,7 +149,16 @@ impl ServerState {
                 self.game_slots.push(game_slot);
                 ResponseCode::OK
             }
-            RequestAction::JoinGameSlot(_) => unimplemented!(),
+            RequestAction::JoinGameSlot(slot_name) => {
+                for ref mut gs in &mut self.game_slots {
+                    if gs.name == slot_name {
+                        gs.player_ids.push(player.player_id);
+                        // TODO: send event to in-game state machine
+                        return ResponseCode::OK;
+                    }
+                }
+                return ResponseCode::BadRequest(Some(format!("no game slot named {:?}", slot_name)));
+            }
             RequestAction::LeaveGameSlot   => unimplemented!(),
             RequestAction::Connect{..}     => panic!(),
             RequestAction::None            => panic!(),
