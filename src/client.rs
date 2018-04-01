@@ -28,8 +28,11 @@ const CLIENT_VERSION: &str = "0.0.1";
 struct ClientState {
     sequence:     u64,   // sequence number of requests
     response_ack: Option<u64>,  // last acknowledged response sequence number from server
+    last_req_action: Option<RequestAction>,   // last one we sent to server TODO: this is wrong;
+                                              // assumes network is well-behaved
     name:         Option<String>,
     in_game:      bool,
+    game_slot:    Option<String>,             // None iff. in_game is false
     cookie:       Option<String>,
 }
 
@@ -97,8 +100,10 @@ fn main() {
     let initial_client_state = ClientState {
         sequence:     0,
         response_ack: None,
+        last_req_action: None,
         name:         None,
         in_game:      false,
+        game_slot:    None,
         cookie:       None,      // not connected yet
     };
 
@@ -146,21 +151,46 @@ fn main() {
             match event {
                 Event::Response((addr, opt_packet)) => {
                     let packet = opt_packet.unwrap();
-                    println!("Got packet from server {:?}: {:?}", addr, packet);
+                    println!("DEBUG: Got packet from server {:?}: {:?}", addr, packet);
                     match packet {
                         Packet::Response{sequence, request_ack, code} => {
                             // XXX sequence
                             // XXX request_ack
                             match code {
                                 ResponseCode::OK => {
-                                    println!("OK :)");
+                                    if let Some(ref last_action) = client_state.last_req_action {
+                                        match last_action {
+                                            &RequestAction::JoinGameSlot(ref slot_name) => {
+                                                client_state.in_game = true;
+                                                client_state.game_slot = Some(slot_name.clone());
+                                                println!("Joined game slot {}.", slot_name);
+                                            }
+                                            &RequestAction::LeaveGameSlot => {
+                                                client_state.in_game = false;
+                                                println!("Left game slot {}.", client_state.game_slot.unwrap());
+                                                client_state.game_slot = None;
+                                            }
+                                            _ => {
+                                                //XXX more cases in which server replies OK
+                                                println!("OK :)");
+                                            }
+                                        }
+                                    } else {
+                                        println!("OK, but we didn't make a request :/");
+                                    }
                                 }
                                 ResponseCode::LoggedIn(cookie) => {
                                     client_state.cookie = Some(cookie);
                                     println!("Now logged into server.");
                                 }
-                                ResponseCode::PlayerList(strings) => {
-                                    unimplemented!();
+                                ResponseCode::PlayerList(player_names) => {
+                                    println!("---BEGIN PLAYER LIST---");
+                                    let mut n = 1;
+                                    for player_name in player_names {
+                                        println!("{}\tname: {}", n, player_name);
+                                        n += 1;
+                                    }
+                                    println!("---END PLAYER LIST---");
                                 }
                                 ResponseCode::GameSlotList(slots) => {
                                     println!("---BEGIN GAME SLOT LIST---");
@@ -271,6 +301,7 @@ fn main() {
                         },
                     }
                     if action != RequestAction::None {
+                        client_state.last_req_action = Some(action.clone());
                         let packet = Packet::Request {
                             sequence:     client_state.sequence,
                             response_ack: client_state.response_ack,
