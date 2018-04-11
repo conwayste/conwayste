@@ -124,11 +124,16 @@ impl GameSlot {
 impl ServerState {
     // not used for connect
     fn process_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> ResponseCode {
-        let player: &mut Player = self.players.get_mut(player_id.0).unwrap();
         match action {
             RequestAction::Disconnect      => unimplemented!(),
             RequestAction::KeepAlive       => unimplemented!(),
-            RequestAction::ListPlayers     => unimplemented!(),
+            RequestAction::ListPlayers     => {
+                let mut players = vec![];
+                for ref p in &self.players {
+                    players.push(p.player_name.clone());
+                }
+                ResponseCode::PlayerList(players)
+            },
             RequestAction::ChatMessage(_)  => unimplemented!(),
             RequestAction::ListGameSlots   => {
                 let mut slots = vec![];
@@ -149,7 +154,17 @@ impl ServerState {
                 self.game_slots.push(game_slot);
                 ResponseCode::OK
             }
-            RequestAction::JoinGameSlot(_) => unimplemented!(),
+            RequestAction::JoinGameSlot(slot_name) => {
+                let player: &Player = self.players.get(player_id.0).unwrap();
+                for ref mut gs in &mut self.game_slots {
+                    if gs.name == slot_name {
+                        gs.player_ids.push(player.player_id);
+                        // TODO: send event to in-game state machine
+                        return ResponseCode::OK;
+                    }
+                }
+                return ResponseCode::BadRequest(Some(format!("no game slot named {:?}", slot_name)));
+            }
             RequestAction::LeaveGameSlot   => unimplemented!(),
             RequestAction::Connect{..}     => panic!(),
             RequestAction::None            => panic!(),
