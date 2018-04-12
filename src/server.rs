@@ -11,10 +11,9 @@ extern crate rand;
 mod net;
 
 use net::{RequestAction, ResponseCode, Packet, LineCodec};
-/*
+
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-*/
 use std::error::Error;
 use std::io::{self, ErrorKind};
 use std::iter;
@@ -23,6 +22,7 @@ use std::process::exit;
 use std::time::Duration;
 use std::collections::HashMap;
 use std::fmt;
+use std::time;
 use futures::*;
 use futures::future::ok;
 use futures::sync::mpsc;
@@ -32,9 +32,12 @@ use rand::Rng;
 const TICK_INTERVAL:      u64   = 40; // milliseconds
 const MAX_GAME_SLOT_NAME: usize = 16;
 
+#[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
+struct PlayerID(u64);
+/*
 #[derive(PartialEq, Debug, Clone, Copy)]
-struct PlayerID(usize);
-
+struct GameSlotID(usize);
+*/
 impl fmt::Display for PlayerID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "({})", self.0)
@@ -72,16 +75,38 @@ impl Player {
         }
     }
     */
-}
 
-/*
-impl Hash for PlayerID {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-        self.addr.hash(state);
+    /*
+    *  PlayerIDs are comprised of:
+    *      1) player name XOR'd into itself for each character
+    *      2) Current timestamp (lower 24 bits)
+    *      3) A salt
+    *
+    *              128 bits total
+    *   _____________________________________
+    *  |    8 bits   |  24 bits  |  32 bits  |
+    *  | player_name | timestamp | rand_salt |
+    *  |_____________|___________|___________|
+    */
+    fn calc_player_id(&mut self) {
+        let mut hash: u64 = 0;
+        let mut player_name_hash: u64 = 0;
+        let name_as_bytes = self.player_name.clone().into_bytes();
+
+        for character in name_as_bytes {
+            player_name_hash ^= character as u64;
+        }
+
+        let mut timestamp: u64 = time::Instant::now().elapsed().as_secs().into();
+        timestamp = timestamp & 0xFFFFFF;
+
+        let mut rand_salt: u64 = rand::thread_rng().next_u32().into();
+        rand_salt = rand_salt & 0xFFFFFFFFFFFFFF;
+
+        hash = rand_salt | (timestamp << 32) | (player_name_hash << 56);
+        self.player_id = PlayerID(hash);
     }
 }
-*/
 
 #[derive(Clone)]
 struct GameSlot {
@@ -96,21 +121,12 @@ struct GameSlot {
 struct ServerState {
     tick:           u64,
     ctr:            u64,
-    players:        Vec<Player>,
+    players:        HashMap<PlayerID, Player>,
     player_map:     HashMap<String, PlayerID>,      // map cookie to player ID
     game_slots:     Vec<GameSlot>,
-    next_player_id: PlayerID,  // index into players
 }
 
 //////////////// Utilities ///////////////////////
-
-/*
-fn calculate_hash<T: Hash>(t: &T) -> u64 {
-    let mut s = DefaultHasher::new();
-    t.hash(&mut s);
-    s.finish()
-}
-*/
 
 fn new_cookie() -> String {
     let mut buf = [0u8; 16];
@@ -139,19 +155,19 @@ impl ServerState {
             RequestAction::KeepAlive       => unimplemented!(),
             RequestAction::ListPlayers     => {
                 let mut players = vec![];
-                for ref p in &self.players {
+                for ref p in self.players.values() {
                     players.push(p.player_name.clone());
                 }
                 ResponseCode::PlayerList(players)
             },
             RequestAction::ChatMessage(msg)  => {
-                let player_in_game = self.players.iter()
-                    .find(|p| p.player_id == player_id && p.game_info != None);
+                let player_info = self.players.get(&player_id);
+                let player_in_game = player_info.is_some() && player_info.unwrap().game_info.is_some();
 
                 match player_in_game {
-                    Some(player) => {
+                    true => {
                         // User is in game, Server needs to broadcast this to GameSlot
-                        let slot_id = player.clone().game_info.unwrap().game_slot_id;
+                        let slot_id = player_info.unwrap().clone().game_info.unwrap().game_slot_id;
 
                         let mut found_slot = false;
                         for gs in &mut self.game_slots {
@@ -167,7 +183,7 @@ impl ServerState {
                             false => ResponseCode::BadRequest(Some(format!("Player \"{}\" not in game", player_id))),
                         }
                     }
-                    None => {
+                    false => {
                         ResponseCode::BadRequest(Some(format!("Player \"{}\" not found", player_id)))
                     }
                 }
@@ -192,7 +208,7 @@ impl ServerState {
                 ResponseCode::OK
             }
             RequestAction::JoinGameSlot(slot_name) => {
-                let player: &mut Player = self.players.get_mut(player_id.0).unwrap();
+                let player: &mut Player = self.players.get_mut(&player_id).unwrap();
                 for ref mut gs in &mut self.game_slots {
                     if gs.name == slot_name {
                         gs.player_ids.push(player.player_id);
@@ -213,7 +229,7 @@ impl ServerState {
     }
 
     fn is_unique_name(&self, name: &str) -> bool {
-        for ref player in self.players.iter() {
+        for ref player in self.players.values() {
             if player.player_name == name {
                 return false;
             }
@@ -252,9 +268,9 @@ impl ServerState {
                         let sequence = player.next_resp_seq;
                         player.next_resp_seq += 1;
 
-                        // save player into players vec, and save player ID into hash map using cookie
+                        // save player into players hash map, and save player ID into hash map using cookie
                         self.player_map.insert(cookie.clone(), player.player_id);
-                        self.players.push(player);
+                        self.players.insert(player.player_id, player);
 
                         let response = Packet::Response{
                             sequence:    sequence,
@@ -290,7 +306,7 @@ impl ServerState {
                         _ => {
                             let response_code = self.process_request_action(player_id, action);
                             let sequence = {
-                                let player: &mut Player = self.players.get_mut(player_id.0).unwrap();
+                                let player: &mut Player = self.players.get_mut(&player_id).unwrap();
                                 let sequence = player.next_resp_seq;
                                 player.next_resp_seq += 1;
                                 sequence
@@ -331,7 +347,7 @@ impl ServerState {
     fn has_pending_players(&self) -> bool {
         !self.players.is_empty() && self.players.len() % 2 == 0
     }
-
+/*
     fn initiate_player_session(&mut self) {
         //XXX
         if self.has_pending_players() {
@@ -352,30 +368,31 @@ impl ServerState {
             }
         }
     }
-
+*/
     fn new_player(&mut self, name: String, addr: SocketAddr) -> Player {
-        let id = self.next_player_id;
-        self.next_player_id = PlayerID(id.0 + 1);
         let cookie = new_cookie();
-        Player {
-            player_id:     id,
+        let mut player = Player {
+            player_id:     PlayerID(0),
             cookie:        cookie,
             addr:          addr,
             player_name:   name,
             request_ack:   None,
             next_resp_seq: 0,
             game_info:     None,
-        }
+        };
+
+        player.calc_player_id();
+
+        player
     }
 
     fn new() -> Self {
         ServerState {
             tick:              0,
             ctr:               0,
-            players:           Vec::<Player>::new(),
+            players:           HashMap::<PlayerID, Player>::new(),
             game_slots:        Vec::<GameSlot>::new(),
             player_map:        HashMap::<String, PlayerID>::new(),
-            next_player_id:    PlayerID(0),
         }
     }
 }
