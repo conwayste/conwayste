@@ -22,6 +22,7 @@ use std::net::SocketAddr;
 use std::process::exit;
 use std::time::Duration;
 use std::collections::HashMap;
+use std::fmt;
 use futures::*;
 use futures::future::ok;
 use futures::sync::mpsc;
@@ -34,6 +35,12 @@ const MAX_GAME_SLOT_NAME: usize = 16;
 #[derive(PartialEq, Debug, Clone, Copy)]
 struct PlayerID(usize);
 
+impl fmt::Display for PlayerID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({})", self.0)
+    }
+}
+
 #[derive(PartialEq, Debug, Clone)]
 struct Player {
     player_id:     PlayerID,
@@ -42,12 +49,12 @@ struct Player {
     player_name:   String,
     request_ack:   Option<u64>,          // most recent request sequence number received
     next_resp_seq: u64,                  // next response sequence number
-    game:          Option<GamePlayer>,   // none means in lobby
+    game_info:     Option<PlayerInGameInfo>,   // none means in lobby
 }
 
 // info for a player as it relates to a game/gameslot
 #[derive(PartialEq, Debug, Clone)]
-struct GamePlayer {
+struct PlayerInGameInfo {
     game_slot_id: String,   // XXX remove or make as non-sequential ID (UUID?)
     //XXX PlayerGenState ID within Universe
     //XXX update statuses
@@ -76,12 +83,14 @@ impl Hash for PlayerID {
 }
 */
 
+#[derive(Clone)]
 struct GameSlot {
     game_slot_id: String,
     name:         String,
     player_ids:   Vec<PlayerID>,
     game_running: bool,
     universe:     u64,    // Temp until we integrate
+    pending_messages: Vec<(PlayerID, String)>
 }
 
 struct ServerState {
@@ -117,6 +126,7 @@ impl GameSlot {
             player_ids:   player_ids,
             game_running: false,
             universe:     0,
+            pending_messages: vec![]
         }
     }
 }
@@ -134,7 +144,34 @@ impl ServerState {
                 }
                 ResponseCode::PlayerList(players)
             },
-            RequestAction::ChatMessage(_)  => unimplemented!(),
+            RequestAction::ChatMessage(msg)  => {
+                let player_in_game = self.players.iter()
+                    .find(|p| p.player_id == player_id && p.game_info != None);
+
+                match player_in_game {
+                    Some(player) => {
+                        // User is in game, Server needs to broadcast this to GameSlot
+                        let slot_id = player.clone().game_info.unwrap().game_slot_id;
+
+                        let mut found_slot = false;
+                        for gs in &mut self.game_slots {
+                            if gs.game_slot_id == slot_id {
+                                let ref mut deliver : Vec<(PlayerID,String)> = gs.pending_messages;
+                                deliver.push((player_id, msg));
+                                found_slot = true;
+                                break;
+                            }
+                        }
+                        match found_slot {
+                            true => ResponseCode::OK,
+                            false => ResponseCode::BadRequest(Some(format!("Player \"{}\" not in game", player_id))),
+                        }
+                    }
+                    None => {
+                        ResponseCode::BadRequest(Some(format!("Player \"{}\" not found", player_id)))
+                    }
+                }
+            },
             RequestAction::ListGameSlots   => {
                 let mut slots = vec![];
                 for ref gs in &self.game_slots {
@@ -155,10 +192,14 @@ impl ServerState {
                 ResponseCode::OK
             }
             RequestAction::JoinGameSlot(slot_name) => {
-                let player: &Player = self.players.get(player_id.0).unwrap();
+                let player: &mut Player = self.players.get_mut(player_id.0).unwrap();
                 for ref mut gs in &mut self.game_slots {
                     if gs.name == slot_name {
                         gs.player_ids.push(player.player_id);
+
+                        player.game_info = Some(PlayerInGameInfo {
+                            game_slot_id: gs.clone().game_slot_id
+                        });
                         // TODO: send event to in-game state machine
                         return ResponseCode::OK;
                     }
@@ -297,8 +338,8 @@ impl ServerState {
             if let Some(mut a) = self.players.pop() {
                 if let Some(mut b) = self.players.pop() {
                     let game_slot = GameSlot::new("some game slot".to_owned(), vec![a.player_id, b.player_id]);
-                    a.game = Some(GamePlayer{ game_slot_id: game_slot.game_slot_id.clone() });
-                    b.game = Some(GamePlayer{ game_slot_id: game_slot.game_slot_id.clone() });
+                    a.game_info = Some(PlayerInGameInfo{ game_slot_id: game_slot.game_slot_id.clone() });
+                    b.game_info = Some(PlayerInGameInfo{ game_slot_id: game_slot.game_slot_id.clone() });
                     self.game_slots.push(game_slot);
                     self.ctr+=1;
                 }
@@ -323,7 +364,7 @@ impl ServerState {
             player_name:   name,
             request_ack:   None,
             next_resp_seq: 0,
-            game:          None,
+            game_info:     None,
         }
     }
 
