@@ -10,7 +10,7 @@ extern crate rand;
 
 mod net;
 
-use net::{RequestAction, ResponseCode, Packet, LineCodec};
+use net::{RequestAction, ResponseCode, Packet, LineCodec, UniUpdateType, BroadcastChatMessage};
 
 use std::error::Error;
 use std::io::{self, ErrorKind};
@@ -21,6 +21,7 @@ use std::time::Duration;
 use std::collections::HashMap;
 use std::fmt;
 use std::time;
+use std::collections::VecDeque;
 use futures::*;
 use futures::future::ok;
 use futures::sync::mpsc;
@@ -29,6 +30,7 @@ use rand::Rng;
 
 const TICK_INTERVAL:      u64   = 40; // milliseconds
 const MAX_GAME_SLOT_NAME: usize = 16;
+const MAX_CHAT_MESSAGES:  usize = 128;
 
 #[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
 struct PlayerID(u64);
@@ -51,6 +53,7 @@ struct Player {
     request_ack:   Option<u64>,          // most recent request sequence number received
     next_resp_seq: u64,                  // next response sequence number
     game_info:     Option<PlayerInGameInfo>,   // none means in lobby
+    last_acked_msg_seq_num: Option<u64>
 }
 
 // info for a player as it relates to a game/gameslot
@@ -69,13 +72,22 @@ impl Player {
 }
 
 #[derive(Clone)]
+struct ChatMessages {
+    seq_num: u64,     // sequence number
+    player_id: PlayerID,
+    message: String,
+    timestamp: time::Instant,
+}
+
+#[derive(Clone)]
 struct GameSlot {
     game_slot_id: GameSlotID,
     name:         String,
     player_ids:   Vec<PlayerID>,
     game_running: bool,
     universe:     u64,    // Temp until we integrate
-    pending_messages: Vec<(PlayerID, String)>
+    latest_seq_num: u64,
+    messages:     VecDeque<ChatMessages>    // Front == Head (New), End == Tail, (Old)
 }
 
 struct ServerState {
@@ -130,11 +142,12 @@ impl GameSlot {
     fn new(name: String, player_ids: Vec<PlayerID>) -> Self {
         let mut slot = GameSlot {
             game_slot_id: GameSlotID(0),   // TODO: better unique ID generation
-            name,
+            name: name,
             player_ids:   player_ids,
             game_running: false,
             universe:     0,
-            pending_messages: vec![]
+            messages:     VecDeque::<ChatMessages>::with_capacity(MAX_CHAT_MESSAGES),
+            latest_seq_num: 0,
         };
         slot.calc_id();
         slot
@@ -171,28 +184,20 @@ impl ServerState {
                         let opt_slot = self.game_slots.get_mut(&slot_id);
                         match opt_slot {
                             Some(gs) => {
-                                let ref mut deliver : Vec<(PlayerID,String)> = gs.pending_messages;
-                                deliver.push((player_id, msg));
+                                let ref mut deliver : VecDeque<ChatMessages> = gs.messages;
+                                gs.latest_seq_num += 1;
+                                deliver.push_front(ChatMessages {
+                                    player_id: player_id,
+                                    message: msg,
+                                    timestamp: time::Instant::now(),
+                                    seq_num: gs.latest_seq_num
+                                });
                                 ResponseCode::OK
                             }
                             None => {
                                 ResponseCode::BadRequest(Some(format!("Player \"{}\" not in game", player_id)))
                             }
                         }
-/*                        let mut found_slot = false;
-                        for gs in &mut self.game_slots {
-                            if gs.game_slot_id == slot_id {
-                                let ref mut deliver : Vec<(PlayerID,String)> = gs.pending_messages;
-                                deliver.push((player_id, msg));
-                                found_slot = true;
-                                break;
-                            }
-                        }
-                        match found_slot {
-                            true => ResponseCode::OK,
-                            false => ResponseCode::BadRequest(Some(format!("Player \"{}\" not in game", player_id))),
-                        }
-*/
                     }
                     false => {
                         ResponseCode::BadRequest(Some(format!("Player \"{}\" not found", player_id)))
@@ -272,7 +277,7 @@ impl ServerState {
         }
     }
 
-    // always returs either Ok(Some(Packet::Response{...})), Ok(None), or error
+    // always returns either Ok(Some(Packet::Response{...})), Ok(None), or error
     fn decode_packet(&mut self, addr: SocketAddr, packet: Packet) -> Result<Option<Packet>, Box<Error>> {
         match packet {
             pkt @ Packet::Response{..} | pkt @ Packet::Update{..} => {
@@ -349,54 +354,114 @@ impl ServerState {
                     }
                 }
             }
-            Packet::UpdateReply{..} => {
-                unimplemented!();
+            Packet::UpdateReply{cookie, last_chat_seq, last_game_update_seq, last_gen} => {
+                let player_id = match self.get_player_id_by_cookie(cookie.as_str()) {
+                    Some(player_id) => player_id,
+                    None => {
+                        return Err(Box::new(io::Error::new(ErrorKind::PermissionDenied, "invalid cookie")));
+                    }
+                };
+                let opt_player = self.players.get_mut(&player_id);
+                match opt_player {
+                    Some(player) => {
+                        player.last_acked_msg_seq_num = last_chat_seq;
+                        Ok(None)
+                    }
+                    None => {
+                        return Err(Box::new(io::Error::new(ErrorKind::NotFound, "player not found")));
+                    }
+                }
+            }
+
+        }
+    }
+
+    // XXX
+    // Right now we'll be constructing all client Update packets for _every_ game slot.
+    fn construct_client_updates(&mut self) -> Result<Option<Vec<(SocketAddr, Packet)>>, Box<Error>> {
+        let mut client_updates: Vec<(SocketAddr, Packet)> = vec![];
+
+        if self.game_slots.len() == 0 {
+            return Ok(None);
+        }
+
+        // For each game slot, determine if each player has unread messages based on last_acked_msg_seq_num
+        for slot in self.game_slots.values() {
+            for player_id in &slot.player_ids {
+                let mut unsent_messages: Vec<BroadcastChatMessage> = vec![];
+                let opt_player = self.players.get(&player_id);
+                match opt_player {
+                    Some(player_info) => {
+
+                        // MESSAGE UPDATING
+                        match player_info.last_acked_msg_seq_num {
+                            Some(last_acked_msg_seq_num) => {
+                                if !slot.messages.is_empty() {
+                                    let mut message_iter = slot.messages.iter();
+                                    // From HEAD..last_acked_msg_seq_num (towards old)
+                                    let mut message = message_iter.next().unwrap();
+
+                                    while message.seq_num > last_acked_msg_seq_num {
+                                        if message.player_id != player_info.player_id {
+                                            unsent_messages.insert(0, BroadcastChatMessage{
+                                                chat_seq:    Some(message.seq_num),
+                                                player_name: player_info.name.clone(), // XXX is clone really the best way to do this?
+                                                message:     message.message.clone()
+                                            });
+                                            message = message_iter.next().unwrap();
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            None => {
+                                // Unleash the hounds!
+                                for message in &slot.messages {
+                                    if message.player_id != player_info.player_id {
+                                        unsent_messages.insert(0, BroadcastChatMessage{
+                                            chat_seq:    Some(message.seq_num),
+                                            player_name: player_info.name.clone(),
+                                            message:     message.message.clone()
+                                        });
+                                    }
+                                }
+                            }
+                        }
+
+                        // TODO: GAME UPDATES
+
+                        let messages_available = !unsent_messages.is_empty();
+                        let update_packet = Packet::Update {
+                            chats:           if !messages_available {None} else {Some(unsent_messages)},
+                            game_updates:    None,
+                            universe_update: UniUpdateType::NoChange,
+                        };
+
+                        // TODO Add condition for game_updates
+                        if messages_available {
+                            client_updates.push((player_info.addr.clone(), update_packet));
+                        }
+                    }
+                    None => { }
+                }
             }
         }
-        /*
-        match action {
-            RequestAction::Connect => {
-                self.players.iter().for_each(|player| {
-                    assert_eq!(true, player.addr != addr && player.name != name);
-                });
 
-                self.players.push(Player::new(name, addr));
-            },
-            RequestAction::Ack                 => {},
-            RequestAction::Disconnect          => {},
-            RequestAction::JoinGame            => {},
-            RequestAction::ListPlayers         => {},
-            RequestAction::ChatMessage(String) => {},
-            RequestAction::None                => {},
+        // TODO Universe updates are TBD
+        if client_updates.len() > 0 {
+            info!("Updates available");
+            Ok(Some(client_updates))
         }
-        */
+        else {
+            Ok(None)
+        }
     }
 
     fn has_pending_players(&self) -> bool {
         !self.players.is_empty() && self.players.len() % 2 == 0
     }
-/*
-    fn initiate_player_session(&mut self) {
-        //XXX
-        if self.has_pending_players() {
-            if let Some(mut a) = self.players.pop() {
-                if let Some(mut b) = self.players.pop() {
-                    let game_slot = GameSlot::new("some game slot".to_owned(), vec![a.player_id, b.player_id]);
-                    a.game_info = Some(PlayerInGameInfo{ game_slot_id: game_slot.game_slot_id.clone() });
-                    b.game_info = Some(PlayerInGameInfo{ game_slot_id: game_slot.game_slot_id.clone() });
-                    self.game_slots.push(game_slot);
-                    self.ctr+=1;
-                }
-                else {
-                    panic!("Unavailable player B");
-                }
-            }
-            else {
-                panic!("Unavailable player A");
-            }
-        }
-    }
-*/
+
     fn new_player(&mut self, name: String, addr: SocketAddr) -> Player {
         let cookie = new_cookie();
         let mut player = Player {
@@ -407,6 +472,7 @@ impl ServerState {
             request_ack:   None,
             next_resp_seq: 0,
             game_info:     None,
+            last_acked_msg_seq_num: None
         };
 
         player.calc_id();
@@ -477,11 +543,12 @@ fn main() {
                     let (addr, opt_packet) = packet_tuple;
                     println!("got {:?} and {:?}!", addr, opt_packet);
 
+                    // Decode incoming and send a Response to the Requester
                     if let Some(packet) = opt_packet {
                         let decode_result = server_state.decode_packet(addr, packet.clone());
                         if decode_result.is_ok() {
                             let opt_response_packet = decode_result.unwrap();
-                            //XXX send packet
+
                             if let Some(response_packet) = opt_response_packet {
                                 let response = (addr.clone(), response_packet);
                                 tx.unbounded_send(response).unwrap();
@@ -498,26 +565,16 @@ fn main() {
                     // Likely spawn off work to handle server tasks here
                     server_state.tick += 1;
 
-                    /*
-                    server_state.initiate_player_session();
+                    let client_update_packets_result = server_state.construct_client_updates();
+                    if client_update_packets_result.is_ok() {
+                        let opt_update_packets = client_update_packets_result.unwrap();
 
-                    if server_state.ctr == 1 {
-                        // GameSlot tick
-                        server_state.game_slots.iter()
-                            .filter(|ref conn| conn.player_a.in_game && conn.player_b.in_game)
-                            .for_each(|ref conn| {
-                                let player_a = &conn.player_a;
-                                let player_b = &conn.player_b;
-                                let uni = &conn.universe;
-                                println!("Session: {}({:x}) versus {}({:x}), generation: {}",
-                                    player_a.name, player_a.player_id,
-                                    player_b.name, player_b.player_id,
-                                    uni);
-                            });
-
-                        server_state.ctr += 1;
+                        if let Some(update_packets) = opt_update_packets {
+                            for update in update_packets {
+                                tx.unbounded_send(update).unwrap();
+                            }
+                        }
                     }
-                    */
                 }
             }
 

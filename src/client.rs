@@ -34,6 +34,7 @@ struct ClientState {
     in_game:      bool,
     game_slot:    Option<String>,             // None iff. in_game is false
     cookie:       Option<String>,
+    chat_msg_seq_num: u64,
 }
 
 //////////////// Event Handling /////////////////
@@ -51,6 +52,7 @@ enum Event {
 
 ////////////////// Utilities //////////////////
 fn print_help() {
+    println!("");
     println!("/help                  - print this text");
     println!("/connect <player_name> - connect to server");
     println!("/disconnect            - disconnect from server");
@@ -94,7 +96,7 @@ fn main() {
     let (udp_sink, udp_stream) = udp.framed(LineCodec).split();
     let (udp_tx, udp_rx) = mpsc::unbounded();    // create a channel because we can't pass the sink around everywhere
 
-    println!("About to start sending to remote {:?} from local {:?}...", addr, local_addr);
+    println!("Accepting commands to remote {:?} from local {:?}.\nType /help for more info...", addr, local_addr);
 
     // initialize state
     let initial_client_state = ClientState {
@@ -105,6 +107,7 @@ fn main() {
         in_game:      false,
         game_slot:    None,
         cookie:       None,      // not connected yet
+        chat_msg_seq_num: 0,
     };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat( () )); // just a Stream that emits () forever
@@ -209,7 +212,27 @@ fn main() {
                             }
                         }
                         Packet::Update{chats, game_updates, universe_update} => {
-                            unimplemented!();
+                            match chats {
+                                Some(message_list) => {
+                                    for unread in message_list {
+                                        println!("{}: {}", unread.player_name, unread.message);
+                                        if client_state.chat_msg_seq_num < unread.chat_seq.unwrap() {
+                                            client_state.chat_msg_seq_num = unread.chat_seq.unwrap();
+                                        }
+                                    }
+                                }
+                                None => {}
+                            }
+                            // TODO game updates
+
+                            // Reply to the update
+                            let packet = Packet::UpdateReply{
+                                cookie:               client_state.cookie.clone().unwrap(),
+                                last_chat_seq:        Some(client_state.chat_msg_seq_num),
+                                last_game_update_seq: None,
+                                last_gen:             None,
+                            };
+                            let _ = udp_tx.unbounded_send((addr.clone(), packet));
                         }
                         Packet::Request{..} => {
                             warn!("Ignoring packet from server normally sent by clients: {:?}", packet);

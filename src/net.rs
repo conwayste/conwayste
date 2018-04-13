@@ -66,11 +66,11 @@ pub enum ResponseCode {
 // chat messages sent from server to all clients other than originating client
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct BroadcastChatMessage {
-    pub chat_seq: Option<u64>,     // Some(<number>) when sent to clients (starts at 0 for first
-                                   // chat message sent to this client in this game); None when
-                                   // internal to server
-    pub name:     String,
-    pub message:  String,          // should not contain newlines
+    pub chat_seq:    Option<u64>,   // Some(<number>) when sent to clients (starts at 0 for first
+                                    // chat message sent to this client in this game); None when
+                                    // internal to server
+    pub player_name: String,
+    pub message:     String,        // should not contain newlines
 }
 
 // TODO: adapt or import following from libconway
@@ -131,8 +131,8 @@ pub enum Packet {
     },
     Update {
         // in-game: sent by server
-        chats:           Vec<BroadcastChatMessage>,
-        game_updates:    Vec<GameUpdate>,
+        chats:           Option<Vec<BroadcastChatMessage>>,
+        game_updates:    Option<Vec<GameUpdate>>,
         universe_update: UniUpdateType,
     },
     UpdateReply {
