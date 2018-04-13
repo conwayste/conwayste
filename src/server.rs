@@ -12,8 +12,6 @@ mod net;
 
 use net::{RequestAction, ResponseCode, Packet, LineCodec};
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::error::Error;
 use std::io::{self, ErrorKind};
 use std::iter;
@@ -34,10 +32,10 @@ const MAX_GAME_SLOT_NAME: usize = 16;
 
 #[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
 struct PlayerID(u64);
-/*
-#[derive(PartialEq, Debug, Clone, Copy)]
-struct GameSlotID(usize);
-*/
+
+#[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
+struct GameSlotID(u64);
+
 impl fmt::Display for PlayerID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "({})", self.0)
@@ -49,7 +47,7 @@ struct Player {
     player_id:     PlayerID,
     cookie:        String,
     addr:          SocketAddr,
-    player_name:   String,
+    name:   String,
     request_ack:   Option<u64>,          // most recent request sequence number received
     next_resp_seq: u64,                  // next response sequence number
     game_info:     Option<PlayerInGameInfo>,   // none means in lobby
@@ -58,59 +56,21 @@ struct Player {
 // info for a player as it relates to a game/gameslot
 #[derive(PartialEq, Debug, Clone)]
 struct PlayerInGameInfo {
-    game_slot_id: String,   // XXX remove or make as non-sequential ID (UUID?)
+    game_slot_id: GameSlotID,
     //XXX PlayerGenState ID within Universe
     //XXX update statuses
 }
 
 impl Player {
-    /*
-    fn new(name: String, addr: SocketAddr) -> Self {
-        let id = calculate_hash(&PlayerID {name: name.clone(), addr: addr});
-        Player {
-            player_name: name,
-            player_id: id,
-            addr: addr,
-            in_game: false,
-        }
-    }
-    */
-
-    /*
-    *  PlayerIDs are comprised of:
-    *      1) player name XOR'd into itself for each character
-    *      2) Current timestamp (lower 24 bits)
-    *      3) A salt
-    *
-    *              128 bits total
-    *   _____________________________________
-    *  |    8 bits   |  24 bits  |  32 bits  |
-    *  | player_name | timestamp | rand_salt |
-    *  |_____________|___________|___________|
-    */
-    fn calc_player_id(&mut self) {
-        let mut hash: u64 = 0;
-        let mut player_name_hash: u64 = 0;
-        let name_as_bytes = self.player_name.clone().into_bytes();
-
-        for character in name_as_bytes {
-            player_name_hash ^= character as u64;
-        }
-
-        let mut timestamp: u64 = time::Instant::now().elapsed().as_secs().into();
-        timestamp = timestamp & 0xFFFFFF;
-
-        let mut rand_salt: u64 = rand::thread_rng().next_u32().into();
-        rand_salt = rand_salt & 0xFFFFFFFFFFFFFF;
-
-        hash = rand_salt | (timestamp << 32) | (player_name_hash << 56);
-        self.player_id = PlayerID(hash);
+    fn calc_id(&mut self) {
+        let player_id = calculate_hash_from_name(&self.name);
+        self.player_id = PlayerID(player_id);
     }
 }
 
 #[derive(Clone)]
 struct GameSlot {
-    game_slot_id: String,
+    game_slot_id: GameSlotID,
     name:         String,
     player_ids:   Vec<PlayerID>,
     game_running: bool,
@@ -123,7 +83,8 @@ struct ServerState {
     ctr:            u64,
     players:        HashMap<PlayerID, Player>,
     player_map:     HashMap<String, PlayerID>,      // map cookie to player ID
-    game_slots:     Vec<GameSlot>,
+    game_slots:     HashMap<GameSlotID, GameSlot>,
+    game_slot_map:  HashMap<String, GameSlotID>,      // map slot name to slot ID
 }
 
 //////////////// Utilities ///////////////////////
@@ -134,16 +95,54 @@ fn new_cookie() -> String {
     base64::encode(&buf)
 }
 
+/*
+*  Entity (Player/GameSlot) IDs are comprised of:
+*      1) The entity name XOR'd into itself for each character
+*      2) Current timestamp (lower 24 bits)
+*      3) A salt
+*
+*              64 bits total
+*   _____________________________________
+*  |    8 bits   |  24 bits  |  32 bits  |
+*  | entity_name | timestamp | rand_salt |
+*  |_____________|___________|___________|
+*/
+fn calculate_hash_from_name(name: &String) -> u64 {
+        let hash: u64;
+        let mut name_byte_accumulator: u64 = 0;
+        let name_as_bytes = name.clone().into_bytes();
+
+        for character in name_as_bytes {
+            name_byte_accumulator ^= character as u64;
+        }
+
+        let mut timestamp: u64 = time::Instant::now().elapsed().as_secs().into();
+        timestamp = timestamp & 0xFFFFFF;
+
+        let mut rand_salt: u64 = rand::thread_rng().next_u32().into();
+        rand_salt = rand_salt & 0xFFFFFFFFFFFFFF;
+
+        hash = rand_salt | (timestamp << 32) | (name_byte_accumulator << 56);
+        hash
+}
+
 impl GameSlot {
     fn new(name: String, player_ids: Vec<PlayerID>) -> Self {
-        GameSlot {
-            game_slot_id: new_cookie(),   // TODO: better unique ID generation
+        let mut slot = GameSlot {
+            game_slot_id: GameSlotID(0),   // TODO: better unique ID generation
             name,
             player_ids:   player_ids,
             game_running: false,
             universe:     0,
             pending_messages: vec![]
-        }
+        };
+        slot.calc_id();
+        slot
+    }
+
+    fn calc_id(&mut self) {
+        let slot_id = calculate_hash_from_name(&self.name);
+        self.game_slot_id = GameSlotID(slot_id);
     }
 }
 
@@ -156,7 +155,7 @@ impl ServerState {
             RequestAction::ListPlayers     => {
                 let mut players = vec![];
                 for ref p in self.players.values() {
-                    players.push(p.player_name.clone());
+                    players.push(p.name.clone());
                 }
                 ResponseCode::PlayerList(players)
             },
@@ -169,7 +168,18 @@ impl ServerState {
                         // User is in game, Server needs to broadcast this to GameSlot
                         let slot_id = player_info.unwrap().clone().game_info.unwrap().game_slot_id;
 
-                        let mut found_slot = false;
+                        let opt_slot = self.game_slots.get_mut(&slot_id);
+                        match opt_slot {
+                            Some(gs) => {
+                                let ref mut deliver : Vec<(PlayerID,String)> = gs.pending_messages;
+                                deliver.push((player_id, msg));
+                                ResponseCode::OK
+                            }
+                            None => {
+                                ResponseCode::BadRequest(Some(format!("Player \"{}\" not in game", player_id)))
+                            }
+                        }
+/*                        let mut found_slot = false;
                         for gs in &mut self.game_slots {
                             if gs.game_slot_id == slot_id {
                                 let ref mut deliver : Vec<(PlayerID,String)> = gs.pending_messages;
@@ -182,6 +192,7 @@ impl ServerState {
                             true => ResponseCode::OK,
                             false => ResponseCode::BadRequest(Some(format!("Player \"{}\" not in game", player_id))),
                         }
+*/
                     }
                     false => {
                         ResponseCode::BadRequest(Some(format!("Player \"{}\" not found", player_id)))
@@ -190,7 +201,7 @@ impl ServerState {
             },
             RequestAction::ListGameSlots   => {
                 let mut slots = vec![];
-                for ref gs in &self.game_slots {
+                for ref gs in self.game_slots.values() {
                     slots.push((gs.name.clone(), gs.player_ids.len() as u64, gs.game_running));
                 }
                 ResponseCode::GameSlotList(slots)
@@ -201,26 +212,43 @@ impl ServerState {
                     return ResponseCode::BadRequest(Some(format!("game slot name too long; max {} characters",
                                                                  MAX_GAME_SLOT_NAME)));
                 }
-                // XXX check name uniqueness
                 // create game slot
-                let game_slot = GameSlot::new(name, vec![]);
-                self.game_slots.push(game_slot);
-                ResponseCode::OK
+                if !self.game_slot_map.get(&name).is_some() {
+                    let game_slot = GameSlot::new(name.clone(), vec![]);
+
+                    self.game_slot_map.insert(name, game_slot.game_slot_id);
+                    self.game_slots.insert(game_slot.game_slot_id, game_slot);
+
+                    ResponseCode::OK
+                } else {
+                    ResponseCode::BadRequest(Some(format!("game slot name already in use")))
+                }
             }
             RequestAction::JoinGameSlot(slot_name) => {
-                let player: &mut Player = self.players.get_mut(&player_id).unwrap();
-                for ref mut gs in &mut self.game_slots {
-                    if gs.name == slot_name {
-                        gs.player_ids.push(player.player_id);
+                let player = self.players.get_mut(&player_id).unwrap();
+                let opt_slot_id = self.game_slot_map.get(&slot_name);
+                match opt_slot_id {
+                    Some(slot_id) => {
+                        let opt_game_slot = self.game_slots.get_mut(&slot_id);
+                        match opt_game_slot {
+                            Some(gs) => {
+                                gs.player_ids.push(player.player_id);
 
-                        player.game_info = Some(PlayerInGameInfo {
-                            game_slot_id: gs.clone().game_slot_id
-                        });
-                        // TODO: send event to in-game state machine
-                        return ResponseCode::OK;
+                                player.game_info = Some(PlayerInGameInfo {
+                                    game_slot_id: gs.clone().game_slot_id
+                                });
+                                // TODO: send event to in-game state machine
+                                ResponseCode::OK
+                            }
+                            None => {
+                                ResponseCode::BadRequest(Some(format!("no game slot found for ID {:?}", slot_id)))
+                            }
+                        }
+                    }
+                    None => {
+                        ResponseCode::BadRequest(Some(format!("no game slot named {:?}", slot_name)))
                     }
                 }
-                return ResponseCode::BadRequest(Some(format!("no game slot named {:?}", slot_name)));
             }
             RequestAction::LeaveGameSlot   => unimplemented!(),
             RequestAction::Connect{..}     => panic!(),
@@ -230,7 +258,7 @@ impl ServerState {
 
     fn is_unique_name(&self, name: &str) -> bool {
         for ref player in self.players.values() {
-            if player.player_name == name {
+            if player.name == name {
                 return false;
             }
         }
@@ -329,10 +357,10 @@ impl ServerState {
         match action {
             RequestAction::Connect => {
                 self.players.iter().for_each(|player| {
-                    assert_eq!(true, player.addr != addr && player.player_name != player_name);
+                    assert_eq!(true, player.addr != addr && player.name != name);
                 });
 
-                self.players.push(Player::new(player_name, addr));
+                self.players.push(Player::new(name, addr));
             },
             RequestAction::Ack                 => {},
             RequestAction::Disconnect          => {},
@@ -375,14 +403,13 @@ impl ServerState {
             player_id:     PlayerID(0),
             cookie:        cookie,
             addr:          addr,
-            player_name:   name,
+            name:   name,
             request_ack:   None,
             next_resp_seq: 0,
             game_info:     None,
         };
 
-        player.calc_player_id();
-
+        player.calc_id();
         player
     }
 
@@ -391,8 +418,9 @@ impl ServerState {
             tick:              0,
             ctr:               0,
             players:           HashMap::<PlayerID, Player>::new(),
-            game_slots:        Vec::<GameSlot>::new(),
+            game_slots:        HashMap::<GameSlotID, GameSlot>::new(),
             player_map:        HashMap::<String, PlayerID>::new(),
+            game_slot_map:     HashMap::<String, GameSlotID>::new(),
         }
     }
 }
@@ -482,8 +510,8 @@ fn main() {
                                 let player_b = &conn.player_b;
                                 let uni = &conn.universe;
                                 println!("Session: {}({:x}) versus {}({:x}), generation: {}",
-                                    player_a.player_name, player_a.player_id,
-                                    player_b.player_name, player_b.player_id,
+                                    player_a.name, player_a.player_id,
+                                    player_b.name, player_b.player_id,
                                     uni);
                             });
 
