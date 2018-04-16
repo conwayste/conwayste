@@ -184,9 +184,16 @@ impl ServerState {
                         let opt_slot = self.game_slots.get_mut(&slot_id);
                         match opt_slot {
                             Some(gs) => {
-                                let ref mut deliver : VecDeque<ChatMessages> = gs.messages;
+
+                                let ref mut messages: VecDeque<ChatMessages> = gs.messages;
+                                let queue_size = messages.len();
                                 gs.latest_seq_num += 1;
-                                deliver.push_front(ChatMessages {
+
+                                if queue_size >= MAX_CHAT_MESSAGES {
+                                    messages.truncate(queue_size - MAX_CHAT_MESSAGES + 1);
+                                }
+
+                                messages.push_back(ChatMessages {
                                     player_id: player_id,
                                     message: msg,
                                     timestamp: time::Instant::now(),
@@ -386,6 +393,7 @@ impl ServerState {
         }
 
         // For each game slot, determine if each player has unread messages based on last_acked_msg_seq_num
+        // TODO: POOR PERFORMANCE BOUNTY
         for slot in self.game_slots.values() {
             for player_id in &slot.player_ids {
                 let mut unsent_messages: Vec<BroadcastChatMessage> = vec![];
@@ -398,8 +406,7 @@ impl ServerState {
                             Some(last_acked_msg_seq_num) => {
                                 if !slot.messages.is_empty() {
                                     let mut message_iter = slot.messages.iter();
-                                    // From HEAD..last_acked_msg_seq_num (towards old)
-                                    let mut message = message_iter.next().unwrap();
+                                    let mut message = message_iter.next().unwrap(); // From front to back
 
                                     while message.seq_num > last_acked_msg_seq_num {
                                         if message.player_id != player_info.player_id {
