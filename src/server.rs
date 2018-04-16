@@ -28,9 +28,10 @@ use futures::sync::mpsc;
 use tokio_core::reactor::{Core, Timeout};
 use rand::Rng;
 
-const TICK_INTERVAL:      u64   = 40; // milliseconds
-const MAX_GAME_SLOT_NAME: usize = 16;
-const MAX_CHAT_MESSAGES:  usize = 128;
+const TICK_INTERVAL:         u64   = 40; // milliseconds
+const MAX_GAME_SLOT_NAME:    usize = 16;
+const MAX_NUM_CHAT_MESSAGES: usize = 128;
+const MAX_AGE_CHAT_MESSAGES: u64   = 60*5; // seconds
 
 #[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
 struct PlayerID(u64);
@@ -472,6 +473,17 @@ impl ServerState {
         }
     }
 
+    fn expire_old_messages(&mut self) {
+        if self.game_slots.len() != 0 {
+            let current_timestamp = time::Instant::now();
+            for slot in self.game_slots.values_mut() {
+                if !slot.messages.is_empty() {
+                    slot.messages.retain(|ref m| current_timestamp - m.timestamp < Duration::from_secs(MAX_AGE_CHAT_MESSAGES) );
+                }
+            }
+        }
+    }
+
     fn has_pending_players(&self) -> bool {
         !self.players.is_empty() && self.players.len() % 2 == 0
     }
@@ -579,6 +591,7 @@ fn main() {
                     // Likely spawn off work to handle server tasks here
                     server_state.tick += 1;
 
+                    server_state.expire_old_messages();
                     let client_update_packets_result = server_state.construct_client_updates();
                     if client_update_packets_result.is_ok() {
                         let opt_update_packets = client_update_packets_result.unwrap();
