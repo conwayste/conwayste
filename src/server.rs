@@ -129,10 +129,25 @@ impl ServerState {
             RequestAction::KeepAlive       => unimplemented!(),
             RequestAction::ListPlayers     => {
                 let mut players = vec![];
-                for ref p in &self.players {
-                    players.push(p.player_name.clone());
-                }
-                ResponseCode::PlayerList(players)
+                let player: &Player = self.players.get(player_id.0).unwrap();
+                if player.game == None {
+                    return ResponseCode::BadRequest(Some("cannot list players because in lobby.".to_owned()));
+                };
+                if let Some(GamePlayer{ ref game_slot_id }) = player.game {
+                    println!("DEBUG: game_slot_id is {}", game_slot_id); //XXX
+                    for ref mut gs in &mut self.game_slots {
+                        if gs.game_slot_id == *game_slot_id {
+                            println!("DEBUG: found game slot!"); //XXX
+                            for ref p in &self.players {
+                                if gs.player_ids.contains(&p.player_id) {
+                                  players.push(p.player_name.clone());
+                                }
+                            }
+                            break;
+                        }
+                    }
+                } else { unreachable!() };
+                return ResponseCode::PlayerList(players);
             },
             RequestAction::ChatMessage(_)  => unimplemented!(),
             RequestAction::ListGameSlots   => {
@@ -155,17 +170,37 @@ impl ServerState {
                 ResponseCode::OK
             }
             RequestAction::JoinGameSlot(slot_name) => {
-                let player: &Player = self.players.get(player_id.0).unwrap();
+                let player: &mut Player = self.players.get_mut(player_id.0).unwrap();
                 for ref mut gs in &mut self.game_slots {
                     if gs.name == slot_name {
                         gs.player_ids.push(player.player_id);
                         // TODO: send event to in-game state machine
+                        player.game = Some(GamePlayer{ game_slot_id: gs.game_slot_id.clone() });
                         return ResponseCode::OK;
                     }
                 }
                 return ResponseCode::BadRequest(Some(format!("no game slot named {:?}", slot_name)));
             }
-            RequestAction::LeaveGameSlot   => unimplemented!(),
+            RequestAction::LeaveGameSlot   => {
+                // TODO: DRY up code duplication with other branches of this match (especially ListPlayers)
+                // remove current player from its game
+                let player: &mut Player = self.players.get_mut(player_id.0).unwrap();
+                if player.game == None {
+                    return ResponseCode::BadRequest(Some("cannot leave game because in lobby.".to_owned()));
+                };
+                if let Some(GamePlayer{ ref game_slot_id }) = player.game {
+                    for ref mut gs in &mut self.game_slots {
+                        if gs.game_slot_id == *game_slot_id {
+                            // remove player_id from game slot's player_ids
+                            gs.player_ids.retain(|&p_id| p_id != player.player_id);
+                            break;
+                        }
+                    }
+                } else { unreachable!() };
+                player.game = None;
+                // TODO: send event to in-game state machine
+                return ResponseCode::OK;
+            }
             RequestAction::Connect{..}     => panic!(),
             RequestAction::None            => panic!(),
         }
@@ -287,31 +322,6 @@ impl ServerState {
         */
     }
 
-    fn has_pending_players(&self) -> bool {
-        !self.players.is_empty() && self.players.len() % 2 == 0
-    }
-
-    fn initiate_player_session(&mut self) {
-        //XXX
-        if self.has_pending_players() {
-            if let Some(mut a) = self.players.pop() {
-                if let Some(mut b) = self.players.pop() {
-                    let game_slot = GameSlot::new("some game slot".to_owned(), vec![a.player_id, b.player_id]);
-                    a.game = Some(GamePlayer{ game_slot_id: game_slot.game_slot_id.clone() });
-                    b.game = Some(GamePlayer{ game_slot_id: game_slot.game_slot_id.clone() });
-                    self.game_slots.push(game_slot);
-                    self.ctr+=1;
-                }
-                else {
-                    panic!("Unavailable player B");
-                }
-            }
-            else {
-                panic!("Unavailable player A");
-            }
-        }
-    }
-
     fn new_player(&mut self, name: String, addr: SocketAddr) -> Player {
         let id = self.next_player_id;
         self.next_player_id = PlayerID(id.0 + 1);
@@ -411,27 +421,6 @@ fn main() {
                     // Server tick
                     // Likely spawn off work to handle server tasks here
                     server_state.tick += 1;
-
-                    /*
-                    server_state.initiate_player_session();
-
-                    if server_state.ctr == 1 {
-                        // GameSlot tick
-                        server_state.game_slots.iter()
-                            .filter(|ref conn| conn.player_a.in_game && conn.player_b.in_game)
-                            .for_each(|ref conn| {
-                                let player_a = &conn.player_a;
-                                let player_b = &conn.player_b;
-                                let uni = &conn.universe;
-                                println!("Session: {}({:x}) versus {}({:x}), generation: {}",
-                                    player_a.player_name, player_a.player_id,
-                                    player_b.player_name, player_b.player_id,
-                                    uni);
-                            });
-
-                        server_state.ctr += 1;
-                    }
-                    */
                 }
             }
 
