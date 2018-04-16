@@ -86,7 +86,6 @@ struct GameSlot {
 
 struct ServerState {
     tick:           u64,
-    ctr:            u64,
     players:        Vec<Player>,
     player_map:     HashMap<String, PlayerID>,      // map cookie to player ID
     game_slots:     Vec<GameSlot>,
@@ -133,20 +132,17 @@ impl ServerState {
                 if player.game == None {
                     return ResponseCode::BadRequest(Some("cannot list players because in lobby.".to_owned()));
                 };
-                if let Some(GamePlayer{ ref game_slot_id }) = player.game {
-                    println!("DEBUG: game_slot_id is {}", game_slot_id); //XXX
-                    for ref mut gs in &mut self.game_slots {
-                        if gs.game_slot_id == *game_slot_id {
-                            println!("DEBUG: found game slot!"); //XXX
-                            for ref p in &self.players {
-                                if gs.player_ids.contains(&p.player_id) {
-                                  players.push(p.player_name.clone());
-                                }
+                let game_slot_id = &player.game.as_ref().unwrap().game_slot_id;  // unwrap ok because of test above
+                for ref mut gs in &mut self.game_slots {
+                    if gs.game_slot_id == *game_slot_id {
+                        for ref p in &self.players {
+                            if gs.player_ids.contains(&p.player_id) {
+                              players.push(p.player_name.clone());
                             }
-                            break;
                         }
+                        break;
                     }
-                } else { unreachable!() };
+                }
                 return ResponseCode::PlayerList(players);
             },
             RequestAction::ChatMessage(_)  => unimplemented!(),
@@ -163,6 +159,10 @@ impl ServerState {
                     return ResponseCode::BadRequest(Some(format!("game slot name too long; max {} characters",
                                                                  MAX_GAME_SLOT_NAME)));
                 }
+                let player: &Player = self.players.get(player_id.0).unwrap();
+                if player.game.is_some() {
+                    return ResponseCode::BadRequest(Some("cannot create game slot because in-game.".to_owned()));
+                }
                 // XXX check name uniqueness
                 // create game slot
                 let game_slot = GameSlot::new(name, vec![]);
@@ -171,6 +171,9 @@ impl ServerState {
             }
             RequestAction::JoinGameSlot(slot_name) => {
                 let player: &mut Player = self.players.get_mut(player_id.0).unwrap();
+                if player.game.is_some() {
+                    return ResponseCode::BadRequest(Some("cannot join game because already in-game.".to_owned()));
+                }
                 for ref mut gs in &mut self.game_slots {
                     if gs.name == slot_name {
                         gs.player_ids.push(player.player_id);
@@ -188,7 +191,8 @@ impl ServerState {
                 if player.game == None {
                     return ResponseCode::BadRequest(Some("cannot leave game because in lobby.".to_owned()));
                 };
-                if let Some(GamePlayer{ ref game_slot_id }) = player.game {
+                {
+                    let game_slot_id = &player.game.as_ref().unwrap().game_slot_id;  // unwrap ok because of test above
                     for ref mut gs in &mut self.game_slots {
                         if gs.game_slot_id == *game_slot_id {
                             // remove player_id from game slot's player_ids
@@ -196,7 +200,7 @@ impl ServerState {
                             break;
                         }
                     }
-                } else { unreachable!() };
+                }
                 player.game = None;
                 // TODO: send event to in-game state machine
                 return ResponseCode::OK;
@@ -340,7 +344,6 @@ impl ServerState {
     fn new() -> Self {
         ServerState {
             tick:              0,
-            ctr:               0,
             players:           Vec::<Player>::new(),
             game_slots:        Vec::<GameSlot>::new(),
             player_map:        HashMap::<String, PlayerID>::new(),
