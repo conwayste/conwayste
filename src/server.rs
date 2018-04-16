@@ -49,7 +49,7 @@ struct Player {
     player_id:     PlayerID,
     cookie:        String,
     addr:          SocketAddr,
-    name:   String,
+    name:          String,
     request_ack:   Option<u64>,          // most recent request sequence number received
     next_resp_seq: u64,                  // next response sequence number
     game_info:     Option<PlayerInGameInfo>,   // none means in lobby
@@ -75,6 +75,7 @@ impl Player {
 struct ChatMessages {
     seq_num: u64,     // sequence number
     player_id: PlayerID,
+    player_name: String,
     message: String,
     timestamp: time::Instant,
 }
@@ -179,7 +180,8 @@ impl ServerState {
                 match player_in_game {
                     true => {
                         // User is in game, Server needs to broadcast this to GameSlot
-                        let slot_id = player_info.unwrap().clone().game_info.unwrap().game_slot_id;
+                        let player_info = player_info.unwrap();
+                        let slot_id = player_info.clone().game_info.unwrap().game_slot_id;
 
                         let opt_slot = self.game_slots.get_mut(&slot_id);
                         match opt_slot {
@@ -195,6 +197,7 @@ impl ServerState {
 
                                 messages.push_back(ChatMessages {
                                     player_id: player_id,
+                                    player_name: player_info.clone().name,
                                     message: msg,
                                     timestamp: time::Instant::now(),
                                     seq_num: gs.latest_seq_num
@@ -407,17 +410,21 @@ impl ServerState {
                                 if !slot.messages.is_empty() {
                                     let mut message_iter = slot.messages.iter();
                                     let mut message = message_iter.next().unwrap(); // From front to back
+                                    let mut amount_to_consume = 0; // Skip over these messages since we've already acked them
 
-                                    while message.seq_num > last_acked_msg_seq_num {
+                                    if last_acked_msg_seq_num - message.seq_num > 0{
+                                        amount_to_consume = (last_acked_msg_seq_num - message.seq_num) % (MAX_CHAT_MESSAGES as u64);
+                                    }
+
+                                    let mut message_iter = message_iter.skip(amount_to_consume as usize);
+
+                                    while let Some(message) = message_iter.next() {
                                         if message.player_id != player_info.player_id {
-                                            unsent_messages.insert(0, BroadcastChatMessage{
+                                            unsent_messages.push(BroadcastChatMessage{
                                                 chat_seq:    Some(message.seq_num),
-                                                player_name: player_info.name.clone(), // XXX is clone really the best way to do this?
+                                                player_name: message.player_name.clone(), // XXX is clone really the best way to do this?
                                                 message:     message.message.clone()
                                             });
-                                            message = message_iter.next().unwrap();
-                                        } else {
-                                            break;
                                         }
                                     }
                                 }
@@ -426,9 +433,9 @@ impl ServerState {
                                 // Unleash the hounds!
                                 for message in &slot.messages {
                                     if message.player_id != player_info.player_id {
-                                        unsent_messages.insert(0, BroadcastChatMessage{
+                                        unsent_messages.push(BroadcastChatMessage{
                                             chat_seq:    Some(message.seq_num),
-                                            player_name: player_info.name.clone(),
+                                            player_name: message.player_name.clone(),
                                             message:     message.message.clone()
                                         });
                                     }
