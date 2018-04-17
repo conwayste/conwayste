@@ -149,7 +149,7 @@ fn main() {
     let main_loop_fut = tick_stream
         .select(packet_stream)
         .select(stdin_stream)
-        .fold((udp_tx.clone(), initial_client_state), move |(udp_tx, mut client_state), event| {
+        .fold(initial_client_state, move |mut client_state, event| {
             match event {
                 Event::Response((addr, opt_packet)) => {
                     let packet = opt_packet.unwrap();
@@ -322,14 +322,14 @@ fn main() {
                             cookie:       client_state.cookie.clone(),
                             action:       action,
                         };
-                        let _ = udp_tx.unbounded_send((addr.clone(), packet));
+                        let _ = (&udp_tx).unbounded_send((addr.clone(), packet));
                         client_state.sequence += 1;
                     }
                 }
             }
 
             // finally, return the updated client state for the next iteration
-            ok((udp_tx, client_state))
+            ok(client_state)
         })
         .map(|_| ())
         .map_err(|_| ());

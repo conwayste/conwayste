@@ -397,7 +397,7 @@ fn main() {
 
     let server_fut = tick_stream
         .select(packet_stream)
-        .fold((tx.clone(), initial_server_state), move |(tx, mut server_state), event| {
+        .fold(initial_server_state, move |mut server_state, event| {
             match event {
                 Event::Request(packet_tuple) => {
                      // With the above filter, `packet` should never be None
@@ -411,7 +411,7 @@ fn main() {
                             //XXX send packet
                             if let Some(response_packet) = opt_response_packet {
                                 let response = (addr.clone(), response_packet);
-                                tx.unbounded_send(response).unwrap();
+                                (&tx).unbounded_send(response).unwrap();
                             }
                         } else {
                             let err = decode_result.unwrap_err();
@@ -428,7 +428,7 @@ fn main() {
             }
 
             // return the updated client for the next iteration
-            ok((tx, server_state))
+            ok(server_state)
         })
         .map(|_| ())
         .map_err(|_| ());
