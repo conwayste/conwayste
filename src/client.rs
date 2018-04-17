@@ -93,6 +93,7 @@ fn main() {
     // Channels
     let (udp_sink, udp_stream) = udp.framed(LineCodec).split();
     let (udp_tx, udp_rx) = mpsc::unbounded();    // create a channel because we can't pass the sink around everywhere
+    let (exit_tx, exit_rx) = mpsc::unbounded();  // send () to exit_tx channel to quit the client
 
     println!("About to start sending to remote {:?} from local {:?}...", addr, local_addr);
 
@@ -286,13 +287,25 @@ fn main() {
                                 }
                                 "join" => {
                                     if args.len() == 1 {
-                                        action = RequestAction::JoinGameSlot(args[0].clone());
+                                        if !client_state.in_game {
+                                            action = RequestAction::JoinGameSlot(args[0].clone());
+                                        } else {
+                                            println!("ERROR: you are already in a game");
+                                        }
                                     } else { println!("ERROR: expected one argument to join"); }
                                 }
                                 "leave" => {
                                     if args.len() == 0 {
-                                        action = RequestAction::LeaveGameSlot;
+                                        if client_state.in_game {
+                                            action = RequestAction::LeaveGameSlot;
+                                        } else {
+                                            println!("ERROR: you are already in the lobby");
+                                        }
                                     } else { println!("ERROR: expected no arguments to leave"); }
+                                }
+                                "quit" => {
+                                    println!("Peace out!");
+                                    (&exit_tx).unbounded_send(()).unwrap();
                                 }
                                 _ => {
                                     println!("ERROR: command not recognized: {}", cmd);
@@ -325,7 +338,11 @@ fn main() {
         udp_sink.send(outgoing_item).map_err(|_| ())    // this method flushes (if too slow, use send_all)
     }).map(|_| ()).map_err(|_| ());
 
-    let combined_fut = sink_fut.select(main_loop_fut).map_err(|_| ());
+    let exit_fut = exit_rx.into_future().map(|_| ()).map_err(|_| ());
+
+    let combined_fut = exit_fut
+                        .select(main_loop_fut).map(|_| ()).map_err(|_| ())
+                        .select(sink_fut).map_err(|_| ());
 
     thread::spawn(move || {
         read_stdin(stdin_tx);
