@@ -58,6 +58,7 @@ fn print_help() {
     println!("/new <slot_name>       - create a new game slot (when not in game)");
     println!("/join <slot_name>      - join a game slot (when not in game)");
     println!("/leave                 - leave a game slot (when in game)");
+    println!("/quit                  - exit the program");
     println!("...or just type text to chat!");
 }
 
