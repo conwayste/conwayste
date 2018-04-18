@@ -31,9 +31,14 @@ struct ClientState {
     last_req_action: Option<RequestAction>,   // last one we sent to server TODO: this is wrong;
                                               // assumes network is well-behaved
     name:         Option<String>,
-    in_game:      bool,
-    game_slot:    Option<String>,             // None iff. in_game is false
+    game_slot:    Option<String>,
     cookie:       Option<String>,
+}
+
+impl ClientState {
+    fn in_game(&self) -> bool {
+        self.game_slot.is_some()
+    }
 }
 
 //////////////// Event Handling /////////////////
@@ -104,7 +109,6 @@ fn main() {
         response_ack: None,
         last_req_action: None,
         name:         None,
-        in_game:      false,
         game_slot:    None,
         cookie:       None,      // not connected yet
     };
@@ -163,13 +167,13 @@ fn main() {
                                     if let Some(ref last_action) = client_state.last_req_action {
                                         match last_action {
                                             &RequestAction::JoinGameSlot(ref slot_name) => {
-                                                client_state.in_game = true;
                                                 client_state.game_slot = Some(slot_name.clone());
                                                 println!("Joined game slot {}.", slot_name);
                                             }
                                             &RequestAction::LeaveGameSlot => {
-                                                client_state.in_game = false;
-                                                println!("Left game slot {}.", client_state.game_slot.unwrap());
+                                                if client_state.in_game() {
+                                                    println!("Left game slot {}.", client_state.game_slot.unwrap());
+                                                }
                                                 client_state.game_slot = None;
                                             }
                                             _ => {
@@ -273,7 +277,7 @@ fn main() {
                                 "list" => {
                                     if args.len() == 0 {
                                         // players or game slots
-                                        if client_state.in_game {
+                                        if client_state.in_game() {
                                             action = RequestAction::ListPlayers;
                                         } else {
                                             // lobby
@@ -288,7 +292,7 @@ fn main() {
                                 }
                                 "join" => {
                                     if args.len() == 1 {
-                                        if !client_state.in_game {
+                                        if !client_state.in_game() {
                                             action = RequestAction::JoinGameSlot(args[0].clone());
                                         } else {
                                             println!("ERROR: you are already in a game");
@@ -297,7 +301,7 @@ fn main() {
                                 }
                                 "leave" => {
                                     if args.len() == 0 {
-                                        if client_state.in_game {
+                                        if client_state.in_game() {
                                             action = RequestAction::LeaveGameSlot;
                                         } else {
                                             println!("ERROR: you are already in the lobby");
