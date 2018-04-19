@@ -40,6 +40,13 @@ impl ClientState {
     fn in_game(&self) -> bool {
         self.game_slot.is_some()
     }
+
+    fn check_for_upgrade(&self, server_version: &String) {
+        let client_version = &net::VERSION.to_owned();
+        if client_version < server_version {
+            println!("\tClient Version: {}\n\tServer Version: {}\nClient out-of-date. Please upgrade.", client_version, server_version)
+        }
+    }
 }
 
 //////////////// Event Handling /////////////////
@@ -188,9 +195,11 @@ fn main() {
                                         println!("OK, but we didn't make a request :/");
                                     }
                                 }
-                                ResponseCode::LoggedIn(cookie) => {
+                                ResponseCode::LoggedIn(cookie, server_version) => {
                                     client_state.cookie = Some(cookie);
                                     println!("Now logged into server.");
+
+                                    client_state.check_for_upgrade(&server_version);
                                 }
                                 ResponseCode::PlayerList(player_names) => {
                                     println!("---BEGIN PLAYER LIST---");

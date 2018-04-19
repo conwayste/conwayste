@@ -347,7 +347,7 @@ impl ServerState {
                         let response = Packet::Response{
                             sequence:    sequence,
                             request_ack: None,
-                            code:        ResponseCode::LoggedIn(cookie),
+                            code:        ResponseCode::LoggedIn(cookie, net::VERSION.to_owned()),
                         };
                         return Ok(Some(response));
                     } else {
