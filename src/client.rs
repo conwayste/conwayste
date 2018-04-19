@@ -31,10 +31,15 @@ struct ClientState {
     last_req_action: Option<RequestAction>,   // last one we sent to server TODO: this is wrong;
                                               // assumes network is well-behaved
     name:         Option<String>,
-    in_game:      bool,
-    game_slot:    Option<String>,             // None iff. in_game is false
+    game_slot:    Option<String>,
     cookie:       Option<String>,
     chat_msg_seq_num: u64,
+}
+
+impl ClientState {
+    fn in_game(&self) -> bool {
+        self.game_slot.is_some()
+    }
 }
 
 //////////////// Event Handling /////////////////
@@ -60,6 +65,7 @@ fn print_help() {
     println!("/new <slot_name>       - create a new game slot (when not in game)");
     println!("/join <slot_name>      - join a game slot (when not in game)");
     println!("/leave                 - leave a game slot (when in game)");
+    println!("/quit                  - exit the program");
     println!("...or just type text to chat!");
 }
 
@@ -95,6 +101,7 @@ fn main() {
     // Channels
     let (udp_sink, udp_stream) = udp.framed(LineCodec).split();
     let (udp_tx, udp_rx) = mpsc::unbounded();    // create a channel because we can't pass the sink around everywhere
+    let (exit_tx, exit_rx) = mpsc::unbounded();  // send () to exit_tx channel to quit the client
 
     println!("Accepting commands to remote {:?} from local {:?}.\nType /help for more info...", addr, local_addr);
 
@@ -104,7 +111,6 @@ fn main() {
         response_ack: None,
         last_req_action: None,
         name:         None,
-        in_game:      false,
         game_slot:    None,
         cookie:       None,      // not connected yet
         chat_msg_seq_num: 0,
@@ -150,7 +156,7 @@ fn main() {
     let main_loop_fut = tick_stream
         .select(packet_stream)
         .select(stdin_stream)
-        .fold((udp_tx.clone(), initial_client_state), move |(udp_tx, mut client_state), event| {
+        .fold(initial_client_state, move |mut client_state, event| {
             match event {
                 Event::Response((addr, opt_packet)) => {
                     let packet = opt_packet.unwrap();
@@ -164,13 +170,13 @@ fn main() {
                                     if let Some(ref last_action) = client_state.last_req_action {
                                         match last_action {
                                             &RequestAction::JoinGameSlot(ref slot_name) => {
-                                                client_state.in_game = true;
                                                 client_state.game_slot = Some(slot_name.clone());
                                                 println!("Joined game slot {}.", slot_name);
                                             }
                                             &RequestAction::LeaveGameSlot => {
-                                                client_state.in_game = false;
-                                                println!("Left game slot {}.", client_state.game_slot.unwrap());
+                                                if client_state.in_game() {
+                                                    println!("Left game slot {}.", client_state.game_slot.unwrap());
+                                                }
                                                 client_state.game_slot = None;
                                             }
                                             _ => {
@@ -294,7 +300,7 @@ fn main() {
                                 "list" => {
                                     if args.len() == 0 {
                                         // players or game slots
-                                        if client_state.in_game {
+                                        if client_state.in_game() {
                                             action = RequestAction::ListPlayers;
                                         } else {
                                             // lobby
@@ -309,13 +315,25 @@ fn main() {
                                 }
                                 "join" => {
                                     if args.len() == 1 {
-                                        action = RequestAction::JoinGameSlot(args[0].clone());
+                                        if !client_state.in_game() {
+                                            action = RequestAction::JoinGameSlot(args[0].clone());
+                                        } else {
+                                            println!("ERROR: you are already in a game");
+                                        }
                                     } else { println!("ERROR: expected one argument to join"); }
                                 }
                                 "leave" => {
                                     if args.len() == 0 {
-                                        action = RequestAction::LeaveGameSlot;
+                                        if client_state.in_game() {
+                                            action = RequestAction::LeaveGameSlot;
+                                        } else {
+                                            println!("ERROR: you are already in the lobby");
+                                        }
                                     } else { println!("ERROR: expected no arguments to leave"); }
+                                }
+                                "quit" => {
+                                    println!("Peace out!");
+                                    (&exit_tx).unbounded_send(()).unwrap();
                                 }
                                 _ => {
                                     println!("ERROR: command not recognized: {}", cmd);
@@ -331,14 +349,14 @@ fn main() {
                             cookie:       client_state.cookie.clone(),
                             action:       action,
                         };
-                        let _ = udp_tx.unbounded_send((addr.clone(), packet));
+                        let _ = (&udp_tx).unbounded_send((addr.clone(), packet));
                         client_state.sequence += 1;
                     }
                 }
             }
 
             // finally, return the updated client state for the next iteration
-            ok((udp_tx, client_state))
+            ok(client_state)
         })
         .map(|_| ())
         .map_err(|_| ());
@@ -348,7 +366,11 @@ fn main() {
         udp_sink.send(outgoing_item).map_err(|_| ())    // this method flushes (if too slow, use send_all)
     }).map(|_| ()).map_err(|_| ());
 
-    let combined_fut = sink_fut.select(main_loop_fut).map_err(|_| ());
+    let exit_fut = exit_rx.into_future().map(|_| ()).map_err(|_| ());
+
+    let combined_fut = exit_fut
+                        .select(main_loop_fut).map(|_| ()).map_err(|_| ())
+                        .select(sink_fut).map_err(|_| ());
 
     thread::spawn(move || {
         read_stdin(stdin_tx);

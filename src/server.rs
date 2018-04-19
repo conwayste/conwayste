@@ -94,7 +94,6 @@ struct GameSlot {
 
 struct ServerState {
     tick:           u64,
-    ctr:            u64,
     players:        HashMap<PlayerID, Player>,
     player_map:     HashMap<String, PlayerID>,      // map cookie to player ID
     game_slots:     HashMap<GameSlotID, GameSlot>,
@@ -169,10 +168,19 @@ impl ServerState {
             RequestAction::KeepAlive       => unimplemented!(),
             RequestAction::ListPlayers     => {
                 let mut players = vec![];
+                let player: &Player = &self.players.get(&player_id).unwrap();
+                if player.game_info == None {
+                    return ResponseCode::BadRequest(Some("cannot list players because in lobby.".to_owned()));
+                };
+                let game_slot_id = &player.game_info.as_ref().unwrap().game_slot_id;  // unwrap ok because of test above
+                let gs = self.game_slots.get(&game_slot_id).unwrap();
+                // can we use filter AMEEN
                 for ref p in self.players.values() {
-                    players.push(p.name.clone());
+                    if gs.player_ids.contains(&p.player_id) {
+                        players.push(p.name.clone());
+                    }
                 }
-                ResponseCode::PlayerList(players)
+                return ResponseCode::PlayerList(players);
             },
             RequestAction::ChatMessage(msg)  => {
                 let player_info = self.players.get(&player_id);
@@ -228,6 +236,11 @@ impl ServerState {
                     return ResponseCode::BadRequest(Some(format!("game slot name too long; max {} characters",
                                                                  MAX_GAME_SLOT_NAME)));
                 }
+                let player: &Player = self.players.get(&player_id).unwrap();
+                if player.game_info.is_some() {
+                    return ResponseCode::BadRequest(Some("cannot create game slot because in-game.".to_owned()));
+                }
+                // XXX check name uniqueness
                 // create game slot
                 if !self.game_slot_map.get(&name).is_some() {
                     let game_slot = GameSlot::new(name.clone(), vec![]);
@@ -266,7 +279,42 @@ impl ServerState {
                     }
                 }
             }
-            RequestAction::LeaveGameSlot   => unimplemented!(),
+            RequestAction::JoinGameSlot(slot_name) => {
+                let player: &mut Player = self.players.get_mut(&player_id).unwrap();
+                if player.game_info.is_some() {
+                    return ResponseCode::BadRequest(Some("cannot join game because already in-game.".to_owned()));
+                }
+                for ref mut gs in self.game_slots.values_mut() {
+                    if gs.name == slot_name {
+                        gs.player_ids.push(player.player_id);
+                        // TODO: send event to in-game state machine
+                        player.game_info = Some(PlayerInGameInfo{ game_slot_id: gs.game_slot_id.clone() });
+                        return ResponseCode::OK;
+                    }
+                }
+                return ResponseCode::BadRequest(Some(format!("no game slot named {:?}", slot_name)));
+            }
+            RequestAction::LeaveGameSlot   => {
+                // TODO: DRY up code duplication with other branches of this match (especially ListPlayers)
+                // remove current player from its game
+                let player: &mut Player = self.players.get_mut(&player_id).unwrap();
+                if player.game_info == None {
+                    return ResponseCode::BadRequest(Some("cannot leave game because in lobby.".to_owned()));
+                };
+                {
+                    let game_slot_id = &player.game_info.as_ref().unwrap().game_slot_id;  // unwrap ok because of test above
+                    for ref mut gs in self.game_slots.values_mut() {
+                        if gs.game_slot_id == *game_slot_id {
+                            // remove player_id from game slot's player_ids
+                            gs.player_ids.retain(|&p_id| p_id != player.player_id);
+                            break;
+                        }
+                    }
+                }
+                player.game_info = None;
+                // TODO: send event to in-game state machine
+                return ResponseCode::OK;
+            }
             RequestAction::Connect{..}     => panic!(),
             RequestAction::None            => panic!(),
         }
@@ -484,10 +532,6 @@ impl ServerState {
         }
     }
 
-    fn has_pending_players(&self) -> bool {
-        !self.players.is_empty() && self.players.len() % 2 == 0
-    }
-
     fn new_player(&mut self, name: String, addr: SocketAddr) -> Player {
         let cookie = new_cookie();
         let mut player = Player {
@@ -508,7 +552,6 @@ impl ServerState {
     fn new() -> Self {
         ServerState {
             tick:              0,
-            ctr:               0,
             players:           HashMap::<PlayerID, Player>::new(),
             game_slots:        HashMap::<GameSlotID, GameSlot>::new(),
             player_map:        HashMap::<String, PlayerID>::new(),
@@ -562,7 +605,7 @@ fn main() {
 
     let server_fut = tick_stream
         .select(packet_stream)
-        .fold((tx.clone(), initial_server_state), move |(tx, mut server_state), event| {
+        .fold(initial_server_state, move |mut server_state, event| {
             match event {
                 Event::Request(packet_tuple) => {
                      // With the above filter, `packet` should never be None
@@ -577,7 +620,7 @@ fn main() {
 
                             if let Some(response_packet) = opt_response_packet {
                                 let response = (addr.clone(), response_packet);
-                                tx.unbounded_send(response).unwrap();
+                                (&tx).unbounded_send(response).unwrap();
                             }
                         } else {
                             let err = decode_result.unwrap_err();
@@ -606,7 +649,7 @@ fn main() {
             }
 
             // return the updated client for the next iteration
-            ok((tx, server_state))
+            ok(server_state)
         })
         .map(|_| ())
         .map_err(|_| ());
