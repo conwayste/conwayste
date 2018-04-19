@@ -103,7 +103,7 @@ pub enum GameUpdateType {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GameUpdate {
-    pub game_update_seq: Option<u64>,  // see BroadCastMessage chat_seq field for Some/None meaning
+    pub game_update_seq: Option<u64>,  // see BroadcastChatMessage chat_seq field for Some/None meaning
     update_type:         GameUpdateType,
 }
 
