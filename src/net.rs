@@ -10,6 +10,7 @@ use self::tokio_core::net::{UdpSocket, UdpCodec};
 use self::tokio_core::reactor::Handle;
 use self::bincode::{serialize, deserialize, Infinite};
 
+pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 //////////////// Error handling ////////////////
 #[derive(Debug)]

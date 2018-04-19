@@ -9,7 +9,7 @@ extern crate futures;
 mod net;
 
 use std::env;
-use std::io::{self, Read, Write, Error};
+use std::io::{self, Read, Error};
 use std::iter;
 use std::net::SocketAddr;
 use std::process::exit;
@@ -18,7 +18,7 @@ use std::thread;
 use std::time::Duration;
 use net::{RequestAction, ResponseCode, Packet, LineCodec};
 use tokio_core::net::UdpSocket;
-use tokio_core::reactor::{Core, Handle, Timeout};
+use tokio_core::reactor::{Core, Timeout};
 use futures::{Future, Sink, Stream, stream};
 use futures::future::ok;
 use futures::sync::mpsc;

@@ -31,7 +31,7 @@ use rand::Rng;
 const TICK_INTERVAL:         u64   = 40; // milliseconds
 const MAX_GAME_SLOT_NAME:    usize = 16;
 const MAX_NUM_CHAT_MESSAGES: usize = 128;
-const MAX_AGE_CHAT_MESSAGES: u64   = 60*5; // seconds
+const MAX_AGE_CHAT_MESSAGES: usize = 60*5; // seconds
 
 #[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
 struct PlayerID(u64);
@@ -40,6 +40,12 @@ struct PlayerID(u64);
 struct GameSlotID(u64);
 
 impl fmt::Display for PlayerID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({})", self.0)
+    }
+}
+
+impl fmt::Display for GameSlotID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "({})", self.0)
     }
@@ -147,7 +153,7 @@ impl GameSlot {
             player_ids:   player_ids,
             game_running: false,
             universe:     0,
-            messages:     VecDeque::<ChatMessages>::with_capacity(MAX_CHAT_MESSAGES),
+            messages:     VecDeque::<ChatMessages>::with_capacity(MAX_AGE_CHAT_MESSAGES),
             latest_seq_num: 0,
         };
         slot.calc_id();
@@ -200,8 +206,8 @@ impl ServerState {
                                 let queue_size = messages.len();
                                 gs.latest_seq_num += 1;
 
-                                if queue_size >= MAX_CHAT_MESSAGES {
-                                    messages.truncate(queue_size - MAX_CHAT_MESSAGES + 1);
+                                if queue_size >= MAX_NUM_CHAT_MESSAGES {
+                                    messages.truncate(queue_size - MAX_NUM_CHAT_MESSAGES + 1);
                                 }
 
                                 messages.push_back(ChatMessages {
@@ -214,12 +220,12 @@ impl ServerState {
                                 ResponseCode::OK
                             }
                             None => {
-                                ResponseCode::BadRequest(Some(format!("Player \"{}\" not in game", player_id)))
+                                ResponseCode::BadRequest(Some(format!("No game found or player {} and slot id {}", player_id, slot_id)))
                             }
                         }
                     }
                     false => {
-                        ResponseCode::BadRequest(Some(format!("Player \"{}\" not found", player_id)))
+                        ResponseCode::BadRequest(Some(format!("Player {} has not joined a game.", player_id)))
                     }
                 }
             },
@@ -251,32 +257,6 @@ impl ServerState {
                     ResponseCode::OK
                 } else {
                     ResponseCode::BadRequest(Some(format!("game slot name already in use")))
-                }
-            }
-            RequestAction::JoinGameSlot(slot_name) => {
-                let player = self.players.get_mut(&player_id).unwrap();
-                let opt_slot_id = self.game_slot_map.get(&slot_name);
-                match opt_slot_id {
-                    Some(slot_id) => {
-                        let opt_game_slot = self.game_slots.get_mut(&slot_id);
-                        match opt_game_slot {
-                            Some(gs) => {
-                                gs.player_ids.push(player.player_id);
-
-                                player.game_info = Some(PlayerInGameInfo {
-                                    game_slot_id: gs.clone().game_slot_id
-                                });
-                                // TODO: send event to in-game state machine
-                                ResponseCode::OK
-                            }
-                            None => {
-                                ResponseCode::BadRequest(Some(format!("no game slot found for ID {:?}", slot_id)))
-                            }
-                        }
-                    }
-                    None => {
-                        ResponseCode::BadRequest(Some(format!("no game slot named {:?}", slot_name)))
-                    }
                 }
             }
             RequestAction::JoinGameSlot(slot_name) => {
@@ -462,7 +442,7 @@ impl ServerState {
                                     let mut amount_to_consume = 0; // Skip over these messages since we've already acked them
 
                                     if last_acked_msg_seq_num - message.seq_num > 0{
-                                        amount_to_consume = (last_acked_msg_seq_num - message.seq_num) % (MAX_CHAT_MESSAGES as u64);
+                                        amount_to_consume = (last_acked_msg_seq_num - message.seq_num) % (MAX_AGE_CHAT_MESSAGES as u64);
                                     }
 
                                     let mut message_iter = message_iter.skip(amount_to_consume as usize);
@@ -526,7 +506,7 @@ impl ServerState {
             let current_timestamp = time::Instant::now();
             for slot in self.game_slots.values_mut() {
                 if !slot.messages.is_empty() {
-                    slot.messages.retain(|ref m| current_timestamp - m.timestamp < Duration::from_secs(MAX_AGE_CHAT_MESSAGES) );
+                    slot.messages.retain(|ref m| current_timestamp - m.timestamp < Duration::from_secs(MAX_AGE_CHAT_MESSAGES as u64) );
                 }
             }
         }
