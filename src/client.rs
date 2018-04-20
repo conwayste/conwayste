@@ -49,12 +49,6 @@ impl ClientState {
     }
 }
 
-impl ClientState {
-    fn in_game(&self) -> bool {
-        self.game_slot.is_some()
-    }
-}
-
 //////////////// Event Handling /////////////////
 enum UserInput {
     Command{cmd: String, args: Vec<String>},   // command with arguments
