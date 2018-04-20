@@ -230,9 +230,9 @@ fn main() {
                             match chats {
                                 Some(message_list) => {
                                     for unread in message_list {
-                                        println!("{}: {}", unread.player_name, unread.message);
                                         if client_state.chat_msg_seq_num < unread.chat_seq.unwrap() {
                                             client_state.chat_msg_seq_num = unread.chat_seq.unwrap();
+                                            println!("{}: {}", unread.player_name, unread.message);
                                         }
                                     }
                                 }
