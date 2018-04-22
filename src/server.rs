@@ -112,44 +112,37 @@ fn new_cookie() -> String {
 
 /*
 *  Entity (Player/GameSlot) IDs are comprised of:
-*      1) The entity name XOR'd into itself for each character
-*      2) Current timestamp (lower 24 bits)
-*      3) A salt
+*      1) Current timestamp (lower 24 bits)
+*      2) A random salt
 *
-*              64 bits total
-*   _____________________________________
-*  |    8 bits   |  24 bits  |  32 bits  |
-*  | entity_name | timestamp | rand_salt |
-*  |_____________|___________|___________|
+*       64 bits total
+*  _________________________
+*  |  32 bits  |  32 bits  |
+*  | timestamp | rand_salt |
+*  |___________|___________|
 */
-fn calculate_hash_from_name(name: &String) -> u64 {
+fn calculate_hash() -> u64 {
         let hash: u64;
-        let mut name_byte_accumulator: u64 = 0;
-        let name_as_bytes = name.clone().into_bytes();
-
-        for character in name_as_bytes {
-            name_byte_accumulator ^= character as u64;
-        }
 
         let mut timestamp: u64 = time::Instant::now().elapsed().as_secs().into();
-        timestamp = timestamp & 0xFFFFFF;
+        timestamp = timestamp & 0xFFFFFFFF;
 
         let mut rand_salt: u64 = rand::thread_rng().next_u32().into();
         rand_salt = rand_salt & 0xFFFFFFFF;
 
-        hash = rand_salt | (timestamp << 32) | (name_byte_accumulator << 56);
+        hash = (timestamp << 32) | rand_salt;
         hash
 }
 
 impl GameSlot {
     fn new(name: String, player_ids: Vec<PlayerID>) -> Self {
         GameSlot {
-            game_slot_id: GameSlotID(calculate_hash_from_name(&name)),   // TODO: better unique ID generation
+            game_slot_id: GameSlotID(calculate_hash()),
             name: name,
             player_ids:   player_ids,
             game_running: false,
             universe:     0,
-            messages:     VecDeque::<ServerChatMessage>::with_capacity(MAX_AGE_CHAT_MESSAGES),
+            messages:     VecDeque::<ServerChatMessage>::with_capacity(MAX_NUM_CHAT_MESSAGES),
             latest_seq_num: 0,
         }
     }
@@ -201,7 +194,9 @@ impl ServerState {
                 gs.latest_seq_num += 1;
 
                 if queue_size >= MAX_NUM_CHAT_MESSAGES {
-                    messages.truncate(queue_size - MAX_NUM_CHAT_MESSAGES + 1);
+                    for _ in 0..(queue_size-MAX_NUM_CHAT_MESSAGES+1) {
+                        messages.pop_front();
+                    }
                 }
 
                 messages.push_back(ServerChatMessage {
@@ -226,10 +221,12 @@ impl ServerState {
                     return ResponseCode::BadRequest(Some(format!("game slot name too long; max {} characters",
                                                                  MAX_GAME_SLOT_NAME)));
                 }
+
                 let player: &Player = self.players.get(&player_id).unwrap();
                 if player.game_info.is_some() {
                     return ResponseCode::BadRequest(Some("cannot create game slot because in-game.".to_owned()));
                 }
+
                 // XXX check name uniqueness
                 // create game slot
                 if !self.game_slot_map.get(&name).is_some() {
@@ -413,52 +410,59 @@ impl ServerState {
         // For each game slot, determine if each player has unread messages based on last_acked_msg_seq_num
         // TODO: POOR PERFORMANCE BOUNTY
         for slot in self.game_slots.values() {
+
+            if slot.messages.is_empty() || slot.player_ids.len() == 0 {
+                continue;
+            }
+
             for player_id in &slot.player_ids {
-                let mut unsent_messages: Vec<BroadcastChatMessage> = vec![];
                 let opt_player = self.players.get(&player_id);
                 match opt_player {
                     Some(player) => {
-
-                        // MESSAGE UPDATING
-                        match player.last_acked_msg_seq_num {
+                        let unsent_messages: Vec<BroadcastChatMessage>;
+                        // Only send what a player has not yet seen
+                        let raw_unsent_messages = match player.last_acked_msg_seq_num {
                             Some(last_acked_msg_seq_num) => {
-                                if !slot.messages.is_empty() {
-                                    let mut message_iter = slot.messages.iter();
-                                    let message = message_iter.next().unwrap(); // From front to back
-                                    let mut amount_to_consume = 0; // Skip over these messages since we've already acked them
+                                // Unwrap()'s okay because we know its non-empty
+                                let mut message_iter = slot.messages.iter();
 
-                                    if last_acked_msg_seq_num - message.seq_num > 0{
-                                        amount_to_consume = (last_acked_msg_seq_num - message.seq_num) % (MAX_AGE_CHAT_MESSAGES as u64);
-                                    }
-
-                                    let mut message_iter = message_iter.skip(amount_to_consume as usize);
-
-                                    while let Some(message) = message_iter.next() {
-                                        if message.player_id != player.player_id {
-                                            unsent_messages.push(BroadcastChatMessage{
-                                                chat_seq:    Some(message.seq_num),
-                                                player_name: message.player_name.clone(), // XXX is clone really the best way to do this?
-                                                message:     message.message.clone()
-                                            });
-                                        }
-                                    }
+                                let newest_msg = message_iter.clone().last().unwrap();
+                                // Player is caught up
+                                if last_acked_msg_seq_num == newest_msg.seq_num {
+                                    continue;
                                 }
+
+                                let oldest_msg = message_iter.clone().next().unwrap();
+                                // Skip over these messages since we've already acked them
+                                let amount_to_consume: u64 =
+                                    if last_acked_msg_seq_num > oldest_msg.seq_num {
+                                        ((last_acked_msg_seq_num - oldest_msg.seq_num) + 1) % (MAX_NUM_CHAT_MESSAGES as u64)
+                                    } else if last_acked_msg_seq_num < oldest_msg.seq_num {
+                                        // Sequence number has wrapped
+                                        (<u64>::max_value() - oldest_msg.seq_num) + last_acked_msg_seq_num + 1
+                                    } else {
+                                        0
+                                    };
+
+                                // Cast to usize is safe because our message containers are limited by MAX_NUM_CHAT_MESSAGES
+                                message_iter.skip(amount_to_consume as usize).cloned().collect()
                             }
                             None => {
-                                // Unleash the hounds!
-                                for message in &slot.messages {
-                                    if message.player_id != player.player_id {
-                                        unsent_messages.push(BroadcastChatMessage{
-                                            chat_seq:    Some(message.seq_num),
-                                            player_name: message.player_name.clone(),
-                                            message:     message.message.clone()
-                                        });
-                                    }
-                                }
+                                // Smithers, unleash the hounds!
+                                slot.messages.clone()
                             }
-                        }
+                        };
 
-                        // TODO: GAME UPDATES
+                        unsent_messages = raw_unsent_messages.iter().filter_map(|msg|
+                            if msg.player_id != player.player_id {
+                                Some(BroadcastChatMessage{
+                                    chat_seq:    Some(msg.seq_num),
+                                    player_name: msg.player_name.clone(),
+                                    message:     msg.message.clone()
+                                })
+                            } else {
+                                None
+                            }).collect();
 
                         let messages_available = !unsent_messages.is_empty();
                         let update_packet = Packet::Update {
@@ -501,7 +505,7 @@ impl ServerState {
     fn new_player(&mut self, name: String, addr: SocketAddr) -> Player {
         let cookie = new_cookie();
         Player {
-            player_id:     PlayerID(calculate_hash_from_name(&name)),
+            player_id:     PlayerID(calculate_hash()),
             cookie:        cookie,
             addr:          addr,
             name:   name,

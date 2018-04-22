@@ -44,7 +44,10 @@ impl ClientState {
     fn check_for_upgrade(&self, server_version: &String) {
         let client_version = &net::VERSION.to_owned();
         if client_version < server_version {
-            println!("\tClient Version: {}\n\tServer Version: {}\nClient out-of-date. Please upgrade.", client_version, server_version)
+            warn!("\tClient Version: {}\n\tServer Version: {}\nnWarning: Client out-of-date. Please upgrade.", client_version, server_version)
+        }
+        else if client_version > server_version {
+            warn!("\tClient Version: {}\n\tServer Version: {}\nWarning: Client Version greater than Server Version.", client_version, server_version)
         }
     }
 }
