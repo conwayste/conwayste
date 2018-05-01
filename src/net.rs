@@ -10,6 +10,7 @@ use self::tokio_core::net::{UdpSocket, UdpCodec};
 use self::tokio_core::reactor::Handle;
 use self::bincode::{serialize, deserialize, Infinite};
 
+pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 //////////////// Error handling ////////////////
 #[derive(Debug)]
@@ -51,7 +52,7 @@ pub enum RequestAction {
 pub enum ResponseCode {
     // success - these are all 200 in HTTP
     OK,                              // 200 no data
-    LoggedIn(String),                // player is logged in -- provide cookie
+    LoggedIn(String, String),                // player is logged in -- provide cookie
     PlayerList(Vec<String>),
     GameSlotList(Vec<(String, u64, bool)>), // (game name, # players, started?)
     // errors
@@ -66,11 +67,11 @@ pub enum ResponseCode {
 // chat messages sent from server to all clients other than originating client
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct BroadcastChatMessage {
-    pub chat_seq: Option<u64>,     // Some(<number>) when sent to clients (starts at 0 for first
-                                   // chat message sent to this client in this game); None when
-                                   // internal to server
-    pub name:     String,
-    pub message:  String,          // should not contain newlines
+    pub chat_seq:    Option<u64>,   // Some(<number>) when sent to clients (starts at 0 for first
+                                    // chat message sent to this client in this game); None when
+                                    // internal to server
+    pub player_name: String,
+    pub message:     String,        // should not contain newlines
 }
 
 // TODO: adapt or import following from libconway
@@ -131,8 +132,8 @@ pub enum Packet {
     },
     Update {
         // in-game: sent by server
-        chats:           Vec<BroadcastChatMessage>,
-        game_updates:    Vec<GameUpdate>,
+        chats:           Option<Vec<BroadcastChatMessage>>,
+        game_updates:    Option<Vec<GameUpdate>>,
         universe_update: UniUpdateType,
     },
     UpdateReply {

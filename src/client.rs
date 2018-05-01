@@ -9,7 +9,7 @@ extern crate futures;
 mod net;
 
 use std::env;
-use std::io::{self, Read, Write, Error};
+use std::io::{self, Read, Error};
 use std::iter;
 use std::net::SocketAddr;
 use std::process::exit;
@@ -18,7 +18,7 @@ use std::thread;
 use std::time::Duration;
 use net::{RequestAction, ResponseCode, Packet, LineCodec};
 use tokio_core::net::UdpSocket;
-use tokio_core::reactor::{Core, Handle, Timeout};
+use tokio_core::reactor::{Core, Timeout};
 use futures::{Future, Sink, Stream, stream};
 use futures::future::ok;
 use futures::sync::mpsc;
@@ -33,11 +33,22 @@ struct ClientState {
     name:         Option<String>,
     game_slot:    Option<String>,
     cookie:       Option<String>,
+    chat_msg_seq_num: u64,
 }
 
 impl ClientState {
     fn in_game(&self) -> bool {
         self.game_slot.is_some()
+    }
+
+    fn check_for_upgrade(&self, server_version: &String) {
+        let client_version = &net::VERSION.to_owned();
+        if client_version < server_version {
+            warn!("\tClient Version: {}\n\tServer Version: {}\nnWarning: Client out-of-date. Please upgrade.", client_version, server_version)
+        }
+        else if client_version > server_version {
+            warn!("\tClient Version: {}\n\tServer Version: {}\nWarning: Client Version greater than Server Version.", client_version, server_version)
+        }
     }
 }
 
@@ -56,6 +67,7 @@ enum Event {
 
 ////////////////// Utilities //////////////////
 fn print_help() {
+    println!("");
     println!("/help                  - print this text");
     println!("/connect <player_name> - connect to server");
     println!("/disconnect            - disconnect from server");
@@ -101,7 +113,7 @@ fn main() {
     let (udp_tx, udp_rx) = mpsc::unbounded();    // create a channel because we can't pass the sink around everywhere
     let (exit_tx, exit_rx) = mpsc::unbounded();  // send () to exit_tx channel to quit the client
 
-    println!("About to start sending to remote {:?} from local {:?}...", addr, local_addr);
+    println!("Accepting commands to remote {:?} from local {:?}.\nType /help for more info...", addr, local_addr);
 
     // initialize state
     let initial_client_state = ClientState {
@@ -111,6 +123,7 @@ fn main() {
         name:         None,
         game_slot:    None,
         cookie:       None,      // not connected yet
+        chat_msg_seq_num: 0,
     };
 
     let iter_stream = stream::iter_ok::<_, Error>(iter::repeat( () )); // just a Stream that emits () forever
@@ -185,9 +198,11 @@ fn main() {
                                         println!("OK, but we didn't make a request :/");
                                     }
                                 }
-                                ResponseCode::LoggedIn(cookie) => {
+                                ResponseCode::LoggedIn(cookie, server_version) => {
                                     client_state.cookie = Some(cookie);
                                     println!("Now logged into server.");
+
+                                    client_state.check_for_upgrade(&server_version);
                                 }
                                 ResponseCode::PlayerList(player_names) => {
                                     println!("---BEGIN PLAYER LIST---");
@@ -215,7 +230,27 @@ fn main() {
                             }
                         }
                         Packet::Update{chats, game_updates, universe_update} => {
-                            unimplemented!();
+                            match chats {
+                                Some(message_list) => {
+                                    for unread in message_list {
+                                        if client_state.chat_msg_seq_num < unread.chat_seq.unwrap() {
+                                            client_state.chat_msg_seq_num = unread.chat_seq.unwrap();
+                                            println!("{}: {}", unread.player_name, unread.message);
+                                        }
+                                    }
+                                }
+                                None => {}
+                            }
+                            // TODO game updates
+
+                            // Reply to the update
+                            let packet = Packet::UpdateReply{
+                                cookie:               client_state.cookie.clone().unwrap(),
+                                last_chat_seq:        Some(client_state.chat_msg_seq_num),
+                                last_game_update_seq: None,
+                                last_gen:             None,
+                            };
+                            let _ = udp_tx.unbounded_send((addr.clone(), packet));
                         }
                         Packet::Request{..} => {
                             warn!("Ignoring packet from server normally sent by clients: {:?}", packet);
