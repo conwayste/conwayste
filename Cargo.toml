@@ -1,7 +1,7 @@
 [package]
-name = "tokio_udp_test"
+name = "netwayste"
 version = "0.1.1"
-authors = ["Aaron Miller <aaron.miller04@gmail.com>"]
+authors = ["Aaron Miller <aaron.miller04@gmail.com>", "manghi <manghirs@gmail.com>"]
 
 [[bin]]
 name = "server"
