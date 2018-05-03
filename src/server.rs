@@ -389,7 +389,7 @@ impl ServerState {
                 }
 
                 let player = opt_player.unwrap();
-                if player.last_acked_msg_seq_num < last_chat_seq {
+                if !player.last_acked_msg_seq_num.is_some() || player.last_acked_msg_seq_num < last_chat_seq {
                     player.last_acked_msg_seq_num = last_chat_seq;
                 }
                 Ok(None)
@@ -435,9 +435,9 @@ impl ServerState {
                                 let oldest_msg = message_iter.clone().next().unwrap();
                                 // Skip over these messages since we've already acked them
                                 let amount_to_consume: u64 =
-                                    if last_acked_msg_seq_num > oldest_msg.seq_num {
+                                    if last_acked_msg_seq_num >= oldest_msg.seq_num {
                                         ((last_acked_msg_seq_num - oldest_msg.seq_num) + 1) % (MAX_NUM_CHAT_MESSAGES as u64)
-                                    } else if last_acked_msg_seq_num < oldest_msg.seq_num {
+                                    } else if last_acked_msg_seq_num < oldest_msg.seq_num && oldest_msg.seq_num != newest_msg.seq_num {
                                         // Sequence number has wrapped
                                         (<u64>::max_value() - oldest_msg.seq_num) + last_acked_msg_seq_num + 1
                                     } else {
