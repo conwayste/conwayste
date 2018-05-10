@@ -166,7 +166,7 @@ fn main() {
     let main_loop_fut = tick_stream
         .select(packet_stream)
         .select(stdin_stream)
-        .fold(initial_client_state, move |mut client_state, event| {
+        .fold(initial_client_state, move |mut client_state: ClientState, event| {
             match event {
                 Event::Response((addr, opt_packet)) => {
                     let packet = opt_packet.unwrap();
@@ -233,13 +233,16 @@ fn main() {
                             match chats {
                                 Some(mut chat_messages) => {
                                     chat_messages.retain(|ref chat_message| {
-                                        client_state.chat_msg_seq_num < chat_message.chat_seq.unwrap() &&
-                                          client_state.name.as_ref().unwrap() != &chat_message.player_name
+                                        client_state.chat_msg_seq_num < chat_message.chat_seq.unwrap()
                                     });
+                                    // This loop does two things: 1) update chat_msg_seq_num, and
+                                    // 2) prints messages from other players
                                     for chat_message in chat_messages {
                                         let chat_seq = chat_message.chat_seq.unwrap();
                                         client_state.chat_msg_seq_num = std::cmp::max(chat_seq, client_state.chat_msg_seq_num);
-                                        println!("{}: {}", chat_message.player_name, chat_message.message);
+                                        if client_state.name.as_ref().unwrap() != &chat_message.player_name {
+                                            println!("{}: {}", chat_message.player_name, chat_message.message);
+                                        }
                                     }
                                 }
                                 None => {}

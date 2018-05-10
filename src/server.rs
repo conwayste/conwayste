@@ -60,7 +60,7 @@ struct Player {
     request_ack:   Option<u64>,          // most recent request sequence number received
     next_resp_seq: u64,                  // next response sequence number
     game_info:     Option<PlayerInGameInfo>,   // none means in lobby
-    last_acked_msg_seq_num: Option<u64>
+    last_acked_msg_seq_num: Option<u64> // TODO: move to PlayerInGameInfo
 }
 
 // info for a player as it relates to a game/gameslot
@@ -74,7 +74,7 @@ struct PlayerInGameInfo {
 impl Player {
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(PartialEq, Debug, Clone)]
 struct ServerChatMessage {
     seq_num:     u64,     // sequence number
     player_id:   PlayerID,
@@ -388,7 +388,7 @@ impl ServerState {
                     return Err(Box::new(io::Error::new(ErrorKind::NotFound, "player not found")));
                 }
 
-                let player = opt_player.unwrap();
+                let player: &mut Player = opt_player.unwrap();
                 if player.last_acked_msg_seq_num.is_none() || player.last_acked_msg_seq_num < last_chat_seq {
                     player.last_acked_msg_seq_num = last_chat_seq;
                 }
@@ -419,20 +419,19 @@ impl ServerState {
                 let opt_player = self.players.get(&player_id);
                 match opt_player {
                     Some(player) => {
-                        let unsent_messages: Vec<BroadcastChatMessage>;
                         // Only send what a player has not yet seen
                         let raw_unsent_messages = match player.last_acked_msg_seq_num {
                             Some(last_acked_msg_seq_num) => {
-                                // unwrap()'s okay because we know it's non-empty
-                                let mut message_iter = slot.messages.iter();
 
-                                let newest_msg = message_iter.clone().last().unwrap();
+                                let newest_msg = slot.messages.back().unwrap(); // XXX unwrap()'s okay because we know it's non-empty
                                 // Player is caught up
                                 if last_acked_msg_seq_num == newest_msg.seq_num {
                                     continue;
-                                } else if last_acked_msg_seq_num > newest_msg.seq_num { panic!("client has more messages than we sent!"); }
+                                } else if last_acked_msg_seq_num > newest_msg.seq_num {
+                                    panic!("client has more messages than we sent!");
+                                }
 
-                                let oldest_msg = message_iter.clone().next().unwrap();
+                                let oldest_msg = slot.messages.front().unwrap(); // XXX unwrap()'s okay because we know it's non-empty
                                 // Skip over these messages since we've already acked them
                                 let amount_to_consume: u64 =
                                     if last_acked_msg_seq_num >= oldest_msg.seq_num {
@@ -445,6 +444,7 @@ impl ServerState {
                                     };
 
                                 // Cast to usize is safe because our message containers are limited by MAX_NUM_CHAT_MESSAGES
+                                let mut message_iter = slot.messages.iter();
                                 message_iter.skip(amount_to_consume as usize).cloned().collect()
                             }
                             None => {
@@ -453,7 +453,7 @@ impl ServerState {
                             }
                         };
 
-                        unsent_messages = raw_unsent_messages.iter().map(|msg| {
+                        let unsent_messages: Vec<BroadcastChatMessage> = raw_unsent_messages.iter().map(|msg| {
                             BroadcastChatMessage {
                                 chat_seq:    Some(msg.seq_num),
                                 player_name: msg.player_name.clone(),
