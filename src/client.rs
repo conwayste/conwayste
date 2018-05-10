@@ -231,12 +231,15 @@ fn main() {
                         }
                         Packet::Update{chats, game_updates, universe_update} => {
                             match chats {
-                                Some(message_list) => {
-                                    for unread in message_list {
-                                        if client_state.chat_msg_seq_num < unread.chat_seq.unwrap() {
-                                            client_state.chat_msg_seq_num = unread.chat_seq.unwrap();
-                                            println!("{}: {}", unread.player_name, unread.message);
-                                        }
+                                Some(mut chat_messages) => {
+                                    chat_messages.retain(|ref chat_message| {
+                                        client_state.chat_msg_seq_num < chat_message.chat_seq.unwrap() &&
+                                          client_state.name.as_ref().unwrap() != &chat_message.player_name
+                                    });
+                                    for chat_message in chat_messages {
+                                        let chat_seq = chat_message.chat_seq.unwrap();
+                                        client_state.chat_msg_seq_num = std::cmp::max(chat_seq, client_state.chat_msg_seq_num);
+                                        println!("{}: {}", chat_message.player_name, chat_message.message);
                                     }
                                 }
                                 None => {}

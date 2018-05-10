@@ -91,7 +91,7 @@ struct GameSlot {
     game_running: bool,
     universe:     u64,    // Temp until we integrate
     latest_seq_num: u64,
-    messages:     VecDeque<ServerChatMessage>    // Front == Head (New), End == Tail, (Old)
+    messages:     VecDeque<ServerChatMessage>    // Front == Oldest, Back == Newest
 }
 
 struct ServerState {
@@ -389,7 +389,7 @@ impl ServerState {
                 }
 
                 let player = opt_player.unwrap();
-                if !player.last_acked_msg_seq_num.is_some() || player.last_acked_msg_seq_num < last_chat_seq {
+                if player.last_acked_msg_seq_num.is_none() || player.last_acked_msg_seq_num < last_chat_seq {
                     player.last_acked_msg_seq_num = last_chat_seq;
                 }
                 Ok(None)
@@ -423,14 +423,14 @@ impl ServerState {
                         // Only send what a player has not yet seen
                         let raw_unsent_messages = match player.last_acked_msg_seq_num {
                             Some(last_acked_msg_seq_num) => {
-                                // Unwrap()'s okay because we know its non-empty
+                                // unwrap()'s okay because we know it's non-empty
                                 let mut message_iter = slot.messages.iter();
 
                                 let newest_msg = message_iter.clone().last().unwrap();
                                 // Player is caught up
                                 if last_acked_msg_seq_num == newest_msg.seq_num {
                                     continue;
-                                }
+                                } else if last_acked_msg_seq_num > newest_msg.seq_num { panic!("client has more messages than we sent!"); }
 
                                 let oldest_msg = message_iter.clone().next().unwrap();
                                 // Skip over these messages since we've already acked them
@@ -453,16 +453,13 @@ impl ServerState {
                             }
                         };
 
-                        unsent_messages = raw_unsent_messages.iter().filter_map(|msg|
-                            if msg.player_id != player.player_id {
-                                Some(BroadcastChatMessage{
-                                    chat_seq:    Some(msg.seq_num),
-                                    player_name: msg.player_name.clone(),
-                                    message:     msg.message.clone()
-                                })
-                            } else {
-                                None
-                            }).collect();
+                        unsent_messages = raw_unsent_messages.iter().map(|msg| {
+                            BroadcastChatMessage {
+                                chat_seq:    Some(msg.seq_num),
+                                player_name: msg.player_name.clone(),
+                                message:     msg.message.clone()
+                            }
+                        }).collect();
 
                         let messages_available = !unsent_messages.is_empty();
                         let update_packet = Packet::Update {
