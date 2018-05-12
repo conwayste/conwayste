@@ -417,63 +417,61 @@ impl ServerState {
 
             for player_id in &slot.player_ids {
                 let opt_player = self.players.get(&player_id);
-                match opt_player {
-                    Some(player) => {
-                        // Only send what a player has not yet seen
-                        let raw_unsent_messages = match player.last_acked_msg_seq_num {
-                            Some(last_acked_msg_seq_num) => {
+                if opt_player.is_none() { continue; }
+                let player = opt_player.unwrap();
+                // Only send what a player has not yet seen
+                let raw_unsent_messages = match player.last_acked_msg_seq_num {
+                    Some(last_acked_msg_seq_num) => {
 
-                                let newest_msg = slot.messages.back().unwrap(); // XXX unwrap()'s okay because we know it's non-empty
-                                // Player is caught up
-                                if last_acked_msg_seq_num == newest_msg.seq_num {
-                                    continue;
-                                } else if last_acked_msg_seq_num > newest_msg.seq_num {
-                                    panic!("client has more messages than we sent!");
-                                }
-
-                                let oldest_msg = slot.messages.front().unwrap(); // XXX unwrap()'s okay because we know it's non-empty
-                                // Skip over these messages since we've already acked them
-                                let amount_to_consume: u64 =
-                                    if last_acked_msg_seq_num >= oldest_msg.seq_num {
-                                        ((last_acked_msg_seq_num - oldest_msg.seq_num) + 1) % (MAX_NUM_CHAT_MESSAGES as u64)
-                                    } else if last_acked_msg_seq_num < oldest_msg.seq_num && oldest_msg.seq_num != newest_msg.seq_num {
-                                        // Sequence number has wrapped
-                                        (<u64>::max_value() - oldest_msg.seq_num) + last_acked_msg_seq_num + 1
-                                    } else {
-                                        0
-                                    };
-
-                                // Cast to usize is safe because our message containers are limited by MAX_NUM_CHAT_MESSAGES
-                                let mut message_iter = slot.messages.iter();
-                                message_iter.skip(amount_to_consume as usize).cloned().collect()
-                            }
-                            None => {
-                                // Smithers, unleash the hounds!
-                                slot.messages.clone()
-                            }
-                        };
-
-                        let unsent_messages: Vec<BroadcastChatMessage> = raw_unsent_messages.iter().map(|msg| {
-                            BroadcastChatMessage {
-                                chat_seq:    Some(msg.seq_num),
-                                player_name: msg.player_name.clone(),
-                                message:     msg.message.clone()
-                            }
-                        }).collect();
-
-                        let messages_available = !unsent_messages.is_empty();
-                        let update_packet = Packet::Update {
-                            chats:           if !messages_available {None} else {Some(unsent_messages)},
-                            game_updates:    None,
-                            universe_update: UniUpdateType::NoChange,
-                        };
-
-                        // TODO Add condition for game_updates
-                        if messages_available {
-                            client_updates.push((player.addr.clone(), update_packet));
+                        let newest_msg = slot.messages.back().unwrap(); // XXX unwrap()'s okay because we know it's non-empty
+                        // Player is caught up
+                        if last_acked_msg_seq_num == newest_msg.seq_num {
+                            continue;
+                        } else if last_acked_msg_seq_num > newest_msg.seq_num {
+                            println!("ERROR: misbehaving client {}; client says it has more messages than we sent!", player.name);
+                            continue;
                         }
+
+                        let oldest_msg = slot.messages.front().unwrap(); // XXX unwrap()'s okay because we know it's non-empty
+                        // Skip over these messages since we've already acked them
+                        let amount_to_consume: u64 =
+                            if last_acked_msg_seq_num >= oldest_msg.seq_num {
+                                ((last_acked_msg_seq_num - oldest_msg.seq_num) + 1) % (MAX_NUM_CHAT_MESSAGES as u64)
+                            } else if last_acked_msg_seq_num < oldest_msg.seq_num && oldest_msg.seq_num != newest_msg.seq_num {
+                                // Sequence number has wrapped
+                                (<u64>::max_value() - oldest_msg.seq_num) + last_acked_msg_seq_num + 1
+                            } else {
+                                0
+                            };
+
+                        // Cast to usize is safe because our message containers are limited by MAX_NUM_CHAT_MESSAGES
+                        let mut message_iter = slot.messages.iter();
+                        message_iter.skip(amount_to_consume as usize).cloned().collect()
                     }
-                    None => { }
+                    None => {
+                        // Smithers, unleash the hounds!
+                        slot.messages.clone()
+                    }
+                };
+
+                let unsent_messages: Vec<BroadcastChatMessage> = raw_unsent_messages.iter().map(|msg| {
+                    BroadcastChatMessage {
+                        chat_seq:    Some(msg.seq_num),
+                        player_name: msg.player_name.clone(),
+                        message:     msg.message.clone()
+                    }
+                }).collect();
+
+                let messages_available = !unsent_messages.is_empty();
+                let update_packet = Packet::Update {
+                    chats:           if !messages_available {None} else {Some(unsent_messages)},
+                    game_updates:    None,
+                    universe_update: UniUpdateType::NoChange,
+                };
+
+                // TODO Add condition for game_updates
+                if messages_available {
+                    client_updates.push((player.addr.clone(), update_packet));
                 }
             }
         }
