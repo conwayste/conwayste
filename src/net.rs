@@ -41,10 +41,10 @@ pub enum RequestAction {
     KeepAlive,
     ListPlayers,
     ChatMessage(String),
-    ListGameSlots,
-    NewGameSlot(String),
-    JoinGameSlot(String),
-    LeaveGameSlot,
+    ListRooms,
+    NewRoom(String),
+    JoinRoom(String),
+    LeaveRoom,
 }
 
 // server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
@@ -54,7 +54,7 @@ pub enum ResponseCode {
     OK,                              // 200 no data
     LoggedIn(String, String),                // player is logged in -- provide cookie
     PlayerList(Vec<String>),
-    GameSlotList(Vec<(String, u64, bool)>), // (game name, # players, started?)
+    RoomList(Vec<(String, u64, bool)>), // (room name, # players, started?)
     // errors
     BadRequest(Option<String>),      // 400 unspecified error that is client's fault
     Unauthorized(Option<String>),    // 401 not logged in
@@ -68,7 +68,7 @@ pub enum ResponseCode {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct BroadcastChatMessage {
     pub chat_seq:    Option<u64>,   // Some(<number>) when sent to clients (starts at 0 for first
-                                    // chat message sent to this client in this game); None when
+                                    // chat message sent to this client in this room); None when
                                     // internal to server
     pub player_name: String,
     pub message:     String,        // should not contain newlines

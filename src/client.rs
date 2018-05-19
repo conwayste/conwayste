@@ -31,14 +31,14 @@ struct ClientState {
     last_req_action: Option<RequestAction>,   // last one we sent to server TODO: this is wrong;
                                               // assumes network is well-behaved
     name:         Option<String>,
-    game_slot:    Option<String>,
+    room:    Option<String>,
     cookie:       Option<String>,
     chat_msg_seq_num: u64,
 }
 
 impl ClientState {
     fn in_game(&self) -> bool {
-        self.game_slot.is_some()
+        self.room.is_some()
     }
 
     fn check_for_upgrade(&self, server_version: &String) {
@@ -71,10 +71,10 @@ fn print_help() {
     println!("/help                  - print this text");
     println!("/connect <player_name> - connect to server");
     println!("/disconnect            - disconnect from server");
-    println!("/list                  - list game slots when in lobby, or players when in game");
-    println!("/new <slot_name>       - create a new game slot (when not in game)");
-    println!("/join <slot_name>      - join a game slot (when not in game)");
-    println!("/leave                 - leave a game slot (when in game)");
+    println!("/list                  - list rooms when in lobby, or players when in game");
+    println!("/new <room_name>       - create a new room (when not in game)");
+    println!("/join <room_name>      - join a room (when not in game)");
+    println!("/leave                 - leave a room (when in game)");
     println!("/quit                  - exit the program");
     println!("...or just type text to chat!");
 }
@@ -121,7 +121,7 @@ fn main() {
         response_ack: None,
         last_req_action: None,
         name:         None,
-        game_slot:    None,
+        room:    None,
         cookie:       None,      // not connected yet
         chat_msg_seq_num: 0,
     };
@@ -179,15 +179,15 @@ fn main() {
                                 ResponseCode::OK => {
                                     if let Some(ref last_action) = client_state.last_req_action {
                                         match last_action {
-                                            &RequestAction::JoinGameSlot(ref slot_name) => {
-                                                client_state.game_slot = Some(slot_name.clone());
-                                                println!("Joined game slot {}.", slot_name);
+                                            &RequestAction::JoinRoom(ref room_name) => {
+                                                client_state.room = Some(room_name.clone());
+                                                println!("Joined room {}.", room_name);
                                             }
-                                            &RequestAction::LeaveGameSlot => {
+                                            &RequestAction::LeaveRoom => {
                                                 if client_state.in_game() {
-                                                    println!("Left game slot {}.", client_state.game_slot.unwrap());
+                                                    println!("Left room {}.", client_state.room.unwrap());
                                                 }
-                                                client_state.game_slot = None;
+                                                client_state.room = None;
                                             }
                                             _ => {
                                                 //XXX more cases in which server replies OK
@@ -213,15 +213,15 @@ fn main() {
                                     }
                                     println!("---END PLAYER LIST---");
                                 }
-                                ResponseCode::GameSlotList(slots) => {
-                                    println!("---BEGIN GAME SLOT LIST---");
-                                    for (game_name, num_players, game_running) in slots {
+                                ResponseCode::RoomList(rooms) => {
+                                    println!("---BEGIN GAME ROOM LIST---");
+                                    for (game_name, num_players, game_running) in rooms {
                                         println!("#players: {},\trunning? {:?},\tname: {:?}",
                                                  num_players,
                                                  game_running,
                                                  game_name);
                                     }
-                                    println!("---END GAME SLOT LIST---");
+                                    println!("---END GAME ROOM LIST---");
                                 }
                                 // errors
                                 code @ _ => {
@@ -317,24 +317,24 @@ fn main() {
                                 }
                                 "list" => {
                                     if args.len() == 0 {
-                                        // players or game slots
+                                        // players or rooms
                                         if client_state.in_game() {
                                             action = RequestAction::ListPlayers;
                                         } else {
                                             // lobby
-                                            action = RequestAction::ListGameSlots;
+                                            action = RequestAction::ListRooms;
                                         }
                                     } else { println!("ERROR: expected no arguments to list"); }
                                 }
                                 "new" => {
                                     if args.len() == 1 {
-                                        action = RequestAction::NewGameSlot(args[0].clone());
+                                        action = RequestAction::NewRoom(args[0].clone());
                                     } else { println!("ERROR: expected one argument to new"); }
                                 }
                                 "join" => {
                                     if args.len() == 1 {
                                         if !client_state.in_game() {
-                                            action = RequestAction::JoinGameSlot(args[0].clone());
+                                            action = RequestAction::JoinRoom(args[0].clone());
                                         } else {
                                             println!("ERROR: you are already in a game");
                                         }
@@ -343,7 +343,7 @@ fn main() {
                                 "leave" => {
                                     if args.len() == 0 {
                                         if client_state.in_game() {
-                                            action = RequestAction::LeaveGameSlot;
+                                            action = RequestAction::LeaveRoom;
                                         } else {
                                             println!("ERROR: you are already in the lobby");
                                         }
