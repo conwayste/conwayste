@@ -63,7 +63,7 @@ struct Player {
     last_acked_msg_seq_num: Option<u64> // TODO: move to PlayerInGameInfo
 }
 
-// info for a player as it relates to a game/Room
+// info for a player as it relates to a game/room
 #[derive(PartialEq, Debug, Clone)]
 struct PlayerInGameInfo {
     room_id: RoomID,
@@ -98,8 +98,8 @@ struct ServerState {
     tick:           u64,
     players:        HashMap<PlayerID, Player>,
     player_map:     HashMap<String, PlayerID>,      // map cookie to player ID
-    rooms:     HashMap<RoomID, Room>,
-    room_map:  HashMap<String, RoomID>,      // map room name to room ID
+    rooms:          HashMap<RoomID, Room>,
+    room_map:       HashMap<String, RoomID>,      // map room name to room ID
 }
 
 //////////////// Utilities ///////////////////////
@@ -180,29 +180,31 @@ impl Room {
 
 impl ServerState {
 
-    fn get_player(&player_id) -> Player {
-        let opt_player: self.players.get(&player_id);
+    fn get_player(&mut self, player_id: &PlayerID) -> &Player {
+        let opt_player = self.players.get(&player_id);
 
         if opt_player.is_none() {
-            panic!("player_id: {} could not be found!"));
+            panic!("player_id: {} could not be found!");
         }
 
         opt_player.unwrap()
     }
 
-    fn get_room_id(player_id: &PlayerID) -> Option<RoomID> {
-        let player = get_player(player_id);
+    fn get_room_id(&mut self, player_id: &PlayerID) -> Option<RoomID> {
+        let player = self.get_player(player_id);
         if player.game_info == None {
             return None;
         };
 
-        Some(&player.game_info.as_ref().unwrap().room_id)  // unwrap ok because of test above
+        Some(player.game_info.as_ref().unwrap().room_id)  // unwrap ok because of test above
     }
 
-    fn get_room(&player_id: &PlayerID, opt_error_msg: Option<Owned>) -> Ga;
+    fn get_room(&mut self, &player_id: &PlayerID) -> Option<Room> {
+        unimplemented!();
+    }
 
-    fn list_players(player_id: &PlayerID) -> RespondCode {
-        let opt_room_id = get_room_id(player_id);
+    fn list_players(&mut self, player_id: &PlayerID) -> ResponseCode {
+        let opt_room_id = self.get_room_id(player_id);
         if opt_room_id.is_none() {
             return ResponseCode::BadRequest(Some("cannot list players because in lobby.".to_owned()));
         }
@@ -219,11 +221,11 @@ impl ServerState {
         return ResponseCode::PlayerList(players);
     }
 
-    fn handle_chat_message(&mut self, player_id: &Player_ID) -> ResponseCode {
+    fn handle_chat_message(&mut self, player_id: &PlayerID, msg: String) -> ResponseCode {
         let player = self.players.get(&player_id);
-        let player_in_game = player.is_some() && player.unwrap().room_info.is_some();
+        let player_in_game = player.is_some() && player.unwrap().game_info.is_some();
 
-        if !player_in_room {
+        if !player_in_game {
             return ResponseCode::BadRequest(Some(format!("Player {} has not joined a game.", player_id)))
         }
 
@@ -241,12 +243,12 @@ impl ServerState {
         let seq_num = gs.increment_seq_num();
 
         gs.discard_older_messages();
-        gs.add_message(ServerChatMessage::new(player_id, player.name.clone(), msg, seq_num));
+        gs.add_message(ServerChatMessage::new(*player_id, player.name.clone(), msg, seq_num));
 
         return ResponseCode::OK;
     }
 
-    fn list_Rooms(&mut self, player_id: &PlayerID) -> ResponseCode {
+    fn list_rooms(&mut self) -> ResponseCode {
         let mut rooms = vec![];
         self.rooms.values().for_each(|gs| {
             rooms.push((gs.name.clone(), gs.player_ids.len() as u64, gs.game_running));
@@ -254,9 +256,16 @@ impl ServerState {
         ResponseCode::RoomList(rooms)
     }
 
-    fn create_new_Room(&mut self, player_id: &PlayerID, room_name: ()) -> ResponseCode {
+    fn new_room(&mut self, name: String) {
+        let room = Room::new(name.clone(), vec![]);
+
+        self.room_map.insert(name, room.room_id);
+        self.rooms.insert(room.room_id, room);
+    }
+
+    fn create_new_room(&mut self, player_id: &PlayerID, room_name: String) -> ResponseCode {
         // validate length
-        if name.len() > MAX_ROOM_NAME {
+        if room_name.len() > MAX_ROOM_NAME {
             return ResponseCode::BadRequest(Some(format!("room name too long; max {} characters",
                                                             MAX_ROOM_NAME)));
         }
@@ -266,8 +275,8 @@ impl ServerState {
         }
 
         // Create room if the room name is not already taken
-        if !self.room_map.get(&name).is_some() {
-            self.new_Room(name.clone());
+        if !self.room_map.get(&room_name).is_some() {
+            self.new_room(room_name.clone());
 
             return ResponseCode::OK;
         } else {
@@ -275,7 +284,7 @@ impl ServerState {
         }
     }
 
-    fn create_new_Room(player_id: &PlayerID, room_name: ()) -> ResponseCode {
+    fn join_room(&mut self, player_id: &PlayerID, room_name: String) -> ResponseCode {
         let player: &mut Player = self.players.get_mut(&player_id).unwrap();
         if player.game_info.is_some() {
             return ResponseCode::BadRequest(Some("cannot join game because already in-game.".to_owned()));
@@ -290,7 +299,7 @@ impl ServerState {
         return ResponseCode::BadRequest(Some(format!("no room named {:?}", room_name)));
     }
 
-    fn leave_Room(player_id: &PlayerID) -> ResponseCode {
+    fn leave_room(&mut self, player_id: &PlayerID) -> ResponseCode {
         // TODO: DRY up code duplication with other branches of this match (especially ListPlayers)
         // remove current player from its game
         let player: &mut Player = self.players.get_mut(&player_id).unwrap();
@@ -321,27 +330,27 @@ impl ServerState {
                 return self.list_players(&player_id);
             },
             RequestAction::ChatMessage(msg)  => {
-                return self.handle_chat_message(&player_id);
+                return self.handle_chat_message(&player_id, msg);
             },
             RequestAction::ListRooms   => {
-                return self.list_Rooms();
+                return self.list_rooms();
             }
             RequestAction::NewRoom(name)  => {
-                return self.create_new_Room(player_id, name);
+                return self.create_new_room(&player_id, name);
             }
             RequestAction::JoinRoom(room_name) => {
-                return self.join_Room(player_id, room_name);
+                return self.join_room(&player_id, room_name);
             }
             RequestAction::LeaveRoom   => {
-                return self.leave_Room(&player_id);
+                return self.leave_room(&player_id);
             }
             RequestAction::Connect{..}     => panic!(),
             RequestAction::None            => panic!(),
         }
     }
 
-    fn is_player_in_game(&self, id: PlayerID) -> bool {
-        let player: &Player = self.players.get(&id).unwrap();
+    fn is_player_in_game(&self, id: &PlayerID) -> bool {
+        let player: &Player = self.players.get(id).unwrap();
         player.game_info.is_some()
     }
 
@@ -550,7 +559,7 @@ impl ServerState {
         }
     }
 
-    fn expire_old_messages_in_all_Rooms(&mut self) {
+    fn expire_old_messages_in_all_rooms(&mut self) {
         if self.rooms.len() != 0 {
             let current_timestamp = time::Instant::now();
             for room in self.rooms.values_mut() {
@@ -567,7 +576,7 @@ impl ServerState {
             player_id:     PlayerID(calculate_hash()),
             cookie:        cookie,
             addr:          addr,
-            name:   name,
+            name:          name,
             request_ack:   None,
             next_resp_seq: 0,
             game_info:     None,
@@ -575,20 +584,13 @@ impl ServerState {
         }
     }
 
-    fn new_Room(&mut self, name: String) {
-        let room = Room::new(name.clone(), vec![]);
-
-        self.room_map.insert(name, room.room_id);
-        self.rooms.insert(room.room_id, room);
-    }
-
     fn new() -> Self {
         ServerState {
-            tick:              0,
-            players:           HashMap::<PlayerID, Player>::new(),
-            rooms:        HashMap::<RoomID, Room>::new(),
-            player_map:        HashMap::<String, PlayerID>::new(),
-            room_map:     HashMap::<String, RoomID>::new(),
+            tick:       0,
+            players:    HashMap::<PlayerID, Player>::new(),
+            rooms:      HashMap::<RoomID, Room>::new(),
+            player_map: HashMap::<String, PlayerID>::new(),
+            room_map:   HashMap::<String, RoomID>::new(),
         }
     }
 }
@@ -667,7 +669,7 @@ fn main() {
                     // Likely spawn off work to handle server tasks here
                     server_state.tick += 1;
 
-                    server_state.expire_old_messages_in_all_Rooms();
+                    server_state.expire_old_messages_in_all_rooms();
                     let client_update_packets_result = server_state.construct_client_updates();
                     if client_update_packets_result.is_ok() {
                         let opt_update_packets = client_update_packets_result.unwrap();
