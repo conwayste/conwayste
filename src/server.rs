@@ -180,7 +180,7 @@ impl Room {
 
 impl ServerState {
 
-    fn get_player(&mut self, player_id: &PlayerID) -> &Player {
+    fn get_player(&self, player_id: &PlayerID) -> &Player {
         let opt_player = self.players.get(&player_id);
 
         if opt_player.is_none() {
@@ -190,7 +190,7 @@ impl ServerState {
         opt_player.unwrap()
     }
 
-    fn get_room_id(&mut self, player_id: &PlayerID) -> Option<RoomID> {
+    fn get_room_id(&self, player_id: &PlayerID) -> Option<RoomID> {
         let player = self.get_player(player_id);
         if player.game_info == None {
             return None;
@@ -199,21 +199,34 @@ impl ServerState {
         Some(player.game_info.as_ref().unwrap().room_id)  // unwrap ok because of test above
     }
 
-    fn get_room(&mut self, &player_id: &PlayerID) -> Option<Room> {
-        unimplemented!();
+    fn get_room_mut(&mut self, &player_id: &PlayerID) -> Option<&mut Room> {
+        let opt_room_id = self.get_room_id(&player_id);
+
+        if opt_room_id.is_none() {
+            return None;
+        }
+        self.rooms.get_mut(&opt_room_id.unwrap())
     }
 
-    fn list_players(&mut self, player_id: &PlayerID) -> ResponseCode {
-        let opt_room_id = self.get_room_id(player_id);
+    fn get_room(&self, &player_id: &PlayerID) -> Option<&Room> {
+        let opt_room_id = self.get_room_id(&player_id);
+
         if opt_room_id.is_none() {
+            return None;
+        }
+        self.rooms.get(&opt_room_id.unwrap())
+    }
+
+    fn list_players(&self, player_id: &PlayerID) -> ResponseCode {
+        let opt_room = self.get_room(player_id);
+        if opt_room.is_none() {
             return ResponseCode::BadRequest(Some("cannot list players because in lobby.".to_owned()));
         }
-        let room_id = opt_room_id.unwrap();
-        let gs = self.rooms.get(&room_id).unwrap();
+        let room = opt_room.unwrap();
 
         let mut players = vec![];
         self.players.values().for_each(|p| {
-            if gs.player_ids.contains(&p.player_id) {
+            if room.player_ids.contains(&p.player_id) {
                 players.push(p.name.clone());
             }
         });
@@ -222,28 +235,30 @@ impl ServerState {
     }
 
     fn handle_chat_message(&mut self, player_id: &PlayerID, msg: String) -> ResponseCode {
-        let player = self.players.get(&player_id);
-        let player_in_game = player.is_some() && player.unwrap().game_info.is_some();
+        let player_in_game = self.is_player_in_game(&player_id);
 
         if !player_in_game {
-            return ResponseCode::BadRequest(Some(format!("Player {} has not joined a game.", player_id)))
+            return ResponseCode::BadRequest(Some(format!("Player {} has not joined a game.", player_id)));
         }
+
+        // We're borrowing self mutably below, so let's grab this now
+        let player_name = {
+            let player = self.players.get(&player_id);
+            player.unwrap().name.clone()
+        };
 
         // User is in game, Server needs to broadcast this to Room
-        let player = player.unwrap();
-        let room_id = player.clone().game_info.unwrap().room_id;
+        let opt_room = self.get_room_mut(&player_id);
 
-        let opt_room = self.rooms.get_mut(&room_id);
-
-        if opt_room == None {
-            return ResponseCode::BadRequest(Some(format!("No game found or player {} and room id {}", player_id, room_id)))
+        if opt_room.is_none() {
+            return ResponseCode::BadRequest(Some( format!("Player \"{}\" should be in a room! None found.", player_id )));
         }
 
-        let gs = opt_room.unwrap();
-        let seq_num = gs.increment_seq_num();
+        let room = opt_room.unwrap();
+        let seq_num = room.increment_seq_num();
 
-        gs.discard_older_messages();
-        gs.add_message(ServerChatMessage::new(*player_id, player.name.clone(), msg, seq_num));
+        room.discard_older_messages();
+        room.add_message(ServerChatMessage::new(*player_id, player_name, msg, seq_num));
 
         return ResponseCode::OK;
     }
@@ -285,13 +300,17 @@ impl ServerState {
     }
 
     fn join_room(&mut self, player_id: &PlayerID, room_name: String) -> ResponseCode {
-        let player: &mut Player = self.players.get_mut(&player_id).unwrap();
-        if player.game_info.is_some() {
+        let already_playing = self.is_player_in_game(&player_id);
+        if already_playing {
             return ResponseCode::BadRequest(Some("cannot join game because already in-game.".to_owned()));
         }
+
+        let player: &mut Player = self.players.get_mut(&player_id).unwrap();
+
+        // TODO replace loop with `get_key_value` once it reaches stable. Same thing with `leave_room` algorithm
         for ref mut gs in self.rooms.values_mut() {
             if gs.name == room_name {
-                gs.player_ids.push(player.player_id);
+                gs.player_ids.push(*player_id);
                 player.game_info = Some(PlayerInGameInfo{ room_id: gs.room_id.clone() });
                 return ResponseCode::OK;
             }
@@ -300,12 +319,12 @@ impl ServerState {
     }
 
     fn leave_room(&mut self, player_id: &PlayerID) -> ResponseCode {
-        // TODO: DRY up code duplication with other branches of this match (especially ListPlayers)
-        // remove current player from its game
-        let player: &mut Player = self.players.get_mut(&player_id).unwrap();
-        if player.game_info == None {
+        let already_playing = self.is_player_in_game(&player_id);
+        if !already_playing {
             return ResponseCode::BadRequest(Some("cannot leave game because in lobby.".to_owned()));
-        };
+        }
+        
+        let player: &mut Player = self.players.get_mut(&player_id).unwrap();
         {
             let room_id = &player.game_info.as_ref().unwrap().room_id;  // unwrap ok because of test above
             for ref mut gs in self.rooms.values_mut() {
@@ -350,8 +369,8 @@ impl ServerState {
     }
 
     fn is_player_in_game(&self, id: &PlayerID) -> bool {
-        let player: &Player = self.players.get(id).unwrap();
-        player.game_info.is_some()
+        let player: Option<&Player> = self.players.get(id);
+        player.is_some() && player.unwrap().game_info.is_some()
     }
 
     fn is_unique_player_name(&self, name: &str) -> bool {
@@ -360,7 +379,7 @@ impl ServerState {
                 return false;
             }
         }
-        true
+        return true;
     }
 
     fn get_player_id_by_cookie(&self, cookie: &str) -> Option<PlayerID> {
