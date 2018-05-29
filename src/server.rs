@@ -432,9 +432,28 @@ impl ServerState {
                 }
 
                 // handle connect (create user, and save cookie)
+<<<<<<< HEAD
                 if let RequestAction::Connect{name, client_version} = action {
                     if validate_client_version(client_version) {
                         let response = self.handle_new_connection(name, addr);
+=======
+                if let RequestAction::Connect{name, client_version: _} = action {
+                    if self.is_unique_player_name(&name) {
+                        let mut player = self.new_player(name.clone(), addr.clone());
+                        let cookie = player.cookie.clone();
+                        let sequence = player.next_resp_seq;
+                        player.next_resp_seq += 1;
+
+                        // save player into players hash map, and save player ID into hash map using cookie
+                        self.player_map.insert(cookie.clone(), player.player_id);
+                        self.players.insert(player.player_id, player);
+
+                        let response = Packet::Response{
+                            sequence:    sequence,
+                            request_ack: None,
+                            code:        ResponseCode::LoggedIn(cookie, net::VERSION.to_owned()),
+                        };
+>>>>>>> 52e7af1... server: get rid of some warnings about unused vars
                         return Ok(Some(response));
                     } else {
                         return Err(Box::new(io::Error::new(ErrorKind::Other, "client out of date -- please upgrade")));
