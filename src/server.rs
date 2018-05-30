@@ -58,7 +58,7 @@ struct Player {
     addr:          SocketAddr,
     name:          String,
     request_ack:   Option<u64>,          // most recent request sequence number received
-    next_resp_seq: u64,                  // next response sequence number
+    next_resp_seq: u64,                  // This is the sequence number for the most recent Response packet the Server sent to the Client
     game_info:     Option<PlayerInGameInfo>,   // none means in lobby
     last_acked_msg_seq_num: Option<u64> // TODO: move to PlayerInGameInfo
 }
@@ -72,6 +72,13 @@ struct PlayerInGameInfo {
 }
 
 impl Player {
+    fn increment_response_seq_num(&mut self) {
+        self.next_resp_seq += 1;
+    }
+
+    fn get_response_seq_num(&self) -> u64 {
+        self.next_resp_seq
+    }
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -132,6 +139,11 @@ fn calculate_hash() -> u64 {
 
     hash = (timestamp << 32) | rand_salt;
     hash
+}
+
+fn validate_client_version(_client_version: String) -> bool {
+    //TODO: Implement via TDD
+    true
 }
 
 impl ServerChatMessage {
@@ -382,6 +394,20 @@ impl ServerState {
         return true;
     }
 
+    fn create_new_player(&mut self, name: String, addr: SocketAddr) -> String {
+        let mut player = self.new_player(name, addr);
+
+        let player_id = player.player_id;
+        let cookie = player.cookie.clone();
+
+        player.increment_response_seq_num();
+
+        // save player into players hash map, and save player ID into hash map using cookie
+        self.player_map.insert(cookie.clone(), player_id);
+        self.players.insert(player_id, player);
+        cookie
+    }
+
     fn get_player_id_by_cookie(&self, cookie: &str) -> Option<PlayerID> {
         match self.player_map.get(cookie) {
             Some(player_id) => Some(*player_id),
@@ -392,10 +418,10 @@ impl ServerState {
     // always returns either Ok(Some(Packet::Response{...})), Ok(None), or error
     fn decode_packet(&mut self, addr: SocketAddr, packet: Packet) -> Result<Option<Packet>, Box<Error>> {
         match packet {
-            pkt @ Packet::Response{..} | pkt @ Packet::Update{..} => {
+            _pkt @ Packet::Response{..} | _pkt @ Packet::Update{..} => {
                 return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "invalid packet - server-only")));
             }
-            Packet::Request{sequence, response_ack, cookie, action} => {
+            Packet::Request{sequence: _, response_ack: _, cookie, action} => {
                 match action {
                     RequestAction::Connect{..} => (),
                     _ => {
@@ -407,31 +433,12 @@ impl ServerState {
 
                 // handle connect (create user, and save cookie)
                 if let RequestAction::Connect{name, client_version} = action {
-                    if self.is_unique_player_name(&name) {
-                        let mut player = self.new_player(name.clone(), addr.clone());
-                        let cookie = player.cookie.clone();
-                        let sequence = player.next_resp_seq;
-                        player.next_resp_seq += 1;
-
-                        // save player into players hash map, and save player ID into hash map using cookie
-                        self.player_map.insert(cookie.clone(), player.player_id);
-                        self.players.insert(player.player_id, player);
-
-                        let response = Packet::Response{
-                            sequence:    sequence,
-                            request_ack: None,
-                            code:        ResponseCode::LoggedIn(cookie, net::VERSION.to_owned()),
-                        };
+                    if validate_client_version(client_version) {
+                        let response = self.handle_new_connection(name, addr);
                         return Ok(Some(response));
                     } else {
-                        // not a unique name
-                        let response = Packet::Response{
-                            sequence:    0,
-                            request_ack: None,
-                            code:        ResponseCode::Unauthorized(Some("not a unique name".to_owned())),
-                        };
-                        return Ok(Some(response));
-                    }
+                        return Err(Box::new(io::Error::new(ErrorKind::Other, "client out of date -- please upgrade")));
+                    };
                 } else {
                     // look up player by cookie
                     let cookie = match cookie {
@@ -449,24 +456,13 @@ impl ServerState {
                     match action {
                         RequestAction::Connect{..} => unreachable!(),
                         _ => {
-                            let response_code = self.process_request_action(player_id, action);
-                            let sequence = {
-                                let player: &mut Player = self.players.get_mut(&player_id).unwrap();
-                                let sequence = player.next_resp_seq;
-                                player.next_resp_seq += 1;
-                                sequence
-                            };
-                            let response = Packet::Response{
-                                sequence:    sequence,
-                                request_ack: None,
-                                code:        response_code,
-                            };
+                            let response = self.handle_request_action(player_id, action);
                             Ok(Some(response))
                         }
                     }
                 }
             }
-            Packet::UpdateReply{cookie, last_chat_seq, last_game_update_seq, last_gen} => {
+            Packet::UpdateReply{cookie, last_chat_seq, last_game_update_seq: _, last_gen: _} => {
                 let opt_player_id = self.get_player_id_by_cookie(cookie.as_str());
                 
                 if opt_player_id == None {
@@ -487,6 +483,44 @@ impl ServerState {
                 Ok(None)
             }
 
+        }
+    }
+
+    fn handle_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Packet {
+        let response_code = self.process_request_action(player_id, action);
+
+        let sequence = {
+            let player: &mut Player = self.players.get_mut(&player_id).unwrap();
+            let sequence = player.get_response_seq_num();
+            player.increment_response_seq_num();
+            sequence
+        };
+
+        Packet::Response{
+            sequence:    sequence,
+            request_ack: None,
+            code:        response_code,
+        }
+    }
+
+    fn handle_new_connection(&mut self, name: String, addr: SocketAddr) -> Packet {
+        if self.is_unique_player_name(&name) {
+            let cookie = self.create_new_player(name.clone(), addr.clone());
+
+            let response = Packet::Response{
+                sequence:    0,
+                request_ack: None,
+                code:        ResponseCode::LoggedIn(cookie, net::VERSION.to_owned()),
+            };
+            return response;
+        } else {
+            // not a unique name
+            let response = Packet::Response{
+                sequence:    0,
+                request_ack: None,
+                code:        ResponseCode::Unauthorized(Some("not a unique name".to_owned())),
+            };
+            return response;
         }
     }
 
@@ -561,16 +595,13 @@ impl ServerState {
                     universe_update: UniUpdateType::NoChange,
                 };
 
-                // TODO Add condition for game_updates
                 if messages_available {
                     client_updates.push((player.addr.clone(), update_packet));
                 }
             }
         }
 
-        // TODO Universe updates are TBD
         if client_updates.len() > 0 {
-            info!("Updates available");
             Ok(Some(client_updates))
         }
         else {
