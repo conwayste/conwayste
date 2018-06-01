@@ -502,7 +502,7 @@ impl EventHandler for MainState {
                 }
                 else {
                     /////////////////////////
-                    //// Enter key was pressed
+                    //// Non-Arrow key was pressed
                     //////////////////////////
 
                     if self.return_key_pressed || self.escape_key_pressed {
