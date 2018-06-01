@@ -473,7 +473,7 @@ impl EventHandler for MainState {
                     }
                     else {
                         self.stage = Stage::Run; // Menu Stage is disabled for the time being
-                        self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                        self.menu_sys.menu_state = menu::MenuState::MenuOff;
                     }
                 }
             }
