@@ -174,7 +174,7 @@ impl UdpCodec for LineCodec {
 }
 
 //////////////// Network interface ////////////////
-
+#[allow(dead_code)]
 pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket, NetError> {
 
     let host = if let Some(host) = opt_host { host } else { HOST };

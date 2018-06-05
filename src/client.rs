@@ -172,7 +172,7 @@ fn main() {
                     let packet = opt_packet.unwrap();
                     println!("DEBUG: Got packet from server {:?}: {:?}", addr, packet);
                     match packet {
-                        Packet::Response{sequence, request_ack, code} => {
+                        Packet::Response{sequence: _, request_ack: _, code} => {
                             // XXX sequence
                             // XXX request_ack
                             match code {
@@ -229,7 +229,7 @@ fn main() {
                                 }
                             }
                         }
-                        Packet::Update{chats, game_updates, universe_update} => {
+                        Packet::Update{chats, game_updates: _, universe_update: _} => {
                             match chats {
                                 Some(mut chat_messages) => {
                                     chat_messages.retain(|ref chat_message| {
