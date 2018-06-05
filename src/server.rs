@@ -190,7 +190,7 @@ impl Room {
 
 impl ServerState {
 
-    fn get_player(&self, player_id: &PlayerID) -> &Player {
+    fn get_player(&self, player_id: PlayerID) -> &Player {
         let opt_player = self.players.get(&player_id);
 
         if opt_player.is_none() {
@@ -200,7 +200,7 @@ impl ServerState {
         opt_player.unwrap()
     }
 
-    fn get_room_id(&self, player_id: &PlayerID) -> Option<RoomID> {
+    fn get_room_id(&self, player_id: PlayerID) -> Option<RoomID> {
         let player = self.get_player(player_id);
         if player.game_info == None {
             return None;
@@ -209,8 +209,8 @@ impl ServerState {
         Some(player.game_info.as_ref().unwrap().room_id)  // unwrap ok because of test above
     }
 
-    fn get_room_mut(&mut self, &player_id: &PlayerID) -> Option<&mut Room> {
-        let opt_room_id = self.get_room_id(&player_id);
+    fn get_room_mut(&mut self, player_id: PlayerID) -> Option<&mut Room> {
+        let opt_room_id = self.get_room_id(player_id);
 
         if opt_room_id.is_none() {
             return None;
@@ -218,8 +218,8 @@ impl ServerState {
         self.rooms.get_mut(&opt_room_id.unwrap())
     }
 
-    fn get_room(&self, &player_id: &PlayerID) -> Option<&Room> {
-        let opt_room_id = self.get_room_id(&player_id);
+    fn get_room(&self, player_id: PlayerID) -> Option<&Room> {
+        let opt_room_id = self.get_room_id(player_id);
 
         if opt_room_id.is_none() {
             return None;
@@ -227,7 +227,7 @@ impl ServerState {
         self.rooms.get(&opt_room_id.unwrap())
     }
 
-    fn list_players(&self, player_id: &PlayerID) -> ResponseCode {
+    fn list_players(&self, player_id: PlayerID) -> ResponseCode {
         let opt_room = self.get_room(player_id);
         if opt_room.is_none() {
             return ResponseCode::BadRequest(Some("cannot list players because in lobby.".to_owned()));
@@ -244,8 +244,8 @@ impl ServerState {
         return ResponseCode::PlayerList(players);
     }
 
-    fn handle_chat_message(&mut self, player_id: &PlayerID, msg: String) -> ResponseCode {
-        let player_in_game = self.is_player_in_game(&player_id);
+    fn handle_chat_message(&mut self, player_id: PlayerID, msg: String) -> ResponseCode {
+        let player_in_game = self.is_player_in_game(player_id);
 
         if !player_in_game {
             return ResponseCode::BadRequest(Some(format!("Player {} has not joined a game.", player_id)));
@@ -258,7 +258,7 @@ impl ServerState {
         };
 
         // User is in game, Server needs to broadcast this to Room
-        let opt_room = self.get_room_mut(&player_id);
+        let opt_room = self.get_room_mut(player_id);
 
         if opt_room.is_none() {
             return ResponseCode::BadRequest(Some( format!("Player \"{}\" should be in a room! None found.", player_id )));
@@ -268,7 +268,7 @@ impl ServerState {
         let seq_num = room.increment_seq_num();
 
         room.discard_older_messages();
-        room.add_message(ServerChatMessage::new(*player_id, player_name, msg, seq_num));
+        room.add_message(ServerChatMessage::new(player_id, player_name, msg, seq_num));
 
         return ResponseCode::OK;
     }
@@ -288,7 +288,7 @@ impl ServerState {
         self.rooms.insert(room.room_id, room);
     }
 
-    fn create_new_room(&mut self, player_id: &PlayerID, room_name: String) -> ResponseCode {
+    fn create_new_room(&mut self, player_id: PlayerID, room_name: String) -> ResponseCode {
         // validate length
         if room_name.len() > MAX_ROOM_NAME {
             return ResponseCode::BadRequest(Some(format!("room name too long; max {} characters",
@@ -309,8 +309,8 @@ impl ServerState {
         }
     }
 
-    fn join_room(&mut self, player_id: &PlayerID, room_name: String) -> ResponseCode {
-        let already_playing = self.is_player_in_game(&player_id);
+    fn join_room(&mut self, player_id: PlayerID, room_name: String) -> ResponseCode {
+        let already_playing = self.is_player_in_game(player_id);
         if already_playing {
             return ResponseCode::BadRequest(Some("cannot join game because already in-game.".to_owned()));
         }
@@ -320,7 +320,7 @@ impl ServerState {
         // TODO replace loop with `get_key_value` once it reaches stable. Same thing with `leave_room` algorithm
         for ref mut gs in self.rooms.values_mut() {
             if gs.name == room_name {
-                gs.player_ids.push(*player_id);
+                gs.player_ids.push(player_id);
                 player.game_info = Some(PlayerInGameInfo{ room_id: gs.room_id.clone() });
                 return ResponseCode::OK;
             }
@@ -328,8 +328,8 @@ impl ServerState {
         return ResponseCode::BadRequest(Some(format!("no room named {:?}", room_name)));
     }
 
-    fn leave_room(&mut self, player_id: &PlayerID) -> ResponseCode {
-        let already_playing = self.is_player_in_game(&player_id);
+    fn leave_room(&mut self, player_id: PlayerID) -> ResponseCode {
+        let already_playing = self.is_player_in_game(player_id);
         if !already_playing {
             return ResponseCode::BadRequest(Some("cannot leave game because in lobby.".to_owned()));
         }
@@ -356,30 +356,30 @@ impl ServerState {
             RequestAction::Disconnect      => unimplemented!(),
             RequestAction::KeepAlive       => unimplemented!(),
             RequestAction::ListPlayers     => {
-                return self.list_players(&player_id);
+                return self.list_players(player_id);
             },
             RequestAction::ChatMessage(msg)  => {
-                return self.handle_chat_message(&player_id, msg);
+                return self.handle_chat_message(player_id, msg);
             },
             RequestAction::ListRooms   => {
                 return self.list_rooms();
             }
             RequestAction::NewRoom(name)  => {
-                return self.create_new_room(&player_id, name);
+                return self.create_new_room(player_id, name);
             }
             RequestAction::JoinRoom(room_name) => {
-                return self.join_room(&player_id, room_name);
+                return self.join_room(player_id, room_name);
             }
             RequestAction::LeaveRoom   => {
-                return self.leave_room(&player_id);
+                return self.leave_room(player_id);
             }
             RequestAction::Connect{..}     => panic!(),
             RequestAction::None            => panic!(),
         }
     }
 
-    fn is_player_in_game(&self, id: &PlayerID) -> bool {
-        let player: Option<&Player> = self.players.get(id);
+    fn is_player_in_game(&self, player_id: PlayerID) -> bool {
+        let player: Option<&Player> = self.players.get(&player_id);
         player.is_some() && player.unwrap().game_info.is_some()
     }
 
