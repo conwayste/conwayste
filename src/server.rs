@@ -72,12 +72,10 @@ struct PlayerInGameInfo {
 }
 
 impl Player {
-    fn increment_response_seq_num(&mut self) {
+    fn increment_response_seq_num(&mut self) -> u64 {
+        let old_seq = self.next_resp_seq;
         self.next_resp_seq += 1;
-    }
-
-    fn get_response_seq_num(&self) -> u64 {
-        self.next_resp_seq
+        old_seq
     }
 }
 
@@ -394,13 +392,13 @@ impl ServerState {
         return true;
     }
 
-    fn create_new_player(&mut self, name: String, addr: SocketAddr) -> String {
+    fn add_new_player(&mut self, name: String, addr: SocketAddr) -> String {
         let mut player = self.new_player(name, addr);
 
         let player_id = player.player_id;
         let cookie = player.cookie.clone();
 
-        player.increment_response_seq_num();
+        let _ = player.increment_response_seq_num();
 
         // save player into players hash map, and save player ID into hash map using cookie
         self.player_map.insert(cookie.clone(), player_id);
@@ -491,8 +489,7 @@ impl ServerState {
 
         let sequence = {
             let player: &mut Player = self.players.get_mut(&player_id).unwrap();
-            let sequence = player.get_response_seq_num();
-            player.increment_response_seq_num();
+            let sequence = player.increment_response_seq_num();
             sequence
         };
 
@@ -505,7 +502,7 @@ impl ServerState {
 
     fn handle_new_connection(&mut self, name: String, addr: SocketAddr) -> Packet {
         if self.is_unique_player_name(&name) {
-            let cookie = self.create_new_player(name.clone(), addr.clone());
+            let cookie = self.add_new_player(name.clone(), addr.clone());
 
             let response = Packet::Response{
                 sequence:    0,
