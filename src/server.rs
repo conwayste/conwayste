@@ -288,15 +288,17 @@ impl ServerState {
         self.rooms.insert(room.room_id, room);
     }
 
-    fn create_new_room(&mut self, player_id: PlayerID, room_name: String) -> ResponseCode {
+    fn create_new_room(&mut self, opt_player_id: Option<PlayerID>, room_name: String) -> ResponseCode {
         // validate length
         if room_name.len() > MAX_ROOM_NAME {
             return ResponseCode::BadRequest(Some(format!("room name too long; max {} characters",
                                                             MAX_ROOM_NAME)));
         }
 
-        if self.is_player_in_game(player_id) {
-            return ResponseCode::BadRequest(Some("cannot create room because in-game.".to_owned()));
+        if let Some(player_id) = opt_player_id {
+            if self.is_player_in_game(player_id) {
+                return ResponseCode::BadRequest(Some("cannot create room because in-game.".to_owned()));
+            }
         }
 
         // Create room if the room name is not already taken
@@ -365,7 +367,7 @@ impl ServerState {
                 return self.list_rooms();
             }
             RequestAction::NewRoom(name)  => {
-                return self.create_new_room(player_id, name);
+                return self.create_new_room(Some(player_id), name);
             }
             RequestAction::JoinRoom(room_name) => {
                 return self.join_room(player_id, room_name);
@@ -390,20 +392,6 @@ impl ServerState {
             }
         }
         return true;
-    }
-
-    fn add_new_player(&mut self, name: String, addr: SocketAddr) -> String {
-        let mut player = self.new_player(name, addr);
-
-        let player_id = player.player_id;
-        let cookie = player.cookie.clone();
-
-        let _ = player.increment_response_seq_num();
-
-        // save player into players hash map, and save player ID into hash map using cookie
-        self.player_map.insert(cookie.clone(), player_id);
-        self.players.insert(player_id, player);
-        cookie
     }
 
     fn get_player_id_by_cookie(&self, cookie: &str) -> Option<PlayerID> {
@@ -502,7 +490,8 @@ impl ServerState {
 
     fn handle_new_connection(&mut self, name: String, addr: SocketAddr) -> Packet {
         if self.is_unique_player_name(&name) {
-            let cookie = self.add_new_player(name.clone(), addr.clone());
+            let player = self.add_new_player(name.clone(), addr.clone());
+            let cookie = player.cookie.clone();
 
             let response = Packet::Response{
                 sequence:    0,
@@ -617,18 +606,27 @@ impl ServerState {
         }
     }
 
-    fn new_player(&mut self, name: String, addr: SocketAddr) -> Player {
+    fn add_new_player(&mut self, name: String, addr: SocketAddr) -> &mut Player {
         let cookie = new_cookie();
-        Player {
-            player_id:     PlayerID(new_uuid()),
-            cookie:        cookie,
+        let player_id = PlayerID(new_uuid());
+        let player = Player {
+            player_id:     player_id.clone(),
+            cookie:        cookie.clone(),
             addr:          addr,
             name:          name,
             request_ack:   None,
             next_resp_seq: 0,
             game_info:     None,
             last_acked_msg_seq_num: None
-        }
+        };
+
+        // save player into players hash map, and save player ID into hash map using cookie
+        self.player_map.insert(cookie, player_id);
+        self.players.insert(player_id, player);
+
+        let player = self.players.get_mut(&player_id).unwrap();
+        player.increment_response_seq_num();
+        player
     }
 
     fn new() -> Self {
@@ -748,3 +746,38 @@ fn main() {
     drop(core.run(combined_fut));
 }
 
+#[cfg(test)]
+mod test {
+    use std::net::{IpAddr, Ipv4Addr};
+    use super::*;
+
+    fn fake_socket_addr() -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 5678)
+    }
+
+    #[test]
+    fn player_shows_up_in_player_list() {
+        let mut server = ServerState::new();
+        let room_name = "some name";
+        // make a new room
+        server.create_new_room(None, String::from(room_name));
+
+        let (player_id, player_name) = {
+            let p: &mut Player = server.add_new_player(String::from("some name"), fake_socket_addr());
+
+            (p.player_id, p.name.clone())
+        };
+        // make the player join the room
+        {
+            server.join_room(player_id, String::from(room_name));
+        }
+        let resp_code: ResponseCode = server.list_players(player_id);
+        match resp_code {
+            ResponseCode::PlayerList(players) => {
+                assert_eq!(players.len(), 1);
+                assert_eq!(*players.first().unwrap(), player_name);
+            }
+            resp_code @ _ => panic!("Unexpected response code: {:?}", resp_code)
+        }
+    }
+}
