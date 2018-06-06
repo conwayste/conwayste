@@ -60,13 +60,13 @@ struct Player {
     request_ack:   Option<u64>,          // most recent request sequence number received
     next_resp_seq: u64,                  // This is the sequence number for the most recent Response packet the Server sent to the Client
     game_info:     Option<PlayerInGameInfo>,   // none means in lobby
-    last_acked_msg_seq_num: Option<u64> // TODO: move to PlayerInGameInfo
 }
 
 // info for a player as it relates to a game/room
 #[derive(PartialEq, Debug, Clone)]
 struct PlayerInGameInfo {
     room_id: RoomID,
+    chat_msg_seq_num: Option<u64>,    // Server has confirmed the client has received messages up to this value.
     //XXX PlayerGenState ID within Universe
     //XXX update statuses
 }
@@ -76,6 +76,34 @@ impl Player {
         let old_seq = self.next_resp_seq;
         self.next_resp_seq += 1;
         old_seq
+    }
+
+    // Update the Server's record of what chat messsage the player has obtained.
+    fn chat_accounting(&mut self, opt_chat_seq_num: Option<u64>) {
+        if self.game_info.is_none() {
+            return;
+        }
+
+        if let Some(ref mut game_info) =  self.game_info {
+            if game_info.chat_msg_seq_num.is_none() || game_info.chat_msg_seq_num < opt_chat_seq_num {
+                game_info.chat_msg_seq_num = opt_chat_seq_num;
+            }
+        }
+    }
+
+    // If the player has chatted, we'll return Some(N),
+    // where N is the last chat message the player has
+    // notified the Server it got.
+    // Otherwise, None
+    fn get_confirmed_chat_seq_num(&self) -> Option<u64> {
+        if self.game_info.is_none() {
+            return None;
+        }
+
+        if let Some(ref game_info) = self.game_info {
+            return game_info.chat_msg_seq_num;
+        }
+        return None;
     }
 }
 
@@ -323,7 +351,10 @@ impl ServerState {
         for ref mut gs in self.rooms.values_mut() {
             if gs.name == room_name {
                 gs.player_ids.push(player_id);
-                player.game_info = Some(PlayerInGameInfo{ room_id: gs.room_id.clone() });
+                player.game_info = Some(PlayerInGameInfo {
+                    room_id: gs.room_id.clone(),
+                    chat_msg_seq_num: None
+                });
                 return ResponseCode::OK;
             }
         }
@@ -463,8 +494,9 @@ impl ServerState {
                 }
 
                 let player: &mut Player = opt_player.unwrap();
-                if player.last_acked_msg_seq_num.is_none() || player.last_acked_msg_seq_num < last_chat_seq {
-                    player.last_acked_msg_seq_num = last_chat_seq;
+
+                if player.game_info.is_some() {
+                    player.chat_accounting(last_chat_seq);
                 }
                 Ok(None)
             }
@@ -493,6 +525,7 @@ impl ServerState {
             let player = self.add_new_player(name.clone(), addr.clone());
             let cookie = player.cookie.clone();
 
+            // Sequence is assumed to start at 0 for all new connections
             let response = Packet::Response{
                 sequence:    0,
                 request_ack: None,
@@ -519,7 +552,7 @@ impl ServerState {
             return Ok(None);
         }
 
-        // For each room, determine if each player has unread messages based on last_acked_msg_seq_num
+        // For each room, determine if each player has unread messages based on chat_msg_seq_num
         // TODO: POOR PERFORMANCE BOUNTY
         for room in self.rooms.values() {
 
@@ -530,16 +563,19 @@ impl ServerState {
             for player_id in &room.player_ids {
                 let opt_player = self.players.get(&player_id);
                 if opt_player.is_none() { continue; }
+
                 let player = opt_player.unwrap();
+                if player.game_info.is_none() { continue; }
                 // Only send what a player has not yet seen
-                let raw_unsent_messages = match player.last_acked_msg_seq_num {
-                    Some(last_acked_msg_seq_num) => {
+                // unwrap safe because player was looked up via room pool
+                let raw_unsent_messages = match player.get_confirmed_chat_seq_num() {
+                    Some(chat_msg_seq_num) => {
 
                         let newest_msg = room.messages.back().unwrap(); // XXX unwrap()'s okay because we know it's non-empty
                         // Player is caught up
-                        if last_acked_msg_seq_num == newest_msg.seq_num {
+                        if chat_msg_seq_num == newest_msg.seq_num {
                             continue;
-                        } else if last_acked_msg_seq_num > newest_msg.seq_num {
+                        } else if chat_msg_seq_num > newest_msg.seq_num {
                             println!("ERROR: misbehaving client {}; client says it has more messages than we sent!", player.name);
                             continue;
                         }
@@ -547,11 +583,11 @@ impl ServerState {
                         let oldest_msg = room.messages.front().unwrap(); // XXX unwrap()'s okay because we know it's non-empty
                         // Skip over these messages since we've already acked them
                         let amount_to_consume: u64 =
-                            if last_acked_msg_seq_num >= oldest_msg.seq_num {
-                                ((last_acked_msg_seq_num - oldest_msg.seq_num) + 1) % (MAX_NUM_CHAT_MESSAGES as u64)
-                            } else if last_acked_msg_seq_num < oldest_msg.seq_num && oldest_msg.seq_num != newest_msg.seq_num {
+                            if chat_msg_seq_num >= oldest_msg.seq_num {
+                                ((chat_msg_seq_num - oldest_msg.seq_num) + 1) % (MAX_NUM_CHAT_MESSAGES as u64)
+                            } else if chat_msg_seq_num < oldest_msg.seq_num && oldest_msg.seq_num != newest_msg.seq_num {
                                 // Sequence number has wrapped
-                                (<u64>::max_value() - oldest_msg.seq_num) + last_acked_msg_seq_num + 1
+                                (<u64>::max_value() - oldest_msg.seq_num) + chat_msg_seq_num + 1
                             } else {
                                 0
                             };
@@ -616,8 +652,7 @@ impl ServerState {
             name:          name,
             request_ack:   None,
             next_resp_seq: 0,
-            game_info:     None,
-            last_acked_msg_seq_num: None
+            game_info:     None
         };
 
         // save player into players hash map, and save player ID into hash map using cookie
@@ -625,6 +660,8 @@ impl ServerState {
         self.players.insert(player_id, player);
 
         let player = self.players.get_mut(&player_id).unwrap();
+
+        // We expect that the client proceed with '1' after the connection has been established
         player.increment_response_seq_num();
         player
     }
