@@ -105,6 +105,19 @@ impl Player {
         }
         return None;
     }
+
+    // Allow dead_code for unit testing
+    #[allow(dead_code)]
+    fn has_chatted(&self) -> bool {
+        if self.game_info.is_none() {
+            return false;
+        }
+
+        if let Some(ref game_info) = self.game_info {
+            return game_info.chat_msg_seq_num.is_some();
+        }
+        return false;
+    }
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -566,8 +579,8 @@ impl ServerState {
 
                 let player = opt_player.unwrap();
                 if player.game_info.is_none() { continue; }
+
                 // Only send what a player has not yet seen
-                // unwrap safe because player was looked up via room pool
                 let raw_unsent_messages = match player.get_confirmed_chat_seq_num() {
                     Some(chat_msg_seq_num) => {
 
@@ -817,4 +830,79 @@ mod test {
             resp_code @ _ => panic!("Unexpected response code: {:?}", resp_code)
         }
     }
+
+    #[test]
+    fn player_did_not_chat_on_join() {
+        let mut server = ServerState::new();
+        let room_name = "some name";
+        // make a new room
+        server.create_new_room(None, String::from(room_name));
+        let player_id = {
+            let p: &mut Player = server.add_new_player(String::from("some name"), fake_socket_addr());
+            p.player_id
+        };
+        // make the player join the room
+        {
+            server.join_room(player_id, String::from(room_name));
+        }
+        let player = server.get_player(player_id);
+        assert_eq!(player.has_chatted(), false);
+    }
+
+    #[test]
+    fn server_tracks_players_chat_updates() {
+        let mut server = ServerState::new();
+        let room_name = "some name";
+        // make a new room
+        server.create_new_room(None, String::from(room_name));
+
+        let (player_id, player_cookie) = {
+            let p: &mut Player = server.add_new_player(String::from("some name"), fake_socket_addr());
+
+            (p.player_id, p.cookie.clone())
+        };
+        // make the player join the room
+        {
+            server.join_room(player_id, String::from(room_name));
+        }
+
+        // A chatless player now has something to to say 
+        let _ = server.decode_packet(fake_socket_addr(), Packet::UpdateReply {
+            cookie: player_cookie.clone(),
+            last_chat_seq: Some(1),
+            last_game_update_seq: None,
+            last_gen: None
+        });
+
+        {
+            let player = server.get_player(player_id);
+            assert_eq!(player.get_confirmed_chat_seq_num(), Some(1));
+        }
+
+        // Older messages are ignored
+        let _ = server.decode_packet(fake_socket_addr(), Packet::UpdateReply {
+            cookie: player_cookie.clone(),
+            last_chat_seq: Some(0),
+            last_game_update_seq: None,
+            last_gen: None
+        });
+
+        {
+            let player = server.get_player(player_id);
+            assert_eq!(player.get_confirmed_chat_seq_num(), Some(1));
+        }
+
+        // So are absent messages
+        let _ = server.decode_packet(fake_socket_addr(), Packet::UpdateReply {
+            cookie: player_cookie,
+            last_chat_seq: None,
+            last_game_update_seq: None,
+            last_gen: None
+        });
+
+        {
+            let player = server.get_player(player_id);
+            assert_eq!(player.get_confirmed_chat_seq_num(), Some(1));
+        }
+    } 
 }
