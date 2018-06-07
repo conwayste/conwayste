@@ -867,12 +867,12 @@ mod test {
         }
 
         // A chatless player now has something to to say 
-        let _ = server.decode_packet(fake_socket_addr(), Packet::UpdateReply {
+        server.decode_packet(fake_socket_addr(), Packet::UpdateReply {
             cookie: player_cookie.clone(),
             last_chat_seq: Some(1),
             last_game_update_seq: None,
             last_gen: None
-        });
+        }).unwrap();
 
         {
             let player = server.get_player(player_id);
@@ -880,12 +880,12 @@ mod test {
         }
 
         // Older messages are ignored
-        let _ = server.decode_packet(fake_socket_addr(), Packet::UpdateReply {
+        server.decode_packet(fake_socket_addr(), Packet::UpdateReply {
             cookie: player_cookie.clone(),
             last_chat_seq: Some(0),
             last_game_update_seq: None,
             last_gen: None
-        });
+        }).unwrap();
 
         {
             let player = server.get_player(player_id);
@@ -893,12 +893,12 @@ mod test {
         }
 
         // So are absent messages
-        let _ = server.decode_packet(fake_socket_addr(), Packet::UpdateReply {
+        server.decode_packet(fake_socket_addr(), Packet::UpdateReply {
             cookie: player_cookie,
             last_chat_seq: None,
             last_game_update_seq: None,
             last_gen: None
-        });
+        }).unwrap();
 
         {
             let player = server.get_player(player_id);
