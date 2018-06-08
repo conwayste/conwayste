@@ -79,15 +79,16 @@ impl Player {
     }
 
     // Update the Server's record of what chat messsage the player has obtained.
-    fn chat_accounting(&mut self, opt_chat_seq_num: Option<u64>) {
+    // If the player is in a game, and the player has seen newer chat messages since the last time
+    // they updated us on what messages they had, save their sequence number.
+    fn update_chat_seq_num(&mut self, opt_chat_seq_num: Option<u64>) {
         if self.game_info.is_none() {
             return;
         }
+        let game_info: &mut PlayerInGameInfo = self.game_info.as_mut().unwrap();
 
-        if let Some(ref mut game_info) =  self.game_info {
-            if game_info.chat_msg_seq_num.is_none() || game_info.chat_msg_seq_num < opt_chat_seq_num {
-                game_info.chat_msg_seq_num = opt_chat_seq_num;
-            }
+        if game_info.chat_msg_seq_num.is_none() || game_info.chat_msg_seq_num < opt_chat_seq_num {
+            game_info.chat_msg_seq_num = opt_chat_seq_num;
         }
     }
 
@@ -509,7 +510,7 @@ impl ServerState {
                 let player: &mut Player = opt_player.unwrap();
 
                 if player.game_info.is_some() {
-                    player.chat_accounting(last_chat_seq);
+                    player.update_chat_seq_num(last_chat_seq);
                 }
                 Ok(None)
             }
