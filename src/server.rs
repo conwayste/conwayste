@@ -58,7 +58,7 @@ struct Player {
     addr:          SocketAddr,
     name:          String,
     request_ack:   Option<u64>,          // most recent request sequence number received
-    next_resp_seq: u64,                  // This is the sequence number for the most recent Response packet the Server sent to the Client
+    next_resp_seq: u64,                  // This is the sequence number for the Response packet the Server sends to the Client
     game_info:     Option<PlayerInGameInfo>,   // none means in lobby
 }
 
@@ -674,7 +674,7 @@ impl ServerState {
 
         let player = self.players.get_mut(&player_id).unwrap();
 
-        // We expect that the client proceed with '1' after the connection has been established
+        // We expect that the Server proceed with `1` after the connection has been established
         player.increment_response_seq_num();
         player
     }
