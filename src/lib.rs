@@ -404,7 +404,8 @@ impl Universe {
     /// * player writable region
     /// * fog
     /// * if current cell is alive, player_id matches player_id argument
-    /// If checks fail, do nothing.
+    ///
+    /// If any of the above checks fail, do nothing.
     ///
     /// # Panics
     ///
