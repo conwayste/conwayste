@@ -46,7 +46,8 @@ mod viewport;
 mod input;
 
 const FPS                       : u32   = 25;
-const INTRO_DURATION            : f64   = 10.0;
+const INTRO_DURATION            : f64   = 8.0;
+const INTRO_PAUSE_DURATION      : f64   = 3.0;
 const HISTORY_SIZE              : usize = 16;
 const CURRENT_PLAYER_ID         : usize = 1; // TODO :  get the player ID from server rather than hardcoding
 const FOG_RADIUS                : usize = 4;
@@ -477,14 +478,13 @@ impl EventHandler for MainState {
 
         match self.stage {
             Stage::Intro(mut remaining) => {
-                const START_UNI_GEN_IN_SECONDS : f64 = 3.0;
 
                 remaining -= duration;
-                if remaining > START_UNI_GEN_IN_SECONDS {
+                if remaining > INTRO_DURATION - INTRO_PAUSE_DURATION {
                     self.stage = Stage::Intro(remaining);
                 } 
                 else {
-                    if remaining > 0.0 && remaining <= START_UNI_GEN_IN_SECONDS {
+                    if remaining > 0.0 && remaining <= INTRO_DURATION - INTRO_PAUSE_DURATION {
                         self.intro_uni.next();
                         self.stage = Stage::Intro(remaining);
                     }
