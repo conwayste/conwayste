@@ -36,15 +36,15 @@ const ZOOM_OUT                  : f32   = -1.0;
 
 #[derive(Debug, PartialEq)]
 pub struct Cell {
-    pub row: usize,
     pub col: usize,
+    pub row: usize,
 }
 
 impl Cell {
-    pub fn new(row: usize, col: usize) -> Cell {
+    pub fn new(col: usize, row: usize) -> Cell {
         Cell {
-            row: row,
-            col: col
+            col,
+            row,
         }
     }
 }
@@ -364,7 +364,7 @@ impl GridView {
     // Otherwise we'll translate a row/column pair into its representative rectangle.
     fn window_coords_from_game(&self, cell: Cell) -> Option<Rect> {
         if cell.row < self.rows && cell.col < self.columns {
-            return self.window_coords_from_game_unchecked( cell.row as isize, cell.col as isize);
+            return self.window_coords_from_game_unchecked( cell.col as isize, cell.row as isize);
         }
         return None;
     }
