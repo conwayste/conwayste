@@ -23,7 +23,7 @@ use std::fmt;
 type BitGrid = Vec<Vec<u64>>;
 type UniverseError = &'static str;
 
-/// Builder paradigm to create universes
+/// Builder paradigm to create `Universe` structs with default values.
 pub struct BigBang {
     width:           usize,
     height:          usize,
@@ -40,6 +40,7 @@ pub struct PlayerBuilder {
 }
 
 impl PlayerBuilder {
+    /// Returns a new PlayerBuilder.
     pub fn new(region: Region) -> PlayerBuilder {
         PlayerBuilder {
             writable_region: region,
@@ -47,7 +48,20 @@ impl PlayerBuilder {
     }
 }
 
+/// This is a builder for `Universe` structs.
+/// 
+/// # Examples
+/// 
+/// ```
+/// let mut uni = conway::BigBang::new()
+///                 .width(512)
+///                 .height(256)
+///                 .fog_radius(16)
+///                 .birth()
+///                 .unwrap();
+/// ```
 impl BigBang {
+    /// Creates and returns a new builder.
     pub fn new() -> BigBang {
         BigBang {
             width: 256,
@@ -72,23 +86,27 @@ impl BigBang {
         self
     }
 
-    /// Determines whether we are running a Server or a Client
-    /// True - Server
-    /// False - Client
+    /// Determines whether we are running a Server or a Client.
+    /// * `true` - Server
+    /// * `false` - Client
     pub fn server_mode(mut self, is_server: bool) -> BigBang {
         self.is_server = is_server;
         self
     }
 
-    /// This records the number of generates that will be buffered
+    /// This records the number of generations that will be buffered.
     pub fn history(mut self, history_depth: usize) -> BigBang {
         self.history = history_depth;
         self
     }
 
-    /// This will add a single player to the list of players
-    /// Each player is responsible for providing their details
-    /// through the PlayerBuilder
+    /// This will add a single player to the list of players. Each player is responsible for
+    /// providing their details through the PlayerBuilder.
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if, after adding this player, the length of the internal `player_writable` vector
+    /// does not match the number of players.
     pub fn add_player(mut self, new_player: PlayerBuilder) -> BigBang {
         self.num_players += 1;
         self.player_writable.push(new_player.writable_region);
@@ -96,6 +114,12 @@ impl BigBang {
         self
     }
 
+    /// Adds a vector of players using `add_player` method.
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if, after adding these players, the length of the internal `player_writable` vector
+    /// does not match the number of players.
     pub fn add_players(mut self, new_player_list: Vec<PlayerBuilder>) -> BigBang {
         for player in new_player_list {
             self = self.add_player(player);
@@ -113,7 +137,11 @@ impl BigBang {
     }
 
     /// "Gives life to the universe and the first moment of time."
-    /// Creates a Universe which can then CGoL process generations
+    /// Creates a Universe which can then CGoL process generations.
+    /// 
+    /// # Errors
+    /// 
+    /// No error cases exist for this version of libconway.
     pub fn birth(&self) -> Result<Universe, UniverseError> {
         let universe = Universe::new(
             self.width,
@@ -161,7 +189,7 @@ struct PlayerGenState {
 }
 
 
-#[derive(Eq,PartialEq,Ord,PartialOrd,Copy,Clone,Debug)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Debug)]
 pub enum CellState {
     Dead,
     Alive(Option<usize>),    // Some(player_number) or alive but not belonging to any player
@@ -171,7 +199,15 @@ pub enum CellState {
 
 
 impl CellState {
-    // Roughly follows RLE specification: http://www.conwaylife.com/wiki/Run_Length_Encoded
+    /// Convert this `CellState` to a `char`. When the state is `Alive(None)` or `Dead`, this will
+    /// match what would be found in a .rle file. `Wall`, `Alive(Some(player_id))`, and `Fog` are
+    /// unsupported in vanilla CGoL, and thus are not part of the [RLE
+    /// specification](http://www.conwaylife.com/wiki/Run_Length_Encoded).
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if `player_id` is not less than 23, since we map IDs 0 through 22 to uppercase
+    /// letters A through V. W is not usable since it represents a wall cell.
     pub fn to_char(self) -> char {
         match self {
             CellState::Alive(Some(player_id)) => {
@@ -206,20 +242,6 @@ enum BitOperation {
     Clear,
     Set,
     Toggle
-}
-
-impl fmt::Display for BitOperation {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-
-        let string = match *self {
-            BitOperation::Clear => "Clear",
-            BitOperation::Set => "Set",
-            BitOperation::Toggle => "Toggle",
-        };
-
-        try!(write!(f, "{}", string));
-        Ok(())
-    }
 }
 
 #[inline]
@@ -303,15 +325,20 @@ impl fmt::Display for Universe {
 
 impl Universe {
 
-    pub fn get_cell_state(&mut self, col: usize, row: usize, player_id: Option<usize>) -> CellState {
+    /// Gets a `CellState` enum for cell at (`col`, `row`).
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if `row` or `col` are out of range.
+    pub fn get_cell_state(&mut self, col: usize, row: usize, opt_player_id: Option<usize>) -> CellState {
         let gen_state = &mut self.gen_states[self.state_index];
         let word_col = col/64;
         let shift = 63 - (col & (64 - 1)); // translate literal col (ex: 134) to bit index in word_col
         let mask  = 1 << shift;     // cell to set
 
-        if let Some(opt_player_id) = player_id {
-            let cell = (gen_state.player_states[opt_player_id].cells[row][word_col] & mask) >> shift;
-            if cell == 1 {CellState::Alive(player_id)} else {CellState::Dead}
+        if let Some(player_id) = opt_player_id {
+            let cell = (gen_state.player_states[player_id].cells[row][word_col] & mask) >> shift;
+            if cell == 1 {CellState::Alive(opt_player_id)} else {CellState::Dead}
         }
         else {
             let cell = (gen_state.cells[row][word_col] & mask) >> shift;
@@ -319,8 +346,12 @@ impl Universe {
         }
     }
 
-    // sets the state of a cell, with minimal checking
-    // doesn't support setting CellState::Fog
+    /// Sets the state of a cell, with minimal checking.  It doesn't support setting
+    /// `CellState::Fog`.
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if an attempt is made to set an unknown cell.
     pub fn set_unchecked(&mut self, col: usize, row: usize, new_state: CellState) {
         let gen_state = &mut self.gen_states[self.state_index];
         let word_col = col/64;
@@ -368,13 +399,17 @@ impl Universe {
     }
 
 
-    // Checked set - check for:
-    //   :) current cell state (can't change wall)
-    //   :) player writable region
-    //   :) fog
-    //   :) if current cell is alive, player_id matches player_id argument
-    // if checks fail, do nothing
-    // panic if player_id inside CellState does not match player_id argument
+    /// Checked set - check for:
+    /// * current cell state (can't change wall)
+    /// * player writable region
+    /// * fog
+    /// * if current cell is alive, player_id matches player_id argument
+    ///
+    /// If any of the above checks fail, do nothing.
+    ///
+    /// # Panics
+    ///
+    /// Panic if player_id inside CellState does not match player_id argument.
     pub fn set(&mut self, col: usize, row: usize, new_state: CellState, player_id: usize) {
 
         {
@@ -415,15 +450,16 @@ impl Universe {
     }
 
 
-    // Switches any non-dead state to CellState::Dead.
-    // Switches CellState::Dead to CellState::Alive(opt_player_id) and clears fog for that player,
-    // if any.
-    //
-    // This operation works in three steps
-    //  1. Toggle alive/dead cell in the current generation state cell grid
-    //  2. Clear all players' cell
-    //  3. If general cell transitioned Dead->Alive, then set requested player's cell
-    //  ..
+    /// Switches any non-dead state to CellState::Dead.
+    /// Switches CellState::Dead to CellState::Alive(opt_player_id) and clears fog for that player,
+    /// if any.
+    ///
+    /// This operation works in three steps:
+    ///  1. Toggle alive/dead cell in the current generation state cell grid
+    ///  2. Clear all players' cell
+    ///  3. If general cell transitioned Dead->Alive, then set requested player's cell
+    ///
+    /// The new value of the cell is returned.
     pub fn toggle_unchecked(&mut self, col: usize, row: usize, opt_player_id: Option<usize>) -> CellState {
         let word_col = col/64;
         let shift = 63 - (col & (64 - 1));
@@ -438,8 +474,6 @@ impl Universe {
 
         // Cell transitioned Dead -> Alive 
         let next_cell = (word & mask) > 0;
-        //debug!("Word/Mask: => {:b} | {:b}", word, mask);
-        //debug!("Next Cell: {}", next_cell);
 
         // clear all player cell bits
         for player_id in 0 .. self.num_players {
@@ -462,9 +496,11 @@ impl Universe {
     }
 
 
-    // Checked toggle - switch between CellState::Alive and CellState::Dead.
-    // Result is Err if trying to toggle outside player's writable area, or if
-    // trying to toggle a wall or an unknown cell.
+    /// Checked toggle - switch between CellState::Alive and CellState::Dead.
+    /// 
+    /// # Errors
+    /// 
+    /// It is an error to toggle outside player's writable area, or to toggle a wall or an unknown cell.
     pub fn toggle(&mut self, col: usize, row: usize, player_id: usize) -> Result<CellState, ()> {
         if !self.player_writable[player_id].contains(col as isize, row as isize) {
             return Err(());
@@ -485,6 +521,9 @@ impl Universe {
 
     /// Instantiate a new blank universe with the given width and height, in cells.
     /// The universe is at generation 1.
+    /// 
+    /// **Note**: it is easier to use `BigBang` to build a `Universe`, as that has default values
+    /// that can be overridden as needed.
     pub fn new(width:           usize,
                height:          usize,
                is_server:       bool,
@@ -965,10 +1004,14 @@ impl Universe {
 
     /// Iterate over every non-dead cell in the universe for the current generation. `region` is
     /// the rectangular area used for restricting results. `visibility` is an optional player_id;
-    /// if specified, causes cells not visible to the player to be passed as CellState::Fog to the
+    /// if specified, causes cells not visible to the player to be passed as `CellState::Fog` to the
     /// callback.
     /// 
-    /// Callback receives (x, y, cell_state).
+    /// Callback receives (`x`, `y`, `cell_state`).
+    /// 
+    /// # Panics
+    /// 
+    /// Does numerous consistency checks on the bitmaps, and panics if inconsistencies are found.
     pub fn each_non_dead(&self, region: Region, visibility: Option<usize>, callback: &mut FnMut(usize, usize, CellState)) {
         let cells = &self.gen_states[self.state_index].cells;
         let wall  = &self.gen_states[self.state_index].wall_cells;
@@ -1069,13 +1112,17 @@ impl Universe {
     }
 
 
-    /// Get a Region of the same size as the universe
+    // TODO: each_changed
+
+
+    /// Get a Region of the same size as the universe.
     pub fn region(&self) -> Region {
         Region::new(0, 0, self.width, self.height)
     }
 }
 
 
+/// Rectangular area within a `Universe`.
 #[derive(Eq,PartialEq,Ord,PartialOrd,Copy,Clone,Debug)]
 pub struct Region {
     left:   isize,
@@ -1084,8 +1131,10 @@ pub struct Region {
     height: usize,
 }
 
+/// A region is a rectangular area within a `Universe`. All coordinates are game coordinates.
 impl Region {
-    // A region is described in game coordinates
+    /// Creates a new region given x and y coordinates of top-left corner, and width and height,
+    /// all in units of cells (game coordinates). Width and height must both be positive.
     pub fn new(left: isize, top: isize, width: usize, height: usize) -> Self {
         assert!(width != 0);
         assert!(height != 0);
@@ -1098,30 +1147,37 @@ impl Region {
         }
     }
 
+    /// Returns the x coordinate of the leftmost cells of the Region, in game coordinates.
     pub fn left(&self) -> isize {
         self.left
     }
 
+    /// Returns the x coordinate of the rightmost cells of the Region, in game coordinates.
     pub fn right(&self) -> isize {
         self.left + (self.width as isize) - 1
     }
 
+    /// Returns the y coordinate of the uppermost cells of the Region, in game coordinates.
     pub fn top(&self) -> isize {
         self.top
     }
 
+    /// Returns the y coordinate of the lowermost cells of the Region, in game coordinates.
     pub fn bottom(&self) -> isize {
         self.top + (self.height as isize) - 1
     }
 
+    /// Returns the width of the Region (along x axis), in game coordinates. 
     pub fn width(&self) -> usize {
         self.width
     }
 
+    /// Returns the height of the Region (along y axis), in game coordinates. 
     pub fn height(&self) -> usize {
         self.height
     }
 
+    /// Determines whether the specified cell is part of the Region. 
     pub fn contains(&self, col: isize, row: isize) -> bool {
         self.left    <= col &&
         col <= self.right() &&
@@ -1350,7 +1406,7 @@ mod universe_tests {
     }
 
     #[test]
-    fn toggle_unchecked_cell_toggled_by_both_players_repetatively() {
+    fn toggle_unchecked_cell_toggled_by_both_players_repetitively() {
         let mut uni = generate_test_universe_with_default_params();
         let state_index = uni.state_index;
         let row = 0;
