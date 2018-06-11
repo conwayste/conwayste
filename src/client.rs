@@ -206,21 +206,31 @@ enum Orientation {
     Diagonal
 }
 
-fn toggle_line(s: &mut MainState, orientation: Orientation, col: usize, row: usize, width: usize, height: usize) {
+// Toggle a horizontal, vertical, or diagonal line, as player with index 0. This is only used for
+// the intro currently. Part or all of the line can be outside of the Universe; if this is the
+// case, only the parts inside the Universe are toggled.
+fn toggle_line(s: &mut MainState, orientation: Orientation, col: isize, row: isize, width: isize, height: isize) {
+    let player_id = 0;   // hardcode player ID, since this is just for the intro
     match orientation {
         Orientation::Vertical => {
-            for r in row..(height+row) {
-                let _ = s.intro_uni.toggle(col, r, 0);
+            for r in row..(height + row) {
+                if col < 0 || r < 0 { continue }
+                let _ = s.intro_uni.toggle(col as usize, r as usize, player_id);  // `let _ =`, because we don't care about errors
             }
         }
         Orientation::Horizontal => {
-            for c in col..(width+col) {
-                let _ = s.intro_uni.toggle(c, row, 0);
+            for c in col..(width + col) {
+                if c < 0 || row < 0 { continue }
+                let _ = s.intro_uni.toggle(c as usize, row as usize, player_id);
             }
         }
         Orientation::Diagonal => {
-            for x in 0..width-1 {
-                let _ = s.intro_uni.toggle(col+x, row+x, 0);
+            for x in 0..(width - 1) {
+                let c: isize = col+x;
+                let r: isize = row+x;
+                println!("toggle_line diag: c is {}, r is {}", c, r); //XXX
+                if c < 0 || r < 0 { continue; }
+                let _ = s.intro_uni.toggle(c as usize, r as usize, player_id);
             }
         }
     }
@@ -233,10 +243,12 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     // 3) Center it
     // 4) get offset for row and column to draw at
 
-//  let resolution = s.video_settings.get_active_resolution();
+    // let resolution = s.video_settings.get_active_resolution();
     let resolution = (config::DEFAULT_SCREEN_WIDTH, config::DEFAULT_SCREEN_HEIGHT);
-    let win_width = resolution.0 as i32 / s.viewport.get_cell_size() as i32;
-    let win_height = resolution.1  as i32 / s.viewport.get_cell_size() as i32;
+    let win_width  = resolution.0 as i32 / s.viewport.get_cell_size() as i32;
+    let win_height = resolution.1 as i32 / s.viewport.get_cell_size() as i32;
+    let player_id = 0;   // hardcoded for this intro
+    println!("DEBUG: win_width is {}; win_height is {}", win_width, win_height); //XXX
 
     let letter_width = 5;
     let letter_height = 6;
@@ -245,8 +257,14 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     let logo_width = 9*5 + 9*5;
     let logo_height = letter_height as i32;
 
-    let mut offset_col = ((win_width/2) - (logo_width/2)) as usize;
-    let offset_row = ((win_height/2) - (logo_height/2)) as usize;
+    let mut offset_col = (win_width/2 - logo_width/2) as isize;
+    let offset_row = (win_height/2 - logo_height/2) as isize;
+
+    let toggle = |s_: &mut MainState, col: isize, row: isize| {
+        if col >= 0 || row >= 0 {
+            let _ = s_.intro_uni.toggle(col as usize, row as usize, player_id); // we don't care if an error is returned
+        }
+    };
 
     // C
     toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
@@ -274,10 +292,10 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     toggle_line(s, Orientation::Vertical, offset_col, offset_row, letter_width,letter_height);
     toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
     toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height, letter_width,letter_height);
-    let _ = s.intro_uni.toggle(offset_col+letter_width/2, offset_row+letter_height-1, 0);
-    let _ = s.intro_uni.toggle(offset_col+letter_width/2, offset_row+letter_height-2, 0);
-    let _ = s.intro_uni.toggle(offset_col+letter_width/2+1, offset_row+letter_height-1, 0);
-    let _ = s.intro_uni.toggle(offset_col+letter_width/2+1, offset_row+letter_height-2, 0);
+    toggle(s, offset_col+letter_width/2, offset_row+letter_height-1);
+    toggle(s, offset_col+letter_width/2, offset_row+letter_height-2);
+    toggle(s, offset_col+letter_width/2+1, offset_row+letter_height-1);
+    toggle(s, offset_col+letter_width/2+1, offset_row+letter_height-2);
 
     offset_col += 2*letter_width;
 
@@ -290,12 +308,12 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     offset_col += 2*letter_width;
 
     // Y
-    let _ = s.intro_uni.toggle(offset_col, offset_row, 0);
-    let _ = s.intro_uni.toggle(offset_col, offset_row+1, 0);
-    let _ = s.intro_uni.toggle(offset_col, offset_row+2, 0);
-    let _ = s.intro_uni.toggle(offset_col+letter_height, offset_row, 0);
-    let _ = s.intro_uni.toggle(offset_col+letter_height, offset_row+1, 0);
-    let _ = s.intro_uni.toggle(offset_col+letter_height, offset_row+2, 0);
+    toggle(s, offset_col, offset_row);
+    toggle(s, offset_col, offset_row+1);
+    toggle(s, offset_col, offset_row+2);
+    toggle(s, offset_col+letter_height, offset_row);
+    toggle(s, offset_col+letter_height, offset_row+1);
+    toggle(s, offset_col+letter_height, offset_row+2);
     toggle_line(s, Orientation::Vertical, offset_col+letter_height/2, offset_row+letter_width/2+2, letter_width,letter_height-3);
     toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height/2, letter_width+2,letter_height-1);
 
@@ -305,10 +323,10 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
     toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height, letter_width,letter_height);
     toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height/2, letter_width,letter_height);
-    let _ = s.intro_uni.toggle(offset_col, offset_row+1, 0);
-    let _ = s.intro_uni.toggle(offset_col, offset_row+2, 0);
-    let _ = s.intro_uni.toggle(offset_col+letter_width-1, offset_row+4, 0);
-    let _ = s.intro_uni.toggle(offset_col+letter_width-1, offset_row+5, 0);
+    toggle(s, offset_col, offset_row+1);
+    toggle(s, offset_col, offset_row+2);
+    toggle(s, offset_col+letter_width-1, offset_row+4);
+    toggle(s, offset_col+letter_width-1, offset_row+5);
 
     offset_col += 2*letter_width;
 
@@ -415,7 +433,6 @@ impl MainState {
             BigBang::new()
                 .width(256)
                 .height(256)
-                .server_mode(true)
                 .fog_radius(100)
                 .add_players(vec![player])
                 .birth()
@@ -669,6 +686,9 @@ impl EventHandler for MainState {
         Ok(())
     }
 
+    // Note about coordinates: x and y are "screen coordinates", with the origin at the top left of
+    // the screen. x becomes more positive going from left to right, and y becomes more positive
+    // going top to bottom.
     fn mouse_button_down_event(&mut self,
                                _ctx: &mut Context,
                                button: MouseButton,
