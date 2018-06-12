@@ -52,8 +52,8 @@ const HISTORY_SIZE              : usize = 16;
 const CURRENT_PLAYER_ID         : usize = 1; // TODO :  get the player ID from server rather than hardcoding
 const FOG_RADIUS                : usize = 4;
 
-#[derive(PartialEq, Clone)]
-enum Stage {
+#[derive(PartialEq, Clone, Copy)]
+enum Screen {
     Intro(f64),   // seconds
     Menu,
     Run,          // TODO: break it out more to indicate whether waiting for game or playing game
@@ -63,7 +63,7 @@ enum Stage {
 // All game state
 struct MainState {
     small_font:          graphics::Font,
-    stage:               Stage,             // Where are we in the game (Intro/Menu Main/Running..)
+    screen:              Screen,            // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     intro_uni:           Universe,
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
@@ -441,7 +441,7 @@ impl MainState {
 
         let mut s = MainState {
             small_font:          small_font,
-            stage:               Stage::Intro(INTRO_DURATION),
+            screen:              Screen::Intro(INTRO_DURATION),
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
@@ -472,29 +472,24 @@ impl EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
         let duration = timer::duration_to_f64(timer::get_delta(ctx)); // seconds
 
-        let cur_menu_state = {
-            self.menu_sys.menu_state.clone()
-        };
-
-        match self.stage {
-            Stage::Intro(mut remaining) => {
+        match self.screen {
+            Screen::Intro(mut remaining) => {
 
                 remaining -= duration;
                 if remaining > INTRO_DURATION - INTRO_PAUSE_DURATION {
-                    self.stage = Stage::Intro(remaining);
+                    self.screen = Screen::Intro(remaining);
                 } 
                 else {
                     if remaining > 0.0 && remaining <= INTRO_DURATION - INTRO_PAUSE_DURATION {
                         self.intro_uni.next();
-                        self.stage = Stage::Intro(remaining);
+                        self.screen = Screen::Intro(remaining);
                     }
                     else {
-                        self.stage = Stage::Run; // Menu Stage is disabled for the time being
-                        self.menu_sys.menu_state = menu::MenuState::MenuOff;
+                        self.screen = Screen::Run; // XXX Menu Screen is disabled for the time being
                     }
                 }
             }
-            Stage::Menu => {
+            Screen::Menu => {
                 if self.config.is_dirty() {
                     self.config.write();
                 }
@@ -511,7 +506,7 @@ impl EventHandler for MainState {
                     // move selection accordingly
                     let (_,y) = self.arrow_input;
                     {
-                        let container = self.menu_sys.get_menu_container(&cur_menu_state); 
+                        let container = self.menu_sys.get_menu_container(); 
                         let mainmenu_md = container.get_metadata();
                         mainmenu_md.adjust_index(y);
                     }
@@ -525,7 +520,7 @@ impl EventHandler for MainState {
                     if self.return_key_pressed || self.escape_key_pressed {
 
                         let mut id = {
-                            let container = self.menu_sys.get_menu_container(&cur_menu_state);
+                            let container = self.menu_sys.get_menu_container();
                             let index = container.get_metadata().get_index();
                             let menu_item_list = container.get_menu_item_list();
                             let menu_item = menu_item_list.get(index).unwrap();
@@ -536,15 +531,16 @@ impl EventHandler for MainState {
                             id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
                         }
 
-                        match cur_menu_state {
+                        match self.menu_sys.menu_state {
                             menu::MenuState::MainMenu => {
                                 if !self.escape_key_pressed {
                                     match id {
                                         menu::MenuItemIdentifier::StartGame => {
+                                            println!("pause or resume 1 StartGame"); //XXX
                                             self.pause_or_resume_game();
                                         }
                                         menu::MenuItemIdentifier::ExitGame => {
-                                            self.stage = Stage::Exit;
+                                            self.screen = Screen::Exit;
                                         }
                                         menu::MenuItemIdentifier::Options => {
                                             self.menu_sys.menu_state = menu::MenuState::Options;
@@ -575,9 +571,6 @@ impl EventHandler for MainState {
                                     }
                                    _ => {}
                                 }
-                            }
-                            menu::MenuState::MenuOff => {
-
                             }
                             menu::MenuState::Audio => {
                                 match id {
@@ -631,7 +624,7 @@ impl EventHandler for MainState {
                 self.return_key_pressed = false;
                 self.escape_key_pressed = false;
             }
-            Stage::Run => {
+            Screen::Run => {
 // TODO while this works at limiting the FPS, its a bit glitchy for input events
 // Disable until we have time to look into it
 //                while timer::check_update_time(ctx, FPS) { 
@@ -648,13 +641,14 @@ impl EventHandler for MainState {
                     }
 
                     if self.toggle_paused_game {
+                        println!("pause or resume 2 toggle_paused_game"); //XXX
                         self.pause_or_resume_game();
                     }
 
                     self.viewport.update(self.arrow_input);
                 }
             }
-            Stage::Exit => {
+            Screen::Exit => {
                let _ = ctx.quit();
             }
         }
@@ -668,17 +662,17 @@ impl EventHandler for MainState {
         graphics::clear(ctx);
         graphics::set_background_color(ctx, (0, 0, 0, 1).into());
 
-        match self.stage {
-            Stage::Intro(_) => {
+        match self.screen {
+            Screen::Intro(_) => {
                 self.draw_intro(ctx)?;
             }
-            Stage::Menu => {
+            Screen::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn);
             }
-            Stage::Run => {
+            Screen::Run => {
                 self.draw_universe(ctx)?;
             }
-            Stage::Exit => {}
+            Screen::Exit => {}
         }
 
         graphics::present(ctx);
@@ -706,16 +700,16 @@ impl EventHandler for MainState {
                           _xrel: i32,
                           _yrel: i32
                           ) {
-        match self.stage {
-            Stage::Intro(_) => {}
-            Stage::Menu | Stage::Run => {
+        match self.screen {
+            Screen::Intro(_) => {}
+            Screen::Menu | Screen::Run => {
                 if state.left() && self.drag_draw != None {
                     self.input_manager.add(input::InputAction::MouseDrag(MouseButton::Left, x, y));
                 } else {
                     self.input_manager.add(input::InputAction::MouseMovement(x, y));
                 }
             }
-            Stage::Exit => {}
+            Screen::Exit => { unreachable!() }
         }
     }
 
@@ -736,11 +730,12 @@ impl EventHandler for MainState {
                       repeat: bool
                       ) {
 
-        match self.stage {
-            Stage::Intro(_) => {
-                self.stage = Stage::Run; // TODO lets just go to the game for now...
+        match self.screen {
+            Screen::Intro(_) => {
+                self.screen = Screen::Run; // TODO lets just go to the game for now...
+                self.menu_sys.reset();
             }
-            Stage::Menu | Stage::Run => {
+            Screen::Menu | Screen::Run => {
                 // TODO for now just quit the game
                 if keycode == Keycode::Escape {
                     self.quit_event(ctx);
@@ -748,7 +743,7 @@ impl EventHandler for MainState {
 
                 self.input_manager.add(input::InputAction::KeyPress(keycode, repeat));
             }
-            Stage::Exit => {}
+            Screen::Exit => {}
         }
     }
 
@@ -765,15 +760,16 @@ impl EventHandler for MainState {
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
         let mut do_not_quit = true;
 
-        match self.stage {
-            Stage::Run => {
+        match self.screen {
+            Screen::Run => {
+                println!("pause or resume 3 quit_event Run"); //XXX
                 self.pause_or_resume_game();
             }
-            Stage::Menu => {
+            Screen::Menu => {
                 // This is currently handled in the return_key_pressed path as well
                 self.escape_key_pressed = true;
             }
-            Stage::Exit => {
+            Screen::Exit => {
                 do_not_quit = false;
             }
             _ => {}
@@ -883,30 +879,20 @@ impl MainState {
     }
 
     fn pause_or_resume_game(&mut self) {
-        let cur_menu_state = {
-            self.menu_sys.menu_state.clone()
-        };
-        let cur_stage = {
-            self.stage.clone()
-        };
+        let cur_menu_state = self.menu_sys.menu_state;
+        let cur_stage = self.screen;
 
         match cur_stage {
-            Stage::Menu => {
+            Screen::Menu => {
                 if cur_menu_state == menu::MenuState::MainMenu {
-                    self.stage = Stage::Run;
-                    self.menu_sys.menu_state = menu::MenuState::MenuOff;
+                    self.screen = Screen::Run;
                     self.running = true;
                 }
             }
-            Stage::Run => {
-                if cur_menu_state == menu::MenuState::MenuOff {
-                    self.stage = Stage::Menu;
-                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
-                    self.running = false;
-                }
-                else {
-                    panic!("Menu State should be OFF while game is in progress: {:?}", cur_menu_state);
-                }
+            Screen::Run => {
+                self.screen = Screen::Menu;
+                self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                self.running = false;
             }
             _ => unimplemented!()
         }

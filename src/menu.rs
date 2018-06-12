@@ -24,9 +24,8 @@ use std::collections::{HashMap};
 use video;
 use utils;
 
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub enum MenuState {
-     MenuOff,
      MainMenu,
      Options,
      Video,
@@ -36,7 +35,6 @@ pub enum MenuState {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MenuItemIdentifier {
-    None,
     StartGame,
     Options,
     AudioSettings,
@@ -223,14 +221,12 @@ impl MenuSystem {
             menu_font: font,
         };
 
-        menu_sys.menus.insert(MenuState::MenuOff,  MenuContainer::new(0.0, 0.0));
         menu_sys.menus.insert(MenuState::MainMenu, MenuContainer::new(400.0, 300.0));
         menu_sys.menus.insert(MenuState::Options,  MenuContainer::new(400.0, 300.0));
         menu_sys.menus.insert(MenuState::Video,    MenuContainer::new(200.0, 100.0));
         menu_sys.menus.insert(MenuState::Audio,    MenuContainer::new(200.0, 100.0));
         menu_sys.menus.insert(MenuState::Gameplay, MenuContainer::new(200.0, 100.0));
 
-        let menu_off    = MenuItem::new(MenuItemIdentifier::None,                 String ::from("NULL"),       false, MenuItemValue::ValNone());
         let start_game  = MenuItem::new(MenuItemIdentifier::StartGame,            String ::from("Start Game"), false, MenuItemValue::ValNone());
         let options     = MenuItem::new(MenuItemIdentifier::Options,              String ::from("Options"),    false, MenuItemValue::ValNone());
         let video       = MenuItem::new(MenuItemIdentifier::VideoSettings,        String ::from("Video"),      false, MenuItemValue::ValNone());
@@ -241,14 +237,6 @@ impl MenuSystem {
 
         let fullscreen  = MenuItem::new(MenuItemIdentifier::Fullscreen,           String ::from("Fullscreen:"), true, MenuItemValue::ValBool(false));
         let resolution  = MenuItem::new(MenuItemIdentifier::Resolution,           String ::from("Resolution:"), true, MenuItemValue::ValNone());
-
-        {
-            let container = menu_sys.menus.get_mut(&MenuState::MenuOff).unwrap();
-
-            container.update_menu_items(vec![menu_off]);
-            container.update_menu_size(1);
-            container.update_menu_index(0);
-        }
 
         {
             /////////////////////////
@@ -313,24 +301,25 @@ impl MenuSystem {
         menu_sys
     }
 
-    pub fn get_menu_container(&mut self, state: &MenuState) -> &mut MenuContainer {
-        self.menus.get_mut(&state).unwrap()
+    pub fn get_menu_container(&mut self) -> &mut MenuContainer {
+        self.menus.get_mut(&self.menu_state).unwrap()
     }
 
     pub fn get_controls(&mut self) -> &mut MenuControls {
         &mut self.controls
     }
 
-    fn draw_general_menu_view(&mut self, _ctx: &mut Context, index: &i32, cur_menu_state: &MenuState, has_game_started: bool) {
+    fn draw_general_menu_view(&mut self, _ctx: &mut Context, index: &i32, has_game_started: bool) {
         // Menu Navigation 
         /////////////////////////////////////////
+        //TODO: is this match necessary still?
         match self.menu_state {
-             MenuState::MainMenu | MenuState::Options | MenuState::Audio | MenuState::Gameplay | MenuState::Video => {
+            MenuState::MainMenu | MenuState::Options | MenuState::Audio | MenuState::Gameplay | MenuState::Video => {
 
                 // Draw all menu Items
                 ////////////////////////////////////////////////
                 {
-                    let container = self.menus.get(cur_menu_state).unwrap();
+                    let container = self.menus.get(&self.menu_state).unwrap();
                     let coords = container.get_anchor();
                     let mut offset = Point2::new(0.0,0.0);
 
@@ -352,14 +341,13 @@ impl MenuSystem {
                 ////////////////////////////////////////////////////
                 {
                     let cur_option_str = " >";
-                    let ref container = self.menus.get(&cur_menu_state).unwrap();
+                    let ref container = self.menus.get(&self.menu_state).unwrap();
                     let coords = container.get_anchor();
                     let offset = Point2::new(-50.0, (*index) as f32 * 50.0);
 
                     utils::Graphics::draw_text(_ctx, &self.menu_font, &cur_option_str, &coords, Some(&offset));
                 }
             }
-            MenuState::MenuOff => {}
         }
     }
 
@@ -398,14 +386,17 @@ impl MenuSystem {
     }
 
     pub fn draw_menu(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context, has_game_started: bool) {
-        let ref cur_menu_state = { self.menu_state.clone() };
         let index = {
-            let ref menu_meta = self.get_menu_container(&cur_menu_state).get_metadata();
+            let ref menu_meta = self.get_menu_container().get_metadata();
             menu_meta.get_index() as i32
         };
 
-        self.draw_general_menu_view(_ctx, &index, cur_menu_state, has_game_started);
+        self.draw_general_menu_view(_ctx, &index, has_game_started);
         self.draw_specific_menu_view(video_settings, _ctx);
+    }
+
+    pub fn reset(&mut self) {
+        self.menu_state = MenuState::MainMenu;
     }
 }
 

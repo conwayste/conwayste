@@ -356,7 +356,7 @@ impl GridView {
         assert!(top < bottom);
 
         // The 'minus one' above for right and bottom give it that grid-like feel :)
-        let rect = Rect::new(left, top, (right - left), (bottom - top));
+        let rect = Rect::new(left, top, right - left, bottom - top);
         utils::Graphics::intersection(rect, self.rect)
     }
 
