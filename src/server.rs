@@ -851,6 +851,17 @@ mod test {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 5678)
     }
 
+    fn serverstate_get_player_by_id(server: &mut ServerState, player_id: PlayerID) -> &mut Player {
+        let opt_player = server.players.get_mut(&player_id);
+
+        if opt_player.is_none() {
+            panic!("Player not found");
+        }
+
+        let player: &mut Player = opt_player.unwrap();
+        player
+    }
+
     #[test]
     fn player_shows_up_in_player_list() {
         let mut server = ServerState::new();
@@ -950,5 +961,118 @@ mod test {
             let player = server.get_player(player_id);
             assert_eq!(player.get_confirmed_chat_seq_num(), Some(1));
         }
-    } 
+    }
+
+    #[test]
+    fn player_acked_messages_are_not_included_in_skip_count() {
+        let mut server = ServerState::new();
+        let room_name = "some name";
+
+        server.create_new_room(None, String::from(room_name));
+
+        let (player_id, _) = {
+            let p: &mut Player = server.add_new_player(String::from("some name"), fake_socket_addr());
+
+            (p.player_id, p.cookie.clone())
+        };
+        // make the player join the room
+        // Give it a single message
+        {
+            server.join_room(player_id, String::from(room_name));
+            server.handle_chat_message(player_id, "ChatMessage".to_owned());
+        }
+
+        {
+            let room: &Room = server.get_room(player_id).unwrap();
+            // Message is falsely acknowledged as the parameter to `get_message_skip_count()`.
+            // Room's chat sequence number is at `1`, but we're trying to ack `0`.
+            // None of these tests up until here are propagated on the player's side
+            assert_eq!(room.get_message_skip_count(0), 0);
+        }
+
+        let number_of_messages = 6;
+        for _ in 1..number_of_messages {
+            server.handle_chat_message(player_id, "ChatMessage".to_owned());
+        }
+
+        {
+            let player = serverstate_get_player_by_id(&mut server, player_id);
+            // player has not acknowledged any yet
+            #[should_panic]
+            assert_eq!(player.get_confirmed_chat_seq_num(), None);
+        }
+
+        // player acknowledged four of the six
+        let acked_message_count = {
+            let player = serverstate_get_player_by_id(&mut server, player_id);
+            player.update_chat_seq_num(Some(4));
+
+            player.get_confirmed_chat_seq_num().unwrap()
+        };
+        {
+            let room: &Room = server.get_room(player_id).unwrap();
+            assert_eq!(room.get_message_skip_count(acked_message_count), acked_message_count);
+        }
+
+        // player acknowledged all six
+        let acked_message_count = {
+            let player = serverstate_get_player_by_id(&mut server, player_id);
+            player.update_chat_seq_num(Some(6));
+
+            player.get_confirmed_chat_seq_num().unwrap()
+        };
+        {
+            let room: &Room = server.get_room(player_id).unwrap();
+            assert_eq!(room.get_message_skip_count(acked_message_count), acked_message_count);
+        }
+    }
+
+    #[test]
+    // Send fifteen messages, but only leave nine unacknowledged, while wrapping on the sequence number
+    fn player_acked_messages_are_not_included_in_skip_count_wrapped_case() {
+        let mut server = ServerState::new();
+        let room_name = "some name";
+
+        server.create_new_room(None, String::from(room_name));
+
+        let (player_id, _) = {
+            let p: &mut Player = server.add_new_player(String::from("some name"), fake_socket_addr());
+
+            (p.player_id, p.cookie.clone())
+        };
+        // make the player join the room
+        {
+            server.join_room(player_id, String::from(room_name));
+        }
+
+        // Picking a value slightly less than max of u64
+        let start_seq_num = u64::max_value() - 6;
+        // First pass, add messages with sequence numbers through the max of u64
+        for seq_num in start_seq_num..u64::max_value() {
+            let room: &mut Room = server.get_room_mut(player_id).unwrap();
+            // Have to add messages manually for this test
+            room.add_message(ServerChatMessage::new(player_id, String::from("some name"), String::from("some msg"), seq_num));
+        }
+        // Second pass, from wrap-point, `0`, eight times
+        for seq_num in 0..8 {
+            let room: &mut Room = server.get_room_mut(player_id).unwrap();
+            room.add_message(ServerChatMessage::new(player_id, String::from("some name"), String::from("some msg"), seq_num));
+        }
+
+        let acked_message_count = {
+            // Ack up until 0xFFFFFFFFFFFFFFFD
+            let player = serverstate_get_player_by_id(&mut server, player_id);
+            player.update_chat_seq_num(Some(start_seq_num + 4));
+
+            player.get_confirmed_chat_seq_num().unwrap()
+        };
+        {
+            let room: &Room = server.get_room(player_id).unwrap();
+            // Fifteen total messages sent.
+            // 2 unacked which are less than u64::max_value()
+            // 8 unacked which are after the numerical wrap
+            let unacked_count = 15 - (8 + 2);
+            assert_eq!(room.get_message_skip_count(acked_message_count), unacked_count);
+        }
+    }
 }
