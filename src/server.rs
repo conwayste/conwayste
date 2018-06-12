@@ -199,6 +199,8 @@ impl ServerChatMessage {
 }
 
 impl Room {
+    /// Instantiates a `Room` with the provided `name` and adds
+    /// the players (via `player_ids`) immediately to it.
     fn new(name: String, player_ids: Vec<PlayerID>) -> Self {
         Room {
             room_id: RoomID(new_uuid()),
@@ -211,6 +213,8 @@ impl Room {
         }
     }
 
+    /// The room message queue cannot exceed `MAX_NUM_CHAT_MESSAGES` so we
+    /// will dequeue the oldest messages until we are within limits.
     fn discard_older_messages(&mut self) {
         let queue_size = self.messages.len();
         if queue_size >= MAX_NUM_CHAT_MESSAGES {
@@ -220,13 +224,62 @@ impl Room {
         }
     }
 
+    /// Increments the room's latest sequence number
     fn increment_seq_num(&mut self) -> u64 {
         self.latest_seq_num += 1;
         self.latest_seq_num
     }
 
+    /// Adds a new message to the room message queue
     fn add_message(&mut self, new_message: ServerChatMessage) {
         self.messages.push_back(new_message);
+    }
+
+    /// Gets the oldest message in the room message queue
+    fn get_oldest_msg(&self) -> Option<&ServerChatMessage> {
+        if self.messages.is_empty() {
+            return None;
+        } else {
+            return self.messages.front();
+        }
+    }
+
+    /// Gets the newest message in the room message queue
+    fn get_newest_msg(&self) -> Option<&ServerChatMessage> {
+        if self.messages.is_empty() {
+            return None;
+        } else {
+            return self.messages.back();
+        }
+    }
+
+    /// This function retrieves the number of messages FIFO which has
+    /// already been acknowledged by the client.
+    fn get_message_skip_count(&self, chat_msg_seq_num: u64) -> u64 {
+        let opt_newest_msg = self.get_newest_msg();
+        if opt_newest_msg.is_none() {
+            return 0;
+        }
+        let newest_msg = opt_newest_msg.unwrap();
+
+        let opt_oldest_msg = self.get_oldest_msg();
+        if opt_oldest_msg.is_none() {
+            return 0;
+        }
+        let oldest_msg = opt_oldest_msg.unwrap();
+
+        // Skip over these messages since we've already acked them
+        let amount_to_consume: u64 =
+            if chat_msg_seq_num >= oldest_msg.seq_num {
+                ((chat_msg_seq_num - oldest_msg.seq_num) + 1) % (MAX_NUM_CHAT_MESSAGES as u64)
+            } else if chat_msg_seq_num < oldest_msg.seq_num && oldest_msg.seq_num != newest_msg.seq_num {
+                // Sequence number has wrapped
+                (<u64>::max_value() - oldest_msg.seq_num) + chat_msg_seq_num + 1
+            } else {
+                0
+            };
+
+        return amount_to_consume;
     }
 }
 
@@ -585,26 +638,19 @@ impl ServerState {
                 let raw_unsent_messages = match player.get_confirmed_chat_seq_num() {
                     Some(chat_msg_seq_num) => {
 
-                        let newest_msg = room.messages.back().unwrap(); // XXX unwrap()'s okay because we know it's non-empty
+                        let opt_newest_msg = room.get_newest_msg();
+                        if opt_newest_msg.is_none() { continue; }
+                        let newest_msg = opt_newest_msg.unwrap();
+
                         // Player is caught up
                         if chat_msg_seq_num == newest_msg.seq_num {
                             continue;
                         } else if chat_msg_seq_num > newest_msg.seq_num {
-                            println!("ERROR: misbehaving client {}; client says it has more messages than we sent!", player.name);
+                            println!("ERROR: misbehaving client {:?};\nClient says it has more messages than we sent!", player);
                             continue;
                         }
 
-                        let oldest_msg = room.messages.front().unwrap(); // XXX unwrap()'s okay because we know it's non-empty
-                        // Skip over these messages since we've already acked them
-                        let amount_to_consume: u64 =
-                            if chat_msg_seq_num >= oldest_msg.seq_num {
-                                ((chat_msg_seq_num - oldest_msg.seq_num) + 1) % (MAX_NUM_CHAT_MESSAGES as u64)
-                            } else if chat_msg_seq_num < oldest_msg.seq_num && oldest_msg.seq_num != newest_msg.seq_num {
-                                // Sequence number has wrapped
-                                (<u64>::max_value() - oldest_msg.seq_num) + chat_msg_seq_num + 1
-                            } else {
-                                0
-                            };
+                        let amount_to_consume = room.get_message_skip_count(chat_msg_seq_num);
 
                         // Cast to usize is safe because our message containers are limited by MAX_NUM_CHAT_MESSAGES
                         let mut message_iter = room.messages.iter();
@@ -626,21 +672,20 @@ impl ServerState {
 
                 let messages_available = !unsent_messages.is_empty();
                 let update_packet = Packet::Update {
-                    chats:           if !messages_available {None} else {Some(unsent_messages)},
+                    chats:           if !messages_available { None } else { Some(unsent_messages) },
                     game_updates:    None,
                     universe_update: UniUpdateType::NoChange,
                 };
 
                 if messages_available {
-                    client_updates.push((player.addr.clone(), update_packet));
+                    client_updates.push( (player.addr.clone(), update_packet) );
                 }
             }
         }
 
         if client_updates.len() > 0 {
             Ok(Some(client_updates))
-        }
-        else {
+        } else {
             Ok(None)
         }
     }
