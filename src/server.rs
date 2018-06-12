@@ -984,9 +984,10 @@ mod test {
 
         {
             let room: &Room = server.get_room(player_id).unwrap();
-            // Message is falsely acknowledged as the parameter to `get_message_skip_count()`.
-            // Room's chat sequence number is at `1`, but we're trying to ack `0`.
-            // None of these tests up until here are propagated on the player's side
+            // The check below does not affect any player acknowledgement as we are not
+            // involving the player yet. This is a simple test to ensure that if a chat
+            // message decoded from a would-be player was less than the latest chat message,
+            // we handle it properly by not skipping any.
             assert_eq!(room.get_message_skip_count(0), 0);
         }
 
