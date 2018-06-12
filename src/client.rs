@@ -229,7 +229,6 @@ fn toggle_line(s: &mut MainState, orientation: Orientation, col: isize, row: isi
             for x in 0..(width - 1) {
                 let c: isize = col+x;
                 let r: isize = row+x;
-                println!("toggle_line diag: c is {}, r is {}", c, r); //XXX
                 if c < 0 || r < 0 { continue; }
                 let _ = s.intro_uni.toggle(c as usize, r as usize, player_id);
             }
@@ -249,7 +248,6 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     let win_width  = resolution.0 as i32 / s.viewport.get_cell_size() as i32;
     let win_height = resolution.1 as i32 / s.viewport.get_cell_size() as i32;
     let player_id = 0;   // hardcoded for this intro
-    println!("DEBUG: win_width is {}; win_height is {}", win_width, win_height); //XXX
 
     let letter_width = 5;
     let letter_height = 6;
@@ -536,7 +534,6 @@ impl EventHandler for MainState {
                                 if !self.escape_key_pressed {
                                     match id {
                                         menu::MenuItemIdentifier::StartGame => {
-                                            println!("pause or resume 1 StartGame"); //XXX
                                             self.pause_or_resume_game();
                                         }
                                         menu::MenuItemIdentifier::ExitGame => {
@@ -641,7 +638,6 @@ impl EventHandler for MainState {
                     }
 
                     if self.toggle_paused_game {
-                        println!("pause or resume 2 toggle_paused_game"); //XXX
                         self.pause_or_resume_game();
                     }
 
@@ -762,7 +758,6 @@ impl EventHandler for MainState {
 
         match self.screen {
             Screen::Run => {
-                println!("pause or resume 3 quit_event Run"); //XXX
                 self.pause_or_resume_game();
             }
             Screen::Menu => {
