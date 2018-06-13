@@ -631,53 +631,23 @@ impl ServerState {
                 let opt_player = self.players.get(&player_id);
                 if opt_player.is_none() { continue; }
 
-                let player = opt_player.unwrap();
+                let player: &Player = opt_player.unwrap();
                 if player.game_info.is_none() { continue; }
 
-                // Only send what a player has not yet seen
-                let raw_unsent_messages = match player.get_confirmed_chat_seq_num() {
-                    Some(chat_msg_seq_num) => {
+                let unsent_messages: Option<Vec<BroadcastChatMessage>> = self.collect_unacknowledged_messages(&room, player);
+                let messages_available = unsent_messages.is_some();
 
-                        let opt_newest_msg = room.get_newest_msg();
-                        if opt_newest_msg.is_none() { continue; }
-                        let newest_msg = opt_newest_msg.unwrap();
+                // XXX Requires implementation
+                let game_updates_available = false;
+                let universe_updates_available = false;
 
-                        // Player is caught up
-                        if chat_msg_seq_num == newest_msg.seq_num {
-                            continue;
-                        } else if chat_msg_seq_num > newest_msg.seq_num {
-                            println!("ERROR: misbehaving client {:?};\nClient says it has more messages than we sent!", player);
-                            continue;
-                        }
-
-                        let amount_to_consume = room.get_message_skip_count(chat_msg_seq_num);
-
-                        // Cast to usize is safe because our message containers are limited by MAX_NUM_CHAT_MESSAGES
-                        let mut message_iter = room.messages.iter();
-                        message_iter.skip(amount_to_consume as usize).cloned().collect()
-                    }
-                    None => {
-                        // Smithers, unleash the hounds!
-                        room.messages.clone()
-                    }
-                };
-
-                let unsent_messages: Vec<BroadcastChatMessage> = raw_unsent_messages.iter().map(|msg| {
-                    BroadcastChatMessage {
-                        chat_seq:    Some(msg.seq_num),
-                        player_name: msg.player_name.clone(),
-                        message:     msg.message.clone()
-                    }
-                }).collect();
-
-                let messages_available = !unsent_messages.is_empty();
                 let update_packet = Packet::Update {
-                    chats:           if !messages_available { None } else { Some(unsent_messages) },
+                    chats:           unsent_messages,
                     game_updates:    None,
                     universe_update: UniUpdateType::NoChange,
                 };
 
-                if messages_available {
+                if messages_available || game_updates_available || universe_updates_available {
                     client_updates.push( (player.addr.clone(), update_packet) );
                 }
             }
@@ -688,6 +658,55 @@ impl ServerState {
         } else {
             Ok(None)
         }
+    }
+
+    /// Creates a vector of messages that the provided Player has not yet acknowledged.
+    /// Exists early if the player is already caught up.
+    fn collect_unacknowledged_messages(&self, room: &Room, player: &Player) -> Option<Vec<BroadcastChatMessage>> {
+        // Only send what a player has not yet seen
+        let raw_unsent_messages: VecDeque<ServerChatMessage>;
+        match player.get_confirmed_chat_seq_num() {
+            Some(chat_msg_seq_num) => {
+                let opt_newest_msg = room.get_newest_msg();
+                if opt_newest_msg.is_none() { 
+                    return None; 
+                }
+
+                let newest_msg = opt_newest_msg.unwrap();
+
+                if chat_msg_seq_num == newest_msg.seq_num {
+                    // Player is caught up
+                    return None;
+                } else if chat_msg_seq_num > newest_msg.seq_num {
+                    println!("ERROR: misbehaving client {:?};\nClient says it has more messages than we sent!", player);
+                    return None;
+                } else {
+                    let amount_to_consume = room.get_message_skip_count(chat_msg_seq_num);
+
+                    // Cast to usize is safe because our message containers are limited by MAX_NUM_CHAT_MESSAGES
+                    let mut message_iter = room.messages.iter();
+                    raw_unsent_messages = message_iter.skip(amount_to_consume as usize).cloned().collect();
+                }
+            }
+            None => {
+                // Smithers, unleash the hounds!
+                raw_unsent_messages = room.messages.clone();
+            }
+        };
+
+        if raw_unsent_messages.len() == 0 {
+            return None;
+        }
+
+        let unsent_messages: Vec<BroadcastChatMessage> = raw_unsent_messages.iter().map(|msg| {
+            BroadcastChatMessage {
+                chat_seq:    Some(msg.seq_num),
+                player_name: msg.player_name.clone(),
+                message:     msg.message.clone()
+            }
+        }).collect();
+
+        return Some(unsent_messages);
     }
 
     fn expire_old_messages_in_all_rooms(&mut self) {
@@ -863,7 +882,7 @@ mod test {
     }
 
     #[test]
-    fn player_shows_up_in_player_list() {
+    fn list_players_player_shows_up_in_player_list() {
         let mut server = ServerState::new();
         let room_name = "some name";
         // make a new room
@@ -889,7 +908,7 @@ mod test {
     }
 
     #[test]
-    fn player_did_not_chat_on_join() {
+    fn has_chatted_player_did_not_chat_on_join() {
         let mut server = ServerState::new();
         let room_name = "some name";
         // make a new room
@@ -907,7 +926,7 @@ mod test {
     }
 
     #[test]
-    fn server_tracks_players_chat_updates() {
+    fn get_confirmed_chat_seq_num_server_tracks_players_chat_updates() {
         let mut server = ServerState::new();
         let room_name = "some name";
         // make a new room
@@ -964,7 +983,7 @@ mod test {
     }
 
     #[test]
-    fn player_acked_messages_are_not_included_in_skip_count() {
+    fn get_message_skip_count_player_acked_messages_are_not_included_in_skip_count() {
         let mut server = ServerState::new();
         let room_name = "some name";
 
@@ -1030,18 +1049,17 @@ mod test {
 
     #[test]
     // Send fifteen messages, but only leave nine unacknowledged, while wrapping on the sequence number
-    fn player_acked_messages_are_not_included_in_skip_count_wrapped_case() {
+    fn get_message_skip_count_player_acked_messages_are_not_included_in_skip_count_wrapped_case() {
         let mut server = ServerState::new();
         let room_name = "some name";
 
         server.create_new_room(None, String::from(room_name));
 
-        let (player_id, _) = {
+        let player_id = {
             let p: &mut Player = server.add_new_player(String::from("some name"), fake_socket_addr());
 
-            (p.player_id, p.cookie.clone())
+            p.player_id
         };
-        // make the player join the room
         {
             server.join_room(player_id, String::from(room_name));
         }
@@ -1051,7 +1069,6 @@ mod test {
         // First pass, add messages with sequence numbers through the max of u64
         for seq_num in start_seq_num..u64::max_value() {
             let room: &mut Room = server.get_room_mut(player_id).unwrap();
-            // Have to add messages manually for this test
             room.add_message(ServerChatMessage::new(player_id, String::from("some name"), String::from("some msg"), seq_num));
         }
         // Second pass, from wrap-point, `0`, eight times
@@ -1074,6 +1091,107 @@ mod test {
             // 8 unacked which are after the numerical wrap
             let unacked_count = 15 - (8 + 2);
             assert_eq!(room.get_message_skip_count(acked_message_count), unacked_count);
+        }
+    }
+
+    #[test]
+    fn collect_unacknowledged_messages_a_rooms_unacknowledged_chat_messages_are_collected_for_their_player() {
+        let mut server = ServerState::new();
+        let room_name = "some name";
+
+        server.create_new_room(None, String::from(room_name));
+
+        let player_id = {
+            let p: &mut Player = server.add_new_player(String::from("some name"), fake_socket_addr());
+
+            p.player_id
+        };
+        {
+            server.join_room(player_id, String::from(room_name));
+        }
+
+        {
+            // Room has no messages, None to send to player
+            let room = server.get_room(player_id).unwrap();
+            let player = server.get_player(player_id);
+            let messages = server.collect_unacknowledged_messages(room, player);
+            assert_eq!(messages, None);
+        }
+
+        {
+            let room: &mut Room = server.get_room_mut(player_id).unwrap();
+            room.add_message(ServerChatMessage::new(player_id, String::from("some name"), String::from("some msg"), 1));
+        }
+        {
+            // Room has a message, player has yet to ack it
+            let room = server.get_room(player_id).unwrap();
+            let player = server.get_player(player_id);
+            let messages = server.collect_unacknowledged_messages(room, player);
+            assert_eq!(messages.is_some(), true);
+            assert_eq!(messages.unwrap().len(), 1);
+        }
+
+        {
+            let player = serverstate_get_player_by_id(&mut server, player_id);
+            player.update_chat_seq_num(Some(1));
+        }
+        {
+            // Room has a message, player acked, None
+            let room = server.get_room(player_id).unwrap();
+            let player = server.get_player(player_id);
+            let messages = server.collect_unacknowledged_messages(room, player);
+            assert_eq!(messages, None);
+        }
+    }
+
+    #[test]
+    fn collect_unacknowledged_messages_an_active_room_which_expired_all_messages_returns_none()
+    {
+        let mut server = ServerState::new();
+        let room_name = "some name";
+
+        server.create_new_room(None, String::from(room_name));
+
+        let player_id = {
+            let p: &mut Player = server.add_new_player(String::from("some name"), fake_socket_addr());
+
+            p.player_id
+        };
+        {
+            server.join_room(player_id, String::from(room_name));
+        }
+
+        {
+            // Add a message to the room and then age it so it will expire
+            let room: &mut Room = server.get_room_mut(player_id).unwrap();
+            room.add_message(ServerChatMessage::new(player_id, String::from("some name"), String::from("some msg"), 1));
+
+            let message: &mut ServerChatMessage = room.messages.get_mut(0).unwrap();
+            message.timestamp = time::Instant::now() - Duration::from_secs(MAX_AGE_CHAT_MESSAGES as u64);
+        }
+        {
+            // Sanity check to ensure player gets the chat message if left unacknowledged
+            let room = server.get_room(player_id).unwrap();
+            let player = server.get_player(player_id);
+            let messages = server.collect_unacknowledged_messages(room, player);
+            assert_eq!(messages.is_some(), true);
+            assert_eq!(messages.unwrap().len(), 1);
+        }
+        {
+            let player = serverstate_get_player_by_id(&mut server, player_id);
+            player.update_chat_seq_num(Some(1));
+        }
+
+        {
+            // Server drains expired messages for the room
+            server.expire_old_messages_in_all_rooms();
+        }
+        {
+            // A room that has no messages, but has player(s) who have acknowledged past messages
+            let room = server.get_room(player_id).unwrap();
+            let player = server.get_player(player_id);
+            let messages = server.collect_unacknowledged_messages(room, player);
+            assert_eq!(messages, None);
         }
     }
 }
