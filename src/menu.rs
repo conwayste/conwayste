@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::Context;
+use ggez::{Context, GameResult};
 use ggez::graphics;
 use ggez::graphics::{Point2, Color};
 use std::collections::{HashMap};
@@ -301,7 +301,7 @@ impl MenuSystem {
         &mut self.controls
     }
 
-    fn draw_general_menu_view(&self, _ctx: &mut Context, index: &i32, has_game_started: bool) {
+    fn draw_general_menu_view(&self, _ctx: &mut Context, index: &i32, has_game_started: bool) -> GameResult<()> {
         // Menu Navigation 
         /////////////////////////////////////////
         //TODO: is this match necessary still?
@@ -322,7 +322,7 @@ impl MenuSystem {
                             menu_option_str = "Resume Game";
                         }
 
-                        utils::Graphics::draw_text(_ctx, &self.menu_font, &menu_option_str, &coords, Some(&offset));
+                        utils::Graphics::draw_text(_ctx, &self.menu_font, &menu_option_str, &coords, Some(&offset))?;
 
                         offset = utils::Graphics::point_offset(offset, 0.0, 50.0);
                     }
@@ -336,10 +336,11 @@ impl MenuSystem {
                     let coords = container.get_anchor();
                     let offset = Point2::new(-50.0, (*index) as f32 * 50.0);
 
-                    utils::Graphics::draw_text(_ctx, &self.menu_font, &cur_option_str, &coords, Some(&offset));
+                    utils::Graphics::draw_text(_ctx, &self.menu_font, &cur_option_str, &coords, Some(&offset))?;
                 }
             }
         }
+        Ok(())
     }
 
     fn draw_specific_menu_view(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context) {

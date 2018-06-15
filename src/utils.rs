@@ -17,7 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::graphics::{Rect, draw, Font, Text, Point2};
-use ggez::Context;
+use ggez::{Context, GameResult};
 
 /// Provides graphic-related utilities functions that are built upon the `ggez` library.
 pub struct Graphics;
@@ -27,8 +27,8 @@ impl Graphics {
     /// Helper function to draw text onto the screen.
     /// Given the string `str`, it will be drawn at the point coordinates specified by `coords`.
     /// An offset can be specified by an optional `adjustment` point.
-    pub fn draw_text(_ctx: &mut Context, font: &Font, text: &str, coords: &Point2, adjustment: Option<&Point2>) {
-        let mut graphics_text = Text::new(_ctx, text, font).unwrap();
+    pub fn draw_text(_ctx: &mut Context, font: &Font, text: &str, coords: &Point2, adjustment: Option<&Point2>) -> GameResult<()> {
+        let mut graphics_text = Text::new(_ctx, text, font)?;
         let dst;
 
         if let Some(offset) = adjustment {
@@ -37,7 +37,8 @@ impl Graphics {
         else {
             dst = Point2::new(coords.x, coords.y);
         }
-        let _ = draw(_ctx, &mut graphics_text, dst, 0.0);
+        draw(_ctx, &mut graphics_text, dst, 0.0)?;
+        Ok(())
     }
 
     /// Determines if two rectangles overlap, and if so, 
