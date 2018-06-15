@@ -33,7 +33,7 @@ pub enum MenuState {
      Gameplay,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum MenuItemIdentifier {
     StartGame,
     Options,
@@ -61,10 +61,10 @@ pub enum MenuItemValue {
 
 #[derive(Debug, Clone)]
 pub struct MenuItem {
-    id:         MenuItemIdentifier,
-    text:       String,
-    editable:   bool,
-    value:      MenuItemValue,
+    pub id:   MenuItemIdentifier,
+    text:     String,
+    editable: bool,
+    value:    MenuItemValue,
 }
 
 #[derive(Debug, Clone)]
@@ -166,14 +166,6 @@ impl MenuItem {
         }
     }
 
-    pub fn get_text(&self) -> &String {
-        &self.text
-    }
-
-    pub fn get_id(&self) -> MenuItemIdentifier {
-        self.id.clone()
-    }
-    
     /*
     pub fn get_value(&self) -> &MenuItemValue {
         &self.value
@@ -309,7 +301,7 @@ impl MenuSystem {
         &mut self.controls
     }
 
-    fn draw_general_menu_view(&mut self, _ctx: &mut Context, index: &i32, has_game_started: bool) {
+    fn draw_general_menu_view(&self, _ctx: &mut Context, index: &i32, has_game_started: bool) {
         // Menu Navigation 
         /////////////////////////////////////////
         //TODO: is this match necessary still?
@@ -324,10 +316,9 @@ impl MenuSystem {
                     let mut offset = Point2::new(0.0,0.0);
 
                     for menu_item in container.get_menu_item_list().iter() {
-                        let menu_option_string = menu_item.get_text();
-                        let mut menu_option_str = menu_option_string.as_str();
+                        let mut menu_option_str: &str = &menu_item.text;
 
-                        if menu_item.get_id() == MenuItemIdentifier::StartGame && has_game_started {
+                        if menu_item.id == MenuItemIdentifier::StartGame && has_game_started {
                             menu_option_str = "Resume Game";
                         }
 

@@ -522,7 +522,7 @@ impl EventHandler for MainState {
                             let index = container.get_metadata().get_index();
                             let menu_item_list = container.get_menu_item_list();
                             let menu_item = menu_item_list.get(index).unwrap();
-                            menu_item.get_id()
+                            menu_item.id
                         };
 
                         if self.escape_key_pressed {
