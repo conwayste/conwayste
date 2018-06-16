@@ -6,10 +6,10 @@ license = "GPL-3.0+"
 
 [dependencies]
 conway       = { git = "https://github.com/conwayste/libconway" }
-ggez         = "0.4"
+ggez         = "0.4.3"
 env_logger   = "0.3"
 log          = "0.3"
-sdl2         = "0.30.0"
+sdl2         = "0.31.0"
 version      = "2.0.1"
 toml         = "0.4.5"
 serde        = "1.0"

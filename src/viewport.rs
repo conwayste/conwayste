@@ -23,16 +23,16 @@ use ggez::graphics::{Point2, Rect};
 use utils;
 use config;
 
-const MAX_CELL_SIZE             : f32   = 20.0;
-const MIN_CELL_SIZE             : f32   = 5.0;
-const PIXELS_SCROLLED_PER_FRAME : i32   = 50;
-const NO_INPUT                  : (i32, i32) = (0, 0);
-const PAN_LEFT                  : i32   = -1;
-const PAN_RIGHT                 : i32   =  1;
-const PAN_UP                    : i32   = -1;
-const PAN_DOWN                  : i32   =  1;
-const ZOOM_IN                   : f32   =  1.0;
-const ZOOM_OUT                  : f32   = -1.0;
+const MAX_CELL_SIZE             : f32            = 20.0;
+const MIN_CELL_SIZE             : f32            =  5.0;
+const PIXELS_SCROLLED_PER_FRAME : isize          = 50;
+const NO_INPUT                  : (isize, isize) = (0, 0);
+const PAN_LEFT                  : isize          = -1;
+const PAN_RIGHT                 : isize          =  1;
+const PAN_UP                    : isize          = -1;
+const PAN_DOWN                  : isize          =  1;
+const ZOOM_IN                   : f32            =  1.0;
+const ZOOM_OUT                  : f32            = -1.0;
 
 #[derive(Debug, PartialEq)]
 pub struct Cell {
@@ -138,7 +138,7 @@ impl Viewport {
     /// The Down and Right cases look at how much of the Grid is displayed on screen (`ϕ`, `phi`).
     /// This is compared against the size of the screen, `α`, `alpha`, to see if we can 
     /// adjust the grid origin.
-    fn adjust_panning(&mut self, recenter_after_zoom: bool, arrow_input: (i32, i32)) {
+    fn adjust_panning(&mut self, recenter_after_zoom: bool, arrow_input: (isize, isize)) {
         let (columns, rows) = (self.grid_view.columns as u32, self.grid_view.rows as u32);
 
         //debug!("\n\nP A N N I N G:");
@@ -237,7 +237,7 @@ impl Viewport {
 
     /// Parent viewport handler update. Currently we update the following, in-order:
     /// # Pan around the grid view.
-    pub fn update(&mut self, direction: (i32, i32)) {
+    pub fn update(&mut self, direction: (isize, isize)) {
         self.adjust_panning(false, direction);
     }
 

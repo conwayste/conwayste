@@ -77,7 +77,7 @@ struct MainState {
 
     // Input state
     single_step:         bool,
-    arrow_input:         (i32, i32),
+    arrow_input:         (isize, isize),
     drag_draw:           Option<CellState>,
     win_resize:          u8,
     return_key_pressed:  bool,
@@ -402,8 +402,8 @@ impl MainState {
         color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
         color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
 
-        let small_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20).unwrap();
-        let menu_font  = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20).unwrap();
+        let small_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
+        let menu_font  = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
 
         let bigbang = 
         {
@@ -504,7 +504,7 @@ impl EventHandler for MainState {
                     // move selection accordingly
                     let (_,y) = self.arrow_input;
                     {
-                        let container = self.menu_sys.get_menu_container(); 
+                        let container = self.menu_sys.get_menu_container_mut(); 
                         let mainmenu_md = container.get_metadata();
                         mainmenu_md.adjust_index(y);
                     }
@@ -519,7 +519,7 @@ impl EventHandler for MainState {
 
                         let mut id = {
                             let container = self.menu_sys.get_menu_container();
-                            let index = container.get_metadata().get_index();
+                            let index = container.get_menu_item_index();
                             let menu_item_list = container.get_menu_item_list();
                             let menu_item = menu_item_list.get(index).unwrap();
                             menu_item.id
@@ -838,8 +838,8 @@ impl MainState {
         ////////// draw generation counter
         if draw_params.draw_counter {
             let gen_counter_str = universe.latest_gen().to_string();
-            graphics::set_color(ctx, Color::new(1.0, 0.0, 0.0, 1.0))?;
-            utils::Graphics::draw_text(ctx, &self.small_font, &gen_counter_str, &Point2::new(0.0, 0.0), None);
+            let color = Color::new(1.0, 0.0, 0.0, 1.0);
+            utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None);
         }
 
         ////////////////////// END

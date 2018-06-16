@@ -24,6 +24,9 @@ use std::collections::{HashMap};
 use video;
 use utils;
 
+const DEFAULT_INACTIVE_COLOR: Color = Color{r: 0.75, g: 0.75, b: 0.75, a: 1.0};
+const DEFAULT_ACTIVE_COLOR:   Color = Color{r: 0.0,  g: 1.0,  b: 0.0,  a: 1.0};
+
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub enum MenuState {
      MainMenu,
@@ -69,13 +72,13 @@ pub struct MenuItem {
 
 #[derive(Debug, Clone)]
 pub struct MenuMetaData {
-    menu_index:  u32,
-    menu_size:   u32,
+    menu_index:  usize,
+    menu_size:   usize,
 }
 
 #[derive(Debug)]
 pub struct MenuControls {
-    dir_key_pressed:       bool,
+    dir_key_pressed: bool,
 }
 
 
@@ -95,8 +98,8 @@ impl MenuContainer {
             anchor: Point2::new(x, y),
             menu_items: Vec::<MenuItem>::new(),
             metadata: MenuMetaData::new(0, 0),
-            bg_color: Color::new(100.0, 100.0, 100.0, 1.0),
-            fg_color: Color::new(0.0, 255.0, 255.0, 1.0),
+            bg_color: Color::new(1.0, 1.0, 1.0, 1.0),
+            fg_color: Color::new(0.0, 1.0, 1.0, 1.0),
         }
     }
 
@@ -104,11 +107,11 @@ impl MenuContainer {
         self.menu_items = menu_item_list;
     }
 
-    pub fn update_menu_index(&mut self, index: u32) {
+    pub fn update_menu_index(&mut self, index: usize) {
         self.metadata.menu_index = index;
     }
 
-    pub fn update_menu_size(&mut self, size: u32) {
+    pub fn update_menu_size(&mut self, size: usize) {
         self.metadata.menu_size = size;
     }
 
@@ -123,6 +126,10 @@ impl MenuContainer {
         &self.menu_items
     }
 
+    pub fn get_menu_item_index(&self) -> usize {
+        self.metadata.menu_index
+    }
+
     pub fn get_anchor(&self) -> Point2 {
         self.anchor
     }
@@ -134,10 +141,12 @@ impl MenuContainer {
 }
 
 pub struct MenuSystem {
-    pub    menus:           HashMap<MenuState, MenuContainer >,
-    pub    menu_state:      MenuState,
-           controls:        MenuControls,
-           menu_font:       graphics::Font,
+    pub    menus:          HashMap<MenuState, MenuContainer >,
+    pub    menu_state:     MenuState,
+           controls:       MenuControls,
+           font:           graphics::Font,
+           inactive_color: graphics::Color,
+           active_color:   graphics::Color,
 }
 
 impl MenuControls {
@@ -181,7 +190,7 @@ impl MenuItem {
 }
 
 impl MenuMetaData {
-    pub fn new(index: u32, size: u32) -> MenuMetaData {
+    pub fn new(index: usize, size: usize) -> MenuMetaData {
         MenuMetaData {
             menu_index: index,
             menu_size: size,
@@ -192,25 +201,27 @@ impl MenuMetaData {
         self.menu_index as usize
     }
 
-    pub fn adjust_index(&mut self, amt: i32) {
+    pub fn adjust_index(&mut self, amt: isize) {
         let size = self.menu_size;
-        let mut new_index = (self.menu_index as i32 + amt) as u32 % size;
+        let mut new_index = ((self.menu_index as isize + amt) % (size as isize)) as usize;
 
         if amt < 0 && self.menu_index == 0 {
             new_index = size-1;
         }
 
-        self.menu_index = new_index as u32;
+        self.menu_index = new_index as usize;
     }
 }
 
 impl MenuSystem {
     pub fn new(font: graphics::Font) -> MenuSystem {
         let mut menu_sys = MenuSystem {
-            menus: HashMap::new(),
-            menu_state: MenuState::MainMenu,
-            controls: MenuControls::new(),
-            menu_font: font,
+            menus:          HashMap::new(),
+            menu_state:     MenuState::MainMenu,
+            controls:       MenuControls::new(),
+            font,
+            inactive_color: DEFAULT_INACTIVE_COLOR,
+            active_color:   DEFAULT_ACTIVE_COLOR,
         };
 
         menu_sys.menus.insert(MenuState::MainMenu, MenuContainer::new(400.0, 300.0));
@@ -237,7 +248,7 @@ impl MenuSystem {
             let container = menu_sys.menus.get_mut(&MenuState::MainMenu).unwrap();
 
             container.update_menu_items(vec![start_game, options, quit]);
-            let count = container.get_menu_item_list().len() as u32;
+            let count = container.get_menu_item_list().len();
             container.update_menu_size(count);
             container.update_menu_index(0);
         }
@@ -249,7 +260,7 @@ impl MenuSystem {
             let container = menu_sys.menus.get_mut(&MenuState::Options).unwrap();
 
             container.update_menu_items(vec![video, audio, gameplay, goback.clone()]);
-            let count = container.get_menu_item_list().len() as u32;
+            let count = container.get_menu_item_list().len();
             container.update_menu_size(count);
             container.update_menu_index(0);
         }
@@ -261,7 +272,7 @@ impl MenuSystem {
             let container = menu_sys.menus.get_mut(&MenuState::Video).unwrap();
 
             container.update_menu_items(vec![fullscreen, resolution, goback.clone()]);
-            let count = container.get_menu_item_list().len() as u32;
+            let count = container.get_menu_item_list().len();
             container.update_menu_size(count);
             container.update_menu_index(0);
         }
@@ -273,7 +284,7 @@ impl MenuSystem {
             let container = menu_sys.menus.get_mut(&MenuState::Audio).unwrap();
 
             container.update_menu_items(vec![goback.clone()]);
-            let count = container.get_menu_item_list().len() as u32;
+            let count = container.get_menu_item_list().len();
             container.update_menu_size(count);
             container.update_menu_index(0);
         }
@@ -285,7 +296,7 @@ impl MenuSystem {
             let container = menu_sys.menus.get_mut(&MenuState::Gameplay).unwrap();
 
             container.update_menu_items(vec![goback.clone()]);
-            let count = container.get_menu_item_list().len() as u32;
+            let count = container.get_menu_item_list().len();
             container.update_menu_size(count);
             container.update_menu_index(0);
         }
@@ -293,15 +304,20 @@ impl MenuSystem {
         menu_sys
     }
 
-    pub fn get_menu_container(&mut self) -> &mut MenuContainer {
-        self.menus.get_mut(&self.menu_state).unwrap()
+    pub fn get_menu_container_mut(&mut self) -> &mut MenuContainer {
+        self.menus.get_mut(&mut self.menu_state).unwrap()
+    }
+
+    pub fn get_menu_container(&self) -> &MenuContainer {
+        self.menus.get(&self.menu_state).unwrap()
     }
 
     pub fn get_controls(&mut self) -> &mut MenuControls {
         &mut self.controls
     }
 
-    fn draw_general_menu_view(&self, _ctx: &mut Context, index: &i32, has_game_started: bool) -> GameResult<()> {
+    fn draw_general_menu_view(&self, _ctx: &mut Context, has_game_started: bool) -> GameResult<()> {
+        let index = self.get_menu_container().get_menu_item_index(); // current position in this menu
         // Menu Navigation 
         /////////////////////////////////////////
         //TODO: is this match necessary still?
@@ -315,19 +331,21 @@ impl MenuSystem {
                     let coords = container.get_anchor();
                     let mut offset = Point2::new(0.0,0.0);
 
-                    for menu_item in container.get_menu_item_list().iter() {
+                    for (i, menu_item) in container.get_menu_item_list().iter().enumerate() {
                         let mut menu_option_str: &str = &menu_item.text;
 
                         if menu_item.id == MenuItemIdentifier::StartGame && has_game_started {
                             menu_option_str = "Resume Game";
                         }
 
-                        utils::Graphics::draw_text(_ctx, &self.menu_font, &menu_option_str, &coords, Some(&offset))?;
+                        let color = if index == i { self.active_color } else { self.inactive_color };
+                        utils::Graphics::draw_text(_ctx, &self.font, color, &menu_option_str, &coords, Some(&offset))?;
 
                         offset = utils::Graphics::point_offset(offset, 0.0, 50.0);
                     }
                 }
 
+                /*
                 // Denote Current Selection
                 ////////////////////////////////////////////////////
                 {
@@ -336,8 +354,9 @@ impl MenuSystem {
                     let coords = container.get_anchor();
                     let offset = Point2::new(-50.0, (*index) as f32 * 50.0);
 
-                    utils::Graphics::draw_text(_ctx, &self.menu_font, &cur_option_str, &coords, Some(&offset))?;
+                    utils::Graphics::draw_text(_ctx, &self.font, self.active_color, &cur_option_str, &coords, Some(&offset))?;
                 }
+                */
             }
         }
         Ok(())
@@ -359,7 +378,8 @@ impl MenuSystem {
                     let coords = Point2::new(anchor.x + 200.0, anchor.y);
                     let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
 
-                    utils::Graphics::draw_text(_ctx, &self.menu_font, &is_fullscreen_str, &coords, None);
+                    // TODO: color
+                    utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color, &is_fullscreen_str, &coords, None);
                 }
 
                 ////////////////////////////////
@@ -370,7 +390,8 @@ impl MenuSystem {
                     let (width, height) = video_settings.get_active_resolution();
                     let cur_res_str = format!("{}x{}", width, height);
 
-                    utils::Graphics::draw_text(_ctx, &self.menu_font, &cur_res_str, &coords, None);
+                    // TODO: color
+                    utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color, &cur_res_str, &coords, None);
                }
             }
              _  => {}
@@ -378,12 +399,7 @@ impl MenuSystem {
     }
 
     pub fn draw_menu(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context, has_game_started: bool) {
-        let index = {
-            let ref menu_meta = self.get_menu_container().get_metadata();
-            menu_meta.get_index() as i32
-        };
-
-        self.draw_general_menu_view(_ctx, &index, has_game_started);
+        self.draw_general_menu_view(_ctx, has_game_started);
         self.draw_specific_menu_view(video_settings, _ctx);
     }
 

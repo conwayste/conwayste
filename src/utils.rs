@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{Rect, draw, Font, Text, Point2};
+use ggez::graphics::{self, Rect, Font, Text, Point2, Color};
 use ggez::{Context, GameResult};
 
 /// Provides graphic-related utilities functions that are built upon the `ggez` library.
@@ -27,7 +27,7 @@ impl Graphics {
     /// Helper function to draw text onto the screen.
     /// Given the string `str`, it will be drawn at the point coordinates specified by `coords`.
     /// An offset can be specified by an optional `adjustment` point.
-    pub fn draw_text(_ctx: &mut Context, font: &Font, text: &str, coords: &Point2, adjustment: Option<&Point2>) -> GameResult<()> {
+    pub fn draw_text(_ctx: &mut Context, font: &Font, color: Color, text: &str, coords: &Point2, adjustment: Option<&Point2>) -> GameResult<()> {
         let mut graphics_text = Text::new(_ctx, text, font)?;
         let dst;
 
@@ -37,7 +37,10 @@ impl Graphics {
         else {
             dst = Point2::new(coords.x, coords.y);
         }
-        draw(_ctx, &mut graphics_text, dst, 0.0)?;
+        let previous_color = graphics::get_color(_ctx);      // store previous color
+        graphics::set_color(_ctx, color)?;                   // text foreground
+        graphics::draw(_ctx, &mut graphics_text, dst, 0.0)?; // actually draw the text!
+        graphics::set_color(_ctx, previous_color)?;          // restore previous color
         Ok(())
     }
 
