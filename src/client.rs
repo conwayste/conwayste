@@ -45,12 +45,30 @@ mod config;
 mod viewport;
 mod input;
 
+// This enum is needed because there is no PartialEq on the graphics::DrawMode enum in ggez.
+#[derive(Debug, PartialEq)]
+#[allow(dead_code)]
+enum DrawStyle {
+    Fill,
+    Line,
+}
+
+impl DrawStyle {
+    fn to_draw_mode(&self) -> graphics::DrawMode {
+        match self {
+            &DrawStyle::Fill => graphics::DrawMode::Fill,
+            &DrawStyle::Line => graphics::DrawMode::Line(1.0),
+        }
+    }
+}
+
 const FPS                       : u32   = 25;
 const INTRO_DURATION            : f64   = 8.0;
 const INTRO_PAUSE_DURATION      : f64   = 3.0;
 const HISTORY_SIZE              : usize = 16;
 const CURRENT_PLAYER_ID         : usize = 1; // TODO :  get the player ID from server rather than hardcoding
 const FOG_RADIUS                : usize = 4;
+const GRID_DRAW_STYLE           : DrawStyle = DrawStyle::Fill;
 
 #[derive(PartialEq, Clone, Copy)]
 enum Screen {
@@ -396,7 +414,13 @@ impl MainState {
             background:  Color::new( 0.25,  0.25,  0.25, 1.0),
         };
         color_settings.cell_colors.insert(CellState::Dead,           Color::new(0.875, 0.875, 0.875, 1.0));
-        color_settings.cell_colors.insert(CellState::Alive(None),    Color::new(  0.0,   0.0,   0.0, 1.0));
+        if GRID_DRAW_STYLE == DrawStyle::Line {
+            // black background - "tetris-like"
+            color_settings.cell_colors.insert(CellState::Alive(None), Color::new( 1.0, 1.0, 1.0, 1.0));
+        } else {
+            // light background
+            color_settings.cell_colors.insert(CellState::Alive(None), Color::new( 0.0, 0.0, 0.0, 1.0));
+        }
         color_settings.cell_colors.insert(CellState::Alive(Some(0)), Color::new(  1.0,   0.0,   0.0, 1.0));  // 0 is red
         color_settings.cell_colors.insert(CellState::Alive(Some(1)), Color::new(  0.0,   0.0,   1.0, 1.0));  // 1 is blue
         color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
@@ -793,14 +817,14 @@ impl MainState {
 
         // grid background
         graphics::set_color(ctx, draw_params.bg_color)?;
-        graphics::rectangle(ctx,  graphics::DrawMode::Fill, self.viewport.get_viewport())?;
+        graphics::rectangle(ctx,  GRID_DRAW_STYLE.to_draw_mode(), self.viewport.get_viewport())?;
 
         // grid foreground (dead cells)
         let full_rect = self.viewport.get_rect_from_origin();
 
         if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
             graphics::set_color(ctx, draw_params.fg_color)?;
-            graphics::rectangle(ctx,  graphics::DrawMode::Fill, clipped_rect)?;
+            graphics::rectangle(ctx,  GRID_DRAW_STYLE.to_draw_mode(), clipped_rect)?;
         }
 
         let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square

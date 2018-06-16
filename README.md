@@ -85,7 +85,7 @@ cargo update -p conway
 
 ### When will this be ready?
 
-The developers have busy lives and enjoy working on this in their spare time. If you are waiting for a release, then you should find something else to do. We always accept dontains in liquid form, such as cup of coffee.
+The developers have busy lives and enjoy working on this in their spare time. If you are waiting for a release, then you should find something else to do. We always accept donations in liquid form, such as cup of coffee.
 
 ### ResourceNotFound Error
 ```
