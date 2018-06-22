@@ -2,6 +2,8 @@
 
 Multiplayer Conway's Game of Life!
 
+![life in action](https://giant.gfycat.com/BlaringTidyDutchsmoushond.gif)
+
 ## Installing Dependencies
 `conwayste` depends on `SDL2`, `SDL2_Mixer` and `SDL2_Image`. We do plan on bundling these libraries with the binary at some point in the future, but for now you will need to manually install them. The versions (at least) needed are:
 
