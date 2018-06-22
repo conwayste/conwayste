@@ -1194,4 +1194,77 @@ mod test {
             assert_eq!(messages, None);
         }
     }
+
+    #[test]
+    fn handle_chat_message_player_not_in_game()
+    {
+        let mut server = ServerState::new();
+        let room_name = "some name";
+
+        server.create_new_room(None, room_name.to_owned());
+
+        let player_id = {
+            let p: &mut Player = server.add_new_player("some name".to_owned(), fake_socket_addr());
+
+            p.player_id
+        };
+
+        let response = server.handle_chat_message(player_id, "test msg".to_owned());
+        assert_eq!(response, ResponseCode::BadRequest(Some(format!("Player {} has not joined a game.", player_id))));
+    }
+
+    #[test]
+    fn handle_chat_message_player_in_game_one_message()
+    {
+
+        let mut server = ServerState::new();
+        let room_name = "some name";
+
+        server.create_new_room(None, room_name.to_owned());
+
+        let player_id = {
+            let p: &mut Player = server.add_new_player("some player".to_string(), fake_socket_addr());
+
+            p.player_id
+        };
+        {
+            server.join_room(player_id, room_name.to_owned());
+        }
+
+        let response = server.handle_chat_message(player_id, "test msg".to_owned());
+        assert_eq!(response, ResponseCode::OK);
+        let room: &Room = server.get_room(player_id).unwrap();
+        assert_eq!(room.messages.len(), 1);
+        assert_eq!(room.latest_seq_num, 1);
+        assert_eq!(room.get_newest_msg(), room.get_oldest_msg());
+    }
+
+    #[test]
+    fn handle_chat_message_player_in_game_many_messages()
+    {
+
+        let mut server = ServerState::new();
+        let room_name = "some name";
+
+        server.create_new_room(None, room_name.to_owned());
+
+        let player_id = {
+            let p: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+
+            p.player_id
+        };
+        {
+            server.join_room(player_id, room_name.to_owned());
+        }
+
+        let response = server.handle_chat_message(player_id, "test msg first".to_owned());
+        assert_eq!(response, ResponseCode::OK);
+        let response = server.handle_chat_message(player_id, "test msg second".to_owned());
+        assert_eq!(response, ResponseCode::OK);
+
+        let room: &Room = server.get_room(player_id).unwrap();
+        assert_eq!(room.messages.len(), 2);
+        assert_eq!(room.latest_seq_num, 2);
+    }
+
 }
