@@ -23,9 +23,7 @@ use std::collections::{HashMap};
 
 use video;
 use utils;
-
-const DEFAULT_INACTIVE_COLOR: Color = Color{r: 0.75, g: 0.75, b: 0.75, a: 1.0};
-const DEFAULT_ACTIVE_COLOR:   Color = Color{r: 0.0,  g: 1.0,  b: 0.0,  a: 1.0};
+use constants::{DEFAULT_ACTIVE_COLOR, DEFAULT_INACTIVE_COLOR};
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub enum MenuState {

@@ -21,11 +21,14 @@ extern crate ggez;
 use ggez::graphics::{Point2, Rect};
 
 use utils;
-use config;
+use constants::{
+    DEFAULT_SCREEN_HEIGHT,
+    DEFAULT_SCREEN_WIDTH,
+    MAX_CELL_SIZE,
+    MIN_CELL_SIZE,
+    PIXELS_SCROLLED_PER_FRAME,
+};
 
-const MAX_CELL_SIZE             : f32            = 20.0;
-const MIN_CELL_SIZE             : f32            =  5.0;
-const PIXELS_SCROLLED_PER_FRAME : isize          = 50;
 const NO_INPUT                  : (isize, isize) = (0, 0);
 const PAN_LEFT                  : isize          = -1;
 const PAN_RIGHT                 : isize          =  1;
@@ -145,8 +148,8 @@ impl Viewport {
         //debug!("Columns, Rows = {:?}", (columns, rows));
 
         let (dx, dy) = arrow_input;
-        let dx_in_pixels = (-dx * PIXELS_SCROLLED_PER_FRAME) as f32;
-        let dy_in_pixels = (-dy * PIXELS_SCROLLED_PER_FRAME) as f32;
+        let dx_in_pixels = -(dx as f32) * PIXELS_SCROLLED_PER_FRAME;
+        let dy_in_pixels = -(dy as f32) * PIXELS_SCROLLED_PER_FRAME;
 
         let cur_origin_x = self.grid_view.grid_origin.x;
         let cur_origin_y = self.grid_view.grid_origin.y;
@@ -313,7 +316,7 @@ impl GridView {
     /// respect to the window.
     pub fn new(cell_size: f32, universe_width_in_cells: usize, universe_height_in_cells: usize) -> GridView {
         GridView {
-            rect:        Rect::new(0.0, 0.0, config::DEFAULT_SCREEN_WIDTH, config::DEFAULT_SCREEN_HEIGHT),
+            rect:        Rect::new(0.0, 0.0, DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT),
             cell_size:   cell_size,
             columns:     universe_width_in_cells,
             rows:        universe_height_in_cells,
@@ -395,7 +398,7 @@ mod test {
     #[test]
     fn test_gridview_default_instantiation() {
         let gv = gen_default_gridview();
-        let rect = Rect::new(0.0, 0.0, config::DEFAULT_SCREEN_WIDTH, config::DEFAULT_SCREEN_HEIGHT);
+        let rect = Rect::new(0.0, 0.0, DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT);
 
         assert_eq!(gv.cell_size, 10.0);
         assert_eq!(gv.rect, rect);
@@ -408,7 +411,7 @@ mod test {
     fn test_gridview_game_coords_unchecked() {
         let gv = gen_default_gridview();
         let inside = Point2::new(5.0, 5.0);
-        let corner = Point2::new(config::DEFAULT_SCREEN_WIDTH as f32 * gv.cell_size, config::DEFAULT_SCREEN_HEIGHT as f32 * gv.cell_size);
+        let corner = Point2::new(DEFAULT_SCREEN_WIDTH as f32 * gv.cell_size, DEFAULT_SCREEN_HEIGHT as f32 * gv.cell_size);
         let outside = Point2::new(-10.0, -10.0);
         
         assert_eq!(gv.game_coords_from_window_unchecked(inside), (0, 0));
@@ -420,8 +423,8 @@ mod test {
     fn test_gridview_game_coords_checked() {
         let gv = gen_default_gridview();
         let inside = Point2::new(5.0, 5.0);
-        let corner1 = Point2::new( (config::DEFAULT_SCREEN_WIDTH-1.0) * gv.cell_size, (config::DEFAULT_SCREEN_HEIGHT-1.0) * gv.cell_size);
-        let corner2 = Point2::new( config::DEFAULT_SCREEN_WIDTH * gv.cell_size, config::DEFAULT_SCREEN_HEIGHT * gv.cell_size);
+        let corner1 = Point2::new( (DEFAULT_SCREEN_WIDTH-1.0) * gv.cell_size, (DEFAULT_SCREEN_HEIGHT-1.0) * gv.cell_size);
+        let corner2 = Point2::new( DEFAULT_SCREEN_WIDTH * gv.cell_size, DEFAULT_SCREEN_HEIGHT * gv.cell_size);
         let outside = Point2::new(-10.0, -10.0);
         let edge_point = Point2::new(1200.0, 800.0);
         

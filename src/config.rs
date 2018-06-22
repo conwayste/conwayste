@@ -1,4 +1,3 @@
-
 /*  Copyright 2017-2018 the Conwayste Developers.
  *
  *  This file is part of conwayste.
@@ -16,19 +15,18 @@
  *  You should have received a copy of the GNU General Public License
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
+
 extern crate toml;
 
 use std::fs::OpenOptions;
 use std::io::{Write, Read};
 use std::path::Path;
-
-pub const DEFAULT_SCREEN_WIDTH      : f32   = 1200.0;
-pub const DEFAULT_SCREEN_HEIGHT     : f32   = 800.0;
+use constants::{CONFIG_FILE_PATH, DEFAULT_ZOOM_LEVEL};
 
 /// User configuration descriptor which contains all of the configurable settings
 /// for this game. These *should* be modified within the game, but one can 
 /// always edit this file directly. The game will fail to load if there are
-// any errors parsing the `conwayste.toml` file.
+/// any errors parsing the `conwayste.toml` file.
 // Top-level view of config toml file
 #[derive(Debug, Deserialize, Serialize, Clone)]
 struct Config {
@@ -74,7 +72,7 @@ impl Config {
         let mut f = foptions
                     .write(true)
                     .create_new(true)
-                    .open("conwayste.toml").unwrap();
+                    .open(CONFIG_FILE_PATH).unwrap();
         let _ = f.write(toml.as_bytes());
     }
     
@@ -83,7 +81,7 @@ impl Config {
         let mut foptions  = OpenOptions::new();
         let mut f = foptions
                     .write(true)
-                    .open("conwayste.toml").unwrap();
+                    .open(CONFIG_FILE_PATH).unwrap();
         let toml = toml::to_string(&self).unwrap();
         let _ = f.write(toml.as_bytes());
     }
@@ -95,7 +93,7 @@ impl Config {
                 name: String::from("JohnConway"),
             },
             gameplay: GameplayConfig {
-                zoom: 5.0f32,
+                zoom: DEFAULT_ZOOM_LEVEL,
             },
             video: VideoConfig {
                 fullscreen: false,
@@ -125,14 +123,14 @@ impl Config {
     /// default settings. This will fail if the toml file cannot
     /// be parsed correctly.
     pub fn initialize(&mut self) {
-        if Path::exists(Path::new("conwayste.toml")) 
+        if Path::exists(Path::new(CONFIG_FILE_PATH))
         {
             let mut toml = String::new();
             {
                 let mut foptions  = OpenOptions::new();
                 let mut f = foptions
                         .read(true)
-                        .open("conwayste.toml").unwrap();
+                        .open(CONFIG_FILE_PATH).unwrap();
                 f.read_to_string(&mut toml).unwrap();
             }
 
@@ -284,29 +282,14 @@ mod test {
         assert_eq!(config.video.fullscreen, false);
         assert_eq!(config.video.resolution_x, 0);
         assert_eq!(config.video.resolution_y, 0);
-        assert_eq!(config.gameplay.zoom, 5.0);
+        assert_eq!(config.gameplay.zoom, DEFAULT_ZOOM_LEVEL);
         assert_eq!(config.user.name, "JohnConway");
     }
 
     #[test]
     fn test_update_config() {
         let mut config = Config::new();
-        assert_eq!(config.audio.master, 100);
-        assert_eq!(config.audio.music, 100);
-        assert_eq!(config.video.fullscreen, false);
-        assert_eq!(config.video.resolution_x, 0);
-        assert_eq!(config.video.resolution_y, 0);
-        assert_eq!(config.gameplay.zoom, 5.0);
-        assert_eq!(config.user.name, "JohnConway");
-
         let mut secondary_config = Config::new();
-        assert_eq!(secondary_config.audio.master, 100);
-        assert_eq!(secondary_config.audio.music, 100);
-        assert_eq!(secondary_config.video.fullscreen, false);
-        assert_eq!(secondary_config.video.resolution_x, 0);
-        assert_eq!(secondary_config.video.resolution_y, 0);
-        assert_eq!(secondary_config.gameplay.zoom, 5.0);
-        assert_eq!(secondary_config.user.name, "JohnConway");
 
         secondary_config.user.name = String::from("TestUser");
         secondary_config.audio.master = 50;

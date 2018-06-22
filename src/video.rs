@@ -26,23 +26,21 @@ struct Resolution {
     h: f32
 }
 
-/// For now, conwayste supports a `16:9` aspect ratios only.
-const DISPLAY_MODES         : [Resolution; 5]  = [
+/// For now, conwayste supports a `16:9` aspect ratio only.
+const DISPLAY_MODES: [Resolution; 5]  = [
     Resolution {w: 1280.0, h: 720.0},
     Resolution {w: 1366.0, h: 768.0},
     Resolution {w: 1600.0, h: 900.0},
     Resolution {w: 1920.0, h: 1080.0},
-    Resolution {w: 2560.0, h: 1440.0}
-    ];
-
-const INVALID_REFRESH_RATE  : i32       = -1i32;
+    Resolution {w: 2560.0, h: 1440.0},
+];
 
 /// This manages the supported resolutions.
 #[derive(Debug, Clone)]
 struct DisplayModeManager {
     index: Wrapping<usize>,
     modes: Vec<Resolution>,
-    refresh_rate: i32,
+    opt_refresh_rate: Option<i32>,
 }
 
 impl DisplayModeManager {
@@ -50,7 +48,7 @@ impl DisplayModeManager {
         DisplayModeManager {
             index: Wrapping(usize::max_value()),
             modes: Vec::new(),
-            refresh_rate: INVALID_REFRESH_RATE,
+            opt_refresh_rate: None,
         }
     }
 
@@ -66,7 +64,7 @@ impl DisplayModeManager {
 
     /// Sets the game refresh rate. Right now this does not do anything.
     pub fn set_refresh_rate(&mut self, refresh_rate: i32) {
-        self.refresh_rate = refresh_rate;
+        self.opt_refresh_rate = Some(refresh_rate);
     }
 
     /// Prints the supported display modes in debug mode.
@@ -120,7 +118,7 @@ impl VideoSettings {
 
             self.res_manager.add_mode(resolution);
 
-            if self.res_manager.refresh_rate == INVALID_REFRESH_RATE {
+            if self.res_manager.opt_refresh_rate.is_none() {
                 self.res_manager.set_refresh_rate(display_mode.refresh_rate);
             }
         }

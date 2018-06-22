@@ -25,6 +25,14 @@ extern crate sdl2;
 #[macro_use] extern crate version;
 extern crate rand;
 
+mod config;
+mod constants;
+mod input;
+mod menu;
+mod utils;
+mod video;
+mod viewport;
+
 use conway::{BigBang, Universe, CellState, Region, PlayerBuilder};
 
 use ggez::conf;
@@ -38,37 +46,18 @@ use std::env;
 use std::path;
 use std::collections::BTreeMap;
 
-mod menu;
-mod video;
-mod utils;
-mod config;
-mod viewport;
-mod input;
-
-// This enum is needed because there is no PartialEq on the graphics::DrawMode enum in ggez.
-#[derive(Debug, PartialEq)]
-#[allow(dead_code)]
-enum DrawStyle {
-    Fill,
-    Line,
-}
-
-impl DrawStyle {
-    fn to_draw_mode(&self) -> graphics::DrawMode {
-        match self {
-            &DrawStyle::Fill => graphics::DrawMode::Fill,
-            &DrawStyle::Line => graphics::DrawMode::Line(1.0),
-        }
-    }
-}
-
-const FPS                       : u32   = 25;
-const INTRO_DURATION            : f64   = 8.0;
-const INTRO_PAUSE_DURATION      : f64   = 3.0;
-const HISTORY_SIZE              : usize = 16;
-const CURRENT_PLAYER_ID         : usize = 1; // TODO :  get the player ID from server rather than hardcoding
-const FOG_RADIUS                : usize = 4;
-const GRID_DRAW_STYLE           : DrawStyle = DrawStyle::Fill;
+use constants::{
+    CURRENT_PLAYER_ID,
+    DEFAULT_SCREEN_HEIGHT,
+    DEFAULT_SCREEN_WIDTH,
+    DEFAULT_ZOOM_LEVEL,
+    DrawStyle,
+    FOG_RADIUS,
+    GRID_DRAW_STYLE,
+    HISTORY_SIZE,
+    INTRO_DURATION,
+    INTRO_PAUSE_DURATION,
+};
 
 #[derive(PartialEq, Clone, Copy)]
 enum Screen {
@@ -262,7 +251,7 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     // 4) get offset for row and column to draw at
 
     // let resolution = s.video_settings.get_active_resolution();
-    let resolution = (config::DEFAULT_SCREEN_WIDTH, config::DEFAULT_SCREEN_HEIGHT);
+    let resolution = (DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT);
     let win_width  = resolution.0 as i32 / s.viewport.get_cell_size() as i32;
     let win_height = resolution.1 as i32 / s.viewport.get_cell_size() as i32;
     let player_id = 0;   // hardcoded for this intro
@@ -1117,7 +1106,7 @@ pub fn main() {
                       .allow_highdpi(true)
                       )
         .window_mode(conf::WindowMode::default()
-                     .dimensions(config::DEFAULT_SCREEN_WIDTH as u32, config::DEFAULT_SCREEN_HEIGHT as u32)
+                     .dimensions(DEFAULT_SCREEN_WIDTH as u32, DEFAULT_SCREEN_HEIGHT as u32)
                      .vsync(true)
                      );
 
