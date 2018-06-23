@@ -392,7 +392,7 @@ impl ServerState {
 
         if let Some(player_id) = opt_player_id {
             if self.is_player_in_game(player_id) {
-                return ResponseCode::BadRequest(Some("cannot create room because in-game.".to_owned()));
+                return ResponseCode::BadRequest(Some("cannot create room because in-game".to_owned()));
             }
         }
 
@@ -1267,4 +1267,59 @@ mod test {
         assert_eq!(room.latest_seq_num, 2);
     }
 
+    #[test]
+    fn create_new_room_good_case()
+    {
+        {
+            let mut server = ServerState::new();
+            let room_name = "some name".to_owned();
+
+            assert_eq!(server.create_new_room(None, room_name), ResponseCode::OK);
+        }
+        // Room name length is within bounds
+        {
+            let mut server = ServerState::new();
+            let room_name = "0123456789ABCDEF".to_owned();
+
+            assert_eq!(server.create_new_room(None, room_name), ResponseCode::OK);
+        }
+    }
+
+    #[test]
+    fn create_new_room_name_is_too_long()
+    {
+        let mut server = ServerState::new();
+        let room_name = "0123456789ABCDEF_#".to_owned();
+
+        assert_eq!(server.create_new_room(None, room_name), ResponseCode::BadRequest(Some("room name too long; max 16 characters".to_owned())));
+    }
+
+    #[test]
+    fn create_new_room_name_taken()
+    {
+        let mut server = ServerState::new();
+        let room_name = "some room".to_owned();
+        assert_eq!(server.create_new_room(None, room_name.clone()), ResponseCode::OK);
+        assert_eq!(server.create_new_room(None, room_name), ResponseCode::BadRequest(Some("room name already in use".to_owned())));
+    }
+
+    #[test]
+    fn create_new_room_player_already_in_room()
+    {
+        let mut server = ServerState::new();
+        let room_name = "some room".to_owned();
+        let other_room_name = "another room".to_owned();
+        assert_eq!(server.create_new_room(None, room_name.clone()), ResponseCode::OK);
+
+        let player_id = {
+            let p: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+
+            p.player_id
+        };
+        {
+            server.join_room(player_id, room_name.to_owned());
+        }
+
+        assert_eq!(server.create_new_room(Some(player_id), other_room_name), ResponseCode::BadRequest(Some("cannot create room because in-game".to_owned())));
+    }
 }
