@@ -224,6 +224,10 @@ impl Room {
         }
     }
 
+    fn has_players(&mut self) -> bool {
+        !self.player_ids.is_empty()
+    }
+
     /// Increments the room's latest sequence number
     fn increment_seq_num(&mut self) -> u64 {
         self.latest_seq_num += 1;
@@ -713,7 +717,7 @@ impl ServerState {
         if self.rooms.len() != 0 {
             let current_timestamp = time::Instant::now();
             for room in self.rooms.values_mut() {
-                if !room.messages.is_empty() {
+                if room.has_players() && !room.messages.is_empty() {
                     room.messages.retain(|ref m| current_timestamp - m.timestamp < Duration::from_secs(MAX_AGE_CHAT_MESSAGES as u64) );
                 }
             }
@@ -1417,4 +1421,113 @@ mod test {
 
         assert_eq!( server.leave_room(rand_player_id), ResponseCode::BadRequest(Some("cannot leave game because in lobby".to_owned())) );
     }
+
+    #[test]
+    fn add_new_player_player_added_with_initial_sequence_number()
+    {
+        let mut server = ServerState::new();
+        let name = "some player".to_owned();
+
+        let p: &mut Player = server.add_new_player(name.clone(), fake_socket_addr());
+        assert_eq!(p.name, name);
+    }
+
+    #[test]
+    fn is_unique_player_name_yes_and_no_case()
+    {
+        let mut server = ServerState::new();
+        let name = "some player".to_owned();
+        assert_eq!(server.is_unique_player_name("some player"), true);
+
+        {
+            server.add_new_player(name.clone(), fake_socket_addr());
+        }
+        assert_eq!(server.is_unique_player_name("some player"), false);
+    }
+
+    #[test]
+    fn expire_old_messages_in_all_rooms_room_is_empty()
+    {
+        let mut server = ServerState::new();
+        let room_name = "some room";
+
+        server.create_new_room(None, room_name.to_owned().clone());
+        server.expire_old_messages_in_all_rooms();
+
+        for room in server.rooms.values() {
+            assert_eq!(room.messages.len(), 0);
+        }
+    }
+
+
+    #[test]
+    fn expire_old_messages_in_all_rooms_good_case()
+    {
+        let mut server = ServerState::new();
+        let room_name = "some room";
+
+        server.create_new_room(None, room_name.to_owned().clone());
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+            player.player_id
+        };
+
+        server.join_room(player_id, room_name.to_owned());
+
+        server.handle_chat_message(player_id, "Conwayste is such a fun game".to_owned());
+        server.handle_chat_message(player_id, "There are not loot boxes".to_owned());
+        server.handle_chat_message(player_id, "It is free!".to_owned());
+        server.handle_chat_message(player_id, "What's not to love?".to_owned());
+
+        let message_count = {
+            let room: &Room = server.get_room(player_id).unwrap();
+            room.messages.len()
+        };
+        assert_eq!(message_count, 4);
+
+        // Messages are not old enough to be expired
+        server.expire_old_messages_in_all_rooms();
+
+        for room in server.rooms.values() {
+            assert_eq!(room.messages.len(), 4);
+        }
+    }
+/*
+    #[test]
+    fn expire_old_messages_in_all_rooms_old_messages_are_wiped()
+    {
+        let mut server = ServerState::new();
+        let room_name = "some room";
+
+        server.create_new_room(None, room_name.to_owned().clone());
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+            player.player_id
+        };
+
+        server.join_room(player_id, room_name.to_owned());
+
+        server.handle_chat_message(player_id, "Conwayste is such a fun game".to_owned());
+        server.handle_chat_message(player_id, "There are not loot boxes".to_owned());
+        server.handle_chat_message(player_id, "It is free!".to_owned());
+        server.handle_chat_message(player_id, "What's not to love?".to_owned());
+
+        let current_timestamp = time::Instant::now();
+        let travel_to_the_past = current_timestamp - Duration::from_secs((MAX_AGE_CHAT_MESSAGES+1) as u64);
+        for ref mut room in server.rooms.values_mut() {
+            println!("Room: {:?}", room.name);
+            room.messages.for_each_mut(|m| {
+                println!("{:?}, {:?},       {:?}", m.timestamp, travel_to_the_past, m.timestamp - travel_to_the_past);
+                m.timestamp = travel_to_the_past;
+            });
+        }
+
+        // Messages are not old enough to be expired
+        server.expire_old_messages_in_all_rooms();
+
+        for room in server.rooms.values() {
+            assert_eq!(room.messages.len(), 0);
+        }
+    }
+    */
 }
