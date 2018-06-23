@@ -409,7 +409,7 @@ impl ServerState {
     fn join_room(&mut self, player_id: PlayerID, room_name: String) -> ResponseCode {
         let already_playing = self.is_player_in_game(player_id);
         if already_playing {
-            return ResponseCode::BadRequest(Some("cannot join game because already in-game.".to_owned()));
+            return ResponseCode::BadRequest(Some("cannot join game because in-game".to_owned()));
         }
 
         let player: &mut Player = self.players.get_mut(&player_id).unwrap();
@@ -431,7 +431,7 @@ impl ServerState {
     fn leave_room(&mut self, player_id: PlayerID) -> ResponseCode {
         let already_playing = self.is_player_in_game(player_id);
         if !already_playing {
-            return ResponseCode::BadRequest(Some("cannot leave game because in lobby.".to_owned()));
+            return ResponseCode::BadRequest(Some("cannot leave game because in lobby".to_owned()));
         }
         
         let player: &mut Player = self.players.get_mut(&player_id).unwrap();
@@ -1320,6 +1320,101 @@ mod test {
             server.join_room(player_id, room_name.to_owned());
         }
 
-        assert_eq!(server.create_new_room(Some(player_id), other_room_name), ResponseCode::BadRequest(Some("cannot create room because in-game".to_owned())));
+        assert_eq!( server.create_new_room(Some(player_id), other_room_name), ResponseCode::BadRequest(Some("cannot create room because in-game".to_owned())) );
+    }
+
+    #[test]
+    fn create_new_room_join_room_good_case()
+    {
+
+        let mut server = ServerState::new();
+        let room_name = "some room".to_owned();
+        assert_eq!(server.create_new_room(None, room_name.clone()), ResponseCode::OK);
+
+        let player_id = {
+            let p: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+
+            p.player_id
+        };
+        assert_eq!(server.join_room(player_id, room_name.to_owned()), ResponseCode::OK);
+    }
+
+    #[test]
+    fn join_room_player_already_in_room()
+    {
+
+        let mut server = ServerState::new();
+        let room_name = "some room".to_owned();
+        assert_eq!(server.create_new_room(None, room_name.clone()), ResponseCode::OK);
+
+        let player_id = {
+            let p: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+
+            p.player_id
+        };
+        assert_eq!(server.join_room(player_id, room_name.clone()), ResponseCode::OK);
+        assert_eq!( server.join_room(player_id, room_name), ResponseCode::BadRequest(Some("cannot join game because in-game".to_owned())) );
+    }
+
+    #[test]
+    fn join_room_room_does_not_exist()
+    {
+
+        let mut server = ServerState::new();
+
+        let player_id = {
+            let p: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+
+            p.player_id
+        };
+        assert_eq!(server.join_room(player_id, "some room".to_owned()), ResponseCode::BadRequest(Some("no room named \"some room\"".to_owned())) );
+    }
+
+    #[test]
+    fn leave_room_good_case()
+    {
+        let mut server = ServerState::new();
+        let room_name = "some name";
+
+        server.create_new_room(None, room_name.to_owned());
+
+        let player_id = {
+            let p: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+
+            p.player_id
+        };
+        {
+            server.join_room(player_id, room_name.to_owned());
+        }
+
+        assert_eq!( server.leave_room(player_id), ResponseCode::OK );
+
+    }
+
+    #[test]
+    fn leave_room_player_not_in_room()
+    {
+        let mut server = ServerState::new();
+        let room_name = "some room".to_owned();
+        assert_eq!(server.create_new_room(None, room_name.clone()), ResponseCode::OK);
+
+        let player_id = {
+            let p: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+
+            p.player_id
+        };
+
+        assert_eq!( server.leave_room(player_id), ResponseCode::BadRequest(Some("cannot leave game because in lobby".to_owned())) );
+    }
+
+    #[test]
+    fn leave_room_unregistered_player_id()
+    {
+        let mut server = ServerState::new();
+        let room_name = "some room".to_owned();
+        let rand_player_id = PlayerID(0x2457); //RUST
+        assert_eq!(server.create_new_room(None, room_name.clone()), ResponseCode::OK);
+
+        assert_eq!( server.leave_room(rand_player_id), ResponseCode::BadRequest(Some("cannot leave game because in lobby".to_owned())) );
     }
 }
