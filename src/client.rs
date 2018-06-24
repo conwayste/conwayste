@@ -1,4 +1,4 @@
-/*  Copyright 2017 the Conwayste Developers.
+/*  Copyright 2017-2018 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -17,91 +17,74 @@
  *  <http://www.gnu.org/licenses/>. */
 
 extern crate conway;
-extern crate ggez;
-#[macro_use]
-extern crate version;
-extern crate sdl2;
-#[macro_use] extern crate log;
 extern crate env_logger;
+extern crate ggez;
+#[macro_use] extern crate log;
+extern crate sdl2;
 #[macro_use] extern crate serde_derive;
+#[macro_use] extern crate version;
+extern crate rand;
+
+mod config;
+mod constants;
+mod input;
+mod menu;
+mod utils;
+mod video;
+mod viewport;
+
+use conway::{BigBang, Universe, CellState, Region, PlayerBuilder};
 
 use ggez::conf;
 use ggez::event::*;
-use ggez::game::{Game, GameState};
-use ggez::{GameResult, Context};
+use ggez::{GameResult, Context, ContextBuilder};
 use ggez::graphics;
-use ggez::graphics::{Rect, Point, Color};
+use ggez::graphics::{Point2, Color};
 use ggez::timer;
-use std::time::Duration;
-use std::fs::File;
-use conway::{BigBang, Universe, CellState, Region, PlayerBuilder};
+
+use std::env;
+use std::path;
 use std::collections::BTreeMap;
 
-mod menu;
-mod video;
-mod utils;
-mod config;
+use constants::{
+    CURRENT_PLAYER_ID,
+    DEFAULT_SCREEN_HEIGHT,
+    DEFAULT_SCREEN_WIDTH,
+    DEFAULT_ZOOM_LEVEL,
+    DrawStyle,
+    FOG_RADIUS,
+    GRID_DRAW_STYLE,
+    HISTORY_SIZE,
+    INTRO_DURATION,
+    INTRO_PAUSE_DURATION,
+};
 
-// This enum is needed because there is no PartialEq on the graphics::DrawMode enum in ggez.
-#[derive(Debug, PartialEq)]
-#[allow(dead_code)]
-enum DrawStyle {
-    Fill,
-    Line,
-}
-
-impl DrawStyle {
-    fn to_draw_mode(&self) -> graphics::DrawMode {
-        match self {
-            &DrawStyle::Fill => graphics::DrawMode::Fill,
-            &DrawStyle::Line => graphics::DrawMode::Line,
-        }
-    }
-}
-
-const FPS                       : u32   = 25;
-const INTRO_DURATION            : f64   = 2.0;
-const DEFAULT_SCREEN_WIDTH      : u32   = 1200;
-const DEFAULT_SCREEN_HEIGHT     : u32   = 800;
-const PIXELS_SCROLLED_PER_FRAME : i32   = 50;
-const MAX_CELL_SIZE             : u32   = 20;
-const MIN_CELL_SIZE             : u32   = 5;
-const HISTORY_SIZE              : usize = 16;
-const CURRENT_PLAYER_ID         : usize = 1; // TODO :  get the player ID from server rather than hardcoding
-const FOG_RADIUS                : usize = 4;
-const GRID_DRAW_STYLE           : DrawStyle = DrawStyle::Line;
-
-#[derive(PartialEq, Clone)]
-enum Stage {
+#[derive(PartialEq, Clone, Copy)]
+enum Screen {
     Intro(f64),   // seconds
     Menu,
     Run,          // TODO: break it out more to indicate whether waiting for game or playing game
     Exit,         // We're getting ready to quit the game, WRAP IT UP SON
 }
 
-#[derive(PartialEq)]
-enum ZoomDirection {
-    ZoomOut,
-    ZoomIn
-}
-
 // All game state
 struct MainState {
     small_font:          graphics::Font,
-    intro_text:          graphics::Text,
-    stage:               Stage,             // Where are we in the game (Intro/Menu Main/Running..)
+    screen:              Screen,            // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
+    intro_uni:           Universe,
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
-    grid_view:           GridView,
     color_settings:      ColorSettings,
     running:             bool,
     menu_sys:            menu::MenuSystem,
     video_settings:      video::VideoSettings,
     config:              config::ConfigFile,
+    viewport:            viewport::Viewport,
+    input_manager:       input::InputManager,
 
     // Input state
     single_step:         bool,
-    arrow_input:         (i32, i32),
+    arrow_input:         (isize, isize),
     drag_draw:           Option<CellState>,
     win_resize:          u8,
     return_key_pressed:  bool,
@@ -122,6 +105,20 @@ impl ColorSettings {
             Some(cell) => self.cell_colors[&cell],
             None       => self.background
         }
+    }
+
+    fn get_random_color(&self) -> Color {
+        use rand::distributions::{IndependentSample, Range};
+        let range = Range::new(0.0, 1.0);
+        let mut colors = vec![1.0, 2.0, 3.0];
+        let mut rng = rand::thread_rng();
+
+        for x in colors.iter_mut() {
+            *x = range.ind_sample(&mut rng);
+        }
+        let mut iter = colors.into_iter();
+        Color::new(iter.next().unwrap(), iter.next().unwrap(), iter.next().unwrap(), 1.0)
+
     }
 }
 
@@ -211,33 +208,181 @@ fn init_patterns(s: &mut MainState) -> Result<(), ()> {
 }
 
 
+enum Orientation {
+    Vertical,
+    Horizontal,
+    Diagonal
+}
+
+// Toggle a horizontal, vertical, or diagonal line, as player with index 0. This is only used for
+// the intro currently. Part or all of the line can be outside of the Universe; if this is the
+// case, only the parts inside the Universe are toggled.
+fn toggle_line(s: &mut MainState, orientation: Orientation, col: isize, row: isize, width: isize, height: isize) {
+    let player_id = 0;   // hardcode player ID, since this is just for the intro
+    match orientation {
+        Orientation::Vertical => {
+            for r in row..(height + row) {
+                if col < 0 || r < 0 { continue }
+                let _ = s.intro_uni.toggle(col as usize, r as usize, player_id);  // `let _ =`, because we don't care about errors
+            }
+        }
+        Orientation::Horizontal => {
+            for c in col..(width + col) {
+                if c < 0 || row < 0 { continue }
+                let _ = s.intro_uni.toggle(c as usize, row as usize, player_id);
+            }
+        }
+        Orientation::Diagonal => {
+            for x in 0..(width - 1) {
+                let c: isize = col+x;
+                let r: isize = row+x;
+                if c < 0 || r < 0 { continue; }
+                let _ = s.intro_uni.toggle(c as usize, r as usize, player_id);
+            }
+        }
+    }
+}
+
+fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
+
+    // 1) Calculate width and height of rectangle which represents the intro logo
+    // 2) Determine height and width of the window
+    // 3) Center it
+    // 4) get offset for row and column to draw at
+
+    let resolution = s.video_settings.get_active_resolution();
+    // let resolution = (DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT);
+    let win_width  = (resolution.0 / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let win_height = (resolution.1 / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let player_id = 0;   // hardcoded for this intro
+
+    let letter_width = 5;
+    let letter_height = 6;
+
+    // 9 letters; account for width and spacing
+    let logo_width = 9*5 + 9*5;
+    let logo_height = letter_height;
+
+    let mut offset_col = win_width/2  - logo_width/2;
+    let     offset_row = win_height/2 - logo_height/2;
+
+    let toggle = |s_: &mut MainState, col: isize, row: isize| {
+        if col >= 0 || row >= 0 {
+            let _ = s_.intro_uni.toggle(col as usize, row as usize, player_id); // we don't care if an error is returned
+        }
+    };
+
+    // C
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
+
+    offset_col += 2*letter_width;
+
+    // O
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width-1, offset_row+1, letter_width,letter_height-1);
+
+    offset_col += 2*letter_width;
+
+    // N
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row, letter_width,letter_height+1);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
+    toggle_line(s, Orientation::Diagonal, offset_col+1, offset_row+1, letter_width,letter_height);
+
+    offset_col += 2*letter_width;
+
+    // W
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height, letter_width,letter_height);
+    toggle(s, offset_col+letter_width/2, offset_row+letter_height-1);
+    toggle(s, offset_col+letter_width/2, offset_row+letter_height-2);
+    toggle(s, offset_col+letter_width/2+1, offset_row+letter_height-1);
+    toggle(s, offset_col+letter_width/2+1, offset_row+letter_height-2);
+
+    offset_col += 2*letter_width;
+
+    // A
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height/2, letter_width-1,letter_height);
+
+    offset_col += 2*letter_width;
+
+    // Y
+    toggle(s, offset_col, offset_row);
+    toggle(s, offset_col, offset_row+1);
+    toggle(s, offset_col, offset_row+2);
+    toggle(s, offset_col+letter_height, offset_row);
+    toggle(s, offset_col+letter_height, offset_row+1);
+    toggle(s, offset_col+letter_height, offset_row+2);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_height/2, offset_row+letter_width/2+2, letter_width,letter_height-3);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height/2, letter_width+2,letter_height-1);
+
+    offset_col += 2*letter_width;
+
+    // S
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height/2, letter_width,letter_height);
+    toggle(s, offset_col, offset_row+1);
+    toggle(s, offset_col, offset_row+2);
+    toggle(s, offset_col+letter_width-1, offset_row+4);
+    toggle(s, offset_col+letter_width-1, offset_row+5);
+
+    offset_col += 2*letter_width;
+
+    // T
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width/2, offset_row+1, letter_width,letter_height);
+
+    offset_col += 2*letter_width;
+
+    // E
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height/2, letter_width-2,letter_height);
+
+    Ok(())
+}
+
+
 // Then we implement the `ggez::game::GameState` trait on it, which
 // requires callbacks for creating the game state, updating it each
 // frame, and drawing it.
 //
 // The `GameState` trait also contains callbacks for event handling
 // that you can override if you wish, but the defaults are fine.
-impl GameState for MainState {
+impl MainState {
 
-    fn load(_ctx: &mut Context, _conf: &conf::Conf) -> GameResult<MainState> {
-        let intro_font = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 32).unwrap();
-        let intro_text = graphics::Text::new(_ctx, "WAYSTE EM!", &intro_font).unwrap();
+    fn new(ctx: &mut Context) -> GameResult<MainState> {
+        ctx.print_resource_stats();
 
         let universe_width_in_cells  = 256;
         let universe_height_in_cells = 120;
 
-        let mut config = config::ConfigFile::new();
+        let config = config::ConfigFile::new();
 
         let mut vs = video::VideoSettings::new();
-        vs.gather_display_modes(_ctx);
+        vs.gather_display_modes(ctx)?;
+
         vs.print_resolutions();
-        
+
+/*
+ *  FIXME Disabling video module temporarily as we can now leverage ggez 0.4
+ */
+/*
         // On first-run, use default supported resolution
         let (w, h) = config.get_resolution();
         if (w,h) != (0,0) {
-            vs.set_active_resolution(_ctx, w, h);
+            vs.set_active_resolution(ctx, w, h);
         } else {
-            vs.advance_to_next_resolution(_ctx);
+            vs.advance_to_next_resolution(ctx);
 
             // Some duplication here to update the config file
             // I don't want to do this every load() to avoid
@@ -247,36 +392,31 @@ impl GameState for MainState {
         }
         let (w,h) = vs.get_active_resolution();
 
-        video::set_fullscreen(_ctx, config.is_fullscreen() == true);
+        graphics::set_fullscreen(ctx, config.is_fullscreen() == true);
         vs.is_fullscreen = config.is_fullscreen() == true;
+*/
 
-        let grid_view = GridView {
-            rect:        Rect::new(0, 0, w as u32, h as u32),
-            cell_size:   config.get_zoom_level(),
-            columns:     universe_width_in_cells,
-            rows:        universe_height_in_cells,
-            grid_origin: Point::new(0, 0),
-        };
+        let viewport = viewport::Viewport::new(config.get_zoom_level(), universe_width_in_cells, universe_height_in_cells);
 
         let mut color_settings = ColorSettings {
             cell_colors: BTreeMap::new(),
-            background:  Color::RGB( 64,  64,  64),
+            background:  Color::new( 0.25,  0.25,  0.25, 1.0),
         };
-        color_settings.cell_colors.insert(CellState::Dead,           Color::RGB(224, 224, 224));
+        color_settings.cell_colors.insert(CellState::Dead,           Color::new(0.875, 0.875, 0.875, 1.0));
         if GRID_DRAW_STYLE == DrawStyle::Line {
             // black background - "tetris-like"
-            color_settings.cell_colors.insert(CellState::Alive(None), Color::RGB(255, 255, 255));
+            color_settings.cell_colors.insert(CellState::Alive(None), Color::new( 1.0, 1.0, 1.0, 1.0));
         } else {
             // light background
-            color_settings.cell_colors.insert(CellState::Alive(None), Color::RGB(  0,   0,   0));
+            color_settings.cell_colors.insert(CellState::Alive(None), Color::new( 0.0, 0.0, 0.0, 1.0));
         }
-        color_settings.cell_colors.insert(CellState::Alive(Some(0)), Color::RGB(255,   0,   0));  // 0 is red
-        color_settings.cell_colors.insert(CellState::Alive(Some(1)), Color::RGB( 96, 160, 255));  // 1 is blue
-        color_settings.cell_colors.insert(CellState::Wall,           Color::RGB(158, 141, 105));
-        color_settings.cell_colors.insert(CellState::Fog,            Color::RGB(200, 200, 200));
+        color_settings.cell_colors.insert(CellState::Alive(Some(0)), Color::new(  1.0,   0.0,   0.0, 1.0));  // 0 is red
+        color_settings.cell_colors.insert(CellState::Alive(Some(1)), Color::new(  0.0,   0.0,   1.0, 1.0));  // 1 is blue
+        color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
+        color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
 
-        let small_font = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 20).unwrap();
-        let menu_font  = graphics::Font::new(_ctx, "DejaVuSerif.ttf", 20).unwrap();
+        let small_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
+        let menu_font  = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
 
         let bigbang = 
         {
@@ -291,62 +431,81 @@ impl GameState for MainState {
             BigBang::new()
             .width(universe_width_in_cells)
             .height(universe_height_in_cells)
-            .server_mode(true) // TODO will change once we get server support up
+            .server_mode(true) // TODO will change to false once we get server support up
+                               // Currently 'client' is technically both client and server
             .history(HISTORY_SIZE)
             .fog_radius(FOG_RADIUS)
             .add_players(players)
             .birth()
         };
 
+        let intro_universe = 
+        {
+            let player = PlayerBuilder::new(Region::new(0, 0, 256, 256));
+            BigBang::new()
+                .width(256)
+                .height(256)
+                .fog_radius(100)
+                .add_players(vec![player])
+                .birth()
+        };
+
         let mut s = MainState {
             small_font:          small_font,
-            intro_text:          intro_text,
-            stage:               Stage::Intro(INTRO_DURATION),
+            screen:              Screen::Intro(INTRO_DURATION),
             uni:                 bigbang.unwrap(),
+            intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
-            grid_view:           grid_view,
             color_settings:      color_settings,
             running:             false,
             menu_sys:            menu::MenuSystem::new(menu_font),
             video_settings:      vs,
             config:              config,
+            viewport:            viewport,
+            input_manager:       input::InputManager::new(input::InputDeviceType::PRIMARY),
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
             win_resize:          0,
             return_key_pressed:  false,
-            escape_key_pressed:  false, // Action flag, available for use
+            escape_key_pressed:  false,
             toggle_paused_game:  false,
         };
 
         init_patterns(&mut s).unwrap();
+        init_title_screen(&mut s).unwrap();
 
         Ok(s)
     }
+}
 
-    fn update(&mut self, _ctx: &mut Context, dt: Duration) -> GameResult<()> {
-        let duration = timer::duration_to_f64(dt); // seconds
+impl EventHandler for MainState {
+    fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
+        let duration = timer::duration_to_f64(timer::get_delta(ctx)); // seconds
 
-        let cur_menu_state = {
-            self.menu_sys.menu_state.clone()
-        };
+        match self.screen {
+            Screen::Intro(mut remaining) => {
 
-        match self.stage {
-            Stage::Intro(mut remaining) => {
                 remaining -= duration;
-                if remaining > 0.0 {
-                    self.stage = Stage::Intro(remaining);
-                } else {
-                    self.stage = Stage::Menu;
-                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                if remaining > INTRO_DURATION - INTRO_PAUSE_DURATION {
+                    self.screen = Screen::Intro(remaining);
+                } 
+                else {
+                    if remaining > 0.0 && remaining <= INTRO_DURATION - INTRO_PAUSE_DURATION {
+                        self.intro_uni.next();
+                        self.screen = Screen::Intro(remaining);
+                    }
+                    else {
+                        self.screen = Screen::Run; // XXX Menu Screen is disabled for the time being
+                    }
                 }
             }
-            Stage::Menu => {
-                
-
+            Screen::Menu => {
                 if self.config.is_dirty() {
                     self.config.write();
                 }
+
+                self.process_menu_inputs();
 
                 let is_direction_key_pressed = {
                     self.menu_sys.get_controls().is_menu_key_pressed()
@@ -358,7 +517,7 @@ impl GameState for MainState {
                     // move selection accordingly
                     let (_,y) = self.arrow_input;
                     {
-                        let container = self.menu_sys.get_menu_container(&cur_menu_state); 
+                        let container = self.menu_sys.get_menu_container_mut(); 
                         let mainmenu_md = container.get_metadata();
                         mainmenu_md.adjust_index(y);
                     }
@@ -366,24 +525,24 @@ impl GameState for MainState {
                 }
                 else {
                     /////////////////////////
-                    //// Enter key was pressed
+                    //// Non-Arrow key was pressed
                     //////////////////////////
 
                     if self.return_key_pressed || self.escape_key_pressed {
 
                         let mut id = {
-                            let container = self.menu_sys.get_menu_container(&cur_menu_state);
-                            let index = container.get_metadata().get_index();
+                            let container = self.menu_sys.get_menu_container();
+                            let index = container.get_menu_item_index();
                             let menu_item_list = container.get_menu_item_list();
                             let menu_item = menu_item_list.get(index).unwrap();
-                            menu_item.get_id()
+                            menu_item.id
                         };
 
                         if self.escape_key_pressed {
                             id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
                         }
 
-                        match cur_menu_state {
+                        match self.menu_sys.menu_state {
                             menu::MenuState::MainMenu => {
                                 if !self.escape_key_pressed {
                                     match id {
@@ -391,7 +550,7 @@ impl GameState for MainState {
                                             self.pause_or_resume_game();
                                         }
                                         menu::MenuItemIdentifier::ExitGame => {
-                                            self.stage = Stage::Exit;
+                                            self.screen = Screen::Exit;
                                         }
                                         menu::MenuItemIdentifier::Options => {
                                             self.menu_sys.menu_state = menu::MenuState::Options;
@@ -423,9 +582,6 @@ impl GameState for MainState {
                                    _ => {}
                                 }
                             }
-                            menu::MenuState::MenuOff => {
-
-                            }
                             menu::MenuState::Audio => {
                                 match id {
                                     menu::MenuItemIdentifier::ReturnToPreviousMenu => {
@@ -453,20 +609,19 @@ impl GameState for MainState {
                                     }
                                     menu::MenuItemIdentifier::Fullscreen => {
                                         if !self.escape_key_pressed {
-                                            self.video_settings.is_fullscreen = video::toggle_full_screen(_ctx);
-                                            self.config.set_fullscreen(self.video_settings.is_fullscreen == true);
+                                            self.video_settings.toggle_fullscreen(ctx);
+                                            self.config.set_fullscreen(self.video_settings.is_fullscreen());
                                         }
                                     }
                                     menu::MenuItemIdentifier::Resolution => {
                                         if !self.escape_key_pressed {
-                                            self.video_settings.advance_to_next_resolution(_ctx);
+                                            self.video_settings.advance_to_next_resolution(ctx);
 
                                             // Update the configuration file and resize the viewing
                                             // screen
                                             let (w,h) = self.video_settings.get_active_resolution();
-                                            self.config.set_resolution(w,h);
-                                            self.grid_view.rect.set_width(w as u32);
-                                            self.grid_view.rect.set_height(h as u32);
+                                            self.config.set_resolution(w as i32, h as i32);
+                                            self.viewport.set_dimensions(w, h);
                                         }
                                     }
                                     _ => {}
@@ -479,97 +634,429 @@ impl GameState for MainState {
                 self.return_key_pressed = false;
                 self.escape_key_pressed = false;
             }
-            Stage::Run => {
-                if self.single_step {
-                    self.running = false;
-                }
-
-                if self.first_gen_was_drawn && (self.running || self.single_step) {
-                    self.uni.next();     // next generation
-                    self.single_step = false;
-                }
-
-                if self.toggle_paused_game {
-                    self.pause_or_resume_game();
-                }
-
-                self.adjust_panning(false);
-            }
-            Stage::Exit => {
-               let _ = _ctx.quit();
-            }
-        }
-
-        Ok(())
-    }
-
-    fn draw(&mut self, _ctx: &mut Context) -> GameResult<()> {
-       _ctx.renderer.clear();
-        match self.stage {
-            Stage::Intro(_) => {
-                try!(graphics::draw(_ctx, &mut self.intro_text, None, None));
-            }
-            Stage::Menu => {
-                self.menu_sys.draw_menu(&self.video_settings, _ctx, self.first_gen_was_drawn);
-            }
-            Stage::Run => {
-                self.draw_universe(_ctx);
-            }
-            Stage::Exit => {
-
-            }
-        }
-
-       _ctx.renderer.present();
-        timer::sleep_until_next_frame(_ctx, FPS);
-        Ok(())
-    }
-
-    fn mouse_button_down_event(&mut self, button: MouseButton, x: i32, y: i32) {
-        match self.stage {
-            Stage::Run => {
-                if button == MouseButton::Left {
-                    if let Some((col, row)) = self.grid_view.game_coords_from_window(Point::new(x,y)) {
-                        let result = self.uni.toggle(col as usize, row  as usize, CURRENT_PLAYER_ID);
-                        self.drag_draw = match result {
-                            Ok(state) => Some(state),
-                            Err(_)    => None,
-                        };
+            Screen::Run => {
+// TODO while this works at limiting the FPS, its a bit glitchy for input events
+// Disable until we have time to look into it
+//                while timer::check_update_time(ctx, FPS) { 
+                {
+                    if self.single_step {
+                        self.running = false;
                     }
+
+                    self.process_running_inputs();
+
+                    if self.first_gen_was_drawn && (self.running || self.single_step) {
+                        self.uni.next();     // next generation
+                        self.single_step = false;
+                    }
+
+                    if self.toggle_paused_game {
+                        self.pause_or_resume_game();
+                    }
+
+                    self.viewport.update(self.arrow_input);
                 }
             }
-            _ => {}
-        }
-    }
-
-    fn mouse_motion_event(&mut self, state: MouseState, x: i32, y: i32, _xrel: i32, _yrel: i32) {
-        if state.left() && self.drag_draw != None {
-            if let Some((col, row)) = self.grid_view.game_coords_from_window(Point::new(x,y)) {
-                let cell_state = self.drag_draw.unwrap();
-                self.uni.set(col as usize, row  as usize, cell_state, CURRENT_PLAYER_ID);
+            Screen::Exit => {
+               let _ = ctx.quit();
             }
         }
+
+        let _ = self.post_update();
+
+        Ok(())
     }
 
-    fn mouse_button_up_event(&mut self, _button: MouseButton, _x: i32, _y: i32) {
+    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
+        graphics::clear(ctx);
+        graphics::set_background_color(ctx, (0, 0, 0, 1).into());
+
+        match self.screen {
+            Screen::Intro(_) => {
+                self.draw_intro(ctx)?;
+            }
+            Screen::Menu => {
+                self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn);
+            }
+            Screen::Run => {
+                self.draw_universe(ctx)?;
+            }
+            Screen::Exit => {}
+        }
+
+        graphics::present(ctx);
+        timer::yield_now();
+        Ok(())
+    }
+
+    // Note about coordinates: x and y are "screen coordinates", with the origin at the top left of
+    // the screen. x becomes more positive going from left to right, and y becomes more positive
+    // going top to bottom.
+    fn mouse_button_down_event(&mut self,
+                               _ctx: &mut Context,
+                               button: MouseButton,
+                               x: i32,
+                               y: i32
+                               ) {
+        self.input_manager.add(input::InputAction::MouseClick(button, x, y));
+    }
+
+    fn mouse_motion_event(&mut self,
+                          _ctx: &mut Context,
+                          state: MouseState,
+                          x: i32,
+                          y: i32,
+                          _xrel: i32,
+                          _yrel: i32
+                          ) {
+        match self.screen {
+            Screen::Intro(_) => {}
+            Screen::Menu | Screen::Run => {
+                if state.left() && self.drag_draw != None {
+                    self.input_manager.add(input::InputAction::MouseDrag(MouseButton::Left, x, y));
+                } else {
+                    self.input_manager.add(input::InputAction::MouseMovement(x, y));
+                }
+            }
+            Screen::Exit => { unreachable!() }
+        }
+    }
+
+    fn mouse_button_up_event(&mut self,
+                             _ctx: &mut Context,
+                             _button: MouseButton,
+                             _x: i32,
+                             _y: i32
+                             ) {
         // TODO Later, we'll need to support drag-and-drop patterns as well as drag draw
         self.drag_draw = None;   // probably unnecessary because of state.left() check in mouse_motion_event
     }
 
-    fn key_down_event(&mut self, opt_keycode: Option<Keycode>, _keymod: Mod, repeat: bool) {
-        if opt_keycode == None {
-            println!("WARNING: got opt_keycode of None; what could this mean???");
-            return;
-        }
-        let keycode = opt_keycode.unwrap();
+    fn key_down_event(&mut self,
+                      ctx: &mut Context,
+                      keycode: Keycode,
+                      _keymod: Mod,
+                      repeat: bool
+                      ) {
 
-        match self.stage {
-            Stage::Intro(_) => {
-                self.stage = Stage::Menu;
+        match self.screen {
+            Screen::Intro(_) => {
+                self.screen = Screen::Run; // TODO lets just go to the game for now...
+                self.menu_sys.reset();
             }
-            Stage::Menu => {
-                
-                if !self.menu_sys.get_controls().is_menu_key_pressed() {
+            Screen::Menu | Screen::Run => {
+                // TODO for now just quit the game
+                if keycode == Keycode::Escape {
+                    self.quit_event(ctx);
+                }
+
+                self.input_manager.add(input::InputAction::KeyPress(keycode, repeat));
+            }
+            Screen::Exit => {}
+        }
+    }
+
+    fn key_up_event(&mut self,
+                    _ctx: &mut Context,
+                    keycode: Keycode,
+                    _keymod: Mod,
+                    _repeat: bool
+                    ) {
+        //self.input_manager.clear_input_start_time();
+        self.input_manager.add(input::InputAction::KeyRelease(keycode));
+    }
+
+    fn quit_event(&mut self, _ctx: &mut Context) -> bool {
+        let mut do_not_quit = true;
+
+        match self.screen {
+            Screen::Run => {
+                self.pause_or_resume_game();
+            }
+            Screen::Menu => {
+                // This is currently handled in the return_key_pressed path as well
+                self.escape_key_pressed = true;
+            }
+            Screen::Exit => {
+                do_not_quit = false;
+            }
+            _ => {}
+        }
+
+        do_not_quit
+    }
+
+}
+
+
+struct GameOfLifeDrawParams {
+    bg_color: Color,
+    fg_color: Color,
+    player_id: isize, // Player color >=0, Playerless < 0
+    draw_counter: bool,
+}
+
+impl MainState {
+
+    fn draw_game_of_life(&self, 
+                         ctx: &mut Context,
+                         universe: &Universe,
+                         draw_params: &GameOfLifeDrawParams
+                         ) -> GameResult<()> {
+
+        // grid background
+        graphics::set_color(ctx, draw_params.bg_color)?;
+        graphics::rectangle(ctx,  GRID_DRAW_STYLE.to_draw_mode(), self.viewport.get_viewport())?;
+
+        // grid foreground (dead cells)
+        let full_rect = self.viewport.get_rect_from_origin();
+
+        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
+            graphics::set_color(ctx, draw_params.fg_color)?;
+            graphics::rectangle(ctx,  GRID_DRAW_STYLE.to_draw_mode(), clipped_rect)?;
+        }
+
+        let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
+        let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
+
+        // grid non-dead cells (walls, players, etc.)
+        let visibility = if draw_params.player_id >= 0 {
+            Some(draw_params.player_id as usize) //XXX, Player One
+        } else {
+            Some(0)
+        };
+
+        universe.each_non_dead_full(visibility, &mut |col, row, state| {
+            let color = if draw_params.player_id >= 0 {
+                self.color_settings.get_color(Some(state))
+            } else {
+                self.color_settings.get_random_color()
+            };
+
+            if let Some(rect) = self.viewport.get_screen_area(viewport::Cell::new(col, row)) {
+                let p = graphics::DrawParam {
+                    dest: Point2::new(rect.x, rect.y),
+                    scale: Point2::new(rect.w, rect.h), // scaling a 1x1 Image to correct cell size
+                    color: Some(color),
+                    ..Default::default()
+                };
+
+                spritebatch.add(p);
+            }
+        });
+
+        graphics::draw_ex(ctx, &spritebatch, graphics::DrawParam{ dest: Point2::new(0.0, 0.0), .. Default::default()} )?;
+        spritebatch.clear();
+
+        ////////// draw generation counter
+        if draw_params.draw_counter {
+            let gen_counter_str = universe.latest_gen().to_string();
+            let color = Color::new(1.0, 0.0, 0.0, 1.0);
+            utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None);
+        }
+
+        ////////////////////// END
+        graphics::set_color(ctx, graphics::BLACK)?; // Clear color residue
+
+        Ok(())
+    }
+
+    fn draw_intro(&mut self, ctx: &mut Context) -> GameResult<()>{
+
+        let draw_params = GameOfLifeDrawParams {
+            bg_color: graphics::BLACK,
+            fg_color: graphics::BLACK,
+            player_id: -1,
+            draw_counter: true,
+        };
+
+        self.draw_game_of_life(ctx, &self.intro_uni, &draw_params)
+    }
+
+    fn draw_universe(&mut self, ctx: &mut Context) -> GameResult<()> {
+
+        let draw_params = GameOfLifeDrawParams {
+            bg_color: self.color_settings.get_color(None),
+            fg_color: self.color_settings.get_color(Some(CellState::Dead)),
+            player_id: 1, // Current player, TODO sync with Server's CLIENT ID
+            draw_counter: true,
+        };
+
+        self.first_gen_was_drawn = true;
+        self.draw_game_of_life(ctx, &self.uni, &draw_params)
+    }
+
+    fn pause_or_resume_game(&mut self) {
+        let cur_menu_state = self.menu_sys.menu_state;
+        let cur_stage = self.screen;
+
+        match cur_stage {
+            Screen::Menu => {
+                if cur_menu_state == menu::MenuState::MainMenu {
+                    self.screen = Screen::Run;
+                    self.running = true;
+                }
+            }
+            Screen::Run => {
+                self.screen = Screen::Menu;
+                self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                self.running = false;
+            }
+            _ => unimplemented!()
+        }
+
+        self.toggle_paused_game = false;
+    }
+
+    // TODO
+    // Just had an idea... transform the user inputs events into game events
+    // That way differnt user inputs (gamepad, keyboard/mouse) resolve to a single game event
+    // This logic would be agnostic from how the user is interacting with the game
+    fn process_running_inputs(&mut self) {
+
+        while self.input_manager.has_more() {
+            if let Some(input) = self.input_manager.remove() {
+                match input {
+
+                    // MOUSE EVENTS
+                    input::InputAction::MouseClick(MouseButton::Left, x, y) => {
+                        // Need to go through UI manager to determine what we are interacting with, TODO
+                        // Could be UI element (drawpad) or playing field
+                        if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
+                            let result = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID);
+                            self.drag_draw = match result {
+                                Ok(state) => Some(state),
+                                Err(_)    => None,
+                            };
+                        }
+                    }
+                    input::InputAction::MouseClick(MouseButton::Right, _x, _y) => { }
+                    input::InputAction::MouseMovement(_x, _y) => { }
+                    input::InputAction::MouseDrag(MouseButton::Left, x, y) => {
+                        if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
+                            if let Some(cell_state) = self.drag_draw {
+                                self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
+                            }
+                        }
+                    }
+
+                    // KEYBOARD EVENTS
+                    input::InputAction::KeyPress(keycode, repeat) => {
+                        match keycode {
+                            Keycode::Return => {
+                                if !repeat {
+                                    self.running = !self.running;
+                                }
+                            }
+                            Keycode::Space => {
+                                self.single_step = true;
+                            }
+                            Keycode::Up => {
+                                self.arrow_input = (0, -1);
+                            }
+                            Keycode::Down => {
+                                self.arrow_input = (0, 1);
+                            }
+                            Keycode::Left => {
+                                self.arrow_input = (-1, 0);
+                            }
+                            Keycode::Right => {
+                                self.arrow_input = (1, 0);
+                            }
+                            Keycode::Plus | Keycode::Equals => {
+                                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
+                                self.config.set_zoom_level(self.viewport.get_cell_size());
+                            }
+                            Keycode::Minus | Keycode::Underscore => {
+                                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
+                                self.config.set_zoom_level(self.viewport.get_cell_size());
+                            }
+                            Keycode::Num1 => {
+                                self.win_resize = 1;
+                            }
+                            Keycode::Num2 => {
+                                self.win_resize = 2;
+                            }
+                            Keycode::Num3 => {
+                                self.win_resize = 3;
+                            }
+                            Keycode::P => {
+                                self.config.print_to_screen();
+                            }
+                            Keycode::LGui => {
+                            
+                            }
+                            _ => {
+                                println!("Unrecognized keycode {}", keycode);
+                            }
+                        }
+                    }
+
+                    _ => {},
+                }
+            }
+        }
+    }
+
+    fn process_menu_inputs(&mut self) {
+        while self.input_manager.has_more() {
+            if let Some(input) = self.input_manager.remove() {
+                match input {
+                    input::InputAction::MouseClick(MouseButton::Left, _x, _y) => {}
+                    input::InputAction::MouseClick(MouseButton::Right, _x, _y) => {}
+                    input::InputAction::MouseMovement(_x, _y) => {}
+                    input::InputAction::MouseDrag(MouseButton::Left, _x, _y) => {}
+                    input::InputAction::MouseRelease(_) => {}
+
+                    input::InputAction::KeyPress(keycode, repeat) => {
+                        if !self.menu_sys.get_controls().is_menu_key_pressed() {
+                            match keycode {
+                                Keycode::Up => {
+                                    self.arrow_input = (0, -1);
+                                }
+                                Keycode::Down => {
+                                    self.arrow_input = (0, 1);
+                                }
+                                Keycode::Left => {
+                                    self.arrow_input = (-1, 0);
+                                }
+                                Keycode::Right => {
+                                    self.arrow_input = (1, 0);
+                                }
+                                Keycode::Return => {
+                                    if !repeat {
+                                        self.return_key_pressed = true;
+                                    }
+                                }
+                                Keycode::Escape => {
+                                    self.escape_key_pressed = true;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    input::InputAction::KeyRelease(keycode) => {
+                        match keycode {
+                            Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right => {
+                                self.arrow_input = (0, 0);
+                                self.menu_sys.get_controls().set_menu_key_pressed(false);
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    _ => {},
+                }
+            }
+        }
+
+    }
+
+    fn post_update(&mut self) -> GameResult<()> {
+        /*
+        match self.input_manager.peek() {
+            Some(&input::InputAction::KeyPress(keycode, repeat)) => {
+                if repeat {
                     match keycode {
                         Keycode::Up => {
                             self.arrow_input = (0, -1);
@@ -583,417 +1070,21 @@ impl GameState for MainState {
                         Keycode::Right => {
                             self.arrow_input = (1, 0);
                         }
-                        Keycode::Return => {
-                            if !repeat {
-                                self.return_key_pressed = true;
-                            }
-                        }
-                        Keycode::Escape => {
-                            self.escape_key_pressed = true;
-                        }
-                        _ => {
-
-                        }
+                        _ => self.arrow_input = (0, 0)
                     }
                 }
             }
-            Stage::Run => {
-                match keycode {
-                    Keycode::Return => {
-                        if !repeat {
-                            self.running = !self.running;
-                        }
-                    }
-                    Keycode::Space => {
-                        self.single_step = true;
-                    }
-                    Keycode::Up => {
-                        self.arrow_input = (0, -1);
-                    }
-                    Keycode::Down => {
-                        self.arrow_input = (0, 1);
-                    }
-                    Keycode::Left => {
-                        self.arrow_input = (-1, 0);
-                    }
-                    Keycode::Right => {
-                        self.arrow_input = (1, 0);
-                    }
-                    Keycode::Plus | Keycode::Equals => {
-                        self.adjust_zoom_level(ZoomDirection::ZoomIn);
-                        self.config.set_zoom_level(self.grid_view.cell_size);
-                    }
-                    Keycode::Minus | Keycode::Underscore => {
-                        self.adjust_zoom_level(ZoomDirection::ZoomOut);
-                        self.config.set_zoom_level(self.grid_view.cell_size);
-                    }
-                    Keycode::Num1 => {
-                       self.win_resize = 1;
-                    }
-                    Keycode::Num2 => {
-                       self.win_resize = 2;
-                    }
-                    Keycode::Num3 => {
-                       self.win_resize = 3;
-                    }
-                    Keycode::P => {
-                        self.config.print_to_screen();
-                    }
-                    Keycode::LGui => {
-                    
-                    }
-                    _ => {
-                        println!("Unrecognized keycode {}", keycode);
-                    }
-                }
-            }
-            Stage::Exit => {
-
-            }
+            _ => self.arrow_input = (0,0),
         }
-    }
+        */
 
-    fn key_up_event(&mut self, opt_keycode: Option<Keycode>, _keymod: Mod, _repeat: bool) {
-        if opt_keycode == None {
-            println!("WARNING: got opt_keycode of None; what could this mean???");
-            return;
-        }
-        let keycode = opt_keycode.unwrap();
+        self.arrow_input = (0, 0);
+        self.input_manager.expunge();
 
-        match keycode {
-            Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right => {
-                self.arrow_input = (0, 0);
-                self.menu_sys.get_controls().set_menu_key_pressed(false);
-            }
-            _ => {}
-        }
-    }
-
-    fn quit_event(&mut self) -> bool {
-        let mut do_not_quit = true;
-
-        match self.stage {
-            Stage::Run => {
-                self.pause_or_resume_game();
-            }
-            Stage::Menu => {
-                // This is currently handled in the return_key_pressed path as well
-                self.escape_key_pressed = true;
-            }
-            Stage::Exit => {
-                do_not_quit = false;
-            }
-            _ => {
-
-            }
-        }
-
-        do_not_quit
-    }
-
-}
-
-impl MainState {
-    fn draw_universe(&mut self, _ctx: &mut Context) {
-        // grid background
-        graphics::set_color(_ctx, self.color_settings.get_color(None));
-        graphics::rectangle(_ctx,  GRID_DRAW_STYLE.to_draw_mode(), self.grid_view.rect).unwrap();
-
-        // grid foreground (dead cells)
-        //TODO: put in its own function (of GridView); also make this less ugly
-        let origin = self.grid_view.grid_origin;
-        let full_width  = self.grid_view.grid_width();
-        let full_height = self.grid_view.grid_height();
-        let full_rect = Rect::new(origin.x(), origin.y(), full_width, full_height);
-
-        if let Some(clipped_rect) = full_rect.intersection(self.grid_view.rect) {
-            graphics::set_color(_ctx, self.color_settings.get_color(Some(CellState::Dead)));
-            graphics::rectangle(_ctx,  GRID_DRAW_STYLE.to_draw_mode(), clipped_rect).unwrap();
-        }
-
-        // grid non-dead cells
-        let visibility = Some(1); //XXX
-        self.uni.each_non_dead_full(visibility, &mut |col, row, state| {
-            let color = self.color_settings.get_color(Some(state));
-            graphics::set_color(_ctx, color);
-
-            if let Some(rect) = self.grid_view.window_coords_from_game(col, row) {
-                graphics::rectangle(_ctx,  GRID_DRAW_STYLE.to_draw_mode(), rect).unwrap();
-            }
-        });
-
-        ////////// draw generation counter
-        let gen_counter_str = self.uni.latest_gen().to_string();
-        utils::Graphics::draw_text(_ctx, &self.small_font, &gen_counter_str, &Point::new(0,0), None);
-
-        ////////////////////// END
-        graphics::set_color(_ctx, Color::RGB(0,0,0)); // do this at end; not sure why...?
-        self.first_gen_was_drawn = true;
-
-    }
-
-    fn pause_or_resume_game(&mut self) {
-        let cur_menu_state = {
-            self.menu_sys.menu_state.clone()
-        };
-        let cur_stage = {
-            self.stage.clone()
-        };
-
-        match cur_stage {
-            Stage::Menu => {
-                if cur_menu_state == menu::MenuState::MainMenu {
-                    self.stage = Stage::Run;
-                    self.menu_sys.menu_state = menu::MenuState::MenuOff;
-                    self.running = true;
-                }
-            }
-            Stage::Run => {
-                if menu::MenuState::MenuOff == cur_menu_state {
-                    self.stage = Stage::Menu;
-                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
-                    self.running = false;
-                }
-                else {
-                    panic!("Menu State should be OFF while game is in progress: {:?}", cur_menu_state);
-                }
-            }
-            _ => unimplemented!()
-        }
-
-        self.toggle_paused_game = false;
-    }
-
-    fn adjust_zoom_level(&mut self, direction : ZoomDirection) {
-        if (direction == ZoomDirection::ZoomIn && self.grid_view.cell_size < MAX_CELL_SIZE) ||
-           (direction == ZoomDirection::ZoomOut && self.grid_view.cell_size > MIN_CELL_SIZE) {
-
-            let zoom_dir: i32;
-            match direction {
-                ZoomDirection::ZoomIn => zoom_dir = 1,
-                ZoomDirection::ZoomOut => zoom_dir = -1,
-            }
-
-            debug!("Window Size: ({}, {})", self.grid_view.rect.width(), self.grid_view.rect.height());
-            debug!("Origin Before: ({},{})", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
-            debug!("Cell Size Before: {},", self.grid_view.cell_size);
-
-            let next_cell_size = self.grid_view.cell_size as i32 + zoom_dir;
-            let old_cell_size = self.grid_view.cell_size as i32;
-
-            let window_center = Point::new((self.grid_view.rect.width()/2) as i32, (self.grid_view.rect.height()/2) as i32);
-
-            if let Some((old_cell_count_for_x, old_cell_count_for_y)) = self.grid_view.game_coords_from_window(window_center) {
-                let delta_x = zoom_dir * (old_cell_count_for_x as i32 * next_cell_size as i32 - old_cell_count_for_x as i32 * old_cell_size as i32);
-                let delta_y = zoom_dir * (old_cell_count_for_y as i32 * next_cell_size as i32 - old_cell_count_for_y as i32 * old_cell_size as i32);
-
-                debug!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
-                debug!("delta in win coords: {}, {}", delta_x, delta_y);
-
-                self.grid_view.cell_size = next_cell_size as u32;
-
-                let columns = self.grid_view.columns as u32;
-
-                let phi = columns as i32 * old_cell_size as i32;
-                let alpha = self.grid_view.rect.width() as i32;
-
-                if phi > alpha {
-                    self.grid_view.grid_origin = self.grid_view.grid_origin.offset(-zoom_dir * (delta_x as i32), -zoom_dir * (delta_y as i32));
-                }
-
-                self.adjust_panning(true);
-
-                debug!("Origin After: ({},{})\n", self.grid_view.grid_origin.x(), self.grid_view.grid_origin.y());
-                debug!("Cell Size After: {},", self.grid_view.cell_size);
-            }
-        }
-    }
-
-    fn adjust_panning(&mut self, recenter_after_zoom: bool) {
-        let (columns, rows) = (self.grid_view.columns as u32, self.grid_view.rows as u32);
-
-        debug!("\n\nP A N N I N G:");
-        debug!("Columns, Rows = {:?}", (columns, rows));
-
-        let (dx, dy) = self.arrow_input;
-        let dx_in_pixels = -dx * PIXELS_SCROLLED_PER_FRAME;
-        let dy_in_pixels = -dy * PIXELS_SCROLLED_PER_FRAME;
-
-        let cur_origin_x = self.grid_view.grid_origin.x();
-        let cur_origin_y = self.grid_view.grid_origin.y();
-
-        let new_origin_x = cur_origin_x + dx_in_pixels;
-        let new_origin_y = cur_origin_y + dy_in_pixels;
-
-        let cell_size = self.grid_view.cell_size;
-        let border_in_cells = 10;
-        let border_in_px = border_in_cells * cell_size as i32;
-
-        debug!("Cell Size: {:?}", (cell_size));
-
-        let mut pan = true;
-        let mut limit_x = self.grid_view.grid_origin.x();
-        let mut limit_y = self.grid_view.grid_origin.y();
-        // Here we check if we're at our limits. In all other cases, we'll fallthrough to the
-        // bottom grid_origin offsetting
-
-        // Panning left
-        if self.arrow_input.0 == -1 || recenter_after_zoom {
-            if new_origin_x > 0 {
-                if new_origin_x > border_in_px {
-                    pan = false;
-                    limit_x = border_in_px;
-                }
-            }
-        }
-
-        // Panning right
-        //
-        //  /      α     \
-        //                  v------ includes the border
-        //  |------------|----|
-        //  |            |    |
-        //  |            |    |
-        //  |            |    |
-        //  |------------|----|
-        //
-        //  \        ϕ        /
-        //
-        if self.arrow_input.0 == 1 || recenter_after_zoom {
-            let phi = (border_in_cells + columns as i32)*(cell_size as i32);
-            let alpha = self.grid_view.rect.width() as i32;
-
-            if phi > alpha && i32::abs(new_origin_x) >= phi - alpha {
-                pan = false;
-                limit_x = -(phi - alpha);
-            }
-
-            if phi < alpha {
-                pan = false;
-            }
-        }
-
-        // Panning up
-        if self.arrow_input.1 == -1 || recenter_after_zoom {
-            if new_origin_y > 0 && new_origin_y > border_in_px {
-                pan = false;
-                limit_y = border_in_px;
-            }
-        }
-
-        // Panning down
-        if self.arrow_input.1 == 1 || recenter_after_zoom {
-            let phi = (border_in_cells + rows as i32)*(cell_size as i32);
-            let alpha = self.grid_view.rect.height() as i32;
-
-            if phi > alpha && i32::abs(new_origin_y) >= phi - alpha {
-                pan = false;
-                limit_y = -(phi - alpha);
-            }
-
-            if phi < alpha {
-                pan = false;
-            }
-        }
-
-        if pan {
-            self.grid_view.grid_origin = self.grid_view.grid_origin.offset(dx_in_pixels, dy_in_pixels);
-        }
-        else {
-            // We cannot pan as we are out of bounds, but let us ensure we maintain a border
-            self.grid_view.grid_origin = Point::new(limit_x, limit_y);
-        }
-
-    }
-
-    // TODO reevaluate necessity
-     fn _get_all_window_coords_in_game_coords(&mut self) -> Option<WindowCornersInGameCoords> {
-        let resolution = self.video_settings.get_active_resolution();
-        let win_width_px = resolution.0 as i32;
-        let win_height_px = resolution.1 as i32;
-
-        debug!("\tWindow: {:?} px", (win_width_px, win_height_px));
-
-        let result : Option<WindowCornersInGameCoords>;
-
-        let (origin_x, origin_y) = self.grid_view.game_coords_from_window_unchecked(Point::new(0, 0));
-        {
-            let (win_width_px, win_height_px) = self.grid_view.game_coords_from_window_unchecked(Point::new(win_width_px, win_height_px));
-            {
-                result = Some(WindowCornersInGameCoords {
-                    top_left : Point::new(origin_x as i32, origin_y as i32),
-                    bottom_right : Point::new(win_width_px as i32, win_height_px as i32),
-                });
-                debug!("\tReturning... {:?}", result);
-            }
-        }
-
-        result
+        Ok(())
     }
 }
 
-
-#[derive(Debug, Clone)]
-struct WindowCornersInGameCoords {
-    top_left : Point,
-    bottom_right: Point,
-}
-
-// Controls the mapping between window and game coordinates
-struct GridView {
-    rect:        Rect,  // the area the game grid takes up on screen
-    cell_size:   u32,   // zoom level in window coordinates
-    columns:     usize, // width in game coords (should match bitmap/universe width)
-    rows:        usize, // height in game coords (should match bitmap/universe height)
-    // The grid origin point tells us where the top-left of the universe is with respect to the
-    // window.
-    grid_origin: Point, // top-left corner of grid in window coords. (may be outside rect)
-}
-
-
-impl GridView {
-
-    fn game_coords_from_window_unchecked(&self, point: Point) -> (isize, isize) {
-        let col: isize = ((point.x() - self.grid_origin.x()) / self.cell_size as i32) as isize;
-        let row: isize = ((point.y() - self.grid_origin.y()) / self.cell_size as i32) as isize;
-        
-        (col , row )
-    }
-
-    // Given a Point(x,y), we determine a col/row tuple in cell units
-    fn game_coords_from_window(&self, point: Point) -> Option<(isize, isize)> {
-        let (col, row) = self.game_coords_from_window_unchecked(point);
-
-        if col < 0 || col >= self.columns as isize || row < 0 || row >= self.rows as isize {
-            return None;
-        }
-        Some((col , row ))
-    }
-
-    // Attempt to return a rectangle for the on-screen area of the specified cell.
-    // If partially in view, will be clipped by the bounding rectangle.
-    // Caller must ensure that col and row are within bounds.
-    fn window_coords_from_game(&self, col: usize, row: usize) -> Option<Rect> {
-        let left   = self.grid_origin.x() + (col as i32)     * self.cell_size as i32;
-        let right  = self.grid_origin.x() + (col + 1) as i32 * self.cell_size as i32 - 1;
-        let top    = self.grid_origin.y() + (row as i32)     * self.cell_size as i32;
-        let bottom = self.grid_origin.y() + (row + 1) as i32 * self.cell_size as i32 - 1;
-
-        assert!(left < right);
-        assert!(top < bottom);
-        let rect = Rect::new(left, top, (right - left) as u32, (bottom - top) as u32);
-        rect.intersection(self.rect)
-    }
-
-    fn grid_width(&self) -> u32 {
-        self.columns as u32 * self.cell_size
-    }
-
-    fn grid_height(&self) -> u32 {
-        self.rows as u32 * self.cell_size
-    }
-
-}
 
 
 // Now our main function, which does three things:
@@ -1006,22 +1097,42 @@ impl GridView {
 // * then just call `game.run()` which runs the `Game` mainloop.
 pub fn main() {
     env_logger::init().unwrap();
-    let mut c = conf::Conf::new();
 
-    c.version       = version!().to_string();
-    c.window_width  = DEFAULT_SCREEN_WIDTH;
-    c.window_height = DEFAULT_SCREEN_HEIGHT;
-    c.window_icon   = "conwayste.ico".to_string();
-    c.window_title  = "💥 conwayste 💥".to_string();
+    let mut cb = ContextBuilder::new("conwayste", "Aaronm04|Manghi")
+        .window_setup(conf::WindowSetup::default()
+                      .title(format!("{} {} {}", "💥 conwayste", version!().to_owned(),"💥").as_str())
+                      .icon("//conwayste.ico")
+                      .resizable(false)
+                      .allow_highdpi(true)
+                      )
+        .window_mode(conf::WindowMode::default()
+                     .dimensions(DEFAULT_SCREEN_WIDTH as u32, DEFAULT_SCREEN_HEIGHT as u32)
+                     .vsync(true)
+                     );
 
-    // save conf to .toml file
-    let mut f = File::create("ggez.toml").unwrap(); //XXX
-    c.to_toml_file(&mut f).unwrap();
-
-    let mut game: Game<MainState> = Game::new("conwayste", c).unwrap();
-    if let Err(e) = game.run() {
-        println!("Error encountered: {:?}", e);
+    if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
+        let mut path = path::PathBuf::from(manifest_dir);
+        path.push("resources");
+        println!("Adding path {:?}", path);
+        cb = cb.add_resource_path(path);
     } else {
-        println!("Game exited cleanly.");
+        println!("Not building from cargo? Okie dokie.");
+    }
+
+    let ctx = &mut cb.build().unwrap();
+
+    match MainState::new(ctx) {
+        Err(e) => {
+            println!("Could not load Conwayste!");
+            println!("Error: {}", e);
+        }
+        Ok(ref mut game) => {
+            let result = run(ctx, game);
+            if let Err(e) = result {
+                println!("Error encountered while running game: {}", e);
+            } else {
+                println!("Game exited cleanly.");
+            }
+        }
     }
 }
