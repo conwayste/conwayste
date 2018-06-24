@@ -37,6 +37,9 @@ impl Graphics {
         else {
             dst = Point2::new(coords.x, coords.y);
         }
+        // We store the color being used to simplify code and aid in debuggability, since our
+        // drawing code is quite complex now. We don't the caller of this `draw_text` method to
+        // care what color we use to draw the text, or to clean up after calling it.
         let previous_color = graphics::get_color(_ctx);      // store previous color
         graphics::set_color(_ctx, color)?;                   // text foreground
         graphics::draw(_ctx, &mut graphics_text, dst, 0.0)?; // actually draw the text!

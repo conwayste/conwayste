@@ -250,10 +250,10 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     // 3) Center it
     // 4) get offset for row and column to draw at
 
-    // let resolution = s.video_settings.get_active_resolution();
-    let resolution = (DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT);
-    let win_width  = resolution.0 as i32 / s.viewport.get_cell_size() as i32;
-    let win_height = resolution.1 as i32 / s.viewport.get_cell_size() as i32;
+    let resolution = s.video_settings.get_active_resolution();
+    // let resolution = (DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT);
+    let win_width  = (resolution.0 / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let win_height = (resolution.1 / DEFAULT_ZOOM_LEVEL) as isize; // cells
     let player_id = 0;   // hardcoded for this intro
 
     let letter_width = 5;
@@ -261,10 +261,10 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
 
     // 9 letters; account for width and spacing
     let logo_width = 9*5 + 9*5;
-    let logo_height = letter_height as i32;
+    let logo_height = letter_height;
 
-    let mut offset_col = (win_width/2 - logo_width/2) as isize;
-    let offset_row = (win_height/2 - logo_height/2) as isize;
+    let mut offset_col = win_width/2  - logo_width/2;
+    let     offset_row = win_height/2 - logo_height/2;
 
     let toggle = |s_: &mut MainState, col: isize, row: isize| {
         if col >= 0 || row >= 0 {
@@ -369,7 +369,7 @@ impl MainState {
         let config = config::ConfigFile::new();
 
         let mut vs = video::VideoSettings::new();
-        let _ = vs.gather_display_modes(ctx);
+        vs.gather_display_modes(ctx)?;
 
         vs.print_resolutions();
 
