@@ -1,4 +1,4 @@
-/*  Copyright 2017 the ConWaysteTheEnemy Developers.
+/*  Copyright 2017 the Conwayste Developers.
  *
  *  This file is part of libconway.
  *
@@ -185,7 +185,7 @@ struct GenState {
 
 struct PlayerGenState {
     cells:     BitGrid,   // cells belonging to this player (if 1 here, must be 1 in GenState cells)
-    fog:       BitGrid,   // cells that the player is currently invisible to the player
+    fog:       BitGrid,   // cells that are currently invisible to the player
 }
 
 
@@ -246,16 +246,11 @@ enum BitOperation {
 
 #[inline]
 fn modify_cell_bits(bit_grid: &mut BitGrid, row: usize, word_col: usize, mask: u64, op: BitOperation) {
-
-    //debug!("Enter Modify ({}).... [{}][{}] = {}", op, row, word_col, bit_grid[row][word_col] & mask);
-    
     match op {
         BitOperation::Set => bit_grid[row][word_col] |= mask,
         BitOperation::Clear => bit_grid[row][word_col] &= !mask,
         BitOperation::Toggle => bit_grid[row][word_col] ^= mask,
     }
-
-    //debug!("...Modified [{}][{}] = {:b}", row, word_col, bit_grid[row][word_col]);
 }
 
 // Sets or clears a rectangle of bits. Panics if Region is out of range.

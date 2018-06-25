@@ -1,4 +1,4 @@
-/*  Copyright 2017 the ConWaysteTheEnemy Developers.
+/*  Copyright 2017 the Conwayste Developers.
  *
  *  This file is part of libconway.
  *
