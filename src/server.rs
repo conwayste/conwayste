@@ -1644,7 +1644,7 @@ mod test {
         match pkt {
             Packet::Response{sequence: _, request_ack: _, code} => {
                 match code {
-                    ResponseCode::LoggedIn(_,_) => {}
+                    ResponseCode::LoggedIn(_,version) => {assert_eq!(version, net::VERSION.to_owned() )}
                     _ => panic!("Unexpected ResponseCode: {:?}", code)
                 }
             }
