@@ -1618,4 +1618,48 @@ mod test {
             assert_eq!(room.messages.len(), 0);
         }
     }
+
+    #[test]
+    fn handle_new_connection_good_case() {
+        let mut server = ServerState::new();
+        let player_name = "some name".to_owned();
+        let pkt = server.handle_new_connection(player_name, fake_socket_addr());
+        match pkt {
+            Packet::Response{sequence: _, request_ack: _, code} => {
+                match code {
+                    ResponseCode::LoggedIn(_,_) => {}
+                    _ => panic!("Unexpected ResponseCode: {:?}", code)
+                }
+            }
+            _ => panic!("Unexpected Packet Type: {:?}", pkt)
+        }
+    }
+
+    #[test]
+    fn handle_new_connection_player_name_taken() {
+        let mut server = ServerState::new();
+        let player_name = "some name".to_owned();
+
+        let pkt = server.handle_new_connection(player_name.clone(), fake_socket_addr());
+        match pkt {
+            Packet::Response{sequence: _, request_ack: _, code} => {
+                match code {
+                    ResponseCode::LoggedIn(_,_) => {}
+                    _ => panic!("Unexpected ResponseCode: {:?}", code)
+                }
+            }
+            _ => panic!("Unexpected Packet Type: {:?}", pkt)
+        }
+
+        let pkt = server.handle_new_connection(player_name, fake_socket_addr());
+        match pkt {
+            Packet::Response{sequence: _, request_ack: _, code} => {
+                match code {
+                    ResponseCode::Unauthorized(msg) => { assert_eq!(msg, Some("not a unique name".to_owned())); }
+                    _ => panic!("Unexpected ResponseCode: {:?}", code)
+                }
+            }
+            _ => panic!("Unexpected Packet Type: {:?}", pkt)
+        }
+    }
 }
