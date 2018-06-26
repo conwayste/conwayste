@@ -1711,6 +1711,62 @@ mod universe_tests {
         }
 
     }
+
+    #[test]
+    fn each_non_dead_detects_some_cells() {
+        let mut uni = generate_test_universe_with_default_params();
+        let player1 = 1;
+
+        // glider
+        uni.toggle(16, 15, player1).unwrap();
+        uni.toggle(17, 16, player1).unwrap();
+        uni.toggle(15, 17, player1).unwrap();
+        uni.toggle(16, 17, player1).unwrap();
+        uni.toggle(17, 17, player1).unwrap();
+
+        // just a wall, for no reason at all
+        for col in 10..15 {
+            uni.set_unchecked(col, 12, CellState::Wall);
+        }
+
+        let gens = 21;
+        for _ in 0..gens {
+            uni.next();
+        }
+        let mut cells_with_pos: Vec<(usize, usize, CellState)> = vec![];
+        uni.each_non_dead(Region::new(0, 0, 80, 80), Some(player1), &mut |col, row, state| {
+            cells_with_pos.push((col, row, state));
+        });
+        assert_eq!(cells_with_pos.len(), 10);
+        assert_eq!(cells_with_pos, vec![(10, 12, CellState::Wall),
+                                        (11, 12, CellState::Wall),
+                                        (12, 12, CellState::Wall),
+                                        (13, 12, CellState::Wall),
+                                        (14, 12, CellState::Wall),
+                                        (20, 21, CellState::Alive(Some(1))),
+                                        (22, 21, CellState::Alive(Some(1))),
+                                        (21, 22, CellState::Alive(Some(1))),
+                                        (22, 22, CellState::Alive(Some(1))),
+                                        (21, 23, CellState::Alive(Some(1)))]);
+
+    }
+
+    #[test]
+    fn each_non_dead_detects_fog() {
+        let mut uni = generate_test_universe_with_default_params();
+        let player0 = 0;
+        let player1 = 1;
+
+        // blinker as player 1
+        uni.toggle(16, 15, player1).unwrap();
+        uni.toggle(16, 16, player1).unwrap();
+        uni.toggle(16, 17, player1).unwrap();
+
+        // attempt to view as different player
+        uni.each_non_dead(Region::new(0, 0, 80, 80), Some(player0), &mut |col, row, state| {
+            assert_eq!(state, CellState::Fog, "expected fog at col {} row {} but found {:?}", col, row, state);
+        });
+    }
 }
 
 #[cfg(test)]
