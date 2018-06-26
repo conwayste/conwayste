@@ -54,9 +54,9 @@ impl PlayerBuilder {
 /// 
 /// ```
 /// let mut uni = conway::BigBang::new()
-///                 .width(512)
-///                 .height(256)
-///                 .fog_radius(16)
+///                 .width(512)      // optionally override width
+///                 .height(256)     // optionally override height
+///                 .fog_radius(16)  // optionally override fog radius
 ///                 .birth()
 ///                 .unwrap();
 /// ```
@@ -141,7 +141,9 @@ impl BigBang {
     /// 
     /// # Errors
     /// 
-    /// No error cases exist for this version of libconway.
+    /// - if `width` or `height` are not positive, or if `width` is not a multiple of 64.
+    /// - if `fog_radius` is not positive.
+    /// - if `history` is not positive.
     pub fn birth(&self) -> Result<Universe, UniverseError> {
         let universe = Universe::new(
             self.width,
