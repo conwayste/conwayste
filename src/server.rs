@@ -241,24 +241,17 @@ impl Room {
 
     /// Gets the oldest message in the room message queue
     fn get_oldest_msg(&self) -> Option<&ServerChatMessage> {
-        if self.messages.is_empty() {
-            return None;
-        } else {
-            return self.messages.front();
-        }
+        return self.messages.front();
     }
 
     /// Gets the newest message in the room message queue
     fn get_newest_msg(&self) -> Option<&ServerChatMessage> {
-        if self.messages.is_empty() {
-            return None;
-        } else {
-            return self.messages.back();
-        }
+        return self.messages.back();
     }
 
-    /// This function retrieves the number of messages FIFO which has
-    /// already been acknowledged by the client.
+    /// This function retrieves the number of messages that have
+    /// already been acknowledged by the client. One use of this is
+    /// to only send unread messages.
     fn get_message_skip_count(&self, chat_msg_seq_num: u64) -> u64 {
         let opt_newest_msg = self.get_newest_msg();
         if opt_newest_msg.is_none() {
@@ -665,7 +658,7 @@ impl ServerState {
     }
 
     /// Creates a vector of messages that the provided Player has not yet acknowledged.
-    /// Exists early if the player is already caught up.
+    /// Exits early if the player is already caught up.
     fn collect_unacknowledged_messages(&self, room: &Room, player: &Player) -> Option<Vec<BroadcastChatMessage>> {
         // Only send what a player has not yet seen
         let raw_unsent_messages: VecDeque<ServerChatMessage>;
@@ -688,8 +681,7 @@ impl ServerState {
                     let amount_to_consume = room.get_message_skip_count(chat_msg_seq_num);
 
                     // Cast to usize is safe because our message containers are limited by MAX_NUM_CHAT_MESSAGES
-                    let mut message_iter = room.messages.iter();
-                    raw_unsent_messages = message_iter.skip(amount_to_consume as usize).cloned().collect();
+                    raw_unsent_messages = room.messages.iter().skip(amount_to_consume as usize).cloned().collect();
                 }
             }
             None => {
