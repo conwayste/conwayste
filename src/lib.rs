@@ -21,7 +21,7 @@ extern crate env_logger;
 use std::fmt;
 
 type BitGrid = Vec<Vec<u64>>;
-type UniverseError = &'static str;
+type UniverseError = String;
 
 /// Builder paradigm to create `Universe` structs with default values.
 pub struct BigBang {
@@ -529,22 +529,22 @@ impl Universe {
                player_writable: Vec<Region>,
                fog_radius:      usize) -> Result<Universe, UniverseError> {
         if height == 0 {
-            return Err("Height must be positive");
+            return Err("Height must be positive".to_owned());
         }
 
         let width_in_words = width/64;
         if width % 64 != 0 {
-            return Err("Width must be a multiple of 64");
+            return Err("Width must be a multiple of 64".to_owned());
         } else if width == 0 {
-            return Err("Width must be positive");
+            return Err("Width must be positive".to_owned());
         }
 
         if history == 0 {
-            return Err("History must be positive");
+            return Err("History must be positive".to_owned());
         }
 
         if fog_radius == 0 {
-            return Err("Fog radius must be positive");
+            return Err("Fog radius must be positive".to_owned());
         }
 
         // Initialize all generational states with the default appropriate bitgrids
@@ -1285,7 +1285,7 @@ mod universe_tests {
         let _ = uni.toggle(16, 16, 0);
         let _ = uni.toggle(16, 17, 0);
 
-        let gens = 1000;
+        let gens = 20;
         for _ in 0..gens {
             uni.next();
         }
