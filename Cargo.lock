@@ -219,7 +219,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "conway"
 version = "0.1.5"
-source = "git+https://github.com/conwayste/libconway#7855486bca8e01235e9dd0f7a0967e98a8e5699e"
+source = "git+https://github.com/conwayste/libconway?branch=aaron/rle#31859f1313a24560afa8f5e39470602f4c0d26c0"
 dependencies = [
  "env_logger 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -230,7 +230,7 @@ dependencies = [
 name = "conwayste"
 version = "0.0.4"
 dependencies = [
- "conway 0.1.5 (git+https://github.com/conwayste/libconway)",
+ "conway 0.1.5 (git+https://github.com/conwayste/libconway?branch=aaron/rle)",
  "env_logger 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "ggez 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1345,7 +1345,7 @@ dependencies = [
 "checksum clap 2.31.2 (registry+https://github.com/rust-lang/crates.io-index)" = "f0f16b89cbb9ee36d87483dc939fe9f1e13c05898d56d7b230a0d4dff033a536"
 "checksum claxon 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "84d1237389598ada39533a0015b2d04a9e21cae771c1ab9327fb87520c9e84c7"
 "checksum color_quant 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a475fc4af42d83d28adf72968d9bcfaf035a1a9381642d8e85d8a04957767b0d"
-"checksum conway 0.1.5 (git+https://github.com/conwayste/libconway)" = "<none>"
+"checksum conway 0.1.5 (git+https://github.com/conwayste/libconway?branch=aaron/rle)" = "<none>"
 "checksum core-foundation-sys 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "716c271e8613ace48344f723b60b900a93150271e5be206212d052bbc0883efa"
 "checksum coreaudio-rs 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)" = "f229761965dad3e9b11081668a6ea00f1def7aa46062321b5ec245b834f6e491"
 "checksum coreaudio-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "78fdbabf58d5b1f461e31b94a571c109284f384cec619a3d96e66ec55b4de82b"

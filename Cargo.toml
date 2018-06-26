@@ -5,7 +5,7 @@ authors = [ "Ameen Manghi <manghirs@gmail.com>", "Aaron Miller <aaron.miller04@g
 license = "GPL-3.0+"
 
 [dependencies]
-conway       = { git = "https://github.com/conwayste/libconway" }
+conway       = { git = "https://github.com/conwayste/libconway", branch = "aaron/rle" }
 ggez         = "0.4.3"
 env_logger   = "0.3"
 log          = "0.3"
