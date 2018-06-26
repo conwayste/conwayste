@@ -7,6 +7,8 @@ extern crate futures;
 extern crate tokio_core;
 extern crate base64;
 extern crate rand;
+#[macro_use]
+extern crate proptest;
 
 mod net;
 
@@ -181,9 +183,11 @@ fn new_uuid() -> u64 {
     hash
 }
 
-fn validate_client_version(_client_version: String) -> bool {
-    //TODO: Implement via TDD
-    true
+fn validate_client_version(client_version: String) -> bool {
+    let server_version = net::get_version();
+
+    // Client cannot be newer than server
+    server_version <= client_version
 }
 
 impl ServerChatMessage {
@@ -470,8 +474,12 @@ impl ServerState {
             RequestAction::LeaveRoom   => {
                 return self.leave_room(player_id);
             }
-            RequestAction::Connect{..}     => panic!(),
-            RequestAction::None            => panic!(),
+            RequestAction::Connect{..}     => {
+                return ResponseCode::BadRequest( Some("already connected".to_owned()) );
+            },
+            RequestAction::None            => {
+                return ResponseCode::BadRequest( Some("Invalid request".to_owned()) );
+            },
         }
     }
 
@@ -861,6 +869,7 @@ fn main() {
 mod test {
     use std::net::{IpAddr, Ipv4Addr};
     use super::*;
+    use proptest::strategy::*;
 
     fn fake_socket_addr() -> SocketAddr {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 5678)
@@ -1653,5 +1662,65 @@ mod test {
             }
             _ => panic!("Unexpected Packet Type: {:?}", pkt)
         }
+    }
+
+    fn request_action_strat() -> BoxedStrategy<RequestAction> {
+        prop_oneof![
+            //Just(RequestAction::Disconnect), // not yet implemented
+            //Just(RequestAction::KeepAlive),  // same
+            Just(RequestAction::LeaveRoom),
+            Just(RequestAction::ListPlayers),
+            Just(RequestAction::ListRooms),
+            Just(RequestAction::None)
+        ].boxed()
+    }
+
+    fn request_action_complex_strat() -> BoxedStrategy<RequestAction> {
+        prop_oneof![
+            ("([A-Z]{1,4} [0-9]{1,2}){3}").prop_map(|a| RequestAction::ChatMessage(a)),
+            ("([A-Z]{1,4} [0-9]{1,2}){3}").prop_map(|a| RequestAction::NewRoom(a)),
+            ("([A-Z]{1,4} [0-9]{1,2}){3}").prop_map(|a| RequestAction::JoinRoom(a)),
+            ("([A-Z]{1,4} [0-9]{1,2}){3}", "[0-9].[0-9].[0-9]").prop_map(|(a, b)| RequestAction::Connect{name: a, client_version: b})
+        ].boxed()
+    }
+
+    // These tests are checking that we do not panic on known RequestAction
+    proptest! {
+        #[test]
+        fn process_request_action_simple(ref request in request_action_strat()) {
+            let mut server = ServerState::new();
+            server.create_new_room(None, "some room".to_owned().clone());
+            let player_id: PlayerID = {
+                let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+                player.player_id
+            };
+            server.process_request_action(player_id, request.to_owned());
+        }
+
+        #[test]
+        fn process_request_action_complex(ref request in request_action_complex_strat()) {
+            let mut server = ServerState::new();
+            server.create_new_room(None, "some room".to_owned().clone());
+            let player_id: PlayerID = {
+                let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+                player.player_id
+            };
+            server.process_request_action(player_id, request.to_owned());
+        }
+    }
+
+    #[test]
+    fn validate_client_version_client_is_up_to_date() {
+        assert!(validate_client_version( env!("CARGO_PKG_VERSION").to_owned()), true);
+    }
+
+    #[test]
+    fn validate_client_version_client_is_very_old() {
+        assert!(validate_client_version("0.0.1".to_owned()), true);
+    }
+
+    #[test]
+    fn validate_client_version_client_is_from_the_future() {
+        assert!(validate_client_version(format!("{}.{}.{}", <i32>::max_value(), <i32>::max_value(), <i32>::max_value()).to_owned()), false);
     }
 }

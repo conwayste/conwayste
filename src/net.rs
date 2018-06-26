@@ -188,3 +188,7 @@ pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> R
 
 pub const HOST: &str = "0.0.0.0";
 pub const PORT: u16 = 12345;
+
+pub fn get_version() -> String {
+    (*VERSION).to_owned()
+}
