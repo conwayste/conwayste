@@ -554,14 +554,14 @@ impl ServerState {
             Packet::UpdateReply{cookie, last_chat_seq, last_game_update_seq: _, last_gen: _} => {
                 let opt_player_id = self.get_player_id_by_cookie(cookie.as_str());
                 
-                if opt_player_id == None {
+                if opt_player_id.is_none() {
                     return Err(Box::new(io::Error::new(ErrorKind::PermissionDenied, "invalid cookie")));
                 }
 
                 let player_id = opt_player_id.unwrap();
                 let opt_player = self.players.get_mut(&player_id);
 
-                if opt_player == None {
+                if opt_player.is_none() {
                     return Err(Box::new(io::Error::new(ErrorKind::NotFound, "player not found")));
                 }
 
@@ -1665,7 +1665,7 @@ mod test {
         }
     }
 
-    fn request_action_strat() -> BoxedStrategy<RequestAction> {
+    fn a_request_action_strat() -> BoxedStrategy<RequestAction> {
         prop_oneof![
             //Just(RequestAction::Disconnect), // not yet implemented
             //Just(RequestAction::KeepAlive),  // same
@@ -1676,7 +1676,7 @@ mod test {
         ].boxed()
     }
 
-    fn request_action_complex_strat() -> BoxedStrategy<RequestAction> {
+    fn a_request_action_complex_strat() -> BoxedStrategy<RequestAction> {
         prop_oneof![
             ("([A-Z]{1,4} [0-9]{1,2}){3}").prop_map(|a| RequestAction::ChatMessage(a)),
             ("([A-Z]{1,4} [0-9]{1,2}){3}").prop_map(|a| RequestAction::NewRoom(a)),
@@ -1685,10 +1685,10 @@ mod test {
         ].boxed()
     }
 
-    // These tests are checking that we do not panic on known RequestAction
+    // These tests are checking that we do not panic on each RequestAction
     proptest! {
         #[test]
-        fn process_request_action_simple(ref request in request_action_strat()) {
+        fn process_request_action_simple(ref request in a_request_action_strat()) {
             let mut server = ServerState::new();
             server.create_new_room(None, "some room".to_owned().clone());
             let player_id: PlayerID = {
@@ -1699,7 +1699,7 @@ mod test {
         }
 
         #[test]
-        fn process_request_action_complex(ref request in request_action_complex_strat()) {
+        fn process_request_action_complex(ref request in a_request_action_complex_strat()) {
             let mut server = ServerState::new();
             server.create_new_room(None, "some room".to_owned().clone());
             let player_id: PlayerID = {
@@ -1708,6 +1708,50 @@ mod test {
             };
             server.process_request_action(player_id, request.to_owned());
         }
+    }
+
+    #[test]
+    fn process_request_action_connect_while_connected() {
+        let mut server = ServerState::new();
+        server.create_new_room(None, "some room".to_owned().clone());
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+            player.player_id
+        };
+        let result = server.process_request_action(player_id, RequestAction::Connect{name: "some player".to_owned(), client_version: "0.1.0".to_owned()});
+        assert_eq!(result, ResponseCode::BadRequest(Some("already connected".to_owned())));
+    }
+
+    #[test]
+    fn process_request_action_none_is_invalid() {
+        let mut server = ServerState::new();
+        server.create_new_room(None, "some room".to_owned().clone());
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+            player.player_id
+        };
+        let result = server.process_request_action(player_id, RequestAction::None);
+        assert_eq!(result, ResponseCode::BadRequest(Some("Invalid request".to_owned())));
+    }
+
+    #[test]
+    fn handle_request_action_spot_check_response_packet() {
+        let mut server = ServerState::new();
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+            player.player_id
+        };
+        let pkt: Packet = server.handle_request_action(player_id, RequestAction::ListRooms);
+        match pkt {
+            Packet::Response{code, sequence, request_ack} => {
+                assert_eq!(code, ResponseCode::RoomList(vec![]));
+                assert_eq!(sequence, 1);
+                assert_eq!(request_ack, None);
+            }
+            _ => panic!("Unexpected Packet type on Response path: {:?}", pkt)
+        }
+        let player: &Player = server.get_player(player_id);
+        assert_eq!(player.next_resp_seq, 2);
     }
 
     #[test]
