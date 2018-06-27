@@ -1768,4 +1768,168 @@ mod test {
     fn validate_client_version_client_is_from_the_future() {
         assert!(validate_client_version(format!("{}.{}.{}", <i32>::max_value(), <i32>::max_value(), <i32>::max_value()).to_owned()), false);
     }
+
+    #[test]
+    fn decode_packet_update_reply_good_case() {
+        let mut server = ServerState::new();
+        let cookie: String = {
+            let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+            player.cookie.clone()
+        };
+
+        let update_reply_packet = Packet::UpdateReply {
+                cookie: cookie,
+                last_chat_seq: Some(0),
+                last_game_update_seq: None,
+                last_gen: None,
+        };
+
+        let result = server.decode_packet(fake_socket_addr(), update_reply_packet);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn decode_packet_update_reply_invalid_cookie() {
+        let mut server = ServerState::new();
+        {
+            let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+            player.cookie.clone()
+        };
+
+        let cookie = "CookieMonster".to_owned();
+
+        let update_reply_packet = Packet::UpdateReply {
+                cookie: cookie,
+                last_chat_seq: Some(0),
+                last_game_update_seq: None,
+                last_gen: None,
+        };
+
+        let result = server.decode_packet(fake_socket_addr(), update_reply_packet);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn construct_client_updates_no_rooms() {
+        let mut server = ServerState::new();
+        let result = server.construct_client_updates();
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn construct_client_updates_empty_rooms() {
+        let mut server = ServerState::new();
+        server.create_new_room(None, "some room".to_owned().clone());
+        let result = server.construct_client_updates();
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn construct_client_updates_populated_room_returns_all_messages() {
+        let mut server = ServerState::new();
+        let room_name = "some_room".to_owned();
+        let player_name = "some player".to_owned();
+        let message_text = "Message".to_owned();
+
+        server.create_new_room(None, room_name.clone());
+
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.player_id
+        };
+        server.join_room(player_id, room_name);
+        server.handle_chat_message(player_id, message_text.clone());
+        server.handle_chat_message(player_id, message_text.clone());
+        server.handle_chat_message(player_id, message_text.clone());
+        let result = server.construct_client_updates();
+
+        assert!(result.is_ok());
+        let opt_output = result.unwrap();
+        assert!(opt_output.is_some());
+        let mut output: Vec<(SocketAddr, Packet)> = opt_output.unwrap();
+
+        // Vector should contain a single item for this test
+        assert_eq!(output.len(), 1);
+
+        let (addr, pkt) = output.pop().unwrap();
+        assert_eq!(addr, fake_socket_addr());
+
+        match pkt {
+            Packet::Update{chats, game_updates, universe_update} => {
+                assert_eq!(game_updates, None);
+                assert_eq!(universe_update, UniUpdateType::NoChange);
+                assert!(chats.is_some());
+
+                // All client chat sequence numbers start counting at 1
+                let mut i=1;
+
+                for msg in chats.unwrap() {
+                    assert_eq!(msg.player_name, player_name);
+                    assert_eq!(msg.chat_seq, Some(i));
+                    assert_eq!(msg.message, message_text);
+                    i+=1;
+                }
+            }
+            _ => panic!("Unexpected packet in client update construction!")
+        }
+    }
+
+    #[test]
+    fn construct_client_updates_populated_room_returns_updates_after_client_acked() {
+        let mut server = ServerState::new();
+        let room_name = "some_room".to_owned();
+        let player_name = "some player".to_owned();
+        let message_text = "Message".to_owned();
+
+        server.create_new_room(None, room_name.clone());
+
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.player_id
+        };
+        server.join_room(player_id, room_name);
+        server.handle_chat_message(player_id, message_text.clone());
+        server.handle_chat_message(player_id, message_text.clone());
+        server.handle_chat_message(player_id, message_text.clone());
+
+        // Assume that the client has acknowledged two chats
+        {
+            let player: &mut Player = server.players.get_mut(&player_id).unwrap();
+            player.update_chat_seq_num(Some(2));
+        }
+
+        // We should then only return the last chat
+        let result = server.construct_client_updates();
+
+        assert!(result.is_ok());
+        let opt_output = result.unwrap();
+        assert!(opt_output.is_some());
+        let mut output: Vec<(SocketAddr, Packet)> = opt_output.unwrap();
+
+        // Vector should contain a single item for this test
+        assert_eq!(output.len(), 1);
+
+        let (addr, pkt) = output.pop().unwrap();
+        assert_eq!(addr, fake_socket_addr());
+
+        match pkt {
+            Packet::Update{chats, game_updates, universe_update} => {
+                assert_eq!(game_updates, None);
+                assert_eq!(universe_update, UniUpdateType::NoChange);
+                assert!(chats.is_some());
+
+                let mut messages = chats.unwrap();
+                assert_eq!(messages.len(), 1);
+                let msg = messages.pop().unwrap();
+
+                assert_eq!(msg.player_name, player_name);
+                assert_eq!(msg.chat_seq, Some(3));
+                assert_eq!(msg.message, message_text);
+            }
+            _ => panic!("Unexpected packet in client update construction!")
+        }
+    }
 }
