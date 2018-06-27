@@ -9,6 +9,7 @@ extern crate base64;
 extern crate rand;
 #[macro_use]
 extern crate proptest;
+extern crate semver;
 
 mod net;
 
@@ -29,6 +30,7 @@ use futures::future::ok;
 use futures::sync::mpsc;
 use tokio_core::reactor::{Core, Timeout};
 use rand::Rng;
+use semver::Version;
 
 const TICK_INTERVAL:         u64   = 40; // milliseconds
 const MAX_ROOM_NAME:    usize = 16;
@@ -187,7 +189,7 @@ fn validate_client_version(client_version: String) -> bool {
     let server_version = net::get_version();
 
     // Client cannot be newer than server
-    server_version <= client_version
+    server_version >= Version::parse(&client_version)
 }
 
 impl ServerChatMessage {
@@ -1756,17 +1758,17 @@ mod test {
 
     #[test]
     fn validate_client_version_client_is_up_to_date() {
-        assert!(validate_client_version( env!("CARGO_PKG_VERSION").to_owned()), true);
+        assert_eq!(validate_client_version( env!("CARGO_PKG_VERSION").to_owned()), true);
     }
 
     #[test]
     fn validate_client_version_client_is_very_old() {
-      // assert!(validate_client_version(format!("{}.{}.{}", 0, 0, 1).to_owned()), true);
+      assert_eq!(validate_client_version("0.0.1".to_owned()), true);
     }
 
     #[test]
     fn validate_client_version_client_is_from_the_future() {
-        assert!(validate_client_version(format!("{}.{}.{}", <i32>::max_value(), <i32>::max_value(), <i32>::max_value()).to_owned()), false);
+        assert_eq!(validate_client_version(format!("{}.{}.{}", <i32>::max_value(), <i32>::max_value(), <i32>::max_value()).to_owned()), false);
     }
 
     #[test]
