@@ -7,9 +7,10 @@ extern crate futures;
 extern crate tokio_core;
 extern crate base64;
 extern crate rand;
+extern crate semver;
+#[cfg(test)]
 #[macro_use]
 extern crate proptest;
-extern crate semver;
 
 mod net;
 
