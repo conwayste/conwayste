@@ -48,6 +48,7 @@ pub enum RequestAction {
     NewRoom(String),
     JoinRoom(String),
     LeaveRoom,
+    QuitGame,
 }
 
 // server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes

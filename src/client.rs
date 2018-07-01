@@ -136,6 +136,73 @@ impl ClientState {
             None => {}
         }
     }
+
+    fn build_command_request_action(&mut self, cmd: String, args: Vec<String>) -> RequestAction {
+        let mut action: RequestAction = RequestAction::None;
+        // keep these in sync with print_help function
+        match cmd.as_str() {
+            "help" => {
+                print_help();
+            }
+            "connect" => {
+                if args.len() == 1 {
+                    self.name = Some(args[0].clone());
+                    println!("Set client name to {:?}", self.name.clone().unwrap());
+                    action = RequestAction::Connect{
+                        name:           args[0].clone(),
+                        client_version: CLIENT_VERSION.to_owned(),
+                    };
+                } else { println!("ERROR: expected client name only"); }
+            }
+            "disconnect" => {
+                if args.len() == 0 {
+                    action = RequestAction::Disconnect;
+                } else { println!("ERROR: expected no arguments to disconnect"); }
+            }
+            "list" => {
+                if args.len() == 0 {
+                    // players or rooms
+                    if self.in_game() {
+                        action = RequestAction::ListPlayers;
+                    } else {
+                        // lobby
+                        action = RequestAction::ListRooms;
+                    }
+                } else { println!("ERROR: expected no arguments to list"); }
+            }
+            "new" => {
+                if args.len() == 1 {
+                    action = RequestAction::NewRoom(args[0].clone());
+                } else { println!("ERROR: expected name of room only"); }
+            }
+            "join" => {
+                if args.len() == 1 {
+                    if !self.in_game() {
+                        action = RequestAction::JoinRoom(args[0].clone());
+                    } else {
+                        println!("ERROR: you are already in a game");
+                    }
+                } else { println!("ERROR: expected room name only"); }
+            }
+            "leave" => {
+                if args.len() == 0 {
+                    if self.in_game() {
+                        action = RequestAction::LeaveRoom;
+                    } else {
+                        println!("ERROR: you are already in the lobby");
+                    }
+                } else { println!("ERROR: expected no arguments to leave"); }
+            }
+            "quit" => {
+                println!("Peace out!");
+                action = RequestAction::QuitGame;
+            }
+            _ => {
+                println!("ERROR: command not recognized: {}", cmd);
+            }
+        }
+        return action;
+    }
 }
 
 //////////////// Event Handling /////////////////
@@ -313,77 +380,20 @@ fn main() {
                     */
                 }
                 Event::UserInputEvent(user_input) => {
-                    let mut action = RequestAction::None;
+                    let action;
                     match user_input {
                         UserInput::Chat(string) => {
                             action = RequestAction::ChatMessage(string);
                         }
                         UserInput::Command{cmd, args} => {
-                            // keep these in sync with print_help function
-                            match cmd.as_str() {
-                                "help" => {
-                                    print_help();
-                                }
-                                "connect" => {
-                                    if args.len() == 1 {
-                                        client_state.name = Some(args[0].clone());
-                                        println!("Set client name to {:?}", client_state.name.clone().unwrap());
-                                        action = RequestAction::Connect{
-                                            name:           args[0].clone(),
-                                            client_version: CLIENT_VERSION.to_owned(),
-                                        };
-                                    } else { println!("ERROR: expected one argument to connect"); }
-                                }
-                                "disconnect" => {
-                                    if args.len() == 0 {
-                                        action = RequestAction::Disconnect;
-                                    } else { println!("ERROR: expected no arguments to disconnect"); }
-                                }
-                                "list" => {
-                                    if args.len() == 0 {
-                                        // players or rooms
-                                        if client_state.in_game() {
-                                            action = RequestAction::ListPlayers;
-                                        } else {
-                                            // lobby
-                                            action = RequestAction::ListRooms;
-                                        }
-                                    } else { println!("ERROR: expected no arguments to list"); }
-                                }
-                                "new" => {
-                                    if args.len() == 1 {
-                                        action = RequestAction::NewRoom(args[0].clone());
-                                    } else { println!("ERROR: expected one argument to new"); }
-                                }
-                                "join" => {
-                                    if args.len() == 1 {
-                                        if !client_state.in_game() {
-                                            action = RequestAction::JoinRoom(args[0].clone());
-                                        } else {
-                                            println!("ERROR: you are already in a game");
-                                        }
-                                    } else { println!("ERROR: expected one argument to join"); }
-                                }
-                                "leave" => {
-                                    if args.len() == 0 {
-                                        if client_state.in_game() {
-                                            action = RequestAction::LeaveRoom;
-                                        } else {
-                                            println!("ERROR: you are already in the lobby");
-                                        }
-                                    } else { println!("ERROR: expected no arguments to leave"); }
-                                }
-                                "quit" => {
-                                    println!("Peace out!");
-                                    (&exit_tx).unbounded_send(()).unwrap();
-                                }
-                                _ => {
-                                    println!("ERROR: command not recognized: {}", cmd);
-                                }
+                            action = client_state.build_command_request_action(cmd, args);
+
+                            if action == RequestAction::QuitGame {
+                                (&exit_tx).unbounded_send(()).unwrap();
                             }
                         },
                     }
-                    if action != RequestAction::None {
+                    if action != RequestAction::None && action != RequestAction::QuitGame {
                         client_state.last_req_action = Some(action.clone());
                         let packet = Packet::Request {
                             sequence:     client_state.sequence,
@@ -419,8 +429,6 @@ fn main() {
     });
     drop(core.run(combined_fut).unwrap());
 }
-
-
 
 // Our helper method which will read data from stdin and send it along the
 // sender provided. This is blocking so should be on separate thread.
