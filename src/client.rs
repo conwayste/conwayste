@@ -67,6 +67,57 @@ impl ClientState {
         }
     }
 
+    fn handle_response_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr, opt_packet: Option<Packet>) {
+        let packet = opt_packet.unwrap();
+        println!("DEBUG: Got packet from server {:?}: {:?}", addr, packet);
+        match packet {
+            Packet::Response{sequence: _, request_ack: _, code} => {
+                // XXX sequence
+                // XXX request_ack
+                match code {
+                    ResponseCode::OK => {
+                        match self.handle_response_ok() {
+                            Ok(_) => {},
+                            Err(e) => println!("{:?}", e)
+                        }
+                    }
+                    ResponseCode::LoggedIn(cookie, server_version) => {
+                        self.handle_logged_in(cookie, server_version);
+                    }
+                    ResponseCode::PlayerList(player_names) => {
+                        self.handle_player_list(player_names);
+                    }
+                    ResponseCode::RoomList(rooms) => {
+                        self.handle_room_list(rooms);
+                    }
+                    // errors
+                    code @ _ => {
+                        error!("response from server: {:?}", code);
+                    }
+                }
+            }
+            // TODO game_updates, universe_update
+            Packet::Update{chats, game_updates: _, universe_update: _} => {
+                self.handle_incoming_chats(chats);
+
+                // Reply to the update
+                let packet = Packet::UpdateReply {
+                    cookie:               self.cookie.clone().unwrap(),
+                    last_chat_seq:        Some(self.chat_msg_seq_num),
+                    last_game_update_seq: None,
+                    last_gen:             None,
+                };
+                let _ = udp_tx.unbounded_send((addr.clone(), packet));
+            }
+            Packet::Request{..} => {
+                warn!("Ignoring packet from server normally sent by clients: {:?}", packet);
+            }
+            Packet::UpdateReply{..} => {
+                warn!("Ignoring packet from server normally sent by clients: {:?}", packet);
+            }
+        }
+    }
+
     fn handle_response_ok(&mut self) -> Result<(), Box<Error>> {
         if let Some(ref last_action) = self.last_req_action {
             match last_action {
@@ -308,54 +359,7 @@ fn main() {
         .fold(initial_client_state, move |mut client_state: ClientState, event| {
             match event {
                 Event::Response((addr, opt_packet)) => {
-                    let packet = opt_packet.unwrap();
-                    println!("DEBUG: Got packet from server {:?}: {:?}", addr, packet);
-                    match packet {
-                        Packet::Response{sequence: _, request_ack: _, code} => {
-                            // XXX sequence
-                            // XXX request_ack
-                            match code {
-                                ResponseCode::OK => {
-                                    match client_state.handle_response_ok() {
-                                        Ok(_) => {},
-                                        Err(e) => println!("{:?}", e)
-                                    }
-                                }
-                                ResponseCode::LoggedIn(cookie, server_version) => {
-                                    client_state.handle_logged_in(cookie, server_version);
-                                }
-                                ResponseCode::PlayerList(player_names) => {
-                                    client_state.handle_player_list(player_names);
-                                }
-                                ResponseCode::RoomList(rooms) => {
-                                    client_state.handle_room_list(rooms);
-                                }
-                                // errors
-                                code @ _ => {
-                                    error!("response from server: {:?}", code);
-                                }
-                            }
-                        }
-                        // TODO game_updates, universe_update
-                        Packet::Update{chats, game_updates: _, universe_update: _} => {
-                            client_state.handle_incoming_chats(chats);
-
-                            // Reply to the update
-                            let packet = Packet::UpdateReply {
-                                cookie:               client_state.cookie.clone().unwrap(),
-                                last_chat_seq:        Some(client_state.chat_msg_seq_num),
-                                last_game_update_seq: None,
-                                last_gen:             None,
-                            };
-                            let _ = udp_tx.unbounded_send((addr.clone(), packet));
-                        }
-                        Packet::Request{..} => {
-                            warn!("Ignoring packet from server normally sent by clients: {:?}", packet);
-                        }
-                        Packet::UpdateReply{..} => {
-                            warn!("Ignoring packet from server normally sent by clients: {:?}", packet);
-                        }
-                    }
+                    client_state.handle_response_event(&udp_tx, addr, opt_packet);
                 }
                 Event::TickEvent => {
                     /*
