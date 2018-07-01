@@ -9,7 +9,8 @@ extern crate futures;
 mod net;
 
 use std::env;
-use std::io::{self, Read, Error};
+use std::io::{self, Read, ErrorKind};
+use std::error::Error;
 use std::iter;
 use std::net::SocketAddr;
 use std::process::exit;
@@ -25,17 +26,30 @@ use futures::sync::mpsc;
 const CLIENT_VERSION: &str = "0.0.1";
 
 struct ClientState {
-    sequence:     u64,   // sequence number of requests
-    response_ack: Option<u64>,  // last acknowledged response sequence number from server
-    last_req_action: Option<RequestAction>,   // last one we sent to server TODO: this is wrong;
+    sequence:         u64,   // sequence number of requests
+    response_ack:     Option<u64>,  // last acknowledged response sequence number from server
+    last_req_action:  Option<RequestAction>,   // last one we sent to server TODO: this is wrong;
                                               // assumes network is well-behaved
-    name:         Option<String>,
-    room:    Option<String>,
-    cookie:       Option<String>,
+    name:             Option<String>,
+    room:             Option<String>,
+    cookie:           Option<String>,
     chat_msg_seq_num: u64,
 }
 
 impl ClientState {
+
+    fn new() -> Self {
+        ClientState {
+            sequence:        0,
+            response_ack:    None,
+            last_req_action: None,
+            name:            None,
+            room:            None,
+            cookie:          None,
+            chat_msg_seq_num: 0,
+        }
+    }
+
     fn in_game(&self) -> bool {
         self.room.is_some()
     }
@@ -49,16 +63,41 @@ impl ClientState {
             warn!("\tClient Version: {}\n\tServer Version: {}\nWarning: Client Version greater than Server Version.", client_version, server_version)
         }
     }
+
+    fn handle_response_ok(&mut self) -> Result<(), Box<Error>> {
+        if let Some(ref last_action) = self.last_req_action {
+            match last_action {
+                &RequestAction::JoinRoom(ref room_name) => {
+                    self.room = Some(room_name.clone());
+                    println!("Joined room {}.", room_name);
+                }
+                &RequestAction::LeaveRoom => {
+                    if self.in_game() {
+                        println!("Left room {}.", self.room.clone().unwrap());
+                    }
+                    self.room = None;
+                }
+                _ => {
+                    //XXX more cases in which server replies OK
+                    println!("OK :)");
+                }
+            }
+            return Ok(());
+        } else {
+            //println!("OK, but we didn't make a request :/");
+            return Err(Box::new(io::Error::new(ErrorKind::Other, "invalid packet - server-only")));
+        }
+    }
 }
 
 //////////////// Event Handling /////////////////
 enum UserInput {
-    Command{cmd: String, args: Vec<String>},   // command with arguments
+    Command{cmd: String, args: Vec<String>},
     Chat(String),
 }
 
 enum Event {
-    TickEvent,   // note: currently unused
+    TickEvent,
     UserInputEvent(UserInput),
     Response((SocketAddr, Option<Packet>)),
 //    NotifyAck((SocketAddr, Option<Packet>)),
@@ -109,17 +148,9 @@ fn main() {
     println!("Accepting commands to remote {:?} from local {:?}.\nType /help for more info...", addr, local_addr);
 
     // initialize state
-    let initial_client_state = ClientState {
-        sequence:        0,
-        response_ack:    None,
-        last_req_action: None,
-        name:            None,
-        room:            None,
-        cookie:          None,
-        chat_msg_seq_num: 0,
-    };
+    let initial_client_state = ClientState::new();
 
-    let iter_stream = stream::iter_ok::<_, Error>(iter::repeat( () )); // just a Stream that emits () forever
+    let iter_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () )); // just a Stream that emits () forever
     // .and_then is like .map except that it processes returned Futures
     let tick_stream = iter_stream.and_then(|_| {
         let timeout = Timeout::new(Duration::from_millis(1000), &handle).unwrap();
@@ -170,25 +201,9 @@ fn main() {
                             // XXX request_ack
                             match code {
                                 ResponseCode::OK => {
-                                    if let Some(ref last_action) = client_state.last_req_action {
-                                        match last_action {
-                                            &RequestAction::JoinRoom(ref room_name) => {
-                                                client_state.room = Some(room_name.clone());
-                                                println!("Joined room {}.", room_name);
-                                            }
-                                            &RequestAction::LeaveRoom => {
-                                                if client_state.in_game() {
-                                                    println!("Left room {}.", client_state.room.unwrap());
-                                                }
-                                                client_state.room = None;
-                                            }
-                                            _ => {
-                                                //XXX more cases in which server replies OK
-                                                println!("OK :)");
-                                            }
-                                        }
-                                    } else {
-                                        println!("OK, but we didn't make a request :/");
+                                    match client_state.handle_response_ok() {
+                                        Ok(_) => {},
+                                        Err(e) => println!("{:?}", e)
                                     }
                                 }
                                 ResponseCode::LoggedIn(cookie, server_version) => {
@@ -428,4 +443,44 @@ fn parse_stdin(mut input: String) -> UserInput {
    } else {
         UserInput::Chat(input)
    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn handle_response_ok_no_request_sent() {
+        let mut client_state = ClientState::new();
+        let result = client_state.handle_response_ok();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn handle_response_ok_join_request_sent() {
+        let mut client_state = ClientState::new();
+        client_state.last_req_action = Some(RequestAction::JoinRoom("some room".to_owned()));
+        let result = client_state.handle_response_ok();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ());
+    }
+
+    #[test]
+    fn handle_response_ok_leave_request_sent() {
+        let mut client_state = ClientState::new();
+        client_state.last_req_action = Some(RequestAction::LeaveRoom);
+        let result = client_state.handle_response_ok();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ());
+    }
+
+    #[test]
+    fn handle_response_ok_none_request_sent() {
+        // This tests the `RequestAction::None` case
+        let mut client_state = ClientState::new();
+        client_state.last_req_action = Some(RequestAction::None);
+        let result = client_state.handle_response_ok();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ());
+    }
 }
