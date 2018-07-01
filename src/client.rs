@@ -96,6 +96,25 @@ impl ClientState {
 
         self.check_for_upgrade(&server_version);
     }
+
+    fn handle_player_list(&mut self, player_names: Vec<String>) {
+        println!("---BEGIN PLAYER LIST---");
+        for (i, player_name) in player_names.iter().enumerate() {
+            println!("{}\tname: {}", i, player_name);
+        }
+        println!("---END PLAYER LIST---");
+    }
+
+    fn handle_room_list(&mut self, rooms: Vec<(String, u64, bool)>) {
+        println!("---BEGIN GAME ROOM LIST---");
+        for (game_name, num_players, game_running) in rooms {
+            println!("#players: {},\trunning? {:?},\tname: {:?}",
+                        num_players,
+                        game_running,
+                        game_name);
+        }
+        println!("---END GAME ROOM LIST---");
+    }
 }
 
 //////////////// Event Handling /////////////////
@@ -218,23 +237,10 @@ fn main() {
                                     client_state.handle_logged_in(cookie, server_version);
                                 }
                                 ResponseCode::PlayerList(player_names) => {
-                                    println!("---BEGIN PLAYER LIST---");
-                                    let mut n = 1;
-                                    for player_name in player_names {
-                                        println!("{}\tname: {}", n, player_name);
-                                        n += 1;
-                                    }
-                                    println!("---END PLAYER LIST---");
+                                    client_state.handle_player_list(player_names);
                                 }
                                 ResponseCode::RoomList(rooms) => {
-                                    println!("---BEGIN GAME ROOM LIST---");
-                                    for (game_name, num_players, game_running) in rooms {
-                                        println!("#players: {},\trunning? {:?},\tname: {:?}",
-                                                 num_players,
-                                                 game_running,
-                                                 game_name);
-                                    }
-                                    println!("---END GAME ROOM LIST---");
+                                    client_state.handle_room_list(rooms);
                                 }
                                 // errors
                                 code @ _ => {
