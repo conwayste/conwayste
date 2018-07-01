@@ -183,7 +183,7 @@ pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> R
     let host = if let Some(host) = opt_host { host } else { HOST };
     let port = if let Some(port) = opt_port { port } else { PORT };
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
-    let sock = UdpSocket::bind(&addr, &handle)?;
+    let sock = UdpSocket::bind(&addr, &handle).expect("failed to bind socket");
     Ok(sock)
 }
 

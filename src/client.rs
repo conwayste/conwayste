@@ -17,7 +17,6 @@ use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
 use net::{RequestAction, ResponseCode, Packet, LineCodec};
-use tokio_core::net::UdpSocket;
 use tokio_core::reactor::{Core, Timeout};
 use futures::{Future, Sink, Stream, stream};
 use futures::future::ok;
@@ -98,14 +97,8 @@ fn main() {
     let (stdin_tx, stdin_rx) = mpsc::unbounded::<Vec<u8>>();
     let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
 
-    // Bind to a UDP socket
-    let addr_to_bind = if addr.ip().is_ipv4() {
-        "0.0.0.0:0".parse().unwrap()
-    } else {
-        "[::]:0".parse().unwrap()
-    };
-    let udp = UdpSocket::bind(&addr_to_bind, &handle)
-        .expect("failed to bind socket");
+    // Unwrap ok because bind will abort if unsuccessful
+    let udp = net::bind(&handle, Some("0.0.0.0"), Some(0)).unwrap();
     let local_addr = udp.local_addr().unwrap();
 
     // Channels
@@ -117,12 +110,12 @@ fn main() {
 
     // initialize state
     let initial_client_state = ClientState {
-        sequence:     0,
-        response_ack: None,
+        sequence:        0,
+        response_ack:    None,
         last_req_action: None,
-        name:         None,
-        room:    None,
-        cookie:       None,      // not connected yet
+        name:            None,
+        room:            None,
+        cookie:          None,
         chat_msg_seq_num: 0,
     };
 
