@@ -118,6 +118,42 @@ impl ClientState {
         }
     }
 
+    fn handle_tick_event(&self) {
+
+    }
+
+    fn handle_user_input_event(&mut self,
+            udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>,
+            exit_tx: &mpsc::UnboundedSender<()>,
+            user_input: UserInput,
+            addr: SocketAddr) {
+
+        let action;
+        match user_input {
+            UserInput::Chat(string) => {
+                action = RequestAction::ChatMessage(string);
+            }
+            UserInput::Command{cmd, args} => {
+                action = self.build_command_request_action(cmd, args);
+
+                if action == RequestAction::QuitGame {
+                    (&exit_tx).unbounded_send(()).unwrap();
+                }
+            },
+        }
+        if action != RequestAction::None && action != RequestAction::QuitGame {
+            self.last_req_action = Some(action.clone());
+            let packet = Packet::Request {
+                sequence:     self.sequence,
+                response_ack: self.response_ack,
+                cookie:       self.cookie.clone(),
+                action:       action,
+            };
+            let _ = (&udp_tx).unbounded_send((addr.clone(), packet));
+            self.sequence += 1;
+        }
+    }
+
     fn handle_response_ok(&mut self) -> Result<(), Box<Error>> {
         if let Some(ref last_action) = self.last_req_action {
             match last_action {
@@ -362,52 +398,10 @@ fn main() {
                     client_state.handle_response_event(&udp_tx, addr, opt_packet);
                 }
                 Event::TickEvent => {
-                    /*
-                    // send a packet with ctr
-                    let act = if client_state.ctr == 0 {
-                         RequestAction::Connect
-                    }
-                    else {
-                        RequestAction::None
-                    };
-                    let packet = Packet {
-                        player_name: "Joe".to_owned(),
-                        number:      client_state.ctr,
-                        action:      act
-                    };
-                    // send packet
-                    let _ = udp_tx.unbounded_send((addr.clone(), packet));
-                    println!("Sent a packet! ctr is {}", client_state.ctr);
-
-                    // just for fun, change our client state
-                    client_state.ctr += 1;
-                    */
+                    client_state.handle_tick_event();
                 }
                 Event::UserInputEvent(user_input) => {
-                    let action;
-                    match user_input {
-                        UserInput::Chat(string) => {
-                            action = RequestAction::ChatMessage(string);
-                        }
-                        UserInput::Command{cmd, args} => {
-                            action = client_state.build_command_request_action(cmd, args);
-
-                            if action == RequestAction::QuitGame {
-                                (&exit_tx).unbounded_send(()).unwrap();
-                            }
-                        },
-                    }
-                    if action != RequestAction::None && action != RequestAction::QuitGame {
-                        client_state.last_req_action = Some(action.clone());
-                        let packet = Packet::Request {
-                            sequence:     client_state.sequence,
-                            response_ack: client_state.response_ack,
-                            cookie:       client_state.cookie.clone(),
-                            action:       action,
-                        };
-                        let _ = (&udp_tx).unbounded_send((addr.clone(), packet));
-                        client_state.sequence += 1;
-                    }
+                    client_state.handle_user_input_event(&udp_tx, &exit_tx, user_input, addr);
                 }
             }
 
