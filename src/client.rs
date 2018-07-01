@@ -17,7 +17,7 @@ use std::process::exit;
 use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
-use net::{RequestAction, ResponseCode, Packet, LineCodec};
+use net::{RequestAction, ResponseCode, Packet, LineCodec, BroadcastChatMessage};
 use tokio_core::reactor::{Core, Timeout};
 use futures::{Future, Sink, Stream, stream};
 use futures::future::ok;
@@ -55,7 +55,8 @@ impl ClientState {
     }
 
     // XXX Once netwayste integration is complete, we'll need to capture
-    // this result so we can notify the player via UI event
+    // this result so we can notify the player via UI event. This will
+    
     fn check_for_upgrade(&self, server_version: &String) {
         let client_version = &net::VERSION.to_owned();
         if client_version < server_version {
@@ -114,6 +115,26 @@ impl ClientState {
                         game_name);
         }
         println!("---END GAME ROOM LIST---");
+    }
+
+    fn handle_incoming_chats(&mut self, chats: Option<Vec<BroadcastChatMessage>> ) {
+        match chats {
+            Some(mut chat_messages) => {
+                chat_messages.retain(|ref chat_message| {
+                    self.chat_msg_seq_num < chat_message.chat_seq.unwrap()
+                });
+                // This loop does two things: 1) update chat_msg_seq_num, and
+                // 2) prints messages from other players
+                for chat_message in chat_messages {
+                    let chat_seq = chat_message.chat_seq.unwrap();
+                    self.chat_msg_seq_num = std::cmp::max(chat_seq, self.chat_msg_seq_num);
+                    if self.name.as_ref().unwrap() != &chat_message.player_name {
+                        println!("{}: {}", chat_message.player_name, chat_message.message);
+                    }
+                }
+            }
+            None => {}
+        }
     }
 }
 
@@ -248,28 +269,12 @@ fn main() {
                                 }
                             }
                         }
+                        // TODO game_updates, universe_update
                         Packet::Update{chats, game_updates: _, universe_update: _} => {
-                            match chats {
-                                Some(mut chat_messages) => {
-                                    chat_messages.retain(|ref chat_message| {
-                                        client_state.chat_msg_seq_num < chat_message.chat_seq.unwrap()
-                                    });
-                                    // This loop does two things: 1) update chat_msg_seq_num, and
-                                    // 2) prints messages from other players
-                                    for chat_message in chat_messages {
-                                        let chat_seq = chat_message.chat_seq.unwrap();
-                                        client_state.chat_msg_seq_num = std::cmp::max(chat_seq, client_state.chat_msg_seq_num);
-                                        if client_state.name.as_ref().unwrap() != &chat_message.player_name {
-                                            println!("{}: {}", chat_message.player_name, chat_message.message);
-                                        }
-                                    }
-                                }
-                                None => {}
-                            }
-                            // TODO game updates
+                            client_state.handle_incoming_chats(chats);
 
                             // Reply to the update
-                            let packet = Packet::UpdateReply{
+                            let packet = Packet::UpdateReply {
                                 cookie:               client_state.cookie.clone().unwrap(),
                                 last_chat_seq:        Some(client_state.chat_msg_seq_num),
                                 last_game_update_seq: None,
