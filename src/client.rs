@@ -301,7 +301,7 @@ impl ClientState {
 }
 
 //////////////// Event Handling /////////////////
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 enum UserInput {
     Command{cmd: String, args: Vec<String>},
     Chat(String),
@@ -630,6 +630,162 @@ mod test {
                                                                          "only".to_owned(),
                                                                          "hope".to_owned()
                                                                          ]});
+    }
+
+    #[test]
+    fn build_command_request_action_unknown_command() {
+        let command = UserInput::Command{ cmd: "helpusobi".to_owned(), args: vec!["1".to_owned()]};
+
+        let mut client_state = ClientState::new();
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_help_returns_no_action() {
+        let command = UserInput::Command{ cmd: "help".to_owned(), args: vec![]};
+
+        let mut client_state = ClientState::new();
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_disconnect() {
+        let command = UserInput::Command{ cmd: "disconnect".to_owned(), args: vec![]};
+
+        let mut client_state = ClientState::new();
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::Disconnect);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_disconnect_with_args_returns_no_action() {
+        let command = UserInput::Command{ cmd: "disconnect".to_owned(), args: vec!["1".to_owned()]};
+
+        let mut client_state = ClientState::new();
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_list_in_lobby() {
+        let command = UserInput::Command{ cmd: "list".to_owned(), args: vec![]};
+
+        let mut client_state = ClientState::new();
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::ListRooms);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_list_in_game() {
+        let command = UserInput::Command{ cmd: "list".to_owned(), args: vec![]};
+
+        let mut client_state = ClientState::new();
+        client_state.room = Some("some room".to_owned());
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::ListPlayers);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_leave_cases() {
+        let command = UserInput::Command{ cmd: "leave".to_owned(), args: vec![]};
+
+        let mut client_state = ClientState::new();
+        // Not in a room
+        match command.clone() {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+
+        // Happy to leave
+        client_state.room = Some("some room".to_owned());
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::LeaveRoom);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+
+        // Even though we're in a room, you cannot specify anything else
+        let command = UserInput::Command{ cmd: "leave".to_owned(), args: vec!["some room".to_owned()]};
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_join_cases() {
+        let command = UserInput::Command{ cmd: "join".to_owned(), args: vec![]};
+
+        let mut client_state = ClientState::new();
+        // no room specified
+        match command.clone() {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+
+        // Already in game
+        client_state.room = Some("some room".to_owned());
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+
+        // Happily join one
+        client_state.room = None;
+        let command = UserInput::Command{ cmd: "join".to_owned(), args: vec!["some room".to_owned()]};
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::JoinRoom("some room".to_owned()));
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
     }
 
 }
