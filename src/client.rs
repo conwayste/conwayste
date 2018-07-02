@@ -480,6 +480,11 @@ fn parse_stdin(mut input: String) -> UserInput {
 mod test {
     use super::*;
 
+    fn fake_socket_addr() -> SocketAddr {
+        use std::net::{IpAddr, Ipv4Addr};
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 5678)
+    }
+
     #[test]
     fn handle_response_ok_no_request_sent() {
         let mut client_state = ClientState::new();
@@ -786,6 +791,23 @@ mod test {
             },
             UserInput::Chat(_) => {unreachable!()},
         }
+    }
+
+    #[test]
+    fn handle_user_input_event_increment_sequence_number() {
+        // There is a lot that _could_ be tested here but most of it is handled in the above test cases.
+        let mut client_state = ClientState::new();
+        let (udp_tx, _) = mpsc::unbounded();
+        let (exit_tx, _) = mpsc::unbounded();
+        let user_input = UserInput::Chat("memes".to_owned());
+        let addr = fake_socket_addr();
+
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, user_input, addr.clone());
+        assert_eq!(client_state.sequence, 1);
+
+        let user_input = UserInput::Chat("and another one".to_owned());
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, user_input, addr);
+        assert_eq!(client_state.sequence, 2);
     }
 
 }

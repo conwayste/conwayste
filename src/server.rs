@@ -870,12 +870,11 @@ fn main() {
 
 #[cfg(test)]
 mod test {
-
-    use std::net::{IpAddr, Ipv4Addr};
     use super::*;
     use proptest::strategy::*;
 
     fn fake_socket_addr() -> SocketAddr {
+        use std::net::{IpAddr, Ipv4Addr};
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 5678)
     }
 
