@@ -54,8 +54,8 @@ impl ClientState {
         self.room.is_some()
     }
 
-    // XXX Once netwayste integration is complete, we'll need to capture
-    // this result so we can notify the player via UI event. This will
+    // XXX Once netwayste integration is complete, we'll need to internally send
+    // the result of most of these handlers so we can notify a player via UI event.
     
     fn check_for_upgrade(&self, server_version: &String) {
         let client_version = &net::VERSION.to_owned();
@@ -215,9 +215,16 @@ impl ClientState {
                 for chat_message in chat_messages {
                     let chat_seq = chat_message.chat_seq.unwrap();
                     self.chat_msg_seq_num = std::cmp::max(chat_seq, self.chat_msg_seq_num);
-                    if self.name.as_ref().unwrap() != &chat_message.player_name {
-                        println!("{}: {}", chat_message.player_name, chat_message.message);
+
+                    match self.name.as_ref() {
+                        Some(ref client_name) => {
+                            if *client_name != &chat_message.player_name {
+                                println!("{}: {}", chat_message.player_name, chat_message.message);
+                            }
+                        }
+                        None => { panic!("Client name not set!"); }
                     }
+
                 }
             }
             None => {}
@@ -514,4 +521,81 @@ mod test {
         assert_eq!(client_state.cookie, Some("cookie monster".to_owned()));
     }
 
+    #[test]
+    fn handle_incoming_chats_no_new_chat_messages() {
+        let mut client_state = ClientState::new();
+        assert_eq!(client_state.chat_msg_seq_num, 0);
+
+        client_state.handle_incoming_chats(None);
+        assert_eq!(client_state.chat_msg_seq_num, 0);
+    }
+
+    #[test]
+    fn handle_incoming_chats_new_messages_are_older() {
+        let mut client_state = ClientState::new();
+        client_state.chat_msg_seq_num = 10;
+
+        let mut incoming_messages = vec![];
+        for x in 0..10 {
+            incoming_messages.push( BroadcastChatMessage {
+                chat_seq: Some(x as u64),
+                player_name: "a player".to_owned(),
+                message: format!("message {}", x)
+            });
+        }
+
+        client_state.handle_incoming_chats(Some(incoming_messages));
+        assert_eq!(client_state.chat_msg_seq_num, 10);
+    }
+
+    #[test]
+    fn handle_incoming_chats_client_is_up_to_date() {
+        let mut client_state = ClientState::new();
+        client_state.chat_msg_seq_num = 10;
+
+        let incoming_messages = vec![
+            BroadcastChatMessage {
+                chat_seq: Some(10u64),
+                player_name: "a player".to_owned(),
+                message: format!("message {}", 10)
+            }];
+
+        client_state.handle_incoming_chats(Some(incoming_messages));
+        assert_eq!(client_state.chat_msg_seq_num, 10);
+    }
+
+    #[test]
+    #[should_panic]
+    fn handle_incoming_chats_new_messages_player_name_not_set_panics() {
+        let mut client_state = ClientState::new();
+        client_state.chat_msg_seq_num = 10;
+
+        let incoming_messages = vec![
+            BroadcastChatMessage {
+                chat_seq: Some(11u64),
+                player_name: "a player".to_owned(),
+                message: format!("message {}", 11)
+            }];
+
+        client_state.handle_incoming_chats(Some(incoming_messages));
+    }
+
+    #[test]
+    fn handle_incoming_chats_new_messages_are_old_and_new() {
+        let mut client_state = ClientState::new();
+        client_state.name = Some("client name".to_owned());
+        client_state.chat_msg_seq_num = 10;
+
+        let mut incoming_messages = vec![];
+        for x in 0..20 {
+            incoming_messages.push( BroadcastChatMessage {
+                chat_seq: Some(x as u64),
+                player_name: "a player".to_owned(),
+                message: format!("message {}", x)
+            });
+        }
+
+        client_state.handle_incoming_chats(Some(incoming_messages));
+        assert_eq!(client_state.chat_msg_seq_num, 19);
+    }
 }
