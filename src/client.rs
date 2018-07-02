@@ -68,6 +68,7 @@ impl ClientState {
     }
 
     fn handle_response_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr, opt_packet: Option<Packet>) {
+        // All `None` packets should get filtered out up the hierarchy
         let packet = opt_packet.unwrap();
         println!("DEBUG: Got packet from server {:?}: {:?}", addr, packet);
         match packet {
@@ -300,6 +301,7 @@ impl ClientState {
 }
 
 //////////////// Event Handling /////////////////
+#[derive(PartialEq, Debug)]
 enum UserInput {
     Command{cmd: String, args: Vec<String>},
     Chat(String),
@@ -598,4 +600,36 @@ mod test {
         client_state.handle_incoming_chats(Some(incoming_messages));
         assert_eq!(client_state.chat_msg_seq_num, 19);
     }
+
+    #[test]
+    fn parse_stdin_input_has_no_leading_forward_slash() {
+        let chat = parse_stdin("some text".to_owned());
+        assert_eq!(chat, UserInput::Chat("some text".to_owned()));
+    }
+
+    #[test]
+    fn parse_stdin_input_no_arguments() {
+        let cmd = parse_stdin("/helpusobi".to_owned());
+        assert_eq!(cmd, UserInput::Command{ cmd: "helpusobi".to_owned(), args: vec![]});
+
+    }
+
+    #[test]
+    fn parse_stdin_input_multiple_arguments() {
+        let cmd = parse_stdin("/helpusobi 1".to_owned());
+        assert_eq!(cmd, UserInput::Command{ cmd: "helpusobi".to_owned(), args: vec!["1".to_owned()]});
+
+        let cmd = parse_stdin("/helpusobi 1 you".to_owned());
+        assert_eq!(cmd, UserInput::Command{ cmd: "helpusobi".to_owned(), args: vec!["1".to_owned(), "you".to_owned()]});
+
+        let cmd = parse_stdin("/helpusobi 1 you are our only hope".to_owned());
+        assert_eq!(cmd, UserInput::Command{ cmd: "helpusobi".to_owned(), args: vec!["1".to_owned(),
+                                                                         "you".to_owned(),
+                                                                         "are".to_owned(),
+                                                                         "our".to_owned(),
+                                                                         "only".to_owned(),
+                                                                         "hope".to_owned()
+                                                                         ]});
+    }
+
 }
