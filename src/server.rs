@@ -480,7 +480,7 @@ impl ServerState {
             RequestAction::Connect{..}     => {
                 return ResponseCode::BadRequest( Some("already connected".to_owned()) );
             },
-            RequestAction::None | RequestAction::QuitGame  => {
+            RequestAction::None => {
                 return ResponseCode::BadRequest( Some("Invalid request".to_owned()) );
             },
         }
@@ -1675,7 +1675,6 @@ mod test {
             Just(RequestAction::ListPlayers),
             Just(RequestAction::ListRooms),
             Just(RequestAction::None),
-            Just(RequestAction::QuitGame)
         ].boxed()
     }
 

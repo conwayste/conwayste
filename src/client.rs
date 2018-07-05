@@ -137,12 +137,12 @@ impl ClientState {
             UserInput::Command{cmd, args} => {
                 action = self.build_command_request_action(cmd, args);
 
-                if action == RequestAction::QuitGame {
+                if action == RequestAction::Disconnect {
                     (&exit_tx).unbounded_send(()).unwrap();
                 }
             },
         }
-        if action != RequestAction::None && action != RequestAction::QuitGame {
+        if action != RequestAction::None {
             self.last_req_action = Some(action.clone());
             let packet = Packet::Request {
                 sequence:     self.sequence,
@@ -290,7 +290,7 @@ impl ClientState {
             }
             "quit" => {
                 println!("Peace out!");
-                action = RequestAction::QuitGame;
+                action = RequestAction::Disconnect;
             }
             _ => {
                 println!("ERROR: command not recognized: {}", cmd);
