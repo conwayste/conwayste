@@ -20,14 +20,17 @@
 extern crate futures;
 extern crate tokio_core;
 extern crate bincode;
+extern crate semver;
 
 use std::io;
 use std::net::{self, SocketAddr};
 use std::str;
+use std::result;
 
 use self::tokio_core::net::{UdpSocket, UdpCodec};
 use self::tokio_core::reactor::Handle;
 use self::bincode::{serialize, deserialize, Infinite};
+use self::semver::{Version, SemVerError};
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -199,7 +202,7 @@ pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> R
     let host = if let Some(host) = opt_host { host } else { HOST };
     let port = if let Some(port) = opt_port { port } else { PORT };
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
-    let sock = UdpSocket::bind(&addr, &handle)?;
+    let sock = UdpSocket::bind(&addr, &handle).expect("failed to bind socket");
     Ok(sock)
 }
 
@@ -207,3 +210,8 @@ pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> R
 
 pub const HOST: &str = "0.0.0.0";
 pub const PORT: u16 = 12345;
+
+#[allow(dead_code)]
+pub fn get_version() -> result::Result<Version, SemVerError> {
+    Version::parse(VERSION)
+}
