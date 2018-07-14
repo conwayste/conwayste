@@ -1,4 +1,4 @@
-/*  Copyright 2017 the Conwayste Developers.
+/*  Copyright 2017-2018 the Conwayste Developers.
  *
  *  This file is part of libconway.
  *
@@ -15,10 +15,8 @@
  *  You should have received a copy of the GNU General Public License
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
-#[macro_use] extern crate log;
-extern crate env_logger;
-
 use std::fmt;
+use std::char;
 
 type BitGrid = Vec<Vec<u64>>;
 type UniverseError = String;
@@ -53,7 +51,7 @@ impl PlayerBuilder {
 /// # Examples
 /// 
 /// ```
-/// let mut uni = conway::BigBang::new()
+/// let mut uni = conway::universe::BigBang::new()
 ///                 .width(512)      // optionally override width
 ///                 .height(256)     // optionally override height
 ///                 .fog_radius(16)  // optionally override fog radius
@@ -222,7 +220,7 @@ impl CellState {
                 if player_id >= 23 {
                     panic!("Player IDs must be less than 23 to be converted to chars");
                 }
-                std::char::from_u32(player_id as u32 + 65).unwrap()
+                char::from_u32(player_id as u32 + 65).unwrap()
             }
             CellState::Alive(None) => 'o',
             CellState::Dead        => 'b',
@@ -321,7 +319,7 @@ impl fmt::Display for Universe {
                         for player_id in 0 .. self.num_players {
                             let player_word = self.gen_states[self.state_index].player_states[player_id].cells[row_idx][col_idx];
                             if (player_word>>shift)&1 == 1 {
-                                s.push(std::char::from_u32(player_id as u32 + 65).unwrap());
+                                s.push(char::from_u32(player_id as u32 + 65).unwrap());
                                 is_player = true;
                                 break;
                             }

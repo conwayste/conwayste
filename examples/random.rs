@@ -3,7 +3,7 @@ extern crate rand;
 
 use rand::Rng;
 use std::{thread, time};
-use conway::*;
+use conway::universe::*;
 
 fn main() {
     let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
