@@ -19,3 +19,4 @@
 extern crate env_logger;
 
 pub mod universe;
+pub mod bits;

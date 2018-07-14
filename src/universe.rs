@@ -18,7 +18,8 @@
 use std::fmt;
 use std::char;
 
-type BitGrid = Vec<Vec<u64>>;
+use bits::{BitGrid, BitOperation};
+
 type UniverseError = String;
 
 /// Builder paradigm to create `Universe` structs with default values.
@@ -246,60 +247,6 @@ impl CellState {
     }
 }
 
-
-fn new_bitgrid(width_in_words: usize, height: usize) -> BitGrid {
-    assert!(width_in_words != 0);
-    assert!(height != 0);
-
-    let mut result: BitGrid = Vec::new();
-    for _ in 0 .. height {
-        let row: Vec<u64> = vec![0; width_in_words];
-        result.push(row);
-    }
-    result
-}
-
-#[derive(Eq,PartialEq,Debug, Clone, Copy)]
-enum BitOperation {
-    Clear,
-    Set,
-    Toggle
-}
-
-#[inline]
-fn modify_cell_bits(bit_grid: &mut BitGrid, row: usize, word_col: usize, mask: u64, op: BitOperation) {
-    match op {
-        BitOperation::Set => bit_grid[row][word_col] |= mask,
-        BitOperation::Clear => bit_grid[row][word_col] &= !mask,
-        BitOperation::Toggle => bit_grid[row][word_col] ^= mask,
-    }
-}
-
-// Sets or clears a rectangle of bits. Panics if Region is out of range.
-fn fill_region(grid: &mut BitGrid, region: Region, op: BitOperation) {
-    for y in region.top() .. region.bottom() + 1 {
-        assert!(y >= 0);
-        for word_col in 0 .. grid[y as usize].len() {
-            let x_left  = word_col * 64;
-            let x_right = x_left + 63;
-
-            if region.right() >= x_left as isize && region.left() <= x_right as isize {
-                let mut mask = u64::max_value();
-
-                for shift in (0..64).rev() {
-                    let x = x_right - shift;
-                    if (x as isize) < region.left() || (x as isize) > region.right() {
-                        mask &= !(1 << shift);
-                    }
-                }
-
-                // apply change to bitgrid based on mask and bit
-                modify_cell_bits(grid, y as usize, word_col, mask, op);
-            }
-        }
-    }
-}
-
 impl fmt::Display for Universe {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let cells = &self.gen_states[self.state_index].cells;
@@ -386,7 +333,7 @@ impl Universe {
         {
             for player_id in 0 .. self.num_players {
                 let ref mut grid = gen_state.player_states[player_id].cells;
-                modify_cell_bits(grid, row, word_col, mask, BitOperation::Clear);
+                grid.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
             }
         }
 
@@ -394,22 +341,22 @@ impl Universe {
         let walls  = &mut gen_state.wall_cells;
         match new_state {
             CellState::Dead => {
-                modify_cell_bits(cells, row, word_col, mask, BitOperation::Clear);
-                modify_cell_bits(walls, row, word_col, mask, BitOperation::Clear);
+                cells.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
+                walls.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
             }
             CellState::Alive(opt_player_id) => {
-                modify_cell_bits(cells, row, word_col, mask, BitOperation::Set);
-                modify_cell_bits(walls, row, word_col, mask, BitOperation::Clear);
+                cells.modify_bits_in_word(row, word_col, mask, BitOperation::Set);
+                walls.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
 
                 if let Some(player_id) = opt_player_id {
                     let ref mut player = gen_state.player_states[player_id];
-                    modify_cell_bits(&mut player.cells, row, word_col, mask, BitOperation::Set);
-                    modify_cell_bits(&mut player.fog, row, word_col, mask, BitOperation::Clear);
+                    player.cells.modify_bits_in_word(row, word_col, mask, BitOperation::Set);
+                    player.fog.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
                 }
             }
             CellState::Wall => {
-                modify_cell_bits(cells, row, word_col, mask, BitOperation::Clear);
-                modify_cell_bits(walls, row, word_col, mask, BitOperation::Set);
+                cells.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
+                walls.modify_bits_in_word(row, word_col, mask, BitOperation::Set);
             }
             _ => unimplemented!()
         }
@@ -485,7 +432,7 @@ impl Universe {
         let word =
         {
             let cells = &mut self.gen_states[self.state_index].cells;
-            modify_cell_bits(cells, row, word_col, mask, BitOperation::Toggle);
+            cells.modify_bits_in_word(row, word_col, mask, BitOperation::Toggle);
             cells[row][word_col]
         };
 
@@ -495,15 +442,15 @@ impl Universe {
         // clear all player cell bits
         for player_id in 0 .. self.num_players {
             let ref mut player_cells = self.gen_states[self.state_index].player_states[player_id].cells;
-            modify_cell_bits(player_cells, row, word_col, mask, BitOperation::Clear);
+            player_cells.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
         }
 
         if next_cell {
             // set this player's cell bit, if needed, and clear fog
             if let Some(player_id) = opt_player_id {
                 let ref mut player = self.gen_states[self.state_index].player_states[player_id];
-                modify_cell_bits(&mut player.cells, row, word_col, mask, BitOperation::Set);
-                modify_cell_bits(&mut player.fog, row, word_col, mask, BitOperation::Clear);
+                player.cells.modify_bits_in_word(row, word_col, mask, BitOperation::Set);
+                player.fog.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
             }
 
             CellState::Alive(opt_player_id)
@@ -574,15 +521,15 @@ impl Universe {
             for player_id in 0 .. num_players {
 
                 let mut pgs = PlayerGenState {
-                    cells:     new_bitgrid(width_in_words, height),
-                    fog:       new_bitgrid(width_in_words, height),
+                    cells:     BitGrid::new(width_in_words, height),
+                    fog:       BitGrid::new(width_in_words, height),
                 };
 
                 // unless writable region, the whole grid is player fog
-                fill_region(&mut pgs.fog, Region::new(0, 0, width, height), BitOperation::Set);
+                pgs.fog.modify_region(Region::new(0, 0, width, height), BitOperation::Set);
 
                 // clear player fog on writable regions
-                fill_region(&mut pgs.fog, player_writable[player_id], BitOperation::Clear);
+                pgs.fog.modify_region(player_writable[player_id], BitOperation::Clear);
 
                 player_states.push(pgs);
             }
@@ -590,10 +537,10 @@ impl Universe {
             // Known cells describe what the current operative (player, server)
             // visibility reaches. For example, a Server has total visibility as
             // it needs to know all.
-            let mut known = new_bitgrid(width_in_words, height);
+            let mut known = BitGrid::new(width_in_words, height);
             
             if is_server && i == 0 {
-                // could use fill_region but its much cheaper this way
+                // could use modify_region but its much cheaper this way
                 for y in 0 .. height {
                     for x in 0 .. width_in_words {
                         known[y][x] = u64::max_value();   // if server, all cells are known
@@ -603,8 +550,8 @@ impl Universe {
 
             gen_states.push(GenState {
                 gen_or_none:   if i == 0 { Some(1) } else { None },
-                cells:         new_bitgrid(width_in_words, height),
-                wall_cells:    new_bitgrid(width_in_words, height),
+                cells:         BitGrid::new(width_in_words, height),
+                wall_cells:    BitGrid::new(width_in_words, height),
                 known:         known,
                 player_states: player_states,
             });
@@ -619,8 +566,9 @@ impl Universe {
             state_index:     0,
             gen_states:      gen_states,
             player_writable: player_writable,
+            // TODO: it's not very rusty to have uninitialized stuff (use Option<FogInfo> instead)
             fog_radius:      fog_radius,      // uninitialized
-            fog_circle:      vec![], // uninitialized
+            fog_circle:      BitGrid(vec![]), // uninitialized
         };
         uni.generate_fog_circle_bitmap();
         Ok(uni)
@@ -644,7 +592,7 @@ impl Universe {
         let fog_radius = self.fog_radius;
         let height = 2*fog_radius - 1;
         let word_width = (height - 1) / 64 + 1;
-        self.fog_circle = new_bitgrid(word_width, height);
+        self.fog_circle = BitGrid::new(word_width, height);
 
         // Parts outside the circle must be 1, so initialize with 1 first, then draw the
         // filled-in circle, containing 0 bits.
@@ -982,7 +930,7 @@ impl Universe {
                         let fog_row_idx = (uni_height  +  row_idx - center_row_idx + (fog_radius - 1)) % uni_height;
                         let current_highest_col = col_idx * 64;
                         let current_lowest_col  = col_idx * 64 + 63;
-                        for fog_col_idx in 0 .. fog_circle[0].len() {
+                        for fog_col_idx in 0 .. fog_circle.width_in_words() {
                             let fog_highest_col = (uni_width + center_col_idx*64 + (63 - shift) - (fog_radius - 1)) % uni_width;
                             let fog_lowest_col  = (uni_width + center_col_idx*64 + (63 - shift) - (fog_radius - 1) + 63) % uni_width;
                             debug!("  fog col range [{}, {}]", fog_highest_col, fog_lowest_col);
@@ -1469,7 +1417,7 @@ mod universe_tests {
         let col = 0;
         let state_index = uni.state_index;
 
-        modify_cell_bits(&mut uni.gen_states[state_index].wall_cells, row, col, 1<<63, BitOperation::Set);
+        uni.gen_states[state_index].wall_cells.modify_bits_in_word(row, col, 1<<63, BitOperation::Set);
 
         assert_eq!(uni.toggle(row, col, player_one), Err(()));
         assert_eq!(uni.toggle(row, col, player_two), Err(()));
@@ -1484,7 +1432,7 @@ mod universe_tests {
         let col = 0;
         let state_index = uni.state_index;
 
-        modify_cell_bits(&mut uni.gen_states[state_index].known, row, col, 1<<63, BitOperation::Set);
+        uni.gen_states[state_index].known.modify_bits_in_word(row, col, 1<<63, BitOperation::Set);
 
         assert_eq!(uni.toggle(row, col, player_one), Err(()));
         assert_eq!(uni.toggle(row, col, player_two), Ok(CellState::Alive(Some(player_two))));
@@ -1499,7 +1447,7 @@ mod universe_tests {
         let col = 0;
         let state_index = uni.state_index;
 
-        modify_cell_bits(&mut uni.gen_states[state_index].known, row, col, 1<<63, BitOperation::Clear);
+        uni.gen_states[state_index].known.modify_bits_in_word(row, col, 1<<63, BitOperation::Clear);
 
         assert_eq!(uni.toggle(row, col, player_one), Err(()));
         assert_eq!(uni.toggle(row, col, player_two), Err(()));
@@ -1575,7 +1523,7 @@ mod universe_tests {
             vec![0xf007ffffffffffff]];
         uni.fog_radius = 9;
         uni.generate_fog_circle_bitmap();
-        assert_eq!(fog_radius_of_nine, uni.fog_circle);
+        assert_eq!(fog_radius_of_nine, uni.fog_circle.0);
 
         let fog_radius_of_four = vec![
             vec![0x83ffffffffffffff],
@@ -1588,7 +1536,7 @@ mod universe_tests {
         ];
         uni.fog_radius = 4;
         uni.generate_fog_circle_bitmap();
-        assert_eq!(fog_radius_of_four, uni.fog_circle);
+        assert_eq!(fog_radius_of_four, uni.fog_circle.0);
 
         let fog_radius_of_thirtyfive = vec![
             vec![0xffffffc0001fffff, 0xffffffffffffffff, ],
@@ -1664,7 +1612,7 @@ mod universe_tests {
 
         uni.fog_radius = 35;
         uni.generate_fog_circle_bitmap();
-        assert_eq!(fog_radius_of_thirtyfive, uni.fog_circle);
+        assert_eq!(fog_radius_of_thirtyfive, uni.fog_circle.0);
     }
 
     #[test]
@@ -1863,138 +1811,4 @@ mod cellstate_tests {
         assert_eq!(wall.to_char(), 'W');
         assert_eq!(fog.to_char(), '?');
     }
-}
-
-#[cfg(test)]
-mod bitgrid_tests {
-    use super::*;
-
-    #[test]
-    fn create_valid_empty_bitgrid() {
-        let height = 11;
-        let width_in_words = 10;
-        let grid = new_bitgrid(width_in_words, height);
-
-        assert_eq!(grid[0][0], 0);
-        assert_eq!(grid[height-1][width_in_words-1], 0);
-
-        for x in 0..height {
-            for y in 0..width_in_words {
-                assert_eq!(grid[x][y], 0);
-            }
-        }
-    }
-
-    #[test]
-    #[should_panic]
-    fn create_bitgrid_with_invalid_dims() {
-        let height = 0;
-        let width_in_words = 0;
-        let _ = new_bitgrid(width_in_words, height);
-    }
-
-    #[test]
-    fn set_cell_bits_within_a_bitgrid() {
-        let height = 10;
-        let width_in_words = 10;
-        let mut grid = new_bitgrid(width_in_words, height);
-
-        for x in 0..height {
-            for y in 0..width_in_words {
-                assert_eq!(grid[x][y], 0);
-            }
-        }
-
-        modify_cell_bits(&mut grid, height/2, width_in_words/2, 1<<63, BitOperation::Set);
-        assert_eq!(grid[height/2][width_in_words/2] >> 63, 1);
-        
-        modify_cell_bits(&mut grid, height-1, width_in_words-1, 1<<63, BitOperation::Set);
-        assert_eq!(grid[height-1][width_in_words-1] >> 63, 1);
-    }
-
-    #[test]
-    fn clear_cell_bits_within_a_bitgrid() {
-        let height = 10;
-        let width_in_words = 10;
-        let mut grid = new_bitgrid(width_in_words, height);
-
-        for x in 0..height {
-            for y in 0..width_in_words {
-                grid[x][y] = u64::max_value();
-            }
-        }
-
-        modify_cell_bits(&mut grid, height/2, width_in_words/2, 1<<63, BitOperation::Clear);
-        assert_eq!(grid[height/2][width_in_words/2] >> 63, 0);
-        
-        modify_cell_bits(&mut grid, height-1, width_in_words-1, 1<<63, BitOperation::Clear);
-        assert_eq!(grid[height-1][width_in_words-1] >> 63, 0);
-    }
-
-    #[test]
-    fn toggle_cell_bits_within_a_bitgrid() {
-        let height = 10;
-        let width_in_words = 10;
-        let mut grid = new_bitgrid(width_in_words, height);
-
-        for x in 0..height {
-            for y in 0..width_in_words {
-                grid[x][y] = u64::max_value();
-            }
-        }
-
-        modify_cell_bits(&mut grid, height/2, width_in_words/2, 1<<63, BitOperation::Toggle);
-        assert_eq!(grid[height/2][width_in_words/2] >> 63, 0);
-        
-        modify_cell_bits(&mut grid, height/2, width_in_words/2, 1<<63, BitOperation::Toggle);
-        assert_eq!(grid[height/2][width_in_words/2] >> 63, 1);
-    }
-
-    #[test]
-    fn fill_region_within_a_bit_grid() {
-        let height = 10;
-        let width_in_words = 10;
-
-        let region1_w = 7;
-        let region1_h = 7;
-        let region2_w = 3;
-        let region2_h = 3;
-        let region3_h = 4;
-        let region3_w = 4;
-
-        let mut grid = new_bitgrid(width_in_words, height);
-        let region1 = Region::new(0, 0, region1_w, region1_h);
-        let region2 = Region::new(0, 0, region2_w, region2_h);
-        let region3 = Region::new(region2_w as isize, region2_h as isize, region3_w, region3_h);
-
-        fill_region(&mut grid, region1, BitOperation::Set);
-
-        for y in 0..region1_w {
-            assert_eq!(grid[y][0], 0xFE00000000000000);
-        }
-
-        fill_region(&mut grid, region2, BitOperation::Clear);
-        for y in 0..region2_w {
-            assert_eq!(grid[y][0], 0x1E00000000000000);
-        }
-
-        fill_region(&mut grid, region3, BitOperation::Toggle);
-        for x in region2_w..region3_w {
-            for y in region2_h..region3_h {
-                assert_eq!(grid[x][y], 0);
-            }
-        }
-    }
-
-    #[test]
-    #[should_panic]
-    fn fill_grid_with_a_negative_region_panics() {
-        let height = 10;
-        let width_in_words = 10;
-
-        let mut grid = new_bitgrid(width_in_words, height);
-        let region_neg = Region::new(-1, -1, 1, 1);
-        fill_region(&mut grid, region_neg, BitOperation::Set);
-    }
-
 }
