@@ -199,6 +199,12 @@ pub enum CellState {
     Fog,
 }
 
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+pub struct CellStateWithPosition {
+    col: usize,
+    row: usize,
+    state: CellState,
+}
 
 impl CellState {
     /// Convert this `CellState` to a `char`. When the state is `Alive(None)` or `Dead`, this will
@@ -222,6 +228,22 @@ impl CellState {
             CellState::Dead        => 'b',
             CellState::Wall        => 'W',
             CellState::Fog         => '?',
+        }
+    }
+
+    // TODO: doc comment
+    pub fn from_char(ch: char) -> Option<Self> {
+        match ch {
+            'o' => Some(CellState::Alive(None)),
+            'b' => Some(CellState::Dead),
+            'W' => Some(CellState::Wall),
+            '?' => Some(CellState::Fog),
+            'A'..='V' => {
+                Some(CellState::Alive(Some(u32::from(ch) as usize - 65)))
+            }
+            _ => {
+                None
+            }
         }
     }
 }
@@ -1009,6 +1031,7 @@ impl Universe {
     /// # Panics
     /// 
     /// Does numerous consistency checks on the bitmaps, and panics if inconsistencies are found.
+    //XXX non_dead_cells_in_region
     pub fn each_non_dead(&self, region: Region, visibility: Option<usize>, callback: &mut FnMut(usize, usize, CellState)) {
         let cells = &self.gen_states[self.state_index].cells;
         let wall  = &self.gen_states[self.state_index].wall_cells;
