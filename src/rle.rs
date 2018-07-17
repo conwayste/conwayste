@@ -1,3 +1,21 @@
+/*  Copyright 2017-2018 the Conwayste Developers.
+ *
+ *  This file is part of libconway.
+ *
+ *  libconway is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  libconway is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
+
+use bits::BitGrid;
 
 fn write_at_position(grid: &mut BitGrid, col: usize, row: usize, ch: char) {
     let word_col = col/64;
@@ -26,11 +44,14 @@ fn digits_to_number(digits: &Vec<char>) -> usize {
 
 fn from_rle(pattern: &str, width: usize, height: usize) -> Result<BitGrid, String> {
     let word_width = (width - 1)/64 + 1;
-    let mut grid: BitGrid = Vec::with_capacity(height);
-    for _ in 0..height {
-        let row: Vec<u64> = vec![0; word_width];
-        grid.push(row);
-    }
+    let mut grid: BitGrid = {
+        let mut rows: Vec<Vec<u64>> = Vec::with_capacity(height);
+        for _ in 0..height {
+            let row: Vec<u64> = vec![0; word_width];
+            rows.push(row);
+        }
+        BitGrid(rows)
+    };
     let mut col: usize = 0;
     let mut row: usize = 0;
     let mut char_indices = pattern.char_indices();
@@ -94,11 +115,6 @@ fn from_rle(pattern: &str, width: usize, height: usize) -> Result<BitGrid, Strin
     Ok(grid)
 }
 
-fn main() {
-    let gun = from_rle("27bo$28bo$29bo$28bo$27bo$29b3o20$oo$bbo$bbo$3b4o!", 32, 29).unwrap();
-    println!("{:?}", gun);
-}
-
 
 #[cfg(test)]
 mod tests {
@@ -137,21 +153,21 @@ mod tests {
 
     #[test]
     fn parsing_with_new_row_rle_works() {
-        from_rle("27bo$28bo$29bo$28bo$27bo$29b3o20$oo$bbo$bbo$3b4o!", 32, 29).unwrap();
-        /*
-=>
- 0 [["0b0000000000000000000000000001000000000000000000000000000000000000"],
- 1  ["0b0000000000000000000000000000100000000000000000000000000000000000"],
- 2  ["0b0000000000000000000000000000010000000000000000000000000000000000"],
- 3  ["0b0000000000000000000000000000100000000000000000000000000000000000"],
- 4  ["0b0000000000000000000000000001000000000000000000000000000000000000"],
- 5  ["0b0000000000000000000000000000011100000000000000000000000000000000"],
- 6..24  0
-25  ["0b1100000000000000000000000000000000000000000000000000000000000000"],
-26  ["0b0010000000000000000000000000000000000000000000000000000000000000"],
-27  ["0b0010000000000000000000000000000000000000000000000000000000000000"],
-28  ["0b0001111000000000000000000000000000000000000000000000000000000000"]]
-        */
-        //XXX
+        let pattern = from_rle("27bo$28bo$29bo$28bo$27bo$29b3o20$oo$bbo$bbo$3b4o!", 32, 29).unwrap();
+        assert_eq!(pattern.0[0..=5],
+           [[0b0000000000000000000000000001000000000000000000000000000000000000],
+            [0b0000000000000000000000000000100000000000000000000000000000000000],
+            [0b0000000000000000000000000000010000000000000000000000000000000000],
+            [0b0000000000000000000000000000100000000000000000000000000000000000],
+            [0b0000000000000000000000000001000000000000000000000000000000000000],
+            [0b0000000000000000000000000000011100000000000000000000000000000000]]);
+        for row in 6..=24 {
+            assert_eq!(pattern.0[row][0], 0);
+        }
+        assert_eq!(pattern.0[25..=28],
+            [[0b1100000000000000000000000000000000000000000000000000000000000000],
+             [0b0010000000000000000000000000000000000000000000000000000000000000],
+             [0b0010000000000000000000000000000000000000000000000000000000000000],
+             [0b0001111000000000000000000000000000000000000000000000000000000000]]);
     }
 }

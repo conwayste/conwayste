@@ -27,6 +27,7 @@ pub enum BitOperation {
 }
 
 
+#[derive(Debug)]
 pub struct BitGrid(pub Vec<Vec<u64>>);
 
 impl BitGrid {
