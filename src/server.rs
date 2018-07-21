@@ -52,7 +52,7 @@ use tokio_core::reactor::{Core, Timeout};
 use rand::Rng;
 use semver::Version;
 
-const TICK_INTERVAL:         u64   = 40; // milliseconds
+const TICK_INTERVAL:         u64   = 10; // milliseconds
 const MAX_ROOM_NAME:    usize = 16;
 const MAX_NUM_CHAT_MESSAGES: usize = 128;
 const MAX_AGE_CHAT_MESSAGES: usize = 60*5; // seconds
@@ -84,6 +84,7 @@ struct Player {
     request_ack:   Option<u64>,          // most recent request sequence number received
     next_resp_seq: u64,                  // This is the sequence number for the Response packet the Server sends to the Client
     game_info:     Option<PlayerInGameInfo>,   // none means in lobby
+    heartbeat:     Option<time::Instant>,
 }
 
 // info for a player as it relates to a game/room
@@ -477,7 +478,12 @@ impl ServerState {
     fn process_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> ResponseCode {
         match action {
             RequestAction::Disconnect      => unimplemented!(),
-            RequestAction::KeepAlive       => unimplemented!(),
+            RequestAction::KeepAlive       => {
+                let player: &mut Player = self.players.get_mut(&player_id).unwrap();
+                player.heartbeat = Some(time::Instant::now());
+                // XXX Look for any timeouts
+                return ResponseCode::OK;
+            },
             RequestAction::ListPlayers     => {
                 return self.list_players(player_id);
             },
@@ -756,7 +762,8 @@ impl ServerState {
             name:          name,
             request_ack:   None,
             next_resp_seq: 0,
-            game_info:     None
+            game_info:     None,
+            heartbeat:     None,
         };
 
         // save player into players hash map, and save player ID into hash map using cookie
@@ -826,7 +833,7 @@ fn main() {
 
     let server_fut = tick_stream
         .select(packet_stream)
-        .fold(initial_server_state, move |mut server_state, event| {
+        .fold(initial_server_state, move |mut server_state: ServerState, event: Event | {
             match event {
                 Event::Request(packet_tuple) => {
                      // With the above filter, `packet` should never be None
@@ -851,10 +858,6 @@ fn main() {
                 }
 
                 Event::TickEvent => {
-                    // Server tick
-                    // Likely spawn off work to handle server tasks here
-                    server_state.tick += 1;
-
                     server_state.expire_old_messages_in_all_rooms();
                     let client_update_packets_result = server_state.construct_client_updates();
                     if client_update_packets_result.is_ok() {
@@ -866,6 +869,21 @@ fn main() {
                             }
                         }
                     }
+
+                    // Send a KeepAlive every second
+                    if (server_state.tick % 100) == 0 {
+                        for player in server_state.players.values() {
+                            let keep_alive = Packet::Response {
+                                sequence: player.next_resp_seq,
+                                request_ack: player.request_ack,
+                                code: ResponseCode::KeepAlive
+                            };
+
+                            tx.unbounded_send( (player.addr, keep_alive) ).unwrap();
+                        }
+                    }
+
+                    server_state.tick += 1;
                 }
             }
 

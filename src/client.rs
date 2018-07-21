@@ -42,6 +42,7 @@ use futures::{Future, Sink, Stream, stream};
 use futures::future::ok;
 use futures::sync::mpsc;
 
+const TICK_INTERVAL:         u64   = 10; // milliseconds
 const CLIENT_VERSION: &str = "0.0.1";
 
 struct ClientState {
@@ -53,6 +54,7 @@ struct ClientState {
     room:             Option<String>,
     cookie:           Option<String>,
     chat_msg_seq_num: u64,
+    tick:             usize,
 }
 
 impl ClientState {
@@ -66,6 +68,7 @@ impl ClientState {
             room:            None,
             cookie:          None,
             chat_msg_seq_num: 0,
+            tick:            0,
         }
     }
 
@@ -110,6 +113,7 @@ impl ClientState {
                     ResponseCode::RoomList(rooms) => {
                         self.handle_room_list(rooms);
                     }
+                    ResponseCode::KeepAlive => {},
                     // errors
                     code @ _ => {
                         error!("response from server: {:?}", code);
@@ -138,8 +142,25 @@ impl ClientState {
         }
     }
 
-    fn handle_tick_event(&self) {
+    fn handle_tick_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr) {
+        if self.tick % 100 == 0 && self.cookie.is_some() {
+            let keep_alive = Packet::Request {
+                sequence: self.sequence,
+                response_ack: self.response_ack,
+                cookie: self.cookie.clone(),
+                action: RequestAction::KeepAlive
+            };
+            let result = udp_tx.unbounded_send( (addr, keep_alive) );
 
+            if result.is_err() {
+                warn!("Could not send KeepAlive");
+            }
+            else {
+                    println!("Send KeepAlive yay!")
+            }
+        }
+
+        self.tick += 1;
     }
 
     fn handle_user_input_event(&mut self,
@@ -157,7 +178,7 @@ impl ClientState {
                 action = self.build_command_request_action(cmd, args);
 
                 if action == RequestAction::Disconnect {
-                    (&exit_tx).unbounded_send(()).unwrap();
+                    (&exit_tx).unbounded_send(()).unwrap(); // Okay if we panic for FA/we want to quit anyway
                 }
             },
         }
@@ -169,7 +190,10 @@ impl ClientState {
                 cookie:       self.cookie.clone(),
                 action:       action,
             };
-            let _ = (&udp_tx).unbounded_send((addr.clone(), packet));
+            let result = (&udp_tx).unbounded_send((addr.clone(), packet));
+            if result.is_err() {
+                warn!("Could not send user input cmd to server");
+            }
             self.sequence += 1;
         }
     }
@@ -383,7 +407,7 @@ fn main() {
     let iter_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () )); // just a Stream that emits () forever
     // .and_then is like .map except that it processes returned Futures
     let tick_stream = iter_stream.and_then(|_| {
-        let timeout = Timeout::new(Duration::from_millis(1000), &handle).unwrap();
+        let timeout = Timeout::new(Duration::from_millis(TICK_INTERVAL), &handle).unwrap();
         timeout.and_then(move |_| {
             ok(Event::TickEvent)
         })
@@ -426,7 +450,7 @@ fn main() {
                     client_state.handle_response_event(&udp_tx, addr, opt_packet);
                 }
                 Event::TickEvent => {
-                    client_state.handle_tick_event();
+                    client_state.handle_tick_event(&udp_tx, addr);
                 }
                 Event::UserInputEvent(user_input) => {
                     client_state.handle_user_input_event(&udp_tx, &exit_tx, user_input, addr);

@@ -84,6 +84,7 @@ pub enum ResponseCode {
     ServerError(Option<String>),     // 500
     NotConnected(Option<String>),    // no equivalent in HTTP due to handling at lower (TCP) level
     PleaseUpgrade(Option<String>),   // client should give upgrade msg to user, but continue as if OK
+    KeepAlive,                       // Server's heart is beating
 }
 
 // chat messages sent from server to all clients other than originating client
