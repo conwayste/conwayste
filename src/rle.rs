@@ -16,15 +16,18 @@
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
 const MAX_NUMBER: usize = 50000;
+const NO_OP_CHAR: char = '"';
 
-use bits::BitGrid;
+use bits::{BitGrid, CharGrid};
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
 
+/// This contains just the RLE pattern string. For example: "4bobo$7b3o!"
 #[derive(Debug, PartialEq)]
 pub struct Pattern(String);
 
+/// Represents the contents of a RLE file.
 #[derive(Debug, PartialEq)]
 pub struct PatternFile {
     pub comment_lines: Vec<String>,
@@ -131,21 +134,6 @@ impl FromStr for HeaderLine {
 }
 
 
-fn write_at_position(grid: &mut BitGrid, col: usize, row: usize, ch: char) {
-    let word_col = col/64;
-    let shift = 63 - (col & (64 - 1));
-    match ch {
-        'b' => {
-            grid[row][word_col] &= !(1 << shift)
-        }
-        'o' => {
-            grid[row][word_col] |=   1 << shift
-        }
-        _ => unimplemented!()
-    }
-}
-
-
 fn digits_to_number(digits: &Vec<char>) -> Result<usize, String> {
     let mut result = 0;
     for ch in digits {
@@ -160,9 +148,20 @@ fn digits_to_number(digits: &Vec<char>) -> Result<usize, String> {
 
 
 impl Pattern {
+    /// Creates a BitGrid out of this pattern. If there are no parse errors, the result contains
+    /// the smallest BitGrid that fits a pattern `width` cells wide and `height` cells high.
     pub fn to_new_bit_grid(&self, width: usize, height: usize) -> Result<BitGrid, String> {
         let word_width = (width - 1)/64 + 1;
         let mut grid = BitGrid::new(word_width, height);
+        self.to_grid(&mut grid, None)?;
+        Ok(grid)
+    }
+
+    /// # Pitfalls
+    ///
+    /// If there is a parsing error, `grid` may be in a partially written state. If this is a
+    /// problem, then back up `grid` before calling this.
+    pub fn to_grid<G: CharGrid>(&self, grid: &mut G, visibility: Option<usize>) -> Result<(), String> {
         let mut col: usize = 0;
         let mut row: usize = 0;
         let mut char_indices = self.0.char_indices();
@@ -189,7 +188,7 @@ impl Pattern {
                     } else { 1 };
                     digits.clear();
                     for _ in 0..number {
-                        write_at_position(&mut grid, col, row, ch);
+                        grid.write_at_position(col, row, ch, visibility);
                         col += 1;
                     }
                 }
@@ -221,7 +220,7 @@ impl Pattern {
         if !complete {
             return Err("Premature termination".to_owned());
         }
-        Ok(grid)
+        Ok(())
     }
 }
 

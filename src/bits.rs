@@ -96,6 +96,7 @@ impl BitGrid {
     }
 }
 
+
 impl Index<usize> for BitGrid {
     type Output = Vec<u64>;
 
@@ -107,6 +108,42 @@ impl Index<usize> for BitGrid {
 impl IndexMut<usize> for BitGrid {
     fn index_mut(&mut self, i: usize) -> &mut Vec<u64> {
         &mut self.0[i]
+    }
+}
+
+
+pub trait CharGrid {
+    /// Write a char `ch` to (`col`, `row`).
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if `col` or `row` are out of range, or if `char` is invalid for this type.
+    fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: Option<usize>);
+
+    fn is_valid(ch: char) -> bool;
+}
+
+
+const VALID_BIT_GRID_CHARS: [char; 2] = ['b', 'o'];
+
+impl CharGrid for BitGrid {
+    /// _visibility is ignored, since BitGrids have no concept of a player.
+    fn write_at_position(&mut self, col: usize, row: usize, ch: char, _visibility: Option<usize>) {
+        let word_col = col/64;
+        let shift = 63 - (col & (64 - 1));
+        match ch {
+            'b' => {
+                self[row][word_col] &= !(1 << shift)
+            }
+            'o' => {
+                self[row][word_col] |=   1 << shift
+            }
+            _ => unimplemented!()
+        }
+    }
+
+    fn is_valid(ch: char) -> bool {
+        VALID_BIT_GRID_CHARS.contains(&ch)
     }
 }
 

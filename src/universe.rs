@@ -18,7 +18,7 @@
 use std::fmt;
 use std::char;
 
-use bits::{BitGrid, BitOperation};
+use bits::{BitGrid, BitOperation, CharGrid};
 
 type UniverseError = String;
 
@@ -247,6 +247,134 @@ impl CellState {
     }
 }
 
+
+impl GenState {
+    /// Sets the state of a cell, with minimal checking.  It doesn't support setting
+    /// `CellState::Fog`.
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if an attempt is made to set an unknown cell.
+    pub fn set_unchecked(&mut self, col: usize, row: usize, new_state: CellState) {
+        let word_col = col/64;
+        let shift = 63 - (col & (64 - 1)); // translate literal col (ex: 134) to bit index in word_col
+        let mask  = 1 << shift;     // cell to set
+
+        // panic if not known
+        let known_cell_word = self.known[row][word_col];
+        if known_cell_word & mask == 0 {
+            panic!("Tried to set unknown cell at ({}, {})", col, row);
+        }
+
+        // clear all player cell bits, so that this cell is unowned by any player (we'll set
+        // ownership further down)
+        {
+            for player_id in 0 .. self.player_states.len() {
+                let ref mut grid = self.player_states[player_id].cells;
+                grid.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
+            }
+        }
+
+        let cells = &mut self.cells;
+        let walls  = &mut self.wall_cells;
+        match new_state {
+            CellState::Dead => {
+                cells.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
+                walls.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
+            }
+            CellState::Alive(opt_player_id) => {
+                cells.modify_bits_in_word(row, word_col, mask, BitOperation::Set);
+                walls.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
+
+                if let Some(player_id) = opt_player_id {
+                    let ref mut player = self.player_states[player_id];
+                    player.cells.modify_bits_in_word(row, word_col, mask, BitOperation::Set);
+                    player.fog.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
+                }
+            }
+            CellState::Wall => {
+                cells.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
+                walls.modify_bits_in_word(row, word_col, mask, BitOperation::Set);
+            }
+            _ => unimplemented!()
+        }
+    }
+}
+
+// TODO: unit test
+impl CharGrid for GenState {
+    #[inline]
+    /// 
+    fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: Option<usize>) {
+        if !GenState::is_valid(ch) {
+            panic!(format!("char {:?} is invalid for this CharGrid", ch));
+        }
+        let word_col = col/64;
+        let shift = 63 - (col & (64 - 1));
+        // cells
+        match ch {
+            'b' => {
+                self.cells[row][word_col] &= !(1 << shift)
+            }
+            'o' | 'A'..='V' | '?' => {
+                self.cells[row][word_col] |=   1 << shift
+            }
+            _ => unreachable!()
+        }
+        // wall cells
+        match ch {
+            'W' => {
+                self.wall_cells[row][word_col] &= !(1 << shift)
+            }
+            'b' | 'o' | 'A'..='V' | '?' => {
+                self.wall_cells[row][word_col] |=   1 << shift
+            }
+            _ => unreachable!()
+        }
+        // known
+        self.known[row][word_col] |=  1 << shift;
+        // player_states
+        if ch == '?' {
+            if visibility.is_none() {
+                // I expect that only clients will read a pattern containing fog, and clients will
+                // never have visibility set to None.
+                panic!("cannot write fog when no player_id is specified");
+            }
+            let player_id = visibility.unwrap();
+            // only set fog bit for specified player
+            self.player_states[player_id].fog[row][word_col] &= !(1 << shift);
+        } else {
+            if let Some(player_id) = visibility {
+                // only clear fog bit for specified player
+                self.player_states[player_id].fog[row][word_col] |=   1 << shift;
+            } else {
+                // clear fog bit for all players
+                for i in 0 .. self.player_states.len() {
+                    self.player_states[i].fog[row][word_col] &= !(1 << shift);
+                }
+            }
+            // clear all player's cells
+            for i in 0 .. self.player_states.len() {
+                self.player_states[i].cells[row][word_col] &= !(1 << shift);
+            }
+            // if 'A'..='V', set that player's cells
+            if ch >= 'A' && ch <= 'V' {
+                let p_id = ch as usize - 'A' as usize;
+                self.player_states[p_id].cells[row][word_col] |= 1 << shift; // can panic if p_id out of range
+            }
+        }
+    }
+
+    #[inline]
+    fn is_valid(ch: char) -> bool {
+        match ch {
+            'o' | 'b' | 'A'..='W' | '?' => true,
+            _ => false
+        }
+    }
+}
+
+
 impl fmt::Display for Universe {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let cells = &self.gen_states[self.state_index].cells;
@@ -310,56 +438,15 @@ impl Universe {
         }
     }
 
-    /// Sets the state of a cell, with minimal checking.  It doesn't support setting
-    /// `CellState::Fog`.
+
+    /// Sets the state of a cell in the latest generation, with minimal checking.  It doesn't
+    /// support setting `CellState::Fog`.
     /// 
     /// # Panics
     /// 
     /// Panics if an attempt is made to set an unknown cell.
     pub fn set_unchecked(&mut self, col: usize, row: usize, new_state: CellState) {
-        let gen_state = &mut self.gen_states[self.state_index];
-        let word_col = col/64;
-        let shift = 63 - (col & (64 - 1)); // translate literal col (ex: 134) to bit index in word_col
-        let mask  = 1 << shift;     // cell to set
-
-        // panic if not known
-        let known_cell_word = gen_state.known[row][word_col];
-        if known_cell_word & mask == 0 {
-            panic!("Tried to set unknown cell at ({}, {})", col, row);
-        }
-
-        // clear all player cell bits, so that this cell is unowned by any player (we'll set
-        // ownership further down)
-        {
-            for player_id in 0 .. self.num_players {
-                let ref mut grid = gen_state.player_states[player_id].cells;
-                grid.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
-            }
-        }
-
-        let cells = &mut gen_state.cells;
-        let walls  = &mut gen_state.wall_cells;
-        match new_state {
-            CellState::Dead => {
-                cells.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
-                walls.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
-            }
-            CellState::Alive(opt_player_id) => {
-                cells.modify_bits_in_word(row, word_col, mask, BitOperation::Set);
-                walls.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
-
-                if let Some(player_id) = opt_player_id {
-                    let ref mut player = gen_state.player_states[player_id];
-                    player.cells.modify_bits_in_word(row, word_col, mask, BitOperation::Set);
-                    player.fog.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
-                }
-            }
-            CellState::Wall => {
-                cells.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
-                walls.modify_bits_in_word(row, word_col, mask, BitOperation::Set);
-            }
-            _ => unimplemented!()
-        }
+        self.gen_states[self.state_index].set_unchecked(col, row, new_state)
     }
 
 
