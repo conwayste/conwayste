@@ -329,8 +329,6 @@ impl CharGrid for GenState {
             }
             _ => unreachable!()
         }
-        // known
-        self.known[row][word_col] |=  1 << shift;
         // player_states
         if ch == '?' {
             if visibility.is_none() {
@@ -340,11 +338,12 @@ impl CharGrid for GenState {
             }
             let player_id = visibility.unwrap();
             // only set fog bit for specified player
-            self.player_states[player_id].fog[row][word_col] &= !(1 << shift);
+            self.player_states[player_id].fog[row][word_col] |= 1 << shift;
         } else {
+            self.known[row][word_col] |= 1 << shift;    // known
             if let Some(player_id) = visibility {
                 // only clear fog bit for specified player
-                self.player_states[player_id].fog[row][word_col] |=   1 << shift;
+                self.player_states[player_id].fog[row][word_col] &= !(1 << shift);
             } else {
                 // clear fog bit for all players
                 for i in 0 .. self.player_states.len() {
@@ -1925,6 +1924,51 @@ mod genstate_tests {
         assert_eq!(genstate.known[0][0], u64::max_value());
         assert_eq!(genstate.player_states[0].cells[0][0], 0);
         assert_eq!(genstate.player_states[1].cells[0][0], 0);
+    }
+
+    #[test]
+    fn write_at_position_as_player0_player1_then_blank() {
+        let mut genstate = make_gen_state();
+
+        genstate.write_at_position(63, 0, 'B', Some(0));
+        genstate.write_at_position(63, 0, 'b', Some(0));
+        assert_eq!(genstate.cells[0][0], 0);
+        assert_eq!(genstate.wall_cells[0][0], 0);
+        assert_eq!(genstate.known[0][0], u64::max_value());
+        assert_eq!(genstate.player_states[0].cells[0][0], 0);
+        assert_eq!(genstate.player_states[1].cells[0][0], 0);
+    }
+
+    #[test]
+    fn write_at_position_as_player0_clears_only_that_players_fog() {
+        let mut genstate = make_gen_state();
+
+        // fog bits initially clear for both players
+        genstate.player_states[0].fog[0][0] = 0;
+        genstate.player_states[1].fog[0][0] = 0;
+        genstate.write_at_position(63, 0, '?', Some(0));
+        assert_eq!(genstate.cells[0][0], 0);
+        assert_eq!(genstate.wall_cells[0][0], 0);
+        assert_eq!(genstate.player_states[0].cells[0][0], 0);
+        assert_eq!(genstate.player_states[0].fog[0][0], 1);
+        assert_eq!(genstate.player_states[1].cells[0][0], 0);
+        assert_eq!(genstate.player_states[1].fog[0][0], 0);
+    }
+
+    #[test]
+    fn write_at_position_as_player0_sets_only_that_players_fog() {
+        let mut genstate = make_gen_state();
+
+        // fog bits initially set for both players
+        genstate.player_states[0].fog[0][0] = 1;
+        genstate.player_states[1].fog[0][0] = 1;
+        genstate.write_at_position(63, 0, 'o', Some(0));
+        assert_eq!(genstate.cells[0][0], 1);
+        assert_eq!(genstate.wall_cells[0][0], 0);
+        assert_eq!(genstate.player_states[0].cells[0][0], 0);
+        assert_eq!(genstate.player_states[0].fog[0][0], 0);
+        assert_eq!(genstate.player_states[1].cells[0][0], 0);
+        assert_eq!(genstate.player_states[1].fog[0][0], 1);
     }
 }
 

@@ -165,7 +165,9 @@ impl Pattern {
         Ok(grid)
     }
 
-    /// Writes the pattern to a BitGrid or GenState (that is, anything implementing CharGrid).
+    /// Writes the pattern to a BitGrid or GenState (that is, anything implementing CharGrid).  The
+    /// characters in pattern must be valid for the grid, as determined by `::is_valid(ch)`, with
+    /// one exception: `NO_OP_CHAR` (`"`). Cells are skipped with runs containing `NO_OP_CHAR`.
     ///
     /// # Pitfalls
     ///
@@ -197,9 +199,13 @@ impl Pattern {
                         digits_to_number(&digits)?
                     } else { 1 };
                     digits.clear();
-                    for _ in 0..number {
-                        grid.write_at_position(col, row, ch, visibility);
-                        col += 1;
+                    if ch != NO_OP_CHAR {
+                        for _ in 0..number {
+                            grid.write_at_position(col, row, ch, visibility);
+                            col += 1;
+                        }
+                    } else {
+                        col += number;
                     }
                 }
                 '!' => {
