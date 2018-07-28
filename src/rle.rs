@@ -181,7 +181,7 @@ impl Pattern {
                 return Err(format!("Cannot have {} after number at {}", ch, i));
             }
             match ch {
-                'b' | 'o' => {
+                _ if G::is_valid(ch) => {
                     // cell
                     let number = if digits.len() > 0 {
                         digits_to_number(&digits)?

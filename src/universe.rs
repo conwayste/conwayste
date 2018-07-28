@@ -301,10 +301,8 @@ impl GenState {
     }
 }
 
-// TODO: unit test
 impl CharGrid for GenState {
     #[inline]
-    /// 
     fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: Option<usize>) {
         if !GenState::is_valid(ch) {
             panic!(format!("char {:?} is invalid for this CharGrid", ch));
@@ -313,10 +311,10 @@ impl CharGrid for GenState {
         let shift = 63 - (col & (64 - 1));
         // cells
         match ch {
-            'b' => {
+            'b' | 'W' | '?' => {
                 self.cells[row][word_col] &= !(1 << shift)
             }
-            'o' | 'A'..='V' | '?' => {
+            'o' | 'A'..='V' => {
                 self.cells[row][word_col] |=   1 << shift
             }
             _ => unreachable!()
@@ -324,10 +322,10 @@ impl CharGrid for GenState {
         // wall cells
         match ch {
             'W' => {
-                self.wall_cells[row][word_col] &= !(1 << shift)
+                self.wall_cells[row][word_col] |=   1 << shift
             }
             'b' | 'o' | 'A'..='V' | '?' => {
-                self.wall_cells[row][word_col] |=   1 << shift
+                self.wall_cells[row][word_col] &= !(1 << shift)
             }
             _ => unreachable!()
         }
@@ -1822,6 +1820,111 @@ mod universe_tests {
         uni.each_non_dead(Region::new(0, 0, 80, 80), Some(player0), &mut |col, row, state| {
             assert_eq!(state, CellState::Fog, "expected fog at col {} row {} but found {:?}", col, row, state);
         });
+    }
+}
+
+#[cfg(test)]
+mod genstate_tests {
+    use super::*;
+
+    // Utilities
+    fn make_gen_state() -> GenState {
+        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));
+        let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
+        let players = vec![player0, player1];
+
+        let mut uni = BigBang::new()
+            .history(1)
+            .add_players(players)
+            .birth()
+            .unwrap();
+        uni.gen_states.pop().unwrap()
+    }
+
+    #[test]
+    fn write_at_position_server_wall() {
+        let mut genstate = make_gen_state();
+
+        genstate.write_at_position(63, 0, 'W', None);
+        assert_eq!(genstate.cells[0][0], 0);
+        assert_eq!(genstate.wall_cells[0][0], 1);
+        assert_eq!(genstate.known[0][0], u64::max_value());
+        assert_eq!(genstate.player_states[0].cells[0][0], 0);
+        assert_eq!(genstate.player_states[1].cells[0][0], 0);
+    }
+
+    #[test]
+    fn write_at_position_server_wall_overwrite() {
+        let mut genstate = make_gen_state();
+
+        genstate.write_at_position(63, 0, 'b', None);
+        genstate.write_at_position(63, 0, 'W', None);
+        assert_eq!(genstate.cells[0][0], 0);
+        assert_eq!(genstate.wall_cells[0][0], 1);
+        assert_eq!(genstate.known[0][0], u64::max_value());
+        assert_eq!(genstate.player_states[0].cells[0][0], 0);
+        assert_eq!(genstate.player_states[1].cells[0][0], 0);
+    }
+
+    #[test]
+    fn write_at_position_server_player0() {
+        let mut genstate = make_gen_state();
+
+        genstate.write_at_position(63, 0, 'A', None);
+        assert_eq!(genstate.cells[0][0], 1);
+        assert_eq!(genstate.wall_cells[0][0], 0);
+        assert_eq!(genstate.known[0][0], u64::max_value());
+        assert_eq!(genstate.player_states[0].cells[0][0], 1);
+        assert_eq!(genstate.player_states[1].cells[0][0], 0);
+    }
+
+    #[test]
+    fn write_at_position_server_player1() {
+        let mut genstate = make_gen_state();
+
+        genstate.write_at_position(63, 0, 'B', None);
+        assert_eq!(genstate.cells[0][0], 1);
+        assert_eq!(genstate.wall_cells[0][0], 0);
+        assert_eq!(genstate.known[0][0], u64::max_value());
+        assert_eq!(genstate.player_states[0].cells[0][0], 0);
+        assert_eq!(genstate.player_states[1].cells[0][0], 1);
+    }
+
+    #[test]
+    fn write_at_position_server_player0_then_1() {
+        let mut genstate = make_gen_state();
+
+        genstate.write_at_position(63, 0, 'A', None);
+        genstate.write_at_position(63, 0, 'B', None);
+        assert_eq!(genstate.cells[0][0], 1);
+        assert_eq!(genstate.player_states[0].cells[0][0], 0);
+        assert_eq!(genstate.player_states[1].cells[0][0], 1);
+    }
+
+    #[test]
+    fn write_at_position_server_player1_then_unowned() {
+        let mut genstate = make_gen_state();
+
+        genstate.write_at_position(63, 0, 'B', None);
+        genstate.write_at_position(63, 0, 'o', None);
+        assert_eq!(genstate.cells[0][0], 1);
+        assert_eq!(genstate.wall_cells[0][0], 0);
+        assert_eq!(genstate.known[0][0], u64::max_value());
+        assert_eq!(genstate.player_states[0].cells[0][0], 0);
+        assert_eq!(genstate.player_states[1].cells[0][0], 0);
+    }
+
+    #[test]
+    fn write_at_position_server_player1_then_blank() {
+        let mut genstate = make_gen_state();
+
+        genstate.write_at_position(63, 0, 'B', None);
+        genstate.write_at_position(63, 0, 'b', None);
+        assert_eq!(genstate.cells[0][0], 0);
+        assert_eq!(genstate.wall_cells[0][0], 0);
+        assert_eq!(genstate.known[0][0], u64::max_value());
+        assert_eq!(genstate.player_states[0].cells[0][0], 0);
+        assert_eq!(genstate.player_states[1].cells[0][0], 0);
     }
 }
 

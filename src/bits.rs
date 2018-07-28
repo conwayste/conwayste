@@ -117,7 +117,10 @@ pub trait CharGrid {
     /// 
     /// # Panics
     /// 
-    /// Panics if `col` or `row` are out of range, or if `char` is invalid for this type.
+    /// Panics if:
+    /// * `col` or `row` are out of range
+    /// * `char` is invalid for this type. Use `is_valid` to check first.
+    /// * `visibility` is invalid. That is, it equals `Some(player_id)`, but there is no such `player_id`.
     fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: Option<usize>);
 
     fn is_valid(ch: char) -> bool;
