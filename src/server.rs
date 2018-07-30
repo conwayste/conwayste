@@ -538,7 +538,8 @@ impl ServerState {
             _pkt @ Packet::Response{..} | _pkt @ Packet::Update{..} => {
                 return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "invalid packet - server-only")));
             }
-            Packet::Request{sequence: _, response_ack: _, cookie, action} => {
+            Packet::Request{sequence: sequence, response_ack: _, cookie, action} => {
+
                 match action {
                     RequestAction::Connect{..} => (),
                     _ => {
@@ -570,6 +571,12 @@ impl ServerState {
                             return Err(Box::new(io::Error::new(ErrorKind::PermissionDenied, "invalid cookie")));
                         }
                     };
+
+                    let player: Player = self.get_player(player_id);
+                    if sequence <= (player.next_resp_seq - 1) {
+                        return Err(Box::new(io::Error::new(ErrorKind::AlreadyExists, "")));
+                    }
+
                     match action {
                         RequestAction::Connect{..} => unreachable!(),
                         _ => {
