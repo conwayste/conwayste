@@ -33,6 +33,8 @@ use self::bincode::{serialize, deserialize, Infinite};
 use self::semver::{Version, SemVerError};
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+pub const DEFAULT_HOST: &str = "0.0.0.0";
+pub const DEFAULT_PORT: u16 = 12345;
 
 //////////////// Error handling ////////////////
 #[derive(Debug)]
@@ -200,17 +202,12 @@ impl UdpCodec for LineCodec {
 #[allow(dead_code)]
 pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket, NetError> {
 
-    let host = if let Some(host) = opt_host { host } else { HOST };
-    let port = if let Some(port) = opt_port { port } else { PORT };
+    let host = if let Some(host) = opt_host { host } else { DEFAULT_HOST };
+    let port = if let Some(port) = opt_port { port } else { DEFAULT_PORT };
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
     let sock = UdpSocket::bind(&addr, &handle).expect("failed to bind socket");
     Ok(sock)
 }
-
-//XXX other functions
-
-pub const HOST: &str = "0.0.0.0";
-pub const PORT: u16 = 12345;
 
 #[allow(dead_code)]
 pub fn get_version() -> result::Result<Version, SemVerError> {
