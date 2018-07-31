@@ -17,6 +17,7 @@
 
 use std::ops::{Index, IndexMut};
 use universe::Region;
+use rle::Pattern;
 
 
 #[derive(Eq, PartialEq, Debug, Clone, Copy)]
@@ -94,6 +95,65 @@ impl BitGrid {
             }
         }
     }
+
+    /// Given a starting cell at `(col, row)`, get the character at that cell, and the number of
+    /// contiguous identical cells considering only this cell and the cells to the right of it.
+    /// This is intended for exporting to RLE.
+    ///
+    /// # Returns
+    ///
+    /// `(run_length, ch)`
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if `col` or `row` are out of bounds.
+    fn get_run(&self, col: usize, row: usize) -> (usize, char) {
+        let word_col = col/64;
+        let shift = 63 - (col & (64 - 1));
+        let mut word = self.0[row][word_col];
+        let mut mask = 1 << shift;
+        let is_set = (word & (1 << shift)) > 0;
+        let mut end_col = col + 1;
+        let ch = if is_set { 'o' } else { 'b' };
+
+        // go to end of current word
+        mask >>= 1;
+        while mask > 0 {
+            if (word & mask > 0) != is_set {
+                return (end_col - col, ch);
+            }
+            end_col += 1;
+            mask >>= 1;
+        }
+        assert_eq!(end_col % 64, 0);
+
+        // skip words
+        let mut end_word_col = word_col + 1;
+        while end_word_col < self.0[row].len() {
+            word = self.0[row][end_word_col];
+            if is_set && word < u64::max_value() {
+                break;
+            }
+            if !is_set && word > 0 {
+                break;
+            }
+            end_col += 64;
+            end_word_col += 1;
+        }
+        // start from beginning of last word
+        if end_word_col == self.0[row].len() {
+            return (end_col - col, ch);
+        }
+        mask = 1 << 63;
+        while mask > 0 {
+            if (word & mask > 0) != is_set {
+                break;
+            }
+            end_col += 1;
+            mask >>= 1;
+        }
+        return (end_col - col, ch);
+    }
 }
 
 
@@ -123,7 +183,12 @@ pub trait CharGrid {
     /// * `visibility` is invalid. That is, it equals `Some(player_id)`, but there is no such `player_id`.
     fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: Option<usize>);
 
+    /// Is `ch` a valid character?
     fn is_valid(ch: char) -> bool;
+
+    /// Returns a Pattern that describes this `CharGrid` as viewed by specified player if
+    /// `visibility.is_some()`, or a fog-less view if `visibility.is_none()`.
+    fn to_pattern(&self, visibility: Option<usize>) -> Pattern;
 }
 
 
@@ -294,5 +359,41 @@ mod tests {
         let mut grid = BitGrid::new(width_in_words, height);
         let region_neg = Region::new(-1, -1, 1, 1);
         grid.modify_region(region_neg, BitOperation::Set);
+    }
+
+    #[test]
+    fn get_run_for_single_on() {
+        let grid = Pattern("o!".to_owned()).to_new_bit_grid(1, 1).unwrap();
+        assert_eq!(grid.get_run(0, 0), (1, 'o'));
+    }
+
+    #[test]
+    fn get_run_for_single_off_then_on() {
+        let grid = Pattern("bo!".to_owned()).to_new_bit_grid(2, 1).unwrap();
+        assert_eq!(grid.get_run(0, 0), (1, 'b'));
+    }
+
+    #[test]
+    fn get_run_for_single_off() {
+        let grid = Pattern("b!".to_owned()).to_new_bit_grid(1, 1).unwrap();
+        assert_eq!(grid.get_run(0, 0), (64, 'b'));
+    }
+
+    #[test]
+    fn get_run_nonzero_col_for_single_off() {
+        let grid = Pattern("b!".to_owned()).to_new_bit_grid(1, 1).unwrap();
+        assert_eq!(grid.get_run(23, 0), (64 - 23, 'b'));
+    }
+
+    #[test]
+    fn get_run_nonzero_col_complicated() {
+        let grid = Pattern("15b87o!".to_owned()).to_new_bit_grid(15+87, 1).unwrap();
+        assert_eq!(grid.get_run(15, 0), (87, 'o'));
+    }
+
+    #[test]
+    fn get_run_nonzero_col_multiline_complicated() {
+        let grid = Pattern("3$15b87o!".to_owned()).to_new_bit_grid(15+87, 4).unwrap();
+        assert_eq!(grid.get_run(15, 3), (87, 'o'));
     }
 }

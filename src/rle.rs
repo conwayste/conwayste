@@ -25,7 +25,7 @@ use std::str::FromStr;
 
 /// This contains just the RLE pattern string. For example: "4bobo$7b3o!"
 #[derive(Debug, PartialEq)]
-pub struct Pattern(String);
+pub struct Pattern(pub String);
 
 /// Represents the contents of a RLE file.
 #[derive(Debug, PartialEq)]
@@ -169,7 +169,11 @@ impl Pattern {
     /// characters in pattern must be valid for the grid, as determined by `::is_valid(ch)`, with
     /// one exception: `NO_OP_CHAR` (`"`). Cells are skipped with runs containing `NO_OP_CHAR`.
     ///
-    /// # Pitfalls
+    /// # Panics
+    ///
+    /// This function will panic if an attempt is made to write out of bounds.
+    ///
+    /// # Note
     ///
     /// If there is a parsing error, `grid` may be in a partially written state. If this is a
     /// problem, then back up `grid` before calling this.

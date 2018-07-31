@@ -19,6 +19,7 @@ use std::fmt;
 use std::char;
 
 use bits::{BitGrid, BitOperation, CharGrid};
+use rle::Pattern;
 
 type UniverseError = String;
 
