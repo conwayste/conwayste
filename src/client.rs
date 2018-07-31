@@ -36,6 +36,7 @@ use std::process::exit;
 use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
+use std::collections::VecDeque;
 use net::{RequestAction, ResponseCode, Packet, LineCodec, BroadcastChatMessage};
 use tokio_core::reactor::{Core, Timeout};
 use futures::{Future, Sink, Stream, stream};
@@ -44,6 +45,76 @@ use futures::sync::mpsc;
 
 const TICK_INTERVAL:         u64   = 10; // milliseconds
 const CLIENT_VERSION: &str = "0.0.1";
+
+struct NetworkStatistics {
+    keep_alive_tx_fail: u64,
+    keep_alive_tx_success: u64,
+}
+
+impl NetworkStatistics {
+    fn new() -> Self {
+        NetworkStatistics {
+            keep_alive_tx_fail: 0,
+            keep_alive_tx_success: 0
+        }
+    }
+}
+
+struct Network {
+    statistics:     NetworkStatistics,
+    tx_packets:     VecDeque<Packet>,
+    rx_packets:     VecDeque<Packet>,
+}
+
+impl Network {
+    fn new() -> Self {
+        Network {
+            statistics: NetworkStatistics::new(),
+            tx_packets:  VecDeque::<Packet>::with_capacity(net::PACKET_HISTORY_SIZE),
+            rx_packets:  VecDeque::<Packet>::with_capacity(net::PACKET_HISTORY_SIZE),
+        }
+    }
+
+    fn head_of_tx_packet(&self) -> Option<&Packet> {
+        self.tx_packets.back()
+    }
+
+    fn buffer_tx_packet(&mut self, packet: Packet) {
+        let opt_newest_sequence: Option<u64> = {
+            let opt_newest_packet = self.head_of_tx_packet();
+
+            if opt_newest_packet.is_some() {
+                let newest_packet = opt_newest_packet.unwrap();
+                if let Packet::Request{sequence: newest_sequence, response_ack: _, cookie: _, action: _} = newest_packet {
+                    Some(*newest_sequence)
+                } else { None }
+            }
+            else {
+                None // Type interference
+            }
+        };
+
+        // Nothing there just yet
+        if opt_newest_sequence.is_none() && self.tx_packets.len() == 0 {
+            self.tx_packets.push_back(packet);
+            return;
+        }
+
+        let newest_sequence = opt_newest_sequence.unwrap();
+
+        if let Packet::Request{sequence, response_ack: _, cookie: _, action: _} = packet {
+            if newest_sequence < sequence {
+                self.tx_packets.push_back(packet);
+            }
+            // Assumption is that a previous packet with this SQN failed to send,
+            // and this `packet` is up-to-date
+            else if newest_sequence == sequence {
+                self.tx_packets.pop_back();
+                self.tx_packets.push_back(packet);
+            }
+        }
+    }
+}
 
 struct ClientState {
     sequence:         u64,   // sequence number of requests
@@ -55,6 +126,7 @@ struct ClientState {
     cookie:           Option<String>,
     chat_msg_seq_num: u64,
     tick:             usize,
+    network:          Network,
 }
 
 impl ClientState {
@@ -69,6 +141,7 @@ impl ClientState {
             cookie:          None,
             chat_msg_seq_num: 0,
             tick:            0,
+            network:      Network::new(),
         }
     }
 
@@ -155,9 +228,11 @@ impl ClientState {
 
             if result.is_err() {
                 warn!("Could not send KeepAlive");
+                self.network.statistics.keep_alive_tx_fail += 1;
             }
             else {
-                    println!("Send KeepAlive yay!")
+                self.network.statistics.keep_alive_tx_success += 1;
+                println!("Send KeepAlive yay!")
             }
         }
 
@@ -209,6 +284,7 @@ impl ClientState {
                _ => {}
             }
 
+            self.network.buffer_tx_packet(packet.clone());
             let result = (&udp_tx).unbounded_send((addr.clone(), packet));
             if result.is_err() {
                 warn!("Could not send user input cmd to server");

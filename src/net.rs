@@ -35,6 +35,7 @@ use self::semver::{Version, SemVerError};
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
 pub const DEFAULT_PORT: u16 = 12345;
+pub const PACKET_HISTORY_SIZE: usize = 15;
 
 //////////////// Error handling ////////////////
 #[derive(Debug)]
