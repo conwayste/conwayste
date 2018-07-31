@@ -69,6 +69,7 @@ pub enum RequestAction {
     NewRoom(String),
     JoinRoom(String),
     LeaveRoom,
+    TestSequenceNumber(u64),
 }
 
 // server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
@@ -87,6 +88,7 @@ pub enum ResponseCode {
     NotConnected(Option<String>),    // no equivalent in HTTP due to handling at lower (TCP) level
     PleaseUpgrade(Option<String>),   // client should give upgrade msg to user, but continue as if OK
     KeepAlive,                       // Server's heart is beating
+    OldPacket,                       // Internally used to ignore a packet
 }
 
 // chat messages sent from server to all clients other than originating client
@@ -181,7 +183,7 @@ impl UdpCodec for LineCodec {
         match deserialize(buf) {
             Ok(decoded) => Ok((*addr, Some(decoded))),
             Err(e) => {
-                let local: SocketAddr = format!("{}:{}", "127.0.0.1", PORT.to_string()).parse().unwrap();
+                let local: SocketAddr = format!("{}:{}", "127.0.0.1", DEFAULT_PORT.to_string()).parse().unwrap();
                 // We only want to warn when the incoming packet is external to the host system
                 if local != *addr {
                     println!("WARNING: error during packet deserialization: {:?}", e);

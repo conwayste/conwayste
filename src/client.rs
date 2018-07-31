@@ -143,6 +143,7 @@ impl ClientState {
     }
 
     fn handle_tick_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr) {
+        // Every 100ms, after we've connected
         if self.tick % 100 == 0 && self.cookie.is_some() {
             let keep_alive = Packet::Request {
                 sequence: self.sequence,
@@ -183,18 +184,35 @@ impl ClientState {
             },
         }
         if action != RequestAction::None {
+            // Sequence number can increment once we're talking to a server
+            if self.cookie != None {
+                self.sequence += 1;
+            }
+
             self.last_req_action = Some(action.clone());
-            let packet = Packet::Request {
+            let mut packet = Packet::Request {
                 sequence:     self.sequence,
                 response_ack: self.response_ack,
                 cookie:       self.cookie.clone(),
-                action:       action,
+                action:       action.clone(),
             };
+
+           match action.clone() {
+               RequestAction::TestSequenceNumber(b) => {
+                   packet = Packet::Request {
+                        sequence:     b,
+                        response_ack: self.response_ack,
+                        cookie:       self.cookie.clone(),
+                        action:       action,
+                    };
+               }
+               _ => {}
+            }
+
             let result = (&udp_tx).unbounded_send((addr.clone(), packet));
             if result.is_err() {
                 warn!("Could not send user input cmd to server");
             }
-            self.sequence += 1;
         }
     }
 
@@ -226,6 +244,7 @@ impl ClientState {
     fn handle_logged_in(&mut self, cookie: String, server_version: String) {
         self.cookie = Some(cookie);
 
+        println!("Set client name to {:?}", self.name.clone().unwrap());
         self.check_for_upgrade(&server_version);
     }
 
@@ -285,7 +304,6 @@ impl ClientState {
             "connect" => {
                 if args.len() == 1 {
                     self.name = Some(args[0].clone());
-                    println!("Set client name to {:?}", self.name.clone().unwrap());
                     action = RequestAction::Connect{
                         name:           args[0].clone(),
                         client_version: CLIENT_VERSION.to_owned(),
@@ -334,6 +352,11 @@ impl ClientState {
             "quit" => {
                 println!("Peace out!");
                 action = RequestAction::Disconnect;
+            }
+            "sn" => {
+                if args.len() != 0 {
+                    action = RequestAction::TestSequenceNumber(args[0].parse::<u64>().unwrap());
+                }
             }
             _ => {
                 println!("ERROR: command not recognized: {}", cmd);
