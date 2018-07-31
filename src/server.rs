@@ -172,6 +172,7 @@ struct ServerState {
     player_map:     HashMap<String, PlayerID>,      // map cookie to player ID
     rooms:          HashMap<RoomID, Room>,
     room_map:       HashMap<String, RoomID>,      // map room name to room ID
+    silence_error:  bool,   // TODO move into own struct with other 'config' members
 }
 
 //////////////// Utilities ///////////////////////
@@ -481,7 +482,6 @@ impl ServerState {
             RequestAction::KeepAlive       => {
                 let player: &mut Player = self.players.get_mut(&player_id).unwrap();
                 player.heartbeat = Some(time::Instant::now());
-                // XXX Look for any timeouts
                 return ResponseCode::OK;
             },
             RequestAction::ListPlayers     => {
@@ -508,6 +508,7 @@ impl ServerState {
             RequestAction::None => {
                 return ResponseCode::BadRequest( Some("Invalid request".to_owned()) );
             },
+            RequestAction::TestSequenceNumber(b) => { return ResponseCode::OldPacket; },
         }
     }
 
@@ -538,7 +539,7 @@ impl ServerState {
             _pkt @ Packet::Response{..} | _pkt @ Packet::Update{..} => {
                 return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "invalid packet - server-only")));
             }
-            Packet::Request{sequence: sequence, response_ack: _, cookie, action} => {
+            Packet::Request{sequence, response_ack: _, cookie, action} => {
 
                 match action {
                     RequestAction::Connect{..} => (),
@@ -572,9 +573,13 @@ impl ServerState {
                         }
                     };
 
-                    let player: Player = self.get_player(player_id);
-                    if sequence <= (player.next_resp_seq - 1) {
-                        return Err(Box::new(io::Error::new(ErrorKind::AlreadyExists, "")));
+                    {
+                        let player_next_sequence_num: u64 = self.get_player(player_id).next_resp_seq;
+                        println!("{} <= {}", sequence, player_next_sequence_num - 1);
+                        if sequence <= (player_next_sequence_num - 1) {
+                            self.silence_error = true;
+                            return Err(Box::new(io::Error::new(ErrorKind::AlreadyExists, "")));
+                        }
                     }
 
                     match action {
@@ -791,6 +796,7 @@ impl ServerState {
             rooms:      HashMap::<RoomID, Room>::new(),
             player_map: HashMap::<String, PlayerID>::new(),
             room_map:   HashMap::<String, RoomID>::new(),
+            silence_error: false,
         }
     }
 }
@@ -859,7 +865,10 @@ fn main() {
                             }
                         } else {
                             let err = decode_result.unwrap_err();
-                            println!("ERROR decoding packet from {:?}: {}", addr, err.description());
+                            if !server_state.silence_error {
+                                println!("ERROR decoding packet from {:?}: {:?}", addr, err);
+                            }
+                            server_state.silence_error = false;
                         }
                     }
                 }
@@ -877,18 +886,18 @@ fn main() {
                         }
                     }
 
-                    // Send a KeepAlive every second
+                    // Send a KeepAlive every scond
                     if (server_state.tick % 100) == 0 {
-                        for player in server_state.players.values() {
+/*                        for player in server_state.players.values() {
                             let keep_alive = Packet::Response {
-                                sequence: player.next_resp_seq,
+                                sequence: player.next_resp_seq-1,
                                 request_ack: player.request_ack,
                                 code: ResponseCode::KeepAlive
                             };
 
                             tx.unbounded_send( (player.addr, keep_alive) ).unwrap();
+*/
                         }
-                    }
 
                     server_state.tick += 1;
                 }
