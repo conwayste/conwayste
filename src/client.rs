@@ -47,14 +47,18 @@ const TICK_INTERVAL:         u64   = 10; // milliseconds
 const CLIENT_VERSION: &str = "0.0.1";
 
 struct NetworkStatistics {
-    keep_alive_tx_fail: u64,
+    packets_tx_failed: u64,
+    packets_tx_success: u64,
+    keep_alive_tx_failed: u64,
     keep_alive_tx_success: u64,
 }
 
 impl NetworkStatistics {
     fn new() -> Self {
         NetworkStatistics {
-            keep_alive_tx_fail: 0,
+            packets_tx_success: 0,
+            packets_tx_failed: 0,
+            keep_alive_tx_failed: 0,
             keep_alive_tx_success: 0
         }
     }
@@ -62,8 +66,8 @@ impl NetworkStatistics {
 
 struct Network {
     statistics:     NetworkStatistics,
-    tx_packets:     VecDeque<Packet>,
-    rx_packets:     VecDeque<Packet>,
+    tx_packets:     VecDeque<Packet>, // Back == Newest, Front == Oldest
+    rx_packets:     VecDeque<Packet>, // Back == Newest, Front == Oldest
 }
 
 impl Network {
@@ -205,7 +209,14 @@ impl ClientState {
                     last_game_update_seq: None,
                     last_gen:             None,
                 };
-                let _ = udp_tx.unbounded_send((addr.clone(), packet));
+                let send = udp_tx.unbounded_send((addr.clone(), packet));
+
+                if send.is_err() {
+                    warn!("Could not send UpdateReply{{ {} }} to server", self.chat_msg_seq_num);
+                    self.network.statistics.packets_tx_failed += 1;
+                } else {
+                    self.network.statistics.packets_tx_success += 1;
+                }
             }
             Packet::Request{..} => {
                 warn!("Ignoring packet from server normally sent by clients: {:?}", packet);
@@ -229,9 +240,8 @@ impl ClientState {
 
             if result.is_err() {
                 warn!("Could not send KeepAlive");
-                self.network.statistics.keep_alive_tx_fail += 1;
-            }
-            else {
+                self.network.statistics.keep_alive_tx_failed += 1;
+            } else {
                 self.network.statistics.keep_alive_tx_success += 1;
                 println!("Send KeepAlive yay!")
             }
@@ -289,6 +299,9 @@ impl ClientState {
             let result = (&udp_tx).unbounded_send((addr.clone(), packet));
             if result.is_err() {
                 warn!("Could not send user input cmd to server");
+                self.network.statistics.packets_tx_failed += 1;
+            } else {
+                self.network.statistics.packets_tx_success += 1;
             }
         }
     }
