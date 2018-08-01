@@ -26,6 +26,7 @@ use std::io;
 use std::net::{self, SocketAddr};
 use std::str;
 use std::result;
+use std::collections::VecDeque;
 
 use self::tokio_core::net::{UdpSocket, UdpCodec};
 use self::tokio_core::reactor::Handle;
@@ -35,7 +36,7 @@ use self::semver::{Version, SemVerError};
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
 pub const DEFAULT_PORT: u16 = 12345;
-pub const PACKET_HISTORY_SIZE: usize = 15;
+const PACKET_HISTORY_SIZE: usize = 15;
 
 //////////////// Error handling ////////////////
 #[derive(Debug)]
@@ -215,4 +216,95 @@ pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> R
 #[allow(dead_code)]
 pub fn get_version() -> result::Result<Version, SemVerError> {
     Version::parse(VERSION)
+}
+
+pub struct NetworkStatistics {
+    packets_tx_failed: u64,
+    packets_tx_success: u64,
+    keep_alive_tx_failed: u64,
+    keep_alive_tx_success: u64,
+}
+
+impl NetworkStatistics {
+    fn new() -> Self {
+        NetworkStatistics {
+            packets_tx_success: 0,
+            packets_tx_failed: 0,
+            keep_alive_tx_failed: 0,
+            keep_alive_tx_success: 0
+        }
+    }
+
+    pub fn inc_tx_packets_failed(&mut self) {
+        self.packets_tx_failed += 1;
+    }
+
+    pub fn inc_tx_packets_success(&mut self) {
+        self.packets_tx_success += 1;
+    }
+
+    pub fn inc_tx_keep_alive_failed(&mut self) {
+        self.keep_alive_tx_failed += 1;
+    }
+
+    pub fn inc_tx_keep_alive_success(&mut self) {
+        self.keep_alive_tx_success += 1;
+    }
+}
+
+pub struct NetworkManager {
+    pub statistics:     NetworkStatistics,
+    pub tx_packets:     VecDeque<Packet>, // Back == Newest, Front == Oldest
+    rx_packets:     VecDeque<Packet>, // Back == Newest, Front == Oldest
+}
+
+impl NetworkManager {
+    pub fn new() -> Self {
+        NetworkManager {
+            statistics: NetworkStatistics::new(),
+            tx_packets:  VecDeque::<Packet>::with_capacity(PACKET_HISTORY_SIZE),
+            rx_packets:  VecDeque::<Packet>::with_capacity(PACKET_HISTORY_SIZE),
+        }
+    }
+
+    pub fn head_of_tx_packet_queue(&self) -> Option<&Packet> {
+        self.tx_packets.back()
+    }
+
+    fn newest_tx_packet_seq_num(&self) -> Option<u64> {
+        let opt_newest_packet = self.head_of_tx_packet_queue();
+
+        if opt_newest_packet.is_some() {
+            let newest_packet = opt_newest_packet.unwrap();
+            if let Packet::Request{ sequence: newest_sequence, response_ack: _, cookie: _, action: _ } = newest_packet {
+                Some(*newest_sequence)
+            } else { panic!("Found something other than a `Request` packet in the buffer: {:?}", newest_packet) }
+                    // Somehow not a Request packet. Panic during development XXX
+        } else { None }
+                // Queue is empty
+    }
+
+    pub fn buffer_tx_packet(&mut self, packet: Packet) {
+        let opt_newest_seq_num: Option<u64> = self.newest_tx_packet_seq_num();
+
+        if opt_newest_seq_num.is_none() {
+            self.tx_packets.push_back(packet);
+            return;
+        }
+
+        let newest_sequence = opt_newest_seq_num.unwrap(); // unwrap safe
+
+        if let Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } = packet {
+            // Current packet is newer
+            if newest_sequence < sequence {
+                self.tx_packets.push_back(packet);
+            }
+            // Assumption is that a previous packet with this SQN failed to send,
+            // and this `packet` is up-to-date
+            else if newest_sequence == sequence {
+                self.tx_packets.pop_back();
+                self.tx_packets.push_back(packet);
+            }
+        }
+    }
 }
