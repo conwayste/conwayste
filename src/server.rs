@@ -167,7 +167,7 @@ struct Room {
 }
 
 struct ServerState {
-    tick:           u64,
+    tick:           usize,
     players:        HashMap<PlayerID, Player>,
     player_map:     HashMap<String, PlayerID>,      // map cookie to player ID
     rooms:          HashMap<RoomID, Room>,
@@ -458,7 +458,7 @@ impl ServerState {
         if !already_playing {
             return ResponseCode::BadRequest(Some("cannot leave game because in lobby".to_owned()));
         }
-        
+
         let player: &mut Player = self.players.get_mut(&player_id).unwrap();
         {
             let room_id = &player.game_info.as_ref().unwrap().room_id;  // unwrap ok because of test above
@@ -593,7 +593,7 @@ impl ServerState {
             }
             Packet::UpdateReply{cookie, last_chat_seq, last_game_update_seq: _, last_gen: _} => {
                 let opt_player_id = self.get_player_id_by_cookie(cookie.as_str());
-                
+
                 if opt_player_id.is_none() {
                     return Err(Box::new(io::Error::new(ErrorKind::PermissionDenied, "invalid cookie")));
                 }
@@ -713,8 +713,8 @@ impl ServerState {
         match player.get_confirmed_chat_seq_num() {
             Some(chat_msg_seq_num) => {
                 let opt_newest_msg = room.get_newest_msg();
-                if opt_newest_msg.is_none() { 
-                    return None; 
+                if opt_newest_msg.is_none() {
+                    return None;
                 }
 
                 let newest_msg = opt_newest_msg.unwrap();
@@ -899,7 +899,7 @@ fn main() {
 */
                         }
 
-                    server_state.tick += 1;
+                    server_state.tick  = 1usize.wrapping_add(server_state.tick);
                 }
             }
 
@@ -1003,7 +1003,7 @@ mod test {
             server.join_room(player_id, String::from(room_name));
         }
 
-        // A chatless player now has something to to say 
+        // A chatless player now has something to to say
         server.decode_packet(fake_socket_addr(), Packet::UpdateReply {
             cookie: player_cookie.clone(),
             last_chat_seq: Some(1),

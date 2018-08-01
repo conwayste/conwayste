@@ -172,7 +172,7 @@ impl ClientState {
             }
         }
 
-        self.tick += 1;
+        self.tick = 1usize.wrapping_add(self.tick);
     }
 
     fn handle_user_input_event(&mut self,
