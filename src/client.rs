@@ -75,34 +75,35 @@ impl Network {
         }
     }
 
-    fn head_of_tx_packet(&self) -> Option<&Packet> {
+    fn head_of_tx_packet_queue(&self) -> Option<&Packet> {
         self.tx_packets.back()
     }
 
+    fn newest_tx_packet_seq_num(&self) -> Option<u64> {
+        let opt_newest_packet = self.head_of_tx_packet_queue();
+
+        if opt_newest_packet.is_some() {
+            let newest_packet = opt_newest_packet.unwrap();
+            if let Packet::Request{ sequence: newest_sequence, response_ack: _, cookie: _, action: _ } = newest_packet {
+                Some(*newest_sequence)
+            } else { panic!("Found something other than a `Request` packet in the buffer: {:?}", newest_packet) }
+                    // Somehow not a Request packet. Panic during development XXX
+        } else { None }
+                // Queue is empty
+    }
+
     fn buffer_tx_packet(&mut self, packet: Packet) {
-        let opt_newest_sequence: Option<u64> = {
-            let opt_newest_packet = self.head_of_tx_packet();
+        let opt_newest_seq_num: Option<u64> = self.newest_tx_packet_seq_num();
 
-            if opt_newest_packet.is_some() {
-                let newest_packet = opt_newest_packet.unwrap();
-                if let Packet::Request{sequence: newest_sequence, response_ack: _, cookie: _, action: _} = newest_packet {
-                    Some(*newest_sequence)
-                } else { None }
-            }
-            else {
-                None // Type interference
-            }
-        };
-
-        // Nothing there just yet
-        if opt_newest_sequence.is_none() && self.tx_packets.len() == 0 {
+        if opt_newest_seq_num.is_none() {
             self.tx_packets.push_back(packet);
             return;
         }
 
-        let newest_sequence = opt_newest_sequence.unwrap();
+        let newest_sequence = opt_newest_seq_num.unwrap(); // unwrap safe
 
-        if let Packet::Request{sequence, response_ack: _, cookie: _, action: _} = packet {
+        if let Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } = packet {
+            // Current packet is newer
             if newest_sequence < sequence {
                 self.tx_packets.push_back(packet);
             }
@@ -151,7 +152,7 @@ impl ClientState {
 
     // XXX Once netwayste integration is complete, we'll need to internally send
     // the result of most of these handlers so we can notify a player via UI event.
-    
+
     fn check_for_upgrade(&self, server_version: &String) {
         let client_version = &net::VERSION.to_owned();
         if client_version < server_version {
