@@ -604,6 +604,7 @@ mod test {
     #[test]
     fn handle_logged_in_verify_connection_cookie() {
         let mut client_state = ClientState::new();
+        client_state.name = Some("Dr. Cookie Monster, Esquire".to_owned());
         assert_eq!(client_state.cookie, None);
         client_state.handle_logged_in("cookie monster".to_owned(), CLIENT_VERSION.to_owned());
         assert_eq!(client_state.cookie, Some("cookie monster".to_owned()));
@@ -883,6 +884,7 @@ mod test {
         let user_input = UserInput::Chat("memes".to_owned());
         let addr = fake_socket_addr();
 
+        client_state.cookie = Some("ThisDoesNotReallyMatterAsLongAsItExists".to_owned());
         client_state.handle_user_input_event(&udp_tx, &exit_tx, user_input, addr.clone());
         assert_eq!(client_state.sequence, 1);
 
