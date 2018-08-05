@@ -206,12 +206,68 @@ impl CharGrid for BitGrid {
             'o' => {
                 self[row][word_col] |=   1 << shift
             }
-            _ => unimplemented!()
+            _ => panic!("invalid character: {:?}", ch)
         }
     }
 
     fn is_valid(ch: char) -> bool {
         VALID_BIT_GRID_CHARS.contains(&ch)
+    }
+
+    /// Returns a Pattern that describes this `BitGrid`.
+    fn to_pattern(&self, _visibility: Option<usize>) -> Pattern {
+
+        fn push(result: &mut String, output_col: &mut usize, rle_len: usize, ch: char) {
+            let what_to_add = if rle_len == 1 {
+                let mut s = String::with_capacity(1);
+                s.push(ch);
+                s
+            } else { format!("{}{}", rle_len, ch) };
+            if *output_col + what_to_add.len() > 70 {
+                result.push_str("\r\n");
+                *output_col = 0;
+            }
+            result.push_str(what_to_add.as_str());
+            *output_col += what_to_add.len();
+        }
+
+        let mut result = "".to_owned();
+        let (mut col, mut row) = (0, 0);
+        let mut line_ends_buffered = 0;
+        let mut output_col = 0;
+        while row < self.height() {
+            while col < self.width() {
+                let (rle_len, ch) = self.get_run(col, row);
+
+                match ch {
+                    'o' => {
+                        if line_ends_buffered > 0 {
+                            push(&mut result, &mut output_col, line_ends_buffered, '$');
+                            line_ends_buffered = 0;
+                        }
+                        push(&mut result, &mut output_col, rle_len, ch);
+                    }
+                    'b' => {
+                        if col + rle_len < self.width() {
+                            if line_ends_buffered > 0 {
+                                push(&mut result, &mut output_col, line_ends_buffered, '$');
+                                line_ends_buffered = 0;
+                            }
+                            push(&mut result, &mut output_col, rle_len, ch);
+                        }
+                    }
+                    _ => unimplemented!()
+                }
+
+                col += rle_len;
+            }
+
+            row += 1;
+            col = 0;
+            line_ends_buffered += 1;
+        }
+        push(&mut result, &mut output_col, 1, '!');
+        Pattern(result)
     }
 }
 
@@ -395,5 +451,41 @@ mod tests {
     fn get_run_nonzero_col_multiline_complicated() {
         let grid = Pattern("3$15b87o!".to_owned()).to_new_bit_grid(15+87, 4).unwrap();
         assert_eq!(grid.get_run(15, 3), (87, 'o'));
+    }
+
+
+
+    #[test]
+    fn to_pattern_simple() {
+        let original_pattern = Pattern("bo!".to_owned());
+        let grid = original_pattern.to_new_bit_grid(2, 1).unwrap();
+        let pattern = grid.to_pattern(None);
+        assert_eq!(pattern, original_pattern);
+    }
+
+    #[test]
+    fn to_pattern_nonzero_col_3empty_then_complicated() {
+        let original_pattern = Pattern("3$15b87o!".to_owned());
+        let grid = original_pattern.to_new_bit_grid(15+87, 4).unwrap();
+        let pattern = grid.to_pattern(None);
+        assert_eq!(pattern, original_pattern);
+    }
+
+    #[test]
+    fn to_pattern_nonzero_col_veryverycomplicated() {
+        let original_pattern = Pattern("b2o23b2o21b$b2o23bo22b$24bobo22b$15b2o7b2o23b$2o13bobo31b$2o13bob2o30b$16b2o31b$16bo32b$44b2o3b$16bo27b2o3b$16b2o31b$2o13bob2o13bo3bo12b$2o13bobo13bo5bo7b2o2b$15b2o14bo13b2o2b$31b2o3bo12b$b2o30b3o13b$b2o46b$33b3o13b$31b2o3bo12b$31bo13b2o2b$31bo5bo7b2o2b$32bo3bo12b2$44b2o3b$44b2o3b5$37b2o10b$37bobo7b2o$39bo7b2o$37b3o9b$22bobo24b$21b3o25b$21b3o25b$21bo15b3o9b$25bobo11bo9b$21b2o4bo9bobo9b$16b2o4bo3b2o9b2o10b$15bobo6bo24b$15bo33b$14b2o!".to_owned());
+        let grid = original_pattern.to_new_bit_grid(49, 43).unwrap();
+        let pattern = grid.to_pattern(None);
+        assert_eq!(pattern.0.as_str(), "b2o23b2o$b2o23bo$24bobo$15b2o7b2o$2o13bobo$2o13bob2o$16b2o$16bo$44b2o$\r\n16bo27b2o$16b2o$2o13bob2o13bo3bo$2o13bobo13bo5bo7b2o$15b2o14bo13b2o$\r\n31b2o3bo$b2o30b3o$b2o$33b3o$31b2o3bo$31bo13b2o$31bo5bo7b2o$32bo3bo2$\r\n44b2o$44b2o5$37b2o$37bobo7b2o$39bo7b2o$37b3o$22bobo$21b3o$21b3o$21bo\r\n15b3o$25bobo11bo$21b2o4bo9bobo$16b2o4bo3b2o9b2o$15bobo6bo$15bo$14b2o!");
+        for line in pattern.0.as_str().lines() {
+            assert!(line.len() <= 70);
+        }
+    }
+
+    #[test]
+    fn get_run_empty() {
+        let grid = BitGrid::new(1,1);
+        let pattern = grid.to_pattern(None);
+        assert_eq!(pattern.0.as_str(), "!");
     }
 }

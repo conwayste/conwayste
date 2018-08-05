@@ -370,6 +370,10 @@ impl CharGrid for GenState {
             _ => false
         }
     }
+
+    fn to_pattern(&self, visibility: Option<usize>) -> Pattern {
+        unimplemented!(); //XXX
+    }
 }
 
 
