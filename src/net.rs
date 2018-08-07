@@ -90,7 +90,7 @@ pub enum ResponseCode {
     NotConnected(Option<String>),    // no equivalent in HTTP due to handling at lower (TCP) level
     PleaseUpgrade(Option<String>),   // client should give upgrade msg to user, but continue as if OK
     KeepAlive,                       // Server's heart is beating
-    OldPacket,                       // Internally used to ignore a packet
+    OldPacket,                       // Internally used to ignore a packet, just for testing
 }
 
 // chat messages sent from server to all clients other than originating client
@@ -321,12 +321,6 @@ impl NetworkManager {
             if head_seq_num < sequence && head_seq_num+1 == sequence{
                 self.tx_packets.push_back(packet);
             }
-            // Assumption is that a previous packet with this SQN failed to send,
-            // and this `packet` is up-to-date
-            //else if newest_sequence == sequence {
-            //    self.tx_packets.pop_back();
-            //    self.tx_packets.push_back(packet);
-            //}
         }
     }
 }

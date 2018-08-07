@@ -53,9 +53,10 @@ use rand::Rng;
 use semver::Version;
 
 const TICK_INTERVAL:         u64   = 10; // milliseconds
-const MAX_ROOM_NAME:    usize = 16;
+const MAX_ROOM_NAME:         usize = 16;
 const MAX_NUM_CHAT_MESSAGES: usize = 128;
 const MAX_AGE_CHAT_MESSAGES: usize = 60*5; // seconds
+const SERVER_ID:             PlayerID = PlayerID(u64::max_value()); // 0xFFFF....FFFF
 
 #[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
 struct PlayerID(u64);
@@ -306,6 +307,13 @@ impl Room {
 
         return amount_to_consume;
     }
+
+    /// Send a message to all players in room notifying that an event took place.
+    fn broadcast(&mut self, event: String) {
+        self.discard_older_messages();
+        let seq_num = self.latest_seq_num + 1;
+        self.add_message(ServerChatMessage::new(SERVER_ID, "Server".to_owned(), event, seq_num));
+    }
 }
 
 impl ServerState {
@@ -475,10 +483,33 @@ impl ServerState {
         return ResponseCode::OK;
     }
 
+    fn remove_player(&mut self, player_id: PlayerID, player_name: String) {
+        let _opt_v = self.player_map.remove(&player_name);
+        let _opt_v = self.players.remove(&player_id);
+    }
+
+    fn handle_disconnect(&mut self, player_id: PlayerID) -> ResponseCode {
+        let player_name = {self.get_player(player_id).name.to_owned()};
+
+        if self.is_player_in_game(player_id) {
+            {
+                let room: &mut Room = self.get_room_mut(player_id).unwrap(); // safe because in game check verifies room's existence
+                room.broadcast(format!("Player {} has left.", player_name));
+            }
+            let _left = self.leave_room(player_id);     // Ignore return since we don't care
+        }
+
+        self.remove_player(player_id, player_name);
+
+        ResponseCode::OK
+    }
+
     // not used for connect
     fn process_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> ResponseCode {
         match action {
-            RequestAction::Disconnect      => unimplemented!(),
+            RequestAction::Disconnect      => {
+                return self.handle_disconnect(player_id);
+            },
             RequestAction::KeepAlive       => {
                 let player: &mut Player = self.players.get_mut(&player_id).unwrap();
                 player.heartbeat = Some(time::Instant::now());
@@ -620,8 +651,13 @@ impl ServerState {
         let response_code = self.process_request_action(player_id, action);
 
         let sequence = {
-            let player: &mut Player = self.players.get_mut(&player_id).unwrap();
-            let sequence = player.increment_response_seq_num();
+            let opt_player: Option<&mut Player> = self.players.get_mut(&player_id);
+
+            let sequence = match opt_player {
+                Some(player) => player.increment_response_seq_num(),
+                None => 0
+            };
+
             sequence
         };
 

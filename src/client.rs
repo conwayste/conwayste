@@ -168,7 +168,7 @@ impl ClientState {
                 self.network.statistics.inc_tx_keep_alive_failed();
             } else {
                 self.network.statistics.inc_tx_keep_alive_success();
-                println!("Send KeepAlive yay!")
+                info!("Send KeepAlive yay!")
             }
         }
 
@@ -243,6 +243,7 @@ impl ClientState {
                         println!("Left room {}.", self.room.clone().unwrap());
                     }
                     self.room = None;
+                    self.chat_msg_seq_num = 0;
                 }
                 _ => {
                     //XXX more cases in which server replies OK
