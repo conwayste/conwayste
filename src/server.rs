@@ -145,6 +145,13 @@ impl Player {
         }
         return false;
     }
+
+    fn is_timed_out(&self) -> bool {
+        match self.heartbeat {
+            Some(heartbeat) =>  time::Instant::now() - heartbeat > time::Duration::from_secs(10),
+            None => false
+        }
+    }
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -322,7 +329,7 @@ impl ServerState {
         let opt_player = self.players.get(&player_id);
 
         if opt_player.is_none() {
-            panic!("player_id: {} could not be found!");
+            panic!("player_id: {} could not be found!", player_id);
         }
 
         opt_player.unwrap()
@@ -607,7 +614,7 @@ impl ServerState {
                     {
                         let player_next_sequence_num: u64 = self.get_player(player_id).next_resp_seq;
                         println!("{} <= {}", sequence, player_next_sequence_num - 1);
-                        if sequence <= (player_next_sequence_num - 1) {
+                        if sequence <= (player_next_sequence_num - 1) && action != RequestAction::KeepAlive {
                             self.silence_error = true;
                             return Err(Box::new(io::Error::new(ErrorKind::AlreadyExists, "")));
                         }
@@ -825,6 +832,21 @@ impl ServerState {
         player
     }
 
+    fn remove_timed_out_clients(&mut self) {
+        let mut timed_out_players: Vec<PlayerID> = vec![];
+
+        for (p_id, p) in self.players.iter() {
+            if p.is_timed_out() {
+                timed_out_players.push(*p_id);
+            }
+        }
+
+        for player_id in timed_out_players {
+            self.handle_disconnect(player_id);
+        }
+
+    }
+
     fn new() -> Self {
         ServerState {
             tick:       0,
@@ -921,6 +943,8 @@ fn main() {
                             }
                         }
                     }
+
+                    server_state.remove_timed_out_clients();
 
                     // Send a KeepAlive every scond
                     if (server_state.tick % 100) == 0 {
