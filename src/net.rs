@@ -272,6 +272,7 @@ impl NetworkManager {
         self.tx_packets.back()
     }
 
+    /// The TX Packet queue must only contain Request packets.
     fn newest_tx_packet_seq_num(&self) -> Option<u64> {
         let opt_newest_packet = self.head_of_tx_packet_queue();
 
@@ -305,6 +306,9 @@ impl NetworkManager {
         }
     }
 
+    /// As we buffer new packets, we'll want to throw away the older packets.
+    /// We must be careful to ensure that we do not throw away packets that have
+    /// not yet been acknowledged by the end-point.
     pub fn buffer_tx_packet(&mut self, packet: Packet) {
         if let Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } = packet {
             let opt_head_seq_num : Option<u64> = self.newest_tx_packet_seq_num();

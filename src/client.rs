@@ -95,12 +95,16 @@ impl ClientState {
     fn handle_response_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr, opt_packet: Option<Packet>) {
         // All `None` packets should get filtered out up the hierarchy
         let packet = opt_packet.unwrap();
-        println!("DEBUG: Got packet from server {:?}: {:?}", addr, packet);
         match packet {
-            Packet::Response{sequence: _, request_ack: _, code} => {
+            Packet::Response{sequence, request_ack, code} => {
                 // XXX sequence
                 // XXX request_ack
-                match code {
+
+                if code.clone() != ResponseCode::KeepAlive {
+                    println!("DEBUG: Got packet from server {:?}: {:?} {:?} {:?}", addr, sequence, request_ack, code);
+                }
+
+                match code.clone() {
                     ResponseCode::OK => {
                         match self.handle_response_ok() {
                             Ok(_) => {},

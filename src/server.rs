@@ -582,7 +582,11 @@ impl ServerState {
             _pkt @ Packet::Response{..} | _pkt @ Packet::Update{..} => {
                 return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "invalid packet - server-only")));
             }
-            Packet::Request{sequence, response_ack: _, cookie, action} => {
+            Packet::Request{sequence, response_ack, cookie, action} => {
+
+                if action.clone() != RequestAction::KeepAlive {
+                    println!("Packet_RX {:?}/{:?}: {:?} {:?} {:?}", addr, cookie, sequence, response_ack, action);
+                }
 
                 match action {
                     RequestAction::Connect{..} => (),
@@ -616,7 +620,7 @@ impl ServerState {
                         }
                     };
 
-                    {
+/*                    {
                         let player_next_sequence_num: u64 = self.get_player(player_id).next_resp_seq;
                         println!("{} <= {}", sequence, player_next_sequence_num - 1);
                         if sequence <= (player_next_sequence_num - 1) && action != RequestAction::KeepAlive {
@@ -624,12 +628,18 @@ impl ServerState {
                             return Err(Box::new(io::Error::new(ErrorKind::AlreadyExists, "")));
                         }
                     }
-
+*/
                     match action {
                         RequestAction::Connect{..} => unreachable!(),
                         _ => {
-                            let response = self.handle_request_action(player_id, action);
-                            Ok(Some(response))
+                            let response = self.handle_request_action(player_id, action.clone());
+
+                            if action != RequestAction::KeepAlive {
+                                Ok(Some(response))
+                            } else {
+                                self.silence_error = true;
+                                Err(Box::new(io::Error::new(ErrorKind::AlreadyExists, "")))
+                            }
                         }
                     }
                 }
@@ -660,9 +670,9 @@ impl ServerState {
     }
 
     fn handle_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Packet {
-        let response_code = self.process_request_action(player_id, action);
+        let response_code = self.process_request_action(player_id, action.clone());
 
-        let sequence = {
+        let sequence = if action != RequestAction::KeepAlive {
             let opt_player: Option<&mut Player> = self.players.get_mut(&player_id);
 
             let sequence = match opt_player {
@@ -671,7 +681,7 @@ impl ServerState {
             };
 
             sequence
-        };
+        } else { 0 }; // Does not matter since KeepAlive is not responded to.
 
         Packet::Response{
             sequence:    sequence,
@@ -914,7 +924,6 @@ fn main() {
                 Event::Request(packet_tuple) => {
                      // With the above filter, `packet` should never be None
                     let (addr, opt_packet) = packet_tuple;
-                    println!("got {:?} and {:?}!", addr, opt_packet);
 
                     // Decode incoming and send a Response to the Requester
                     if let Some(packet) = opt_packet {
@@ -953,7 +962,7 @@ fn main() {
 
                     // Send a KeepAlive every scond
                     if (server_state.tick % 100) == 0 {
-/*                        for player in server_state.players.values() {
+                        for player in server_state.players.values() {
                             let keep_alive = Packet::Response {
                                 sequence: player.next_resp_seq-1,
                                 request_ack: player.request_ack,
@@ -961,8 +970,8 @@ fn main() {
                             };
 
                             tx.unbounded_send( (player.addr, keep_alive) ).unwrap();
-*/
                         }
+                    }
 
                     server_state.tick  = 1usize.wrapping_add(server_state.tick);
                 }
@@ -2158,10 +2167,8 @@ mod test {
             room.room_id
         };
         server.handle_disconnect(player_id);
-        {
-            // Cannot go through player_id because the player has been removed
-            let room: &Room = server.rooms.get(&room_id).unwrap();
-            assert_eq!(room.player_ids.contains(&player_id), false);
-        }
+        // Cannot go through player_id because the player has been removed
+        let room: &Room = server.rooms.get(&room_id).unwrap();
+        assert_eq!(room.player_ids.contains(&player_id), false);
     }
 }
