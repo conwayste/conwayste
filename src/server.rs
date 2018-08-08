@@ -148,7 +148,7 @@ impl Player {
 
     fn is_timed_out(&self) -> bool {
         match self.heartbeat {
-            Some(heartbeat) =>  time::Instant::now() - heartbeat > time::Duration::from_secs(10),
+            Some(heartbeat) =>  time::Instant::now() - heartbeat > time::Duration::from_secs(net::TIMEOUT_IN_SECONDS),
             None => false
         }
     }
@@ -318,7 +318,7 @@ impl Room {
     /// Send a message to all players in room notifying that an event took place.
     fn broadcast(&mut self, event: String) {
         self.discard_older_messages();
-        let seq_num = self.latest_seq_num + 1;
+        let seq_num = self.increment_seq_num();
         self.add_message(ServerChatMessage::new(SERVER_ID, "Server".to_owned(), event, seq_num));
     }
 }
@@ -2046,5 +2046,64 @@ mod test {
             }
             _ => panic!("Unexpected packet in client update construction!")
         }
+    }
+
+    #[test]
+    fn broadcast_message_to_two_players_in_room() {
+        let mut server = ServerState::new();
+        let room_name = "some_room".to_owned();
+        let player_name = "some player".to_owned();
+
+        server.create_new_room(None, room_name.clone());
+
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.player_id
+        };
+        let player_id2: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.player_id
+        };
+
+        server.join_room(player_id, room_name.clone());
+        {
+            let room: &mut Room = server.get_room_mut(player_id).unwrap();
+            room.broadcast("Silver birch against a Swedish sky".to_owned());
+        }
+        server.join_room(player_id2, room_name.clone());
+        let room: &Room = server.get_room(player_id).unwrap();
+
+        let player = (*server.get_player(player_id)).clone();
+        let msgs = server.collect_unacknowledged_messages(room, &player).unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].message, "Silver birch against a Swedish sky".to_owned());
+
+        let player = (*server.get_player(player_id2)).clone();
+        let msgs = server.collect_unacknowledged_messages(room, &player).unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].message, "Silver birch against a Swedish sky".to_owned());
+    }
+
+    #[test]
+    fn broadcast_message_to_an_empty_room() {
+        let mut server = ServerState::new();
+        let room_name = "some_room".to_owned();
+
+        server.create_new_room(None, room_name.clone());
+        let room_id: &RoomID = server.room_map.get(&room_name.clone()).unwrap();
+
+        {
+            let room: &mut Room = server.rooms.get_mut(&room_id).unwrap();
+            room.broadcast("Silver birch against a Swedish sky".to_owned());
+        }
+        let room: &Room = server.rooms.get(&room_id).unwrap();
+
+        assert_eq!(room.latest_seq_num, 1);
+        assert_eq!(room.messages.len(), 1);
+        let msgs: &ServerChatMessage = room.messages.get(0).unwrap();
+        assert_eq!(msgs.player_name, "Server".to_owned());
+        assert_eq!(msgs.seq_num, 1);
+        assert_eq!(msgs.player_id, PlayerID(0xFFFFFFFFFFFFFFFF));
+
     }
 }
