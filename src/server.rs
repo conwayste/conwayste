@@ -490,13 +490,18 @@ impl ServerState {
         return ResponseCode::OK;
     }
 
-    fn remove_player(&mut self, player_id: PlayerID, player_name: String) {
-        let _opt_v = self.player_map.remove(&player_name);
+    fn remove_player(&mut self, player_id: PlayerID, player_cookie: String) {
+        let _opt_v = self.player_map.remove(&player_cookie);
         let _opt_v = self.players.remove(&player_id);
     }
 
     fn handle_disconnect(&mut self, player_id: PlayerID) -> ResponseCode {
-        let player_name = {self.get_player(player_id).name.to_owned()};
+        let (player_name, player_cookie) = {
+            let player = self.get_player(player_id);
+            let name = player.name.to_owned();
+            let cookie = player.cookie.clone();
+            (name, cookie)
+        };
 
         if self.is_player_in_game(player_id) {
             {
@@ -506,7 +511,7 @@ impl ServerState {
             let _left = self.leave_room(player_id);     // Ignore return since we don't care
         }
 
-        self.remove_player(player_id, player_name);
+        self.remove_player(player_id, player_cookie);
 
         ResponseCode::OK
     }
@@ -2097,13 +2102,66 @@ mod test {
             room.broadcast("Silver birch against a Swedish sky".to_owned());
         }
         let room: &Room = server.rooms.get(&room_id).unwrap();
-
         assert_eq!(room.latest_seq_num, 1);
         assert_eq!(room.messages.len(), 1);
         let msgs: &ServerChatMessage = room.messages.get(0).unwrap();
         assert_eq!(msgs.player_name, "Server".to_owned());
         assert_eq!(msgs.seq_num, 1);
         assert_eq!(msgs.player_id, PlayerID(0xFFFFFFFFFFFFFFFF));
+    }
 
+    #[test]
+    #[should_panic]
+    fn disconnect_get_player_by_id_fails() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.player_id
+        };
+
+        server.handle_disconnect(player_id);
+        server.get_player(player_id);
+    }
+
+    #[test]
+    fn disconnect_get_player_by_cookie_fails() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let (player_id, cookie) = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            (player.player_id, player.cookie.clone())
+        };
+
+        server.handle_disconnect(player_id);
+        assert_eq!(server.get_player_id_by_cookie(cookie.as_str()), None);
+    }
+
+    #[test]
+    fn disconnect_while_in_room_removes_all_traces_of_player() {
+        let mut server = ServerState::new();
+        let room_name = "some_room".to_owned();
+        let player_name = "some player".to_owned();
+
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.player_id
+        };
+
+        server.create_new_room(None, room_name.clone());
+        server.join_room(player_id, room_name);
+        let room_id = {
+            let room: &Room = server.get_room(player_id).unwrap();
+            assert_eq!(room.player_ids.contains(&player_id), true);
+            room.room_id
+        };
+        server.handle_disconnect(player_id);
+        {
+            // Cannot go through player_id because the player has been removed
+            let room: &Room = server.rooms.get(&room_id).unwrap();
+            assert_eq!(room.player_ids.contains(&player_id), false);
+        }
     }
 }
