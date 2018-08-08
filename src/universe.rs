@@ -303,6 +303,16 @@ impl GenState {
 }
 
 impl CharGrid for GenState {
+    /// Width in cells
+    fn width(&self) -> usize {
+        self.cells.width()
+    }
+
+    /// Height in cells
+    fn height(&self) -> usize {
+        self.cells.height()
+    }
+
     #[inline]
     fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: Option<usize>) {
         if !GenState::is_valid(ch) {
@@ -371,7 +381,21 @@ impl CharGrid for GenState {
         }
     }
 
-    fn to_pattern(&self, visibility: Option<usize>) -> Pattern {
+    /// Given a starting cell at `(col, row)`, get the character at that cell, and the number of
+    /// contiguous identical cells considering only this cell and the cells to the right of it.
+    /// This is intended for exporting to RLE.
+    ///
+    /// The `visibility` parameter, if not `None`, is used to generate a run as observed by a
+    /// particular player.
+    ///
+    /// # Returns
+    ///
+    /// `(run_length, ch)`
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if `col` or `row` are out of bounds.
+    fn get_run(&self, col: usize, row: usize, visibility: Option<usize>) -> (usize, char) {
         unimplemented!(); //XXX
     }
 }
