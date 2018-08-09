@@ -35,7 +35,7 @@ use std::net::SocketAddr;
 use std::process::exit;
 use std::str::FromStr;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use net::{RequestAction, ResponseCode, Packet, LineCodec, BroadcastChatMessage, NetworkManager};
 use tokio_core::reactor::{Core, Timeout};
 use futures::{Future, Sink, Stream, stream};
@@ -57,6 +57,7 @@ struct ClientState {
     chat_msg_seq_num: u64,
     tick:             usize,
     network:          NetworkManager,
+    heartbeat:        Option<Instant>,
 }
 
 impl ClientState {
@@ -71,8 +72,18 @@ impl ClientState {
             cookie:          None,
             chat_msg_seq_num: 0,
             tick:            0,
-            network:      NetworkManager::new(),
+            network:         NetworkManager::new(),
+            heartbeat:       None,
         }
+    }
+
+    fn reinitialize(&mut self) {
+        self.cookie = None;
+        self.sequence = 0;
+        self.response_ack = None;
+        self.last_req_action = None;
+        self.chat_msg_seq_num = 0;
+        self.room = None;
     }
 
     fn in_game(&self) -> bool {
@@ -120,7 +131,9 @@ impl ClientState {
                     ResponseCode::RoomList(rooms) => {
                         self.handle_room_list(rooms);
                     }
-                    ResponseCode::KeepAlive => {},
+                    ResponseCode::KeepAlive => {
+                        self.heartbeat = Some(Instant::now());
+                    },
                     // errors
                     code @ _ => {
                         error!("response from server: {:?}", code);
@@ -166,6 +179,11 @@ impl ClientState {
                 action: RequestAction::KeepAlive
             };
             let result = udp_tx.unbounded_send( (addr, keep_alive) );
+
+            if net::has_connection_timed_out(self.heartbeat) {
+                println!("Server is non-responsive, disconnecting.");
+                self.reinitialize();
+            }
 
             if result.is_err() {
                 warn!("Could not send KeepAlive");

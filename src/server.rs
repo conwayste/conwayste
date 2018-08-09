@@ -40,7 +40,7 @@ use std::io::{self, ErrorKind};
 use std::iter;
 use std::net::SocketAddr;
 use std::process::exit;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use std::fmt;
 use std::time;
@@ -146,12 +146,6 @@ impl Player {
         return false;
     }
 
-    fn is_timed_out(&self) -> bool {
-        match self.heartbeat {
-            Some(heartbeat) =>  time::Instant::now() - heartbeat > time::Duration::from_secs(net::TIMEOUT_IN_SECONDS),
-            None => false
-        }
-    }
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -160,7 +154,7 @@ struct ServerChatMessage {
     player_id:   PlayerID,
     player_name: String,
     message:     String,
-    timestamp:   time::Instant,
+    timestamp:   Instant,
 }
 
 #[derive(Clone, PartialEq)]
@@ -851,7 +845,8 @@ impl ServerState {
         let mut timed_out_players: Vec<PlayerID> = vec![];
 
         for (p_id, p) in self.players.iter() {
-            if p.is_timed_out() {
+            if net::has_connection_timed_out(p.heartbeat) {
+                println!("Player({}) has timed out", p.cookie);
                 timed_out_players.push(*p_id);
             }
         }

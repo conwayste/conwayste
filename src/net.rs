@@ -26,6 +26,7 @@ use std::io;
 use std::net::{self, SocketAddr};
 use std::str;
 use std::result;
+use std::time;
 use std::collections::VecDeque;
 
 use self::tokio_core::net::{UdpSocket, UdpCodec};
@@ -36,7 +37,7 @@ use self::semver::{Version, SemVerError};
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
 pub const DEFAULT_PORT: u16 = 12345;
-pub const TIMEOUT_IN_SECONDS:    u64   = 10;
+const TIMEOUT_IN_SECONDS:    u64   = 5;
 const PACKET_HISTORY_SIZE: usize = 15;
 
 //////////////// Error handling ////////////////
@@ -217,6 +218,13 @@ pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> R
 #[allow(dead_code)]
 pub fn get_version() -> result::Result<Version, SemVerError> {
     Version::parse(VERSION)
+}
+
+pub fn has_connection_timed_out(heartbeat: Option<time::Instant>) -> bool {
+    match heartbeat {
+        Some(heartbeat) =>  time::Instant::now() - heartbeat > time::Duration::from_secs(TIMEOUT_IN_SECONDS),
+        None => false
+    }
 }
 
 pub struct NetworkStatistics {
