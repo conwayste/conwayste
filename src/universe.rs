@@ -19,7 +19,6 @@ use std::fmt;
 use std::char;
 
 use bits::{BitGrid, BitOperation, CharGrid};
-use rle::Pattern;
 
 type UniverseError = String;
 
@@ -394,9 +393,46 @@ impl CharGrid for GenState {
     ///
     /// # Panics
     ///
-    /// This function will panic if `col` or `row` are out of bounds.
+    /// This function will panic if `col`, `row`, or `visibility` (`Some(player_id)`) are out of bounds.
     fn get_run(&self, col: usize, row: usize, visibility: Option<usize>) -> (usize, char) {
-        unimplemented!(); //XXX
+        let mut min_run = self.width() - col;
+
+        let (known_run, known_ch) = self.known.get_run(col, row, None);
+        if known_run < min_run { min_run = known_run; }
+        if known_ch == 'b' {
+            return (min_run, CellState::Fog.to_char());
+        }
+
+        if let Some(player_id) = visibility {
+            let (fog_run, fog_ch) = self.player_states[player_id].fog.get_run(col, row, None);
+            if fog_run < min_run { min_run = fog_run; }
+            if fog_ch == 'o' {
+                return (min_run, CellState::Fog.to_char());
+            }
+        }
+
+        let (cell_run, cell_ch) = self.cells.get_run(col, row, None);
+        if cell_run < min_run { min_run = cell_run; }
+
+        let (wall_run, wall_ch) = self.wall_cells.get_run(col, row, None);
+        if wall_run < min_run { min_run = wall_run; }
+
+        if cell_ch == 'o' {
+            for player_id in 0 .. self.player_states.len() {
+                let (player_cell_run, player_cell_ch) = self.player_states[player_id].cells.get_run(col, row, None);
+                if player_cell_run < min_run { min_run = player_cell_run; }
+                if player_cell_ch == 'o' {
+                    let owned_ch = CellState::Alive(Some(player_id)).to_char();
+                    return (min_run, owned_ch);
+                }
+            }
+            return (min_run, CellState::Alive(None).to_char());
+        }
+        if wall_ch == 'o' {
+            return (min_run, CellState::Wall.to_char());
+        } else {
+            return (min_run, CellState::Dead.to_char());
+        }
     }
 }
 
@@ -1854,6 +1890,7 @@ mod universe_tests {
 #[cfg(test)]
 mod genstate_tests {
     use super::*;
+    use rle::Pattern;
 
     // Utilities
     fn make_gen_state() -> GenState {
@@ -1998,6 +2035,67 @@ mod genstate_tests {
         assert_eq!(genstate.player_states[0].fog[0][0], 0);
         assert_eq!(genstate.player_states[1].cells[0][0], 0);
         assert_eq!(genstate.player_states[1].fog[0][0], 1);
+    }
+
+    #[test]
+    fn gen_state_get_run_simple() {
+        let mut genstate = make_gen_state();
+
+        Pattern("o!".to_owned()).to_grid(&mut genstate, None).unwrap();
+        assert_eq!(genstate.get_run(0, 0, None), (1, 'o'));
+    }
+
+    #[test]
+    fn gen_state_get_run_wall() {
+        let mut genstate = make_gen_state();
+
+        Pattern("4W!".to_owned()).to_grid(&mut genstate, None).unwrap();
+        assert_eq!(genstate.get_run(0, 0, None), (4, 'W'));
+    }
+
+    #[test]
+    fn gen_state_get_run_wall_blank_in_front() {
+        let mut genstate = make_gen_state();
+
+        Pattern("12b4W!".to_owned()).to_grid(&mut genstate, None).unwrap();
+        assert_eq!(genstate.get_run(12, 0, None), (4, 'W'));
+    }
+
+    #[test]
+    fn gen_state_get_run_alternating_owned_unowned() {
+        let mut genstate = make_gen_state();
+
+        Pattern("15o3A2B9o!".to_owned()).to_grid(&mut genstate, None).unwrap();
+        assert_eq!(genstate.get_run(0,      0, None), (15, 'o'));
+        assert_eq!(genstate.get_run(15,     0, None), (3,  'A'));
+        assert_eq!(genstate.get_run(15+3,   0, None), (2,  'B'));
+        assert_eq!(genstate.get_run(15+3+2, 0, None), (9,  'o'));
+    }
+
+    #[test]
+    fn gen_state_get_run_player0_fog() {
+        let mut genstate = make_gen_state();
+
+        // The following two are not really tests -- they are just consequences of the writable
+        // areas set up for these players when creating the Universe, and are here for
+        // "documentation".
+        assert_eq!(genstate.player_states[0].fog[0][0], u64::max_value());  // complete fog for player 0
+        assert_eq!(genstate.player_states[1].fog[0][0], 0);                 // no fog here for player 1
+
+        let write_pattern_as = Some(1);   // avoid clearing fog for players other than player 1
+        Pattern("o!".to_owned()).to_grid(&mut genstate, write_pattern_as).unwrap();
+        let visibility = Some(0); // as player 0
+        assert_eq!(genstate.get_run(0, 0, visibility), (genstate.width(), '?'));
+    }
+
+    #[test]
+    fn gen_state_get_run_player1_no_fog() {
+        let mut genstate = make_gen_state();
+
+        let write_pattern_as = Some(1);   // avoid clearing fog for players other than player 1
+        Pattern("o!".to_owned()).to_grid(&mut genstate, write_pattern_as).unwrap();
+        let visibility = Some(1); // as player 1
+        assert_eq!(genstate.get_run(0, 0, visibility), (1, 'o'));
     }
 }
 
