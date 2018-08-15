@@ -264,7 +264,7 @@ impl NetworkStatistics {
 pub struct NetworkManager {
     pub statistics:     NetworkStatistics,
     pub tx_packets:     VecDeque<Packet>, // Back == Newest, Front == Oldest
-    rx_packets:     VecDeque<Packet>, // Back == Newest, Front == Oldest
+    rx_packets:         VecDeque<Packet>, // Back == Newest, Front == Oldest
 }
 
 impl NetworkManager {
@@ -318,7 +318,13 @@ impl NetworkManager {
     /// We must be careful to ensure that we do not throw away packets that have
     /// not yet been acknowledged by the end-point.
     pub fn buffer_tx_packet(&mut self, packet: Packet) {
-        if let Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } = packet {
+
+        let sequence = match packet {
+            Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } => sequence,
+            Packet::Response{ sequence, request_ack: _, code: _ } => sequence,
+            _ => return
+        };
+        {
             let opt_head_seq_num : Option<u64> = self.newest_tx_packet_seq_num();
 
             if opt_head_seq_num.is_none() {
@@ -331,7 +337,7 @@ impl NetworkManager {
             self.discard_older_packets(true);
 
             // Current packet is newer, and we're adding in sequential order
-            if head_seq_num < sequence && head_seq_num+1 == sequence{
+            if head_seq_num < sequence && head_seq_num+1 == sequence {
                 self.tx_packets.push_back(packet);
             }
         }
