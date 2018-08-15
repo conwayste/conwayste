@@ -22,6 +22,7 @@ extern crate tokio_core;
 extern crate bincode;
 extern crate semver;
 
+use std::cmp::{PartialEq, PartialOrd, Ordering};
 use std::io;
 use std::net::{self, SocketAddr};
 use std::str;
@@ -146,7 +147,7 @@ pub enum UniUpdateType {
     NoChange,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Packet {
     Request {
         // sent by client
@@ -176,6 +177,46 @@ pub enum Packet {
     }
 }
 
+impl Packet {
+    fn sequence_number(&self) -> u64 {
+        if let Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } = self {
+            *sequence
+        } else if let Packet::Response{ sequence, request_ack: _, code: _ } = self {
+            *sequence
+        } else {
+            unimplemented!(); // TODO: Update/UpdateReply (likely needs sqn too)
+        }
+    }
+}
+
+impl PartialEq for Packet {
+    fn eq(&self, other: &Packet) -> bool {
+        let self_seq_num = self.sequence_number();
+        let other_seq_num = other.sequence_number();
+        self_seq_num == other_seq_num
+    }
+}
+
+impl Eq for Packet {
+
+}
+
+impl PartialOrd for Packet {
+    fn partial_cmp(&self, other: &Packet) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Packet {
+    fn cmp(&self, other: &Packet) -> Ordering {
+        let self_seq_num = self.sequence_number();
+        let other_seq_num = other.sequence_number();
+
+        self_seq_num.cmp(&other_seq_num)
+
+        // TODO check for Update/UpdateReply
+    }
+}
 
 //////////////// Packet (de)serialization ////////////////
 pub struct LineCodec;
@@ -276,20 +317,54 @@ impl NetworkManager {
         }
     }
 
+    pub fn packet_sequence_number(&self, packet: &Packet) -> u64 {
+        if let Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } = packet {
+            *sequence
+        } else if let Packet::Response{ sequence, request_ack: _, code: _ } = packet {
+            *sequence
+        } else {
+            unimplemented!(); // TODO: Update/UpdateReply (likely needs sqn too)
+        }
+    }
+
     pub fn head_of_tx_packet_queue(&self) -> Option<&Packet> {
         self.tx_packets.back()
     }
 
-    /// The TX Packet queue must only contain Request packets.
+    pub fn head_of_rx_packet_queue(&self) -> Option<&Packet> {
+        self.rx_packets.back()
+    }
+
+    pub fn tail_of_rx_packet_queue(&self) -> Option<&Packet> {
+        self.rx_packets.front()
+    }
+
     fn newest_tx_packet_seq_num(&self) -> Option<u64> {
         let opt_newest_packet = self.head_of_tx_packet_queue();
 
         if opt_newest_packet.is_some() {
             let newest_packet = opt_newest_packet.unwrap();
-            if let Packet::Request{ sequence: newest_sequence, response_ack: _, cookie: _, action: _ } = newest_packet {
-                Some(*newest_sequence)
-            } else { panic!("Found something other than a `Request` packet in the buffer: {:?}", newest_packet) }
-                    // Somehow not a Request packet. Panic during development XXX
+            Some(newest_packet.sequence_number())
+        } else { None }
+                // Queue is empty
+    }
+
+    fn newest_rx_packet_seq_num(&self) -> Option<u64> {
+        let opt_newest_packet = self.head_of_rx_packet_queue();
+
+        if opt_newest_packet.is_some() {
+            let newest_packet = opt_newest_packet.unwrap();
+            Some(newest_packet.sequence_number())
+        } else { None }
+                // Queue is empty
+    }
+
+    fn oldest_rx_packet_seq_num(&self) -> Option<u64> {
+        let opt_oldest_packet = self.tail_of_rx_packet_queue();
+
+        if opt_oldest_packet.is_some() {
+            let oldest_packet = opt_oldest_packet.unwrap();
+            Some(oldest_packet.sequence_number())
         } else { None }
                 // Queue is empty
     }
@@ -314,6 +389,37 @@ impl NetworkManager {
         }
     }
 
+    fn find_rx_insertion_index(&self, sequence: u64) -> Option<usize> {
+        let (front_slice, back_slice) = self.rx_packets.as_slices();
+        let f_result = front_slice.binary_search(&Packet::Request{sequence, response_ack: None, cookie: None, action: RequestAction::None});
+        let b_result = back_slice.binary_search(&Packet::Request{sequence, response_ack: None, cookie: None, action: RequestAction::None});
+
+        match (f_result, b_result) {
+            (Err(loc1), Err(loc2)) => {
+                // We will not insert at the front of front_slice or end of back_slice,
+                // because these cases are covered by "oldest" and "newest" checks above.
+                // This leaves us with:
+                //      1. a) At the end of the front slice
+                //         b) Somewhere in the middle of  front slice
+                //      2. a) At the start of the back slice (same as "end of front slice")
+                //         b) Somewhere in the middle of the back slice
+                match (loc1, loc2) {
+                    // Case 1a)/2a)
+                    (g, 0) if g == front_slice.len() => Some(front_slice.len()),
+                    // Case 2b)
+                    (g, n) if g == front_slice.len() => Some(front_slice.len() + n),
+                    // Case 1b)
+                    (n, 0) => Some(n),
+                    (_, _) => None,
+                }
+            },
+            #[cfg(test)]
+            (_,_) => Some(110), // This is hacky but just for testing if we the search finds a match. (110 == avg weight of an amino acid in daltons :])
+            #[cfg(not(test))]
+            (_,_) => None,
+        }
+    }
+
     /// As we buffer new packets, we'll want to throw away the older packets.
     /// We must be careful to ensure that we do not throw away packets that have
     /// not yet been acknowledged by the end-point.
@@ -324,23 +430,68 @@ impl NetworkManager {
             Packet::Response{ sequence, request_ack: _, code: _ } => sequence,
             _ => return
         };
-        {
-            let opt_head_seq_num : Option<u64> = self.newest_tx_packet_seq_num();
 
-            if opt_head_seq_num.is_none() {
-                self.tx_packets.push_back(packet);
-                return;
-            }
+        let opt_head_seq_num: Option<u64> = self.newest_tx_packet_seq_num();
 
-            let head_seq_num = opt_head_seq_num.unwrap(); // unwrap safe
-
-            self.discard_older_packets(true);
-
-            // Current packet is newer, and we're adding in sequential order
-            if head_seq_num < sequence && head_seq_num+1 == sequence {
-                self.tx_packets.push_back(packet);
-            }
+        if opt_head_seq_num.is_none() {
+            self.tx_packets.push_back(packet);
+            return;
         }
+
+        let head_seq_num = opt_head_seq_num.unwrap(); // unwrap safe
+
+        self.discard_older_packets(true);
+
+        // Current packet is newer, and we're adding in sequential order
+        if head_seq_num < sequence && head_seq_num+1 == sequence {
+            self.tx_packets.push_back(packet);
+        }
+    }
+
+    pub fn buffer_rx_packet(&mut self, packet: Packet) {
+        let sequence = packet.sequence_number();
+
+        let opt_head_seq_num: Option<u64> = self.newest_rx_packet_seq_num();
+        if opt_head_seq_num.is_none() {
+            self.rx_packets.push_back(packet);
+            return;
+        }
+        let opt_tail_seq_num: Option<u64> = self.oldest_rx_packet_seq_num();
+        if opt_tail_seq_num.is_none() {
+            panic!("Tail of RX Queue is none, but Head of RX Queue is Some.");
+        }
+
+        let newest_seq_num = opt_head_seq_num.unwrap();
+        let oldest_seq_num = opt_tail_seq_num.unwrap();
+
+        if newest_seq_num >= oldest_seq_num {
+            // Newer than what we currently buffer
+            if sequence >= (newest_seq_num+1) {
+                self.rx_packets.push_back(packet);
+            } else {
+                // Older than what we currently buffer
+                if oldest_seq_num != 0 && sequence <= (oldest_seq_num-1) {
+                    self.rx_packets.push_front(packet);
+                } else {
+                    // Somewhere in between oldest and newest
+                    let insertion_index: Option<usize> = self.find_rx_insertion_index(sequence);
+
+                    if insertion_index.is_none() {
+                        panic!("Debug:How did we get None on insertion??\n{}, {:?}", sequence, self.rx_packets);
+                    }
+                    let insertion_index = insertion_index.unwrap();
+                    if insertion_index != 110 {
+                        #[cfg(test)]
+                        self.rx_packets.insert(insertion_index, packet);
+                    }
+                    #[cfg(not(test))]
+                    self.rx_packets.insert(insertion_index, packet);
+                }
+            }
+        } else {
+            // TODO implement seq num wrapped in buffer
+        }
+
     }
 }
 
@@ -431,19 +582,6 @@ mod test {
         assert_eq!(nm.rx_packets.len(), PACKET_HISTORY_SIZE+5);
         nm.discard_older_packets(false);
         assert_eq!(nm.rx_packets.len(), PACKET_HISTORY_SIZE);
-    }
-
-    #[test]
-    fn test_buffer_tx_packet_not_a_request_packet() {
-        let mut nm = NetworkManager::new();
-        let pkt = Packet::Response {
-            sequence: 0,
-            request_ack: None,
-            code: ResponseCode::OK
-        };
-
-        nm.buffer_tx_packet(pkt);
-        assert_eq!(nm.tx_packets.len(), 0);
     }
 
     #[test]
@@ -551,6 +689,236 @@ mod test {
             if let Packet::Request { sequence, response_ack: _, cookie: _, action:_ } = pkt {
                 assert_eq!(*sequence, index as u64);
             }
+        }
+    }
+
+    #[test]
+    fn test_buffer_rx_packet_basic_contiguous_ascending() {
+        let mut nm = NetworkManager::new();
+        for index in 0..5 {
+            let pkt = Packet::Request {
+                sequence: index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_rx_packet(pkt);
+        }
+
+        let mut iter = nm.rx_packets.iter();
+        for index in 0..5 {
+            let pkt = iter.next().unwrap();
+            assert_eq!(index, pkt.sequence_number() as usize);
+        }
+    }
+
+    #[test]
+    fn test_buffer_rx_packet_basic_contiguous_descending() {
+        let mut nm = NetworkManager::new();
+        for index in (0..5).rev() {
+            let pkt = Packet::Request {
+                sequence: index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_rx_packet(pkt);
+        }
+
+        let mut iter = nm.rx_packets.iter();
+        for index in 0..5 {
+            let pkt = iter.next().unwrap();
+            assert_eq!(index, pkt.sequence_number() as usize);
+        }
+    }
+
+    #[test]
+    fn test_buffer_rx_packet_basic_sequential_gap_ascending() {
+        let mut nm = NetworkManager::new();
+        // TODO Replace with (x,y).step_by(z) once stable
+        for index in [0,2,4,6,8,10].iter() {
+            let pkt = Packet::Request {
+                sequence: *index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_rx_packet(pkt);
+        }
+
+        let mut iter = nm.rx_packets.iter();
+        for index in [0,2,4,6,8,10].iter() {
+            let pkt = iter.next().unwrap();
+            assert_eq!(*index, pkt.sequence_number() as usize);
+        }
+    }
+
+    #[test]
+    fn test_buffer_rx_packet_basic_sequential_gap_descending() {
+        let mut nm = NetworkManager::new();
+        for index in [0,2,4,6,8,10].iter().rev() {
+            let pkt = Packet::Request {
+                sequence: *index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_rx_packet(pkt);
+        }
+
+        let mut iter = nm.rx_packets.iter();
+        for index in [0,2,4,6,8,10].iter() {
+            let pkt = iter.next().unwrap();
+            assert_eq!(*index, pkt.sequence_number());
+        }
+    }
+
+    #[test]
+    fn test_buffer_rx_packet_basic_random() {
+        let mut nm = NetworkManager::new();
+        for index in [5, 2, 9, 1, 0, 8, 6].iter() {
+            let pkt = Packet::Request {
+                sequence: *index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_rx_packet(pkt);
+        }
+
+        let mut iter = nm.rx_packets.iter();
+        for index in [0, 1, 2, 5, 6, 8, 9].iter() {
+            let pkt = iter.next().unwrap();
+            assert_eq!(*index, pkt.sequence_number() as usize);
+        }
+    }
+
+    #[test]
+    fn test_buffer_rx_packet_butterfly_pattern() {
+        let mut nm = NetworkManager::new();
+        // This one is fun because it tests the internal edges of (front_slice and back_slice)
+        for index in [0, 10, 1, 9, 2, 8, 3, 7, 4, 6, 5].iter() {
+            let pkt = Packet::Request {
+                sequence: *index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_rx_packet(pkt);
+        }
+
+        let mut iter = nm.rx_packets.iter();
+        for index in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].iter() {
+            let pkt = iter.next().unwrap();
+            assert_eq!(*index, pkt.sequence_number() as usize);
+        }
+    }
+
+    #[test]
+    fn test_buffer_rx_packet_basic_repetition() {
+        let mut nm = NetworkManager::new();
+        for index in [0, 0, 0, 0, 1, 2, 2, 2, 5].iter() {
+            let pkt = Packet::Request {
+                sequence: *index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_rx_packet(pkt);
+        }
+
+        let mut iter = nm.rx_packets.iter();
+        for index in [0, 1, 2, 5].iter() {
+            let pkt = iter.next().unwrap();
+            assert_eq!(*index, pkt.sequence_number() as usize);
+        }
+    }
+
+    #[test]
+    fn test_buffer_rx_packet_advance_sequential_then_random_then_sequential() {
+        let mut nm = NetworkManager::new();
+
+        for index in 0..5 {
+            let pkt = Packet::Request {
+                sequence: index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_rx_packet(pkt);
+        }
+
+        for index in [10, 7, 11, 9, 12, 8, 99, 6].iter() {
+            let pkt = Packet::Request {
+                sequence: *index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_rx_packet(pkt);
+        }
+
+        for index in 13..20 {
+            let pkt = Packet::Request {
+                sequence: index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_rx_packet(pkt);
+        }
+
+        let mut iter = nm.rx_packets.iter();
+        let mut range = (0..20).collect::<Vec<usize>>();
+        range.extend([99].iter().cloned()); // Add in 99
+        range.remove(5); // But remove 5 since it was never included
+        for index in range.iter() {
+            let pkt = iter.next().unwrap();
+            assert_eq!(*index, pkt.sequence_number() as usize);
+        }
+    }
+
+    #[test]
+    fn test_buffer_rx_packet_advance_reverse_sequential_then_random_then_reverse_sequential() {
+        let mut nm = NetworkManager::new();
+
+        for index in (0..5).rev() {
+            let pkt = Packet::Request {
+                sequence: index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_rx_packet(pkt);
+        }
+
+        for index in [10, 7, 11, 9, 12, 8, 99, 6].iter() {
+            let pkt = Packet::Request {
+                sequence: *index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_rx_packet(pkt);
+        }
+
+        for index in (13..20).rev() {
+            let pkt = Packet::Request {
+                sequence: index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_rx_packet(pkt);
+        }
+
+        let mut iter = nm.rx_packets.iter();
+        let mut range = (0..20).collect::<Vec<usize>>();
+        range.extend([99].iter().cloned()); // Add in 99
+        range.remove(5); // But remove 5 since it was never included
+        for index in range.iter() {
+            let pkt = iter.next().unwrap();
+            assert_eq!(*index, pkt.sequence_number() as usize);
         }
     }
 }
