@@ -88,7 +88,46 @@ impl BitGrid {
 
     /// Returns `Some(`smallest region containing all 1 bits`)`, or `None` if there are no 1 bits.
     pub fn bounding_box(&self) -> Option<Region> {
-        unimplemented!(); //XXX
+        let (width, height) = (self.width(), self.height());
+        let mut first_row = None;
+        let mut last_row = None;
+        let mut first_col = None;
+        let mut last_col = None;
+        for row in 0..height {
+            let mut col = 0;
+            while col < width {
+                let (rle_len, ch) = self.get_run(col, row, None);
+                if ch == 'o' {
+                    if let Some(_first_col) = first_col {
+                        if _first_col > col {
+                            first_col = Some(col);
+                        }
+                    } else {
+                        first_col = Some(col);
+                    }
+                    if first_row.is_none() {
+                        first_row = Some(row);
+                    }
+                    let run_last_col = col + rle_len - 1;
+                    if let Some(_last_col) = last_col {
+                        if _last_col < run_last_col {
+                            last_col = Some(run_last_col);
+                        }
+                    } else {
+                        last_col = Some(run_last_col);
+                    }
+                    last_row = Some(row);
+                }
+                col += rle_len;
+            }
+        }
+        if first_row.is_some() {
+            let width = last_col.unwrap() - first_col.unwrap() + 1;
+            let height = last_row.unwrap() - first_row.unwrap() + 1;
+            Some(Region::new(first_col.unwrap() as isize, first_row.unwrap() as isize, width, height))
+        } else {
+            None
+        }
     }
 }
 
@@ -436,8 +475,56 @@ mod tests {
     }
 
     #[test]
+    fn bounding_box_of_empty_bit_grid_is_none() {
+        let grid = BitGrid::new(1, 1);
+        assert_eq!(grid.bounding_box(), None);
+    }
+
+    #[test]
+    fn bounding_box_of_empty_bit_grid_is_none2() {
+        let grid = BitGrid::new(2, 5);
+        assert_eq!(grid.bounding_box(), None);
+    }
+
+    #[test]
+    fn bounding_box_for_single_off() {
+        let grid = Pattern("b!".to_owned()).to_new_bit_grid(1, 1).unwrap();
+        assert_eq!(grid.bounding_box(), None);
+    }
+
+    #[test]
+    fn bounding_box_for_single_on() {
+        let grid = Pattern("o!".to_owned()).to_new_bit_grid(1, 1).unwrap();
+        assert_eq!(grid.bounding_box(), Some(Region::new(0, 0, 1, 1)));
+    }
+
+    #[test]
+    fn bounding_box_for_single_line_complicated() {
+        let grid = Pattern("15b87o!".to_owned()).to_new_bit_grid(15+87, 1).unwrap();
+        assert_eq!(grid.bounding_box(), Some(Region::new(15, 0, 87, 1)));
+    }
+
+    #[test]
+    fn bounding_box_for_single_line_complicated2() {
+        let grid = Pattern("82b87o!".to_owned()).to_new_bit_grid(82+87, 1).unwrap();
+        assert_eq!(grid.bounding_box(), Some(Region::new(82, 0, 87, 1)));
+    }
+
+    #[test]
+    fn bounding_box_for_multi_line_complicated() {
+        let grid = Pattern("4$15b87o!".to_owned()).to_new_bit_grid(15+87, 5).unwrap();
+        assert_eq!(grid.bounding_box(), Some(Region::new(15, 4, 87, 1)));
+    }
+
+    #[test]
+    fn bounding_box_for_multi_line_complicated2() {
+        let grid = Pattern("4$15b87o$10b100o$25b3o!".to_owned()).to_new_bit_grid(110, 7).unwrap();
+        assert_eq!(grid.bounding_box(), Some(Region::new(10, 4, 100, 3)));
+    }
+
+    #[test]
     #[should_panic]
-    fn fill_grid_with_a_negative_region_panics() {
+    fn modify_region_with_a_negative_region_panics() {
         let height = 10;
         let width_in_words = 10;
 
