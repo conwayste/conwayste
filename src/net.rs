@@ -221,43 +221,26 @@ pub fn get_version() -> result::Result<Version, SemVerError> {
 }
 
 pub fn has_connection_timed_out(heartbeat: Option<time::Instant>) -> bool {
-    match heartbeat {
-        Some(heartbeat) =>  time::Instant::now() - heartbeat > time::Duration::from_secs(TIMEOUT_IN_SECONDS),
-        None => false
-    }
+    if let Some(heartbeat) = heartbeat {
+        (time::Instant::now() - heartbeat) > time::Duration::from_secs(TIMEOUT_IN_SECONDS)
+    } else { false }
 }
 
 pub struct NetworkStatistics {
-    packets_tx_failed: u64,
-    packets_tx_success: u64,
-    keep_alive_tx_failed: u64,
-    keep_alive_tx_success: u64,
+    pub tx_packets_failed: u64,
+    pub tx_packets_success: u64,
+    pub tx_keep_alive_failed: u64,
+    pub tx_keep_alive_success: u64,
 }
 
 impl NetworkStatistics {
     fn new() -> Self {
         NetworkStatistics {
-            packets_tx_success: 0,
-            packets_tx_failed: 0,
-            keep_alive_tx_failed: 0,
-            keep_alive_tx_success: 0
+            tx_packets_failed: 0,
+            tx_packets_success: 0,
+            tx_keep_alive_failed: 0,
+            tx_keep_alive_success: 0
         }
-    }
-
-    pub fn inc_tx_packets_failed(&mut self) {
-        self.packets_tx_failed += 1;
-    }
-
-    pub fn inc_tx_packets_success(&mut self) {
-        self.packets_tx_success += 1;
-    }
-
-    pub fn inc_tx_keep_alive_failed(&mut self) {
-        self.keep_alive_tx_failed += 1;
-    }
-
-    pub fn inc_tx_keep_alive_success(&mut self) {
-        self.keep_alive_tx_success += 1;
     }
 }
 
@@ -276,18 +259,15 @@ impl NetworkManager {
         }
     }
 
-    pub fn head_of_tx_packet_queue(&self) -> Option<&Packet> {
+    pub fn newest_tx_packet_in_queue(&self) -> Option<&Packet> {
         self.tx_packets.back()
     }
 
     /// The TX Packet queue must only contain Request packets.
     fn newest_tx_packet_seq_num(&self) -> Option<u64> {
-        let opt_newest_packet = self.head_of_tx_packet_queue();
-
-        if opt_newest_packet.is_some() {
-            let newest_packet = opt_newest_packet.unwrap();
-            if let Packet::Request{ sequence: newest_sequence, response_ack: _, cookie: _, action: _ } = newest_packet {
-                Some(*newest_sequence)
+        if let Some(newest_packet) = self.newest_tx_packet_in_queue() {
+            if let Packet::Request{ sequence: newest_sequence, response_ack: _, cookie: _, action: _ } = *newest_packet {
+                Some(newest_sequence)
             } else { panic!("Found something other than a `Request` packet in the buffer: {:?}", newest_packet) }
                     // Somehow not a Request packet. Panic during development XXX
         } else { None }
@@ -319,19 +299,15 @@ impl NetworkManager {
     /// not yet been acknowledged by the end-point.
     pub fn buffer_tx_packet(&mut self, packet: Packet) {
         if let Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } = packet {
-            let opt_head_seq_num : Option<u64> = self.newest_tx_packet_seq_num();
 
-            if opt_head_seq_num.is_none() {
-                self.tx_packets.push_back(packet);
-                return;
-            }
+            if let Some(newest_seq_num) = self.newest_tx_packet_seq_num() {
+                self.discard_older_packets(true);
 
-            let head_seq_num = opt_head_seq_num.unwrap(); // unwrap safe
-
-            self.discard_older_packets(true);
-
-            // Current packet is newer, and we're adding in sequential order
-            if head_seq_num < sequence && head_seq_num+1 == sequence{
+                // Current packet is newer, and we're adding in sequential order
+                if newest_seq_num < sequence && newest_seq_num+1 == sequence {
+                    self.tx_packets.push_back(packet);
+                }
+            } else {
                 self.tx_packets.push_back(packet);
             }
         }

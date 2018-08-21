@@ -103,19 +103,19 @@ impl ClientState {
         }
     }
 
-    fn handle_response_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr, opt_packet: Option<Packet>) {
+    fn handle_incoming_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr, opt_packet: Option<Packet>) {
         // All `None` packets should get filtered out up the hierarchy
         let packet = opt_packet.unwrap();
         match packet {
             Packet::Response{sequence, request_ack, code} => {
                 // XXX sequence
                 // XXX request_ack
-
-                if code.clone() != ResponseCode::KeepAlive {
-                    println!("DEBUG: Got packet from server {:?}: {:?} {:?} {:?}", addr, sequence, request_ack, code);
+                let code = code.clone();
+                if code != ResponseCode::KeepAlive {
+                    println!("DEBUG: Got packet from server {:?}: Sequence: {:?} Request_Ack: {:?} ResponseCode: {:?}", addr, sequence, request_ack, code);
                 }
 
-                match code.clone() {
+                match code {
                     ResponseCode::OK => {
                         match self.handle_response_ok() {
                             Ok(_) => {},
@@ -155,9 +155,9 @@ impl ClientState {
 
                 if send.is_err() {
                     warn!("Could not send UpdateReply{{ {} }} to server", self.chat_msg_seq_num);
-                    self.network.statistics.inc_tx_packets_failed();
+                    self.network.statistics.tx_packets_failed += 1;
                 } else {
-                    self.network.statistics.inc_tx_packets_success();
+                    self.network.statistics.tx_packets_success += 1;
                 }
             }
             Packet::Request{..} => {
@@ -187,9 +187,9 @@ impl ClientState {
 
             if result.is_err() {
                 warn!("Could not send KeepAlive");
-                self.network.statistics.inc_tx_keep_alive_failed();
+                self.network.statistics.tx_keep_alive_failed += 1;
             } else {
-                self.network.statistics.inc_tx_keep_alive_success();
+                self.network.statistics.tx_keep_alive_success += 1;
                 info!("Send KeepAlive yay!")
             }
         }
@@ -212,7 +212,7 @@ impl ClientState {
                 action = self.build_command_request_action(cmd, args);
 
                 if action == RequestAction::Disconnect {
-                    (&exit_tx).unbounded_send(()).unwrap(); // Okay if we panic for FA/we want to quit anyway
+                    exit_tx.unbounded_send(()).unwrap(); // Okay if we panic for FA/we want to quit anyway
                 }
             },
         }
@@ -230,25 +230,22 @@ impl ClientState {
                 action:       action.clone(),
             };
 
-           match action.clone() {
-               RequestAction::TestSequenceNumber(b) => {
-                   packet = Packet::Request {
-                        sequence:     b,
-                        response_ack: self.response_ack,
-                        cookie:       self.cookie.clone(),
-                        action:       action,
-                    };
-               }
-               _ => {}
+            if let RequestAction::TestSequenceNumber(b) = action.clone() {
+                packet = Packet::Request {
+                    sequence:     b,
+                    response_ack: self.response_ack,
+                    cookie:       self.cookie.clone(),
+                    action:       action,
+                };
             }
 
             self.network.buffer_tx_packet(packet.clone());
-            let result = (&udp_tx).unbounded_send((addr.clone(), packet));
+            let result = udp_tx.unbounded_send((addr.clone(), packet));
             if result.is_err() {
                 warn!("Could not send user input cmd to server");
-                self.network.statistics.inc_tx_packets_failed();
+                self.network.statistics.tx_packets_failed += 1;
             } else {
-                self.network.statistics.inc_tx_packets_success();
+                self.network.statistics.tx_packets_success += 1;
             }
         }
     }
@@ -414,7 +411,7 @@ enum UserInput {
 enum Event {
     TickEvent,
     UserInputEvent(UserInput),
-    Response((SocketAddr, Option<Packet>)),
+    Incoming((SocketAddr, Option<Packet>)),
 //    NotifyAck((SocketAddr, Option<Packet>)),
 }
 
@@ -479,7 +476,7 @@ fn main() {
             *opt_packet != None
         })
         .map(|packet_tuple| {
-            Event::Response(packet_tuple)
+            Event::Incoming(packet_tuple)
         })
         .map_err(|_| ());
 
@@ -507,8 +504,8 @@ fn main() {
         .select(stdin_stream)
         .fold(initial_client_state, move |mut client_state: ClientState, event| {
             match event {
-                Event::Response((addr, opt_packet)) => {
-                    client_state.handle_response_event(&udp_tx, addr, opt_packet);
+                Event::Incoming((addr, opt_packet)) => {
+                    client_state.handle_incoming_event(&udp_tx, addr, opt_packet);
                 }
                 Event::TickEvent => {
                     client_state.handle_tick_event(&udp_tx, addr);
