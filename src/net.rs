@@ -386,7 +386,69 @@ impl NetworkManager {
         }
     }
 
-    /// Determines where in the rx queue to insert the new packet based on sequence number
+    /// As we buffer new packets, we'll want to throw away the older packets.
+    /// We must be careful to ensure that we do not throw away packets that have
+    /// not yet been acknowledged by the end-point.
+    pub fn buffer_tx_packet(&mut self, packet: Packet) {
+
+        let sequence = match packet {
+            Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } => sequence,
+            Packet::Response{ sequence, request_ack: _, code: _ } => sequence,
+            _ => return
+        };
+
+        let opt_head_seq_num: Option<u64> = self.newest_tx_packet_seq_num();
+
+        if opt_head_seq_num.is_none() {
+            self.tx_packets.push_back(packet);
+            return;
+        }
+
+        let head_seq_num = opt_head_seq_num.unwrap(); // unwrap safe
+
+        self.discard_older_packets(true);
+
+        // Current packet is newer, and we're adding in sequential order
+        if head_seq_num < sequence && head_seq_num+1 == sequence {
+            self.tx_packets.push_back(packet);
+        }
+    }
+
+    // Checked insertion against the sentinel used during unit testing
+    fn insert_into_rx_queue(&mut self, index: Option<usize>, packet: Packet) {
+        if let Some(insertion_index) = index {
+            if insertion_index != MATCH_FOUND_SENTINEL {
+                #[cfg(test)]
+                self.rx_packets.insert(insertion_index, packet);
+            }
+            #[cfg(not(test))]
+            self.rx_packets.insert(insertion_index, packet);
+        }
+    }
+
+    /// Checks if the insertion of `sequence` induces a newly wrapped queue state.
+    /// Sequence must be >=, or <, what we're comparing against. Cannot have wrapped yet.
+    fn is_seq_about_to_wrap(&self, sequence: u64, oldest_seq_num: u64, newest_seq_num: u64) -> bool {
+        if self.rx_buffer_wrap_index.is_none() {
+            if sequence >= oldest_seq_num && sequence >= newest_seq_num {
+                self.is_seq_sufficiently_far_away(sequence, oldest_seq_num)
+                && self.is_seq_sufficiently_far_away(sequence, newest_seq_num)
+            } else {
+                self.is_seq_sufficiently_far_away(oldest_seq_num, sequence)
+                && self.is_seq_sufficiently_far_away(newest_seq_num, sequence)
+            }
+        } else {
+            false
+        }
+    }
+
+    /// I've deemed 'far away' to mean the half of the max value of the type.
+    fn is_seq_sufficiently_far_away(&self, a: u64, b: u64) -> bool {
+        static HALFWAYPOINT: u64 = u64::max_value()/2;
+        a - b > HALFWAYPOINT
+    }
+
+    /// Search within the RX queue, but we have no idea where to insert.
     /// This should cover only within the RX queue and not at the edges (front or back).
     /// We accomplish this by splitting the VecDequeue into a slice tuple and then binary searching on each slice.
     /// Small note: The splitting of VecDequeue is into its 'front' and 'back' halves, based on how 'push_front' and 'push_back' were used.
@@ -423,7 +485,8 @@ impl NetworkManager {
         }
     }
 
-    fn linear_queue_search(&self, start: usize, end: usize, sequence: u64) -> Option<usize> {
+    // Search within the RX queue when we know which subset interests us.
+    fn find_rx_insertion_index_in_subset(&self, start: usize, end: usize, sequence: u64) -> Option<usize> {
         let search_space: Vec<&Packet> = self.rx_packets.iter().skip(start).take(end).collect();
         let result = search_space.as_slice().binary_search(&&Packet::Request{sequence, response_ack: None, cookie: None, action: RequestAction::None});
         match result {
@@ -435,70 +498,26 @@ impl NetworkManager {
         }
     }
 
-    /// As we buffer new packets, we'll want to throw away the older packets.
-    /// We must be careful to ensure that we do not throw away packets that have
-    /// not yet been acknowledged by the end-point.
-    pub fn buffer_tx_packet(&mut self, packet: Packet) {
-
-        let sequence = match packet {
-            Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } => sequence,
-            Packet::Response{ sequence, request_ack: _, code: _ } => sequence,
-            _ => return
-        };
-
-        let opt_head_seq_num: Option<u64> = self.newest_tx_packet_seq_num();
-
-        if opt_head_seq_num.is_none() {
-            self.tx_packets.push_back(packet);
-            return;
-        }
-
-        let head_seq_num = opt_head_seq_num.unwrap(); // unwrap safe
-
-        self.discard_older_packets(true);
-
-        // Current packet is newer, and we're adding in sequential order
-        if head_seq_num < sequence && head_seq_num+1 == sequence {
-            self.tx_packets.push_back(packet);
-        }
-    }
-
-    /// Compares sequence against the front and back of the queue.
-    /// Sequence must be >=, or <, what we're comparing against
-    fn is_seq_about_to_wrap(&self, sequence: u64, oldest_seq_num: u64, newest_seq_num: u64) -> bool {
-        if self.rx_buffer_wrap_index.is_none() {
-            if sequence >= oldest_seq_num && sequence >= newest_seq_num {
-                self.is_seq_sufficiently_far_away(sequence, oldest_seq_num)
-                && self.is_seq_sufficiently_far_away(sequence, newest_seq_num)
-            } else {
-                self.is_seq_sufficiently_far_away(oldest_seq_num, sequence)
-                && self.is_seq_sufficiently_far_away(newest_seq_num, sequence)
-            }
-        } else {
-            false
-        }
-    }
-
-    /// I've deemed 'far away' to mean the half of the max value of the type.
-    fn is_seq_sufficiently_far_away(&self, a: u64, b: u64) -> bool {
-        static HALFWAYPOINT: u64 = u64::max_value()/2;
-        a - b > HALFWAYPOINT
-    }
-
-    /// Upon receipt, we must maintain linearly increasing sequence number order of received packets.
+    /// Upon packet receipt, we must maintain linearly increasing sequence number order of received packets.
+    /// In a perfect world, all packets arrive in order, but this is not the case in reality.
     ///
     /// This also handles the case where the sequence number numerically wraps.
     /// `rx_buffer_wrap_index` is maintained to denote the queue index at which the numerical wrap occurs.
-    /// In general, it is used to determine if a wrap has occurred yet, and if so, which half of the queue to insert into.
+    /// It is used to determine if a wrap has occurred yet, and if so, helps narrow the queue subset we will insert into.
     ///
     /// For sequence numbers of type 'Byte':
     ///     [253, 254, 1, 2, 4]
     ///                ^ wrapping index
-    ///     Inserting '255' performs a linear search on the subset [253, 254] only.
+    ///     Inserting '255' performs a search on the subset [253, 254] only.
     ///     After insertion, the wrapping index increments since we modified the left half.
     ///     [253, 254, 255, 1, 2, 4]
     ///                     ^ wrapping index
     ///     Inserting '3' performs a linear search on [1, 2, 4]. Does not impact wrapping index.
+    ///     [253, 254, 255, 1, 2, 3, 4]
+    ///                     ^ wrapping index
+    ///
+    /// Because we can receive packets out-of-order even when wrapped, there are checks added below to safeguard against this.
+    /// Primarily, they cover the cases where out-of-order insertion would transition the queue into a wrapped state from a non-wrapped state.
     pub fn buffer_rx_packet(&mut self, packet: Packet) {
         let sequence = packet.sequence_number();
 
@@ -513,9 +532,11 @@ impl NetworkManager {
         let oldest_seq_num = opt_tail_seq_num.unwrap();
 
         if sequence < oldest_seq_num {
+            // Special case with max_value where we do not need to search for the insertion spot.
             if newest_seq_num == u64::max_value() {
                 if self.is_seq_about_to_wrap(sequence, oldest_seq_num, newest_seq_num) {
                     self.rx_packets.push_back(packet);
+
                     if let Some(buffer_wrap_index) = self.rx_buffer_wrap_index {
                         self.rx_buffer_wrap_index = Some(buffer_wrap_index - 1);
                     } else {
@@ -525,71 +546,63 @@ impl NetworkManager {
                     self.rx_packets.push_front(packet);
                 }
             } else if sequence > newest_seq_num && self.rx_buffer_wrap_index.is_some() {
-                // Possible that we get a before-wrap sequence number
+                // When wrapped, either this is the newest sequence number so far, or
+                // an older sequence number arrived late.
                 if self.is_seq_sufficiently_far_away(sequence, newest_seq_num) {
                     if let Some(buffer_wrap_index) = self.rx_buffer_wrap_index {
-                        let insertion_index = self.linear_queue_search(0, buffer_wrap_index, sequence);
+                        let insertion_index = self.find_rx_insertion_index_in_subset(0, buffer_wrap_index, sequence);
                         self.rx_buffer_wrap_index = Some(buffer_wrap_index + 1);
-                        if let Some(insertion_index) = insertion_index {
-                            self.rx_packets.insert(insertion_index, packet);
-                        }
+                        self.insert_into_rx_queue(insertion_index, packet);
                     }
                 } else {
                     self.rx_packets.push_back(packet);
                 }
             } else if sequence < newest_seq_num {
-
+                // The new seq num appears to be older than everything,
+                // but it may be far enough in value to induce a wrap.
                 let insertion_index: Option<usize>;
-
                 if self.is_seq_about_to_wrap(sequence, oldest_seq_num, newest_seq_num) {
                     insertion_index = Some(self.rx_packets.len());
                     self.rx_buffer_wrap_index = insertion_index;
                 } else if let Some(buffer_wrap_index) = self.rx_buffer_wrap_index {
-                    insertion_index = self.linear_queue_search(buffer_wrap_index, self.rx_packets.len(), sequence);
+                    insertion_index = self.find_rx_insertion_index_in_subset(buffer_wrap_index, self.rx_packets.len(), sequence);
                 } else {
                     insertion_index = self.find_rx_insertion_index(sequence);
                 }
-                if let Some(insertion_index) = insertion_index {
-                    self.rx_packets.insert(insertion_index, packet);
-                }
 
+                self.insert_into_rx_queue(insertion_index, packet);
             } else {
+                // Smallest sequence number (in value) that we have seen thus far.
                 self.rx_packets.push_front(packet);
+
                 if self.rx_buffer_wrap_index.is_some() {
                     self.rx_buffer_wrap_index = Some(self.rx_buffer_wrap_index.unwrap() + 1);
                 }
             }
         } else {
+            let insertion_index: Option<usize>;
             if sequence < newest_seq_num {
-                let insertion_index: Option<usize> = self.find_rx_insertion_index(sequence);
-                if let Some(insertion_index) = insertion_index {
-                    self.rx_packets.insert(insertion_index, packet);
-                }
+                insertion_index = self.find_rx_insertion_index(sequence);
             } else {
-                let insertion_index: Option<usize>;
-
-                // Sequence Number has wrapped, insert from 0 to wrap index.
+                // Greater than the oldest and newest seq num in the queue.
+                // Time to see if we have wrapped already, and if not, we
+                // need to see if we are about to wrap based on this insertion.
                 if let Some(buffer_wrap_index) = self.rx_buffer_wrap_index {
-                    insertion_index = self.linear_queue_search(0, buffer_wrap_index, sequence);
+                    insertion_index = self.find_rx_insertion_index_in_subset(0, buffer_wrap_index, sequence);
                     self.rx_buffer_wrap_index = Some(buffer_wrap_index + 1);
                 } else {
                     if self.is_seq_about_to_wrap(sequence, oldest_seq_num, newest_seq_num) {
+                        // Sequence is far enough, and we haven't wrapped, so it arrived late.
+                        // Push it to the front of the queue
                         insertion_index = Some(0);
                         self.rx_buffer_wrap_index = Some(1);
                     } else {
-                        // No wrap yet, and not about to either, use a binary search
+                        // No wrap yet, and not about to either, use a blind binary search.
                         insertion_index = self.find_rx_insertion_index(sequence);
                     }
                 }
-                if let Some(insertion_index) = insertion_index {
-                    if insertion_index != MATCH_FOUND_SENTINEL {
-                        #[cfg(test)]
-                        self.rx_packets.insert(insertion_index, packet);
-                    }
-                    #[cfg(not(test))]
-                    self.rx_packets.insert(insertion_index, packet);
-                }
             }
+            self.insert_into_rx_queue(insertion_index, packet);
         }
     }
 }
