@@ -455,6 +455,17 @@ impl NetworkManager {
         }
     }
 
+    fn is_seq_about_to_wrap(&self, sequence: u64, oldest_seq_num: u64, newest_seq_num: u64) -> bool {
+        self.rx_buffer_wrap_index.is_none()
+        && self.is_seq_sufficiently_far_away(oldest_seq_num, sequence)
+        && self.is_seq_sufficiently_far_away(newest_seq_num, sequence)
+    }
+
+    fn is_seq_sufficiently_far_away(&self, a: u64, b: u64) -> bool {
+        const halfwaypoint: u64 = u64::max_value()/2;
+        a - b > halfwaypoint
+    }
+
     pub fn buffer_rx_packet(&mut self, packet: Packet) {
         let sequence = packet.sequence_number();
 
@@ -509,11 +520,26 @@ impl NetworkManager {
                     self.rx_buffer_wrap_index = Some(self.rx_packets.len() - 1);
                 }
             } else if sequence > newest_seq_num && self.rx_buffer_wrap_index.is_some() {
-                // We have already wrapped, sequence is newer than our current list
-                self.rx_packets.push_back(packet);
+                // Possible that we get a before-wrap sequence number
+                if self.is_seq_sufficiently_far_away(sequence, newest_seq_num) {
+                    if let Some(buffer_wrap_index) = self.rx_buffer_wrap_index {
+                        let insertion_index = self.linear_queue_search(0, buffer_wrap_index, sequence);
+                        self.rx_buffer_wrap_index = Some(buffer_wrap_index + 1);
+                        if let Some(insertion_index) = insertion_index {
+                            self.rx_packets.insert(insertion_index, packet);
+                        }
+                    }
+                } else {
+                    self.rx_packets.push_back(packet);
+                }
             } else if sequence < newest_seq_num {
+
                 let insertion_index: Option<usize>;
-                if let Some(buffer_wrap_index) = self.rx_buffer_wrap_index {
+
+                if self.is_seq_about_to_wrap(sequence, oldest_seq_num, newest_seq_num) {
+                    insertion_index = Some(self.rx_packets.len());
+                    self.rx_buffer_wrap_index = insertion_index;
+                } else if let Some(buffer_wrap_index) = self.rx_buffer_wrap_index {
                     insertion_index = self.linear_queue_search(buffer_wrap_index, self.rx_packets.len(), sequence);
                 } else {
                     insertion_index = self.find_rx_insertion_index(sequence);
@@ -521,6 +547,7 @@ impl NetworkManager {
                 if let Some(insertion_index) = insertion_index {
                     self.rx_packets.insert(insertion_index, packet);
                 }
+
             } else {
                 self.rx_packets.push_front(packet);
                 if self.rx_buffer_wrap_index.is_some() {
@@ -1119,12 +1146,12 @@ mod test {
     fn test_buffer_rx_packet_advanced_max_sequence_number_arrives_after_a_wrap() {
         let mut nm = NetworkManager::new();
         let u64_max = <u64>::max_value();
-        let fourth = u64_max - 2;
-        let fifth = u64_max - 1;
-        let eighth = 2;
-        let ninth = 3;
+        let max_minus_2 = u64_max - 2;
+        let max_minus_1 = u64_max - 1;
+        let two = 2;
+        let three = 3;
 
-        let input_order = [fifth, fourth, ninth, u64_max, eighth];
+        let input_order = [max_minus_1, max_minus_2, three, u64_max, two];
 
         for index in input_order.iter() {
             let pkt = Packet::Request {
@@ -1140,7 +1167,7 @@ mod test {
 
         let mut iter = nm.rx_packets.iter();
         let mut range = vec![];
-        range.extend([fourth, fifth, u64_max, eighth, ninth].iter().cloned()); // Add in u64 max value plus others
+        range.extend([max_minus_2, max_minus_1, u64_max, two, three].iter().cloned()); // Add in u64 max value plus others
         for index in range.iter() {
             println!("{}",*index);
             let pkt = iter.next().unwrap();
@@ -1152,15 +1179,15 @@ mod test {
     fn test_buffer_rx_packet_advanced_oldest_packet_arrived_last() {
         let mut nm = NetworkManager::new();
         let u64_max = <u64>::max_value();
-        let third = u64_max - 3;
-        let fourth = u64_max - 2;
-        let fifth = u64_max - 1;
-        let sixth = 0;
-        let seventh = 1;
-        let eighth = 2;
-        let ninth = 3;
+        let max_minus_3 = u64_max - 3;
+        let max_minus_2 = u64_max - 2;
+        let max_minus_1 = u64_max - 1;
+        let zero = 0;
+        let one = 1;
+        let two = 2;
+        let three = 3;
 
-        let input_order = [fifth, fourth, ninth, u64_max, eighth, seventh, sixth, third];
+        let input_order = [max_minus_1, max_minus_2, three, u64_max, two, one, zero, max_minus_3];
 
         for index in input_order.iter() {
             let pkt = Packet::Request {
@@ -1172,13 +1199,10 @@ mod test {
             nm.buffer_rx_packet(pkt);
         }
 
-        println!("{:#?}", nm.rx_packets);
-
         let mut iter = nm.rx_packets.iter();
         let mut range = vec![];
-        range.extend([third, fourth, fifth, u64_max, sixth, seventh, eighth, ninth].iter().cloned()); // Add in u64 max value plus others
+        range.extend([max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
         for index in range.iter() {
-            println!("{}",*index);
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number());
         }
