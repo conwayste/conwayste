@@ -16,6 +16,7 @@
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
 use std::ops::{Index, IndexMut};
+use std::cmp;
 use universe::Region;
 use rle::Pattern;
 
@@ -86,7 +87,7 @@ impl BitGrid {
         }
     }
 
-    /// Returns `Some(`smallest region containing all 1 bits`)`, or `None` if there are no 1 bits.
+    /// Returns `Some(`smallest region containing every 1 bit`)`, or `None` if there are no 1 bits.
     pub fn bounding_box(&self) -> Option<Region> {
         let (width, height) = (self.width(), self.height());
         let mut first_row = None;
@@ -127,6 +128,52 @@ impl BitGrid {
             Some(Region::new(first_col.unwrap() as isize, first_row.unwrap() as isize, width, height))
         } else {
             None
+        }
+    }
+
+    /// Copies `src` BitGrid into `dst` BitGrid, but fit into `dst_region` with clipping. If there
+    /// is a 10x10 pattern in source starting at 0,0 and the dst_region is only 8x8 with top left
+    /// corner at 3,3 then the resulting pattern will be clipped in a 2 pixel region on the bottom
+    /// and right and extend from 3,3 to 10,10. If `dst_region` extends beyond `dst`, the pattern
+    /// will be further clipped by the dimensions of `dst`.
+    ///
+    /// The bits are copied using an `|=` operation, so 1 bits in the destination will not ever be
+    /// cleared.
+    pub fn copy(src: &BitGrid, dst: &mut BitGrid, dst_region: Region) {
+        let dst_left   = cmp::max(0, dst_region.left()) as usize;
+        let dst_right  = cmp::min(dst.width() as isize - 1, dst_region.right()) as usize;
+        let dst_top    = cmp::max(0, dst_region.top()) as usize;
+        let dst_bottom = cmp::min(dst.height() as isize - 1, dst_region.bottom()) as usize;
+        if dst_left > dst_right || dst_top > dst_bottom {
+            // nothing to do because both dimensions aren't positive
+            return;
+        }
+
+        for src_row in 0..src.height() {
+            let dst_row = src_row + dst_top;
+            if dst_row > dst_bottom {
+                break;
+            }
+            let mut src_col = 0;   // word-aligned
+            while src_col < src.width() {
+                let dst_col = src_col + dst_left;    // not word-aligned
+                if dst_col > dst_right {
+                    break;
+                }
+                let dst_word_idx = dst_col / 64;
+                let shift = dst_col - dst_word_idx*64;  // right shift amount
+                let mut word = src[src_row][src_col];
+                // clear bits that would be beyond dst_right
+                if dst_right - dst_col + 1 < 64 {
+                    let mask = !((1u64 << (64 - (dst_right - dst_col + 1))) - 1);
+                    word &= mask;
+                }
+                dst[dst_row][dst_word_idx] |= word >> shift;
+                if shift > 0 && dst_word_idx+1 < dst.width_in_words() {
+                    dst[dst_row][dst_word_idx+1] |= word >> (64 - shift);
+                }
+                src_col += 64;
+            }
         }
     }
 }
@@ -521,6 +568,35 @@ mod tests {
         let grid = Pattern("4$15b87o$10b100o$25b3o!".to_owned()).to_new_bit_grid(110, 7).unwrap();
         assert_eq!(grid.bounding_box(), Some(Region::new(10, 4, 100, 3)));
     }
+
+
+    #[test]
+    fn copy_simple() {
+        let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
+        let mut grid2 = BitGrid::new(1, 2); // 64x2
+        let dst_region = Region::new(0, 0, 32, 3);
+        BitGrid::copy(&grid, &mut grid2, dst_region);
+        assert_eq!(grid2.to_pattern(None).0, "32o$32o!".to_owned());
+    }
+
+    #[test]
+    fn copy_simple2() {
+        let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
+        let mut grid2 = BitGrid::new(1, 2); // 64x2
+        let dst_region = Region::new(16, 1, 32, 3);
+        BitGrid::copy(&grid, &mut grid2, dst_region);
+        assert_eq!(grid2.to_pattern(None).0, "$16b32o!".to_owned());   //XXX wtf, grid2 is blank!
+    }
+
+    #[test]
+    fn copy_for_multi_line_complicated2() {
+        let grid = Pattern("4$b87o$3b100o$3o!".to_owned()).to_new_bit_grid(110, 7).unwrap();
+        let mut grid2 = BitGrid::new(1, 10); // 64x10
+        let dst_region = Region::new(2, 3, 5, 5);
+        BitGrid::copy(&grid, &mut grid2, dst_region);
+        assert_eq!(grid2.to_pattern(None).0, "7$3b4o!".to_owned());
+    }
+
 
     #[test]
     #[should_panic]
