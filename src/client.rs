@@ -306,29 +306,24 @@ impl ClientState {
     }
 
     fn handle_incoming_chats(&mut self, chats: Option<Vec<BroadcastChatMessage>> ) {
-        match chats {
-            Some(mut chat_messages) => {
-                chat_messages.retain(|ref chat_message| {
-                    self.chat_msg_seq_num < chat_message.chat_seq.unwrap()
-                });
-                // This loop does two things: 1) update chat_msg_seq_num, and
-                // 2) prints messages from other players
-                for chat_message in chat_messages {
-                    let chat_seq = chat_message.chat_seq.unwrap();
-                    self.chat_msg_seq_num = std::cmp::max(chat_seq, self.chat_msg_seq_num);
+        if let Some(mut chat_messages) = chats {
+            chat_messages.retain(|ref chat_message| {
+                self.chat_msg_seq_num < chat_message.chat_seq.unwrap()
+            });
+            // This loop does two things: 1) update chat_msg_seq_num, and
+            // 2) prints messages from other players
+            for chat_message in chat_messages {
+                let chat_seq = chat_message.chat_seq.unwrap();
+                self.chat_msg_seq_num = std::cmp::max(chat_seq, self.chat_msg_seq_num);
 
-                    match self.name.as_ref() {
-                        Some(ref client_name) => {
-                            if *client_name != &chat_message.player_name {
-                                println!("{}: {}", chat_message.player_name, chat_message.message);
-                            }
-                        }
-                        None => { panic!("Client name not set!"); }
+                if let Some(ref client_name) = self.name.as_ref() {
+                    if *client_name != &chat_message.player_name {
+                        println!("{}: {}", chat_message.player_name, chat_message.message);
                     }
-
+                } else {
+                   panic!("Client name not set!");
                 }
             }
-            None => {}
         }
     }
 

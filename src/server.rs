@@ -955,7 +955,7 @@ fn main() {
 
                     server_state.remove_timed_out_clients();
 
-                    // Send a KeepAlive every scond
+                    // Send a KeepAlive every second
                     if (server_state.tick % 100) == 0 {
                         for player in server_state.players.values() {
                             let keep_alive = Packet::Response {
