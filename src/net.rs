@@ -169,9 +169,9 @@ pub enum Packet {
     },
     Update {
         // in-game: sent by server
-        chats:           Option<Vec<BroadcastChatMessage>>,
-        game_updates:    Option<Vec<GameUpdate>>,
-        universe_update: UniUpdateType,
+        chats:           Option<Vec<BroadcastChatMessage>>, // All non-acknowledged chats are sent each update
+        game_updates:    Option<Vec<GameUpdate>>,           //
+        universe_update: UniUpdateType,                     //
     },
     UpdateReply {
         // in-game: sent by client in reply to server
@@ -188,8 +188,14 @@ impl Packet {
             *sequence
         } else if let Packet::Response{ sequence, request_ack: _, code: _ } = self {
             *sequence
+        } else if let Packet::Update{ chats: _, game_updates: _, universe_update } = self {
+            match universe_update {
+                UniUpdateType::State(gs) => { gs.gen },
+                UniUpdateType::Diff(gd) => { gd.new_gen },
+                UniUpdateType::NoChange => 0
+            }
         } else {
-            unimplemented!(); // TODO: Update/UpdateReply (likely needs sqn too)
+            unimplemented!(); // UpdateReply is not saved
         }
     }
 }
@@ -218,8 +224,6 @@ impl Ord for Packet {
         let other_seq_num = other.sequence_number();
 
         self_seq_num.cmp(&other_seq_num)
-
-        // TODO check for Update/UpdateReply
     }
 }
 
