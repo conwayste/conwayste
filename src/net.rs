@@ -459,12 +459,12 @@ pub trait NetworkQueue<T: Sequenced> {
 type PacketQueue<T> = VecDeque<T>;
 
 pub struct TXQueue {
-    queue: PacketQueue<Packet>,
+    pub queue: PacketQueue<Packet>,
 }
 
 pub struct RXQueue<T> {
-    queue: PacketQueue<T>,
-    buffer_wrap_index: Option<usize>
+    pub queue: PacketQueue<T>,
+    pub buffer_wrap_index: Option<usize>
 }
 
 impl NetworkQueue<Packet> for TXQueue {
@@ -885,8 +885,8 @@ impl RXQueue<BroadcastChatMessage> {
 pub struct NetworkManager {
     pub statistics:     NetworkStatistics,
     pub tx_packets:       TXQueue,         // Back         = Newest, Front = Oldest
-    rx_packets:           RXQueue<Packet>,         // Back         = Newest, Front = Oldest
-    rx_chat_messages:     Option<RXQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest; Messages are drained into the Client; Server does not use this.
+    pub rx_packets:           RXQueue<Packet>,         // Back         = Newest, Front = Oldest
+    pub rx_chat_messages:     Option<RXQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest; Messages are drained into the Client; Server does not use this.
 }
 
 impl NetworkManager {

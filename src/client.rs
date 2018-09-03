@@ -36,7 +36,7 @@ use std::process::exit;
 use std::str::FromStr;
 use std::thread;
 use std::time::{Duration, Instant};
-use net::{RequestAction, ResponseCode, Packet, LineCodec, BroadcastChatMessage, NetworkManager};
+use net::{RequestAction, ResponseCode, Packet, LineCodec, BroadcastChatMessage, NetworkManager, NetworkQueue};
 use tokio_core::reactor::{Core, Timeout};
 use futures::{Future, Sink, Stream, stream};
 use futures::future::ok;
@@ -72,7 +72,7 @@ impl ClientState {
             cookie:          None,
             chat_msg_seq_num: 0,
             tick:            0,
-            network:         NetworkManager::new(),
+            network:         NetworkManager::new().with_message_buffering(),
             heartbeat:       None,
         }
     }
@@ -242,7 +242,7 @@ impl ClientState {
                _ => {}
             }
 
-            self.network.buffer_tx_packet(packet.clone());
+            self.network.tx_packets.buffer_item(packet.clone());
             let result = (&udp_tx).unbounded_send((addr.clone(), packet));
             if result.is_err() {
                 warn!("Could not send user input cmd to server");
@@ -315,6 +315,9 @@ impl ClientState {
             for chat_message in chat_messages {
                 let chat_seq = chat_message.chat_seq.unwrap();
                 self.chat_msg_seq_num = std::cmp::max(chat_seq, self.chat_msg_seq_num);
+
+                let mut queue = self.network.rx_chat_messages.as_mut().unwrap();
+                queue.buffer_item(chat_message.clone());
 
                 if let Some(ref client_name) = self.name.as_ref() {
                     if *client_name != &chat_message.player_name {
@@ -690,8 +693,9 @@ mod test {
     #[test]
     fn handle_incoming_chats_new_messages_are_old_and_new() {
         let mut client_state = ClientState::new();
+        let starting_chat_seq_num = 10;
         client_state.name = Some("client name".to_owned());
-        client_state.chat_msg_seq_num = 10;
+        client_state.chat_msg_seq_num = starting_chat_seq_num;
 
         let mut incoming_messages = vec![];
         for x in 0..20 {
@@ -704,6 +708,13 @@ mod test {
 
         client_state.handle_incoming_chats(Some(incoming_messages));
         assert_eq!(client_state.chat_msg_seq_num, 19);
+
+        let mut seq_num = starting_chat_seq_num+1;
+        let chat_queue = &client_state.network.rx_chat_messages.as_ref().unwrap().queue;
+        for msg in chat_queue {
+            assert_eq!(msg.chat_seq.unwrap(), seq_num);
+            seq_num+=1;
+        }
     }
 
     #[test]
