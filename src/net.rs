@@ -311,45 +311,61 @@ impl NetworkStatistics {
     }
 }
 
-pub trait NetworkQueue {
-    fn new(size: usize) -> PacketQueue
-    where
-        Self: Sized
+pub trait Sequenced {
+    fn sequence_number(&self) -> u64;
+}
+
+impl Sequenced for Packet {
+    fn sequence_number(&self) -> u64 {
+        self.sequence_number()
+    }
+}
+
+impl Sequenced for BroadcastChatMessage {
+    fn sequence_number(&self) -> u64 {
+        if let Some(v) = self.chat_seq {
+            v
+        } else { 0 }
+    }
+}
+
+pub trait NetworkQueue<T: Sequenced> {
+    fn new(size: usize) -> PacketQueue<T>
     {
-        PacketQueue::with_capacity(size)
+        PacketQueue::<T>::with_capacity(size)
     }
 
-    fn head_of_queue(&self) -> Option<&Packet> {
+    fn head_of_queue(&self) -> Option<&T> {
         self.as_packet_queue().back()
     }
 
-    fn tail_of_queue(&self) -> Option<&Packet> {
+    fn tail_of_queue(&self) -> Option<&T> {
         self.as_packet_queue().front()
     }
 
     fn newest_seq_num(&self) -> Option<u64> {
-        let opt_newest_packet: Option<&Packet> = self.head_of_queue();
+        let opt_newest_packet: Option<&T> = self.head_of_queue();
 
         if opt_newest_packet.is_some() {
-            let newest_packet = opt_newest_packet.unwrap();
+            let newest_packet: &T = opt_newest_packet.unwrap();
             Some(newest_packet.sequence_number())
         } else { None }
     }
 
     fn oldest_seq_num(&self) -> Option<u64> {
-        let opt_oldest_packet: Option<&Packet> = self.tail_of_queue();
+        let opt_oldest_packet: Option<&T> = self.tail_of_queue();
 
         if opt_oldest_packet.is_some() {
-            let oldest_packet = opt_oldest_packet.unwrap();
+            let oldest_packet: &T = opt_oldest_packet.unwrap();
             Some(oldest_packet.sequence_number())
         } else { None }
     }
 
-    fn push_back(&mut self, packet: Packet) {
+    fn push_back(&mut self, packet: T) {
         self.as_packet_queue_mut().push_back(packet);
     }
 
-    fn push_front(&mut self, packet: Packet) {
+    fn push_front(&mut self, packet: T) {
         self.as_packet_queue_mut().push_front(packet);
     }
 
@@ -357,33 +373,33 @@ pub trait NetworkQueue {
         self.as_packet_queue().len()
     }
 
-    fn insert(&mut self, index: usize, packet: Packet) {
+    fn insert(&mut self, index: usize, packet: T) {
         self.as_packet_queue_mut().insert(index, packet);
     }
 
     fn discard_older_packets(&mut self);
-    fn buffer_packet(&mut self, packet: Packet);
-    fn as_packet_queue(&self) -> &PacketQueue;
-    fn as_packet_queue_mut(&mut self) -> &mut PacketQueue;
+    fn buffer_packet(&mut self, packet: T);
+    fn as_packet_queue(&self) -> &PacketQueue<T>;
+    fn as_packet_queue_mut(&mut self) -> &mut PacketQueue<T>;
 }
 
-type PacketQueue = VecDeque<Packet>;
+type PacketQueue<T> = VecDeque<T>;
 
 pub struct TXQueue {
-    queue: PacketQueue,
+    queue: PacketQueue<Packet>,
 }
 
-pub struct RXQueue {
-    queue: PacketQueue,
+pub struct RXQueue<T> {
+    queue: PacketQueue<T>,
     buffer_wrap_index: Option<usize>
 }
 
-impl NetworkQueue for TXQueue {
-    fn as_packet_queue(&self) -> &PacketQueue {
+impl NetworkQueue<Packet> for TXQueue {
+    fn as_packet_queue(&self) -> &PacketQueue<Packet> {
         &self.queue
     }
 
-    fn as_packet_queue_mut(&mut self) -> &mut PacketQueue {
+    fn as_packet_queue_mut(&mut self) -> &mut PacketQueue<Packet> {
         &mut self.queue
     }
 
@@ -428,12 +444,12 @@ impl NetworkQueue for TXQueue {
     }
 }
 
-impl NetworkQueue for RXQueue {
-    fn as_packet_queue(&self) -> &PacketQueue {
+impl NetworkQueue<Packet> for RXQueue<Packet> {
+    fn as_packet_queue(&self) -> &PacketQueue<Packet> {
         &self.queue
     }
 
-    fn as_packet_queue_mut(&mut self) -> &mut PacketQueue {
+    fn as_packet_queue_mut(&mut self) -> &mut PacketQueue<Packet> {
         &mut self.queue
     }
 
@@ -556,16 +572,16 @@ impl NetworkQueue for RXQueue {
     }
 }
 
-impl RXQueue {
+impl RXQueue<Packet> {
     // Checked insertion against the sentinel used during unit testing
     fn insert_into_rx_queue(&mut self, index: Option<usize>, packet: Packet) {
         if let Some(insertion_index) = index {
             if insertion_index != MATCH_FOUND_SENTINEL {
                 #[cfg(test)]
-                self.insert(insertion_index, packet);
+                self.queue.insert(insertion_index, packet);
             }
             #[cfg(not(test))]
-            self.insert(insertion_index, packet);
+            self.queue.insert(insertion_index, packet);
         }
     }
 
@@ -646,17 +662,17 @@ impl RXQueue {
 pub struct NetworkManager {
     pub statistics:     NetworkStatistics,
     pub tx_packets:       TXQueue,         // Back         = Newest, Front = Oldest
-    rx_packets:           RXQueue,         // Back         = Newest, Front = Oldest
-    unread_chat_messages: Option<RXQueue>, // Back = Newest, Front = Oldest; Messages are drained into the Client; Server does not use this.
+    rx_packets:           RXQueue<Packet>,         // Back         = Newest, Front = Oldest
+    //rx_chat_messages:     Option<RXQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest; Messages are drained into the Client; Server does not use this.
 }
 
 impl NetworkManager {
     pub fn new() -> Self {
         NetworkManager {
             statistics: NetworkStatistics::new(),
-            tx_packets:  TXQueue{ queue: <TXQueue>::new(PACKET_HISTORY_SIZE) },
-            rx_packets:  RXQueue{ queue: <RXQueue>::new(PACKET_HISTORY_SIZE), buffer_wrap_index: None },
-            unread_chat_messages: None,
+            tx_packets:  TXQueue{ queue: TXQueue::new(PACKET_HISTORY_SIZE) },
+            rx_packets:  RXQueue{ queue: RXQueue::<Packet>::new(PACKET_HISTORY_SIZE), buffer_wrap_index: None },
+            //rx_chat_messages: None,
         }
     }
 
@@ -665,7 +681,7 @@ impl NetworkManager {
             statistics: self.statistics,
             tx_packets: self.tx_packets,
             rx_packets: self.rx_packets,
-            unread_chat_messages:  Some(RXQueue{ queue: <RXQueue>::new(PACKET_HISTORY_SIZE), buffer_wrap_index: None }),
+            //rx_chat_messages:  Some(RXQueue{ queue: RXQueue::<BroadcastChatMessage>::new(PACKET_HISTORY_SIZE), buffer_wrap_index: None }),
         }
     }
 
