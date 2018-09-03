@@ -102,13 +102,48 @@ pub enum ResponseCode {
 }
 
 // chat messages sent from server to all clients other than originating client
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BroadcastChatMessage {
     pub chat_seq:    Option<u64>,   // Some(<number>) when sent to clients (starts at 0 for first
                                     // chat message sent to this client in this room); None when
                                     // internal to server
     pub player_name: String,
     pub message:     String,        // should not contain newlines
+}
+
+impl PartialEq for BroadcastChatMessage {
+    fn eq(&self, other: &BroadcastChatMessage) -> bool {
+        let self_seq_num = self.sequence_number();
+        let other_seq_num = other.sequence_number();
+        self_seq_num == other_seq_num
+    }
+}
+
+impl Eq for BroadcastChatMessage {
+
+}
+
+impl PartialOrd for BroadcastChatMessage {
+    fn partial_cmp(&self, other: &BroadcastChatMessage) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for BroadcastChatMessage {
+    fn cmp(&self, other: &BroadcastChatMessage) -> Ordering {
+        let self_seq_num = self.sequence_number();
+        let other_seq_num = other.sequence_number();
+
+        self_seq_num.cmp(&other_seq_num)
+    }
+}
+
+impl BroadcastChatMessage {
+    fn sequence_number(&self) -> u64 {
+        if let Some(v) = self.chat_seq {
+            v
+        } else { 0 }
+    }
 }
 
 // TODO: adapt or import following from libconway
@@ -323,9 +358,35 @@ impl Sequenced for Packet {
 
 impl Sequenced for BroadcastChatMessage {
     fn sequence_number(&self) -> u64 {
-        if let Some(v) = self.chat_seq {
-            v
-        } else { 0 }
+        self.sequence_number()
+    }
+}
+
+impl Sequenced {
+    fn sequence_number(&self) -> u64 {
+        unimplemented!()
+    }
+
+    /// I've deemed 'far away' to mean the half of the max value of the type.
+    fn is_seq_sufficiently_far_away(a: u64, b: u64) -> bool {
+        static HALFWAYPOINT: u64 = u64::max_value()/2;
+        a - b > HALFWAYPOINT
+    }
+
+    /// Checks if the insertion of `sequence` induces a newly wrapped queue state.
+    /// Sequence must be >=, or <, what we're comparing against. Cannot have wrapped yet.
+    fn is_seq_about_to_wrap(buffer_wrap_index: Option<usize>, sequence: u64, oldest_seq_num: u64, newest_seq_num: u64) -> bool {
+        if buffer_wrap_index.is_none() {
+            if sequence >= oldest_seq_num && sequence >= newest_seq_num {
+                Sequenced::is_seq_sufficiently_far_away(sequence, oldest_seq_num)
+                && Sequenced::is_seq_sufficiently_far_away(sequence, newest_seq_num)
+            } else {
+                Sequenced::is_seq_sufficiently_far_away(oldest_seq_num, sequence)
+                && Sequenced::is_seq_sufficiently_far_away(newest_seq_num, sequence)
+            }
+        } else {
+            false
+        }
     }
 }
 
@@ -377,8 +438,20 @@ pub trait NetworkQueue<T: Sequenced> {
         self.as_packet_queue_mut().insert(index, packet);
     }
 
+    // Checked insertion against the sentinel used during unit testing
+    fn insert_into_rx_queue(&mut self, index: Option<usize>, packet: T) {
+        if let Some(insertion_index) = index {
+            if insertion_index != MATCH_FOUND_SENTINEL {
+                #[cfg(test)]
+                self.as_packet_queue_mut().insert(insertion_index, packet);
+            }
+            #[cfg(not(test))]
+            self.as_packet_queue_mut().insert(insertion_index, packet);
+        }
+    }
+
     fn discard_older_packets(&mut self);
-    fn buffer_packet(&mut self, packet: T);
+    fn buffer_item(&mut self, packet: T);
     fn as_packet_queue(&self) -> &PacketQueue<T>;
     fn as_packet_queue_mut(&mut self) -> &mut PacketQueue<T>;
 }
@@ -419,7 +492,7 @@ impl NetworkQueue<Packet> for TXQueue {
     /// As we buffer new packets, we'll want to throw away the older packets.
     /// We must be careful to ensure that we do not throw away packets that have
     /// not yet been acknowledged by the end-point.
-    fn buffer_packet(&mut self, packet: Packet) {
+    fn buffer_item(&mut self, packet: Packet) {
         let sequence = match packet {
             Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } => sequence,
             Packet::Response{ sequence, request_ack: _, code: _ } => sequence,
@@ -483,7 +556,7 @@ impl NetworkQueue<Packet> for RXQueue<Packet> {
     ///
     /// Because we can receive packets out-of-order even when wrapped, there are checks added below to safeguard against this.
     /// Primarily, they cover the cases where out-of-order insertion would transition the queue into a wrapped state from a non-wrapped state.
-    fn buffer_packet(&mut self, packet: Packet) {
+    fn buffer_item(&mut self, packet: Packet) {
         let sequence = packet.sequence_number();
 
         // Empty queue
@@ -499,7 +572,7 @@ impl NetworkQueue<Packet> for RXQueue<Packet> {
         if sequence < oldest_seq_num {
             // Special case with max_value where we do not need to search for the insertion spot.
             if newest_seq_num == u64::max_value() {
-                if self.is_seq_about_to_wrap(sequence, oldest_seq_num, newest_seq_num) {
+                if Sequenced::is_seq_about_to_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
                     self.push_back(packet);
 
                     if let Some(buffer_wrap_index) = self.buffer_wrap_index {
@@ -513,7 +586,7 @@ impl NetworkQueue<Packet> for RXQueue<Packet> {
             } else if sequence > newest_seq_num && self.buffer_wrap_index.is_some() {
                 // When wrapped, either this is the newest sequence number so far, or
                 // an older sequence number arrived late.
-                if self.is_seq_sufficiently_far_away(sequence, newest_seq_num) {
+                if Sequenced::is_seq_sufficiently_far_away(sequence, newest_seq_num) {
                     if let Some(buffer_wrap_index) = self.buffer_wrap_index {
                         let insertion_index = self.find_rx_insertion_index_in_subset(0, buffer_wrap_index, sequence);
                         self.buffer_wrap_index = Some(buffer_wrap_index + 1);
@@ -526,7 +599,7 @@ impl NetworkQueue<Packet> for RXQueue<Packet> {
                 // The new seq num appears to be older than everything,
                 // but it may be far enough in value to induce a wrap.
                 let insertion_index: Option<usize>;
-                if self.is_seq_about_to_wrap(sequence, oldest_seq_num, newest_seq_num) {
+                if Sequenced::is_seq_about_to_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
                     insertion_index = Some(self.len());
                     self.buffer_wrap_index = insertion_index;
                 } else if let Some(buffer_wrap_index) = self.buffer_wrap_index {
@@ -556,7 +629,7 @@ impl NetworkQueue<Packet> for RXQueue<Packet> {
                     insertion_index = self.find_rx_insertion_index_in_subset(0, buffer_wrap_index, sequence);
                     self.buffer_wrap_index = Some(buffer_wrap_index + 1);
                 } else {
-                    if self.is_seq_about_to_wrap(sequence, oldest_seq_num, newest_seq_num) {
+                    if Sequenced::is_seq_about_to_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
                         // Sequence is far enough, and we haven't wrapped, so it arrived late.
                         // Push it to the front of the queue
                         insertion_index = Some(0);
@@ -573,39 +646,6 @@ impl NetworkQueue<Packet> for RXQueue<Packet> {
 }
 
 impl RXQueue<Packet> {
-    // Checked insertion against the sentinel used during unit testing
-    fn insert_into_rx_queue(&mut self, index: Option<usize>, packet: Packet) {
-        if let Some(insertion_index) = index {
-            if insertion_index != MATCH_FOUND_SENTINEL {
-                #[cfg(test)]
-                self.queue.insert(insertion_index, packet);
-            }
-            #[cfg(not(test))]
-            self.queue.insert(insertion_index, packet);
-        }
-    }
-
-    /// Checks if the insertion of `sequence` induces a newly wrapped queue state.
-    /// Sequence must be >=, or <, what we're comparing against. Cannot have wrapped yet.
-    fn is_seq_about_to_wrap(&self, sequence: u64, oldest_seq_num: u64, newest_seq_num: u64) -> bool {
-        if self.buffer_wrap_index.is_none() {
-            if sequence >= oldest_seq_num && sequence >= newest_seq_num {
-                self.is_seq_sufficiently_far_away(sequence, oldest_seq_num)
-                && self.is_seq_sufficiently_far_away(sequence, newest_seq_num)
-            } else {
-                self.is_seq_sufficiently_far_away(oldest_seq_num, sequence)
-                && self.is_seq_sufficiently_far_away(newest_seq_num, sequence)
-            }
-        } else {
-            false
-        }
-    }
-
-    /// I've deemed 'far away' to mean the half of the max value of the type.
-    fn is_seq_sufficiently_far_away(&self, a: u64, b: u64) -> bool {
-        static HALFWAYPOINT: u64 = u64::max_value()/2;
-        a - b > HALFWAYPOINT
-    }
 
     /// Search within the RX queue, but we have no idea where to insert.
     /// This should cover only within the RX queue and not at the edges (front or back).
@@ -658,12 +698,195 @@ impl RXQueue<Packet> {
     }
 }
 
+// Ideally I'd like to implement NetworkQueue<T> for RXQueue<T>
+// Apparently this cannot be simplified until Specializations come in?
+// https://github.com/rust-lang/rust/issues/31844
+impl NetworkQueue<BroadcastChatMessage> for RXQueue<BroadcastChatMessage> {
+    fn as_packet_queue(&self) -> &PacketQueue<BroadcastChatMessage> {
+        &self.queue
+    }
+
+    fn as_packet_queue_mut(&mut self) -> &mut PacketQueue<BroadcastChatMessage> {
+        &mut self.queue
+    }
+
+    fn discard_older_packets(&mut self) {
+        let queue = self.as_packet_queue_mut();
+        let queue_size = queue.len();
+        if queue_size >= PACKET_HISTORY_SIZE {
+            for _ in 0..(queue_size-PACKET_HISTORY_SIZE) {
+                queue.pop_front();
+            }
+        }
+    }
+
+    /// Upon packet receipt, we must maintain linearly increasing sequence number order of received packets.
+    /// In a perfect world, all packets arrive in order, but this is not the case in reality.
+    ///
+    /// This also handles the case where the sequence number numerically wraps.
+    /// `rx_buffer_wrap_index` is maintained to denote the queue index at which the numerical wrap occurs.
+    /// It is used to determine if a wrap has occurred yet, and if so, helps narrow the queue subset we will insert into.
+    ///
+    /// For sequence numbers of type 'Byte':
+    ///     [253, 254, 1, 2, 4]
+    ///                ^ wrapping index
+    ///     Inserting '255' performs a search on the subset [253, 254] only.
+    ///     After insertion, the wrapping index increments since we modified the left half.
+    ///     [253, 254, 255, 1, 2, 4]
+    ///                     ^ wrapping index
+    ///     Inserting '3' performs a linear search on [1, 2, 4]. Does not impact wrapping index.
+    ///     [253, 254, 255, 1, 2, 3, 4]
+    ///                     ^ wrapping index
+    ///
+    /// Because we can receive packets out-of-order even when wrapped, there are checks added below to safeguard against this.
+    /// Primarily, they cover the cases where out-of-order insertion would transition the queue into a wrapped state from a non-wrapped state.
+    fn buffer_item(&mut self, chat_message: BroadcastChatMessage) {
+        let sequence = chat_message.sequence_number();
+
+        // Empty queue
+        let opt_head_seq_num: Option<u64> = self.newest_seq_num();
+        if opt_head_seq_num.is_none() {
+            self.push_back(chat_message);
+            return;
+        }
+        let opt_tail_seq_num: Option<u64> = self.oldest_seq_num();
+        let newest_seq_num = opt_head_seq_num.unwrap();
+        let oldest_seq_num = opt_tail_seq_num.unwrap();
+
+        if sequence < oldest_seq_num {
+            // Special case with max_value where we do not need to search for the insertion spot.
+            if newest_seq_num == u64::max_value() {
+                if Sequenced::is_seq_about_to_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
+                    self.push_back(chat_message);
+
+                    if let Some(buffer_wrap_index) = self.buffer_wrap_index {
+                        self.buffer_wrap_index = Some(buffer_wrap_index - 1);
+                    } else {
+                        self.buffer_wrap_index = Some(self.len() - 1);
+                    }
+                } else {
+                    self.push_front(chat_message);
+                }
+            } else if sequence > newest_seq_num && self.buffer_wrap_index.is_some() {
+                // When wrapped, either this is the newest sequence number so far, or
+                // an older sequence number arrived late.
+                if Sequenced::is_seq_sufficiently_far_away(sequence, newest_seq_num) {
+                    if let Some(buffer_wrap_index) = self.buffer_wrap_index {
+                        let insertion_index = self.find_rx_insertion_index_in_subset(0, buffer_wrap_index, sequence);
+                        self.buffer_wrap_index = Some(buffer_wrap_index + 1);
+                        self.insert_into_rx_queue(insertion_index, chat_message);
+                    }
+                } else {
+                    self.push_back(chat_message);
+                }
+            } else if sequence < newest_seq_num {
+                // The new seq num appears to be older than everything,
+                // but it may be far enough in value to induce a wrap.
+                let insertion_index: Option<usize>;
+                if Sequenced::is_seq_about_to_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
+                    insertion_index = Some(self.len());
+                    self.buffer_wrap_index = insertion_index;
+                } else if let Some(buffer_wrap_index) = self.buffer_wrap_index {
+                    insertion_index = self.find_rx_insertion_index_in_subset(buffer_wrap_index, self.len(), sequence);
+                } else {
+                    insertion_index = self.find_rx_insertion_index(sequence);
+                }
+
+                self.insert_into_rx_queue(insertion_index, chat_message);
+            } else {
+                // Smallest sequence number (in value) that we have seen thus far.
+                self.push_front(chat_message);
+
+                if self.buffer_wrap_index.is_some() {
+                    self.buffer_wrap_index = Some(self.buffer_wrap_index.unwrap() + 1);
+                }
+            }
+        } else {
+            let insertion_index: Option<usize>;
+            if sequence < newest_seq_num {
+                insertion_index = self.find_rx_insertion_index(sequence);
+            } else {
+                // Greater than the oldest and newest seq num in the queue.
+                // Time to see if we have wrapped already, and if not, we
+                // need to see if we are about to wrap based on this insertion.
+                if let Some(buffer_wrap_index) = self.buffer_wrap_index {
+                    insertion_index = self.find_rx_insertion_index_in_subset(0, buffer_wrap_index, sequence);
+                    self.buffer_wrap_index = Some(buffer_wrap_index + 1);
+                } else {
+                    if Sequenced::is_seq_about_to_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
+                        // Sequence is far enough, and we haven't wrapped, so it arrived late.
+                        // Push it to the front of the queue
+                        insertion_index = Some(0);
+                        self.buffer_wrap_index = Some(1);
+                    } else {
+                        // No wrap yet, and not about to either, use a blind binary search.
+                        insertion_index = self.find_rx_insertion_index(sequence);
+                    }
+                }
+            }
+            self.insert_into_rx_queue(insertion_index, chat_message);
+        }
+    }
+}
+
+impl RXQueue<BroadcastChatMessage> {
+
+    /// Search within the RX queue, but we have no idea where to insert.
+    /// This should cover only within the RX queue and not at the edges (front or back).
+    /// We accomplish this by splitting the VecDequeue into a slice tuple and then binary searching on each slice.
+    /// Small note: The splitting of VecDequeue is into its 'front' and 'back' halves, based on how 'push_front' and 'push_back' were used.
+    fn find_rx_insertion_index(&self, sequence: u64) -> Option<usize> {
+        let (front_slice, back_slice) = self.queue.as_slices();
+        let f_result = front_slice.binary_search(&BroadcastChatMessage{ chat_seq: Some(sequence), player_name: "".to_owned(), message: "".to_owned()});
+        let b_result = back_slice.binary_search(&BroadcastChatMessage{ chat_seq: Some(sequence), player_name: "".to_owned(), message: "".to_owned()});
+
+        match (f_result, b_result) {
+            (Err(loc1), Err(loc2)) => {
+                // We will not insert at the front of front_slice or end of back_slice,
+                // because these cases are covered by "oldest" and "newest" already.
+                // This leaves us with:
+                //      1. a) At the end of the front slice
+                //         b) Somewhere in the middle of front slice
+                //      2. a) At the start of the back slice (same as "end of front slice")
+                //         b) Somewhere in the middle of the back slice
+                // loc1 and loc2 are the index at which we would insert at each slice
+                match (loc1, loc2) {
+                    // Case 1a)/2a)
+                    (g, 0) if g == front_slice.len() => Some(front_slice.len()),
+                    // Case 2b)
+                    (g, n) if g == front_slice.len() => Some(front_slice.len() + n),
+                    // Case 1b)
+                    (n, 0) => Some(n),
+                    // Could not find a place to insert
+                    (_, _) => None,
+                }
+            },
+            #[cfg(test)]
+            (_,_) => Some(MATCH_FOUND_SENTINEL),
+            #[cfg(not(test))]
+            (_,_) => None,
+        }
+    }
+
+    // Search within the RX queue when we know which subset interests us.
+    fn find_rx_insertion_index_in_subset(&self, start: usize, end: usize, sequence: u64) -> Option<usize> {
+        let search_space: Vec<&BroadcastChatMessage> = self.queue.iter().skip(start).take(end).collect();
+        let result = search_space.as_slice().binary_search(&&BroadcastChatMessage{ chat_seq: Some(sequence), player_name: "".to_owned(), message: "".to_owned()});
+        match result {
+            Err(loc) => Some(loc + start),
+            #[cfg(test)]
+            Ok(_) => Some(MATCH_FOUND_SENTINEL),
+            #[cfg(not(test))]
+            Ok(_) => None,
+        }
+    }
+}
 
 pub struct NetworkManager {
     pub statistics:     NetworkStatistics,
     pub tx_packets:       TXQueue,         // Back         = Newest, Front = Oldest
     rx_packets:           RXQueue<Packet>,         // Back         = Newest, Front = Oldest
-    //rx_chat_messages:     Option<RXQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest; Messages are drained into the Client; Server does not use this.
+    rx_chat_messages:     Option<RXQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest; Messages are drained into the Client; Server does not use this.
 }
 
 impl NetworkManager {
@@ -672,7 +895,7 @@ impl NetworkManager {
             statistics: NetworkStatistics::new(),
             tx_packets:  TXQueue{ queue: TXQueue::new(PACKET_HISTORY_SIZE) },
             rx_packets:  RXQueue{ queue: RXQueue::<Packet>::new(PACKET_HISTORY_SIZE), buffer_wrap_index: None },
-            //rx_chat_messages: None,
+            rx_chat_messages: None,
         }
     }
 
@@ -681,7 +904,7 @@ impl NetworkManager {
             statistics: self.statistics,
             tx_packets: self.tx_packets,
             rx_packets: self.rx_packets,
-            //rx_chat_messages:  Some(RXQueue{ queue: RXQueue::<BroadcastChatMessage>::new(PACKET_HISTORY_SIZE), buffer_wrap_index: None }),
+            rx_chat_messages:  Some(RXQueue{ queue: RXQueue::<BroadcastChatMessage>::new(PACKET_HISTORY_SIZE), buffer_wrap_index: None }),
         }
     }
 
@@ -786,7 +1009,7 @@ mod test {
             action: RequestAction::None
         };
 
-        nm.tx_packets.buffer_packet(pkt);
+        nm.tx_packets.buffer_item(pkt);
         assert_eq!(nm.tx_packets.len(), 1);
     }
 
@@ -800,7 +1023,7 @@ mod test {
             action: RequestAction::None
         };
 
-        nm.tx_packets.buffer_packet(pkt);
+        nm.tx_packets.buffer_item(pkt);
         let pkt = Packet::Request {
             sequence: 0,
             response_ack: None,
@@ -808,7 +1031,7 @@ mod test {
             action: RequestAction::LeaveRoom
         };
 
-        nm.tx_packets.buffer_packet(pkt);
+        nm.tx_packets.buffer_item(pkt);
         let pkt = nm.tx_packets.queue.back().unwrap();
         if let Packet::Request { sequence: _, response_ack: _, cookie: _, action } = pkt {
             assert_eq!(*action, RequestAction::None);
@@ -825,14 +1048,14 @@ mod test {
             action: RequestAction::None
         };
 
-        nm.tx_packets.buffer_packet(pkt);
+        nm.tx_packets.buffer_item(pkt);
         let pkt = Packet::Request {
             sequence: 1,
             response_ack: None,
             cookie: None,
             action: RequestAction::LeaveRoom
         };
-        nm.tx_packets.buffer_packet(pkt);
+        nm.tx_packets.buffer_item(pkt);
         assert_eq!(nm.tx_packets.len(), 2);
     }
 
@@ -846,14 +1069,14 @@ mod test {
             action: RequestAction::None
         };
 
-        nm.tx_packets.buffer_packet(pkt);
+        nm.tx_packets.buffer_item(pkt);
         let pkt = Packet::Request {
             sequence: 0,
             response_ack: None,
             cookie: None,
             action: RequestAction::LeaveRoom
         };
-        nm.tx_packets.buffer_packet(pkt);
+        nm.tx_packets.buffer_item(pkt);
         assert_eq!(nm.tx_packets.len(), 1);
 
         let pkt = nm.tx_packets.queue.back().unwrap();
@@ -872,7 +1095,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.tx_packets.buffer_packet(pkt);
+            nm.tx_packets.buffer_item(pkt);
         }
 
         let mut iter =  nm.tx_packets.queue.iter();
@@ -894,7 +1117,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -914,7 +1137,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -935,7 +1158,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -955,7 +1178,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -975,7 +1198,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -996,7 +1219,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -1016,7 +1239,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -1037,7 +1260,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         for index in [10, 7, 11, 9, 12, 8, 99, 6].iter() {
@@ -1047,7 +1270,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         for index in 13..20 {
@@ -1057,7 +1280,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -1081,7 +1304,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         for index in [10, 7, 11, 9, 12, 8, 99, 6].iter() {
@@ -1091,7 +1314,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         for index in (13..20).rev() {
@@ -1101,7 +1324,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -1127,7 +1350,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         {
@@ -1137,7 +1360,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         for index in 0..5 {
@@ -1147,7 +1370,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -1172,7 +1395,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         {
@@ -1182,7 +1405,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         for index in [5, 0, 4, 1, 3, 2].iter() {
@@ -1192,7 +1415,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -1227,7 +1450,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -1257,7 +1480,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -1290,7 +1513,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -1324,7 +1547,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -1358,7 +1581,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -1393,7 +1616,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -1428,7 +1651,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
@@ -1463,7 +1686,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.rx_packets.buffer_packet(pkt);
+            nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
