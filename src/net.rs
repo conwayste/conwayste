@@ -311,89 +311,77 @@ impl NetworkStatistics {
     }
 }
 
-pub struct NetworkManager {
-    pub statistics:     NetworkStatistics,
-    pub tx_packets:     VecDeque<Packet>, // Back == Newest, Front == Oldest
-    rx_packets:         VecDeque<Packet>, // Back == Newest, Front == Oldest
-    rx_buffer_wrap_index: Option<usize>,  // Index in rx_packets that sequence number wrap occurs
-}
-
-impl NetworkManager {
-    pub fn new() -> Self {
-        NetworkManager {
-            statistics: NetworkStatistics::new(),
-            tx_packets:  VecDeque::<Packet>::with_capacity(PACKET_HISTORY_SIZE),
-            rx_packets:  VecDeque::<Packet>::with_capacity(PACKET_HISTORY_SIZE),
-            rx_buffer_wrap_index: None,
-        }
+trait NetworkQueue {
+    fn new(size: usize) -> PacketQueue
+    where
+        Self: Sized
+    {
+        PacketQueue::with_capacity(size)
     }
 
-    pub fn head_of_tx_packet_queue(&self) -> Option<&Packet> {
-        self.tx_packets.back()
+    fn head_of_queue(&self) -> Option<&Packet> {
+        self.as_packet_queue().back()
     }
 
-    pub fn head_of_rx_packet_queue(&self) -> Option<&Packet> {
-        self.rx_packets.back()
+    fn tail_of_queue(&self) -> Option<&Packet> {
+        self.as_packet_queue().front()
     }
 
-    pub fn tail_of_rx_packet_queue(&self) -> Option<&Packet> {
-        self.rx_packets.front()
-    }
-
-    fn newest_tx_packet_seq_num(&self) -> Option<u64> {
-        let opt_newest_packet = self.head_of_tx_packet_queue();
+    fn newest_seq_num(&self) -> Option<u64> {
+        let opt_newest_packet: Option<&Packet> = self.head_of_queue();
 
         if opt_newest_packet.is_some() {
             let newest_packet = opt_newest_packet.unwrap();
             Some(newest_packet.sequence_number())
         } else { None }
-                // Queue is empty
     }
 
-    fn newest_rx_packet_seq_num(&self) -> Option<u64> {
-        let opt_newest_packet = self.head_of_rx_packet_queue();
-
-        if opt_newest_packet.is_some() {
-            let newest_packet = opt_newest_packet.unwrap();
-            Some(newest_packet.sequence_number())
-        } else { None }
-                // Queue is empty
-    }
-
-    fn oldest_rx_packet_seq_num(&self) -> Option<u64> {
-        let opt_oldest_packet = self.tail_of_rx_packet_queue();
+    fn oldest_seq_num(&self) -> Option<u64> {
+        let opt_oldest_packet: Option<&Packet> = self.tail_of_queue();
 
         if opt_oldest_packet.is_some() {
             let oldest_packet = opt_oldest_packet.unwrap();
             Some(oldest_packet.sequence_number())
         } else { None }
-                // Queue is empty
+    }
+
+    fn discard_older_packets(&mut self);
+    fn buffer_packet(&mut self, packet: Packet);
+    fn as_packet_queue(&self) -> &PacketQueue;
+    fn as_packet_queue_mut(&mut self) -> &mut PacketQueue;
+}
+
+type PacketQueue = VecDeque<Packet>;
+
+struct TXQueue(PacketQueue);
+struct RXChatMessages(PacketQueue);
+
+impl NetworkQueue for TXQueue {
+    fn as_packet_queue(&self) -> &PacketQueue {
+        &self.0
+    }
+
+    fn as_packet_queue_mut(&mut self) -> &mut PacketQueue {
+        &mut self.0
     }
 
     /// This will keep the specified queue under the PACKET_HISTORY_SIZE limit.
     /// The TX queue needs to ensure a spot is open if we're at capacity.
-    fn discard_older_packets(&mut self, is_tx_queue: bool) {
-        let queue = match is_tx_queue {
-            true => &mut self.tx_packets,
-            false => &mut self.rx_packets,
-        };
+    fn discard_older_packets(&mut self) {
+        let queue = self.as_packet_queue_mut();
         let queue_size = queue.len();
         if queue_size >= PACKET_HISTORY_SIZE {
             for _ in 0..(queue_size-PACKET_HISTORY_SIZE) {
                 queue.pop_front();
             }
-
-            // Keep 1 spot empty for upcoming enqueue
-            if is_tx_queue {
-                queue.pop_front();
-            }
+            queue.pop_front();
         }
     }
 
     /// As we buffer new packets, we'll want to throw away the older packets.
     /// We must be careful to ensure that we do not throw away packets that have
     /// not yet been acknowledged by the end-point.
-    pub fn buffer_tx_packet(&mut self, packet: Packet) {
+    fn buffer_packet(&mut self, packet: Packet) {
 
         let sequence = match packet {
             Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } => sequence,
@@ -401,107 +389,25 @@ impl NetworkManager {
             _ => return
         };
 
-        let opt_head_seq_num: Option<u64> = self.newest_tx_packet_seq_num();
+        let opt_head_seq_num: Option<u64> = self.newest_seq_num();
 
         if opt_head_seq_num.is_none() {
-            self.tx_packets.push_back(packet);
+            self.as_packet_queue_mut().push_back(packet);
             return;
         }
 
         let head_seq_num = opt_head_seq_num.unwrap(); // unwrap safe
 
-        self.discard_older_packets(true);
+        self.discard_older_packets();
 
         // Current packet is newer, and we're adding in sequential order
         if head_seq_num < sequence && head_seq_num+1 == sequence {
-            self.tx_packets.push_back(packet);
+            self.as_packet_queue_mut().push_back(packet);
         }
     }
+}
 
-    // Checked insertion against the sentinel used during unit testing
-    fn insert_into_rx_queue(&mut self, index: Option<usize>, packet: Packet) {
-        if let Some(insertion_index) = index {
-            if insertion_index != MATCH_FOUND_SENTINEL {
-                #[cfg(test)]
-                self.rx_packets.insert(insertion_index, packet);
-            }
-            #[cfg(not(test))]
-            self.rx_packets.insert(insertion_index, packet);
-        }
-    }
-
-    /// Checks if the insertion of `sequence` induces a newly wrapped queue state.
-    /// Sequence must be >=, or <, what we're comparing against. Cannot have wrapped yet.
-    fn is_seq_about_to_wrap(&self, sequence: u64, oldest_seq_num: u64, newest_seq_num: u64) -> bool {
-        if self.rx_buffer_wrap_index.is_none() {
-            if sequence >= oldest_seq_num && sequence >= newest_seq_num {
-                self.is_seq_sufficiently_far_away(sequence, oldest_seq_num)
-                && self.is_seq_sufficiently_far_away(sequence, newest_seq_num)
-            } else {
-                self.is_seq_sufficiently_far_away(oldest_seq_num, sequence)
-                && self.is_seq_sufficiently_far_away(newest_seq_num, sequence)
-            }
-        } else {
-            false
-        }
-    }
-
-    /// I've deemed 'far away' to mean the half of the max value of the type.
-    fn is_seq_sufficiently_far_away(&self, a: u64, b: u64) -> bool {
-        static HALFWAYPOINT: u64 = u64::max_value()/2;
-        a - b > HALFWAYPOINT
-    }
-
-    /// Search within the RX queue, but we have no idea where to insert.
-    /// This should cover only within the RX queue and not at the edges (front or back).
-    /// We accomplish this by splitting the VecDequeue into a slice tuple and then binary searching on each slice.
-    /// Small note: The splitting of VecDequeue is into its 'front' and 'back' halves, based on how 'push_front' and 'push_back' were used.
-    fn find_rx_insertion_index(&self, sequence: u64) -> Option<usize> {
-        let (front_slice, back_slice) = self.rx_packets.as_slices();
-        let f_result = front_slice.binary_search(&Packet::Request{sequence, response_ack: None, cookie: None, action: RequestAction::None});
-        let b_result = back_slice.binary_search(&Packet::Request{sequence, response_ack: None, cookie: None, action: RequestAction::None});
-
-        match (f_result, b_result) {
-            (Err(loc1), Err(loc2)) => {
-                // We will not insert at the front of front_slice or end of back_slice,
-                // because these cases are covered by "oldest" and "newest" already.
-                // This leaves us with:
-                //      1. a) At the end of the front slice
-                //         b) Somewhere in the middle of front slice
-                //      2. a) At the start of the back slice (same as "end of front slice")
-                //         b) Somewhere in the middle of the back slice
-                // loc1 and loc2 are the index at which we would insert at each slice
-                match (loc1, loc2) {
-                    // Case 1a)/2a)
-                    (g, 0) if g == front_slice.len() => Some(front_slice.len()),
-                    // Case 2b)
-                    (g, n) if g == front_slice.len() => Some(front_slice.len() + n),
-                    // Case 1b)
-                    (n, 0) => Some(n),
-                    // Could not find a place to insert
-                    (_, _) => None,
-                }
-            },
-            #[cfg(test)]
-            (_,_) => Some(MATCH_FOUND_SENTINEL),
-            #[cfg(not(test))]
-            (_,_) => None,
-        }
-    }
-
-    // Search within the RX queue when we know which subset interests us.
-    fn find_rx_insertion_index_in_subset(&self, start: usize, end: usize, sequence: u64) -> Option<usize> {
-        let search_space: Vec<&Packet> = self.rx_packets.iter().skip(start).take(end).collect();
-        let result = search_space.as_slice().binary_search(&&Packet::Request{sequence, response_ack: None, cookie: None, action: RequestAction::None});
-        match result {
-            Err(loc) => Some(loc + start),
-            #[cfg(test)]
-            Ok(_) => Some(MATCH_FOUND_SENTINEL),
-            #[cfg(not(test))]
-            Ok(_) => None,
-        }
-    }
-
+impl NetworkQueue for RXChatMessages {
     /// Upon packet receipt, we must maintain linearly increasing sequence number order of received packets.
     /// In a perfect world, all packets arrive in order, but this is not the case in reality.
     ///
@@ -522,7 +428,7 @@ impl NetworkManager {
     ///
     /// Because we can receive packets out-of-order even when wrapped, there are checks added below to safeguard against this.
     /// Primarily, they cover the cases where out-of-order insertion would transition the queue into a wrapped state from a non-wrapped state.
-    pub fn buffer_rx_packet(&mut self, packet: Packet) {
+    fn buffer_packet(&mut self, packet: Packet) {
         let sequence = packet.sequence_number();
 
         // Empty queue
@@ -609,6 +515,184 @@ impl NetworkManager {
             self.insert_into_rx_queue(insertion_index, packet);
         }
     }
+
+    fn as_packet_queue(&self) -> &PacketQueue {
+        &self.0
+    }
+
+    fn as_packet_queue_mut(&mut self) -> &mut PacketQueue {
+        &mut self.0
+    }
+
+    fn discard_older_packets(&mut self) {
+        let queue = self.as_packet_queue_mut();
+        let queue_size = queue.len();
+        if queue_size >= PACKET_HISTORY_SIZE {
+            for _ in 0..(queue_size-PACKET_HISTORY_SIZE) {
+                queue.pop_front();
+            }
+        }
+    }
+}
+
+impl RXChatMessages {
+    // Checked insertion against the sentinel used during unit testing
+    fn insert_into_rx_queue(&mut self, index: Option<usize>, packet: Packet) {
+        if let Some(insertion_index) = index {
+            if insertion_index != MATCH_FOUND_SENTINEL {
+                #[cfg(test)]
+                self.rx_packets.insert(insertion_index, packet);
+            }
+            #[cfg(not(test))]
+            self.rx_packets.insert(insertion_index, packet);
+        }
+    }
+
+    /// Checks if the insertion of `sequence` induces a newly wrapped queue state.
+    /// Sequence must be >=, or <, what we're comparing against. Cannot have wrapped yet.
+    fn is_seq_about_to_wrap(&self, sequence: u64, oldest_seq_num: u64, newest_seq_num: u64) -> bool {
+        if self.rx_buffer_wrap_index.is_none() {
+            if sequence >= oldest_seq_num && sequence >= newest_seq_num {
+                self.is_seq_sufficiently_far_away(sequence, oldest_seq_num)
+                && self.is_seq_sufficiently_far_away(sequence, newest_seq_num)
+            } else {
+                self.is_seq_sufficiently_far_away(oldest_seq_num, sequence)
+                && self.is_seq_sufficiently_far_away(newest_seq_num, sequence)
+            }
+        } else {
+            false
+        }
+    }
+
+    /// I've deemed 'far away' to mean the half of the max value of the type.
+    fn is_seq_sufficiently_far_away(&self, a: u64, b: u64) -> bool {
+        static HALFWAYPOINT: u64 = u64::max_value()/2;
+        a - b > HALFWAYPOINT
+    }
+
+    /// Search within the RX queue, but we have no idea where to insert.
+    /// This should cover only within the RX queue and not at the edges (front or back).
+    /// We accomplish this by splitting the VecDequeue into a slice tuple and then binary searching on each slice.
+    /// Small note: The splitting of VecDequeue is into its 'front' and 'back' halves, based on how 'push_front' and 'push_back' were used.
+    fn find_rx_insertion_index(&self, sequence: u64) -> Option<usize> {
+        let (front_slice, back_slice) = self.rx_packets.as_slices();
+        let f_result = front_slice.binary_search(&Packet::Request{sequence, response_ack: None, cookie: None, action: RequestAction::None});
+        let b_result = back_slice.binary_search(&Packet::Request{sequence, response_ack: None, cookie: None, action: RequestAction::None});
+
+        match (f_result, b_result) {
+            (Err(loc1), Err(loc2)) => {
+                // We will not insert at the front of front_slice or end of back_slice,
+                // because these cases are covered by "oldest" and "newest" already.
+                // This leaves us with:
+                //      1. a) At the end of the front slice
+                //         b) Somewhere in the middle of front slice
+                //      2. a) At the start of the back slice (same as "end of front slice")
+                //         b) Somewhere in the middle of the back slice
+                // loc1 and loc2 are the index at which we would insert at each slice
+                match (loc1, loc2) {
+                    // Case 1a)/2a)
+                    (g, 0) if g == front_slice.len() => Some(front_slice.len()),
+                    // Case 2b)
+                    (g, n) if g == front_slice.len() => Some(front_slice.len() + n),
+                    // Case 1b)
+                    (n, 0) => Some(n),
+                    // Could not find a place to insert
+                    (_, _) => None,
+                }
+            },
+            #[cfg(test)]
+            (_,_) => Some(MATCH_FOUND_SENTINEL),
+            #[cfg(not(test))]
+            (_,_) => None,
+        }
+    }
+
+    // Search within the RX queue when we know which subset interests us.
+    fn find_rx_insertion_index_in_subset(&self, start: usize, end: usize, sequence: u64) -> Option<usize> {
+        let search_space: Vec<&Packet> = self.rx_packets.iter().skip(start).take(end).collect();
+        let result = search_space.as_slice().binary_search(&&Packet::Request{sequence, response_ack: None, cookie: None, action: RequestAction::None});
+        match result {
+            Err(loc) => Some(loc + start),
+            #[cfg(test)]
+            Ok(_) => Some(MATCH_FOUND_SENTINEL),
+            #[cfg(not(test))]
+            Ok(_) => None,
+        }
+    }
+}
+
+
+pub struct NetworkManager {
+    pub statistics:     NetworkStatistics,
+    pub tx_packets:       TXQueue,         // Back         = Newest, Front = Oldest
+    rx_packets:           VecDeque<Packet>,         // Back         = Newest, Front = Oldest
+    rx_buffer_wrap_index: Option<usize>,            // Index in rx_packets that sequence number wrap occurs
+    unread_chat_messages: Option<RXChatMessages>, // Back = Newest, Front = Oldest; Messages are drained into the Client; Server does not use this.
+}
+
+impl NetworkManager {
+    pub fn new() -> Self {
+        NetworkManager {
+            statistics: NetworkStatistics::new(),
+            tx_packets:  TXQueue(<TXQueue>::new(PACKET_HISTORY_SIZE)),
+            rx_packets:  VecDeque::<Packet>::with_capacity(PACKET_HISTORY_SIZE),
+            rx_buffer_wrap_index: None,
+            unread_chat_messages: None,
+        }
+    }
+
+    pub fn with_message_buffering(self) -> NetworkManager {
+        NetworkManager {
+            statistics: self.statistics,
+            tx_packets: self.tx_packets,
+            rx_packets: self.rx_packets,
+            rx_buffer_wrap_index: self.rx_buffer_wrap_index,
+            unread_chat_messages:  Some(RXChatMessages(<RXChatMessages>::new(PACKET_HISTORY_SIZE))),
+        }
+    }
+
+    pub fn head_of_tx_packet_queue(&self) -> Option<&Packet> {
+        self.back()
+    }
+
+    pub fn head_of_rx_packet_queue(&self) -> Option<&Packet> {
+        self.rx_packets.back()
+    }
+
+    pub fn tail_of_rx_packet_queue(&self) -> Option<&Packet> {
+        self.rx_packets.front()
+    }
+
+    fn newest_tx_packet_seq_num(&self) -> Option<u64> {
+        let opt_newest_packet = self.head_of_tx_packet_queue();
+
+        if opt_newest_packet.is_some() {
+            let newest_packet = opt_newest_packet.unwrap();
+            Some(newest_packet.sequence_number())
+        } else { None }
+                // Queue is empty
+    }
+
+    fn newest_rx_packet_seq_num(&self) -> Option<u64> {
+        let opt_newest_packet = self.head_of_rx_packet_queue();
+
+        if opt_newest_packet.is_some() {
+            let newest_packet = opt_newest_packet.unwrap();
+            Some(newest_packet.sequence_number())
+        } else { None }
+                // Queue is empty
+    }
+
+    fn oldest_rx_packet_seq_num(&self) -> Option<u64> {
+        let opt_oldest_packet = self.tail_of_rx_packet_queue();
+
+        if opt_oldest_packet.is_some() {
+            let oldest_packet = opt_oldest_packet.unwrap();
+            Some(oldest_packet.sequence_number())
+        } else { None }
+                // Queue is empty
+    }
+
 }
 
 #[cfg(test)]
