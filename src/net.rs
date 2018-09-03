@@ -311,7 +311,7 @@ impl NetworkStatistics {
     }
 }
 
-trait NetworkQueue {
+pub trait NetworkQueue {
     fn new(size: usize) -> PacketQueue
     where
         Self: Sized
@@ -345,6 +345,22 @@ trait NetworkQueue {
         } else { None }
     }
 
+    fn push_back(&mut self, packet: Packet) {
+        self.as_packet_queue_mut().push_back(packet);
+    }
+
+    fn push_front(&mut self, packet: Packet) {
+        self.as_packet_queue_mut().push_front(packet);
+    }
+
+    fn len(&self) -> usize {
+        self.as_packet_queue().len()
+    }
+
+    fn insert(&mut self, index: usize, packet: Packet) {
+        self.as_packet_queue_mut().insert(index, packet);
+    }
+
     fn discard_older_packets(&mut self);
     fn buffer_packet(&mut self, packet: Packet);
     fn as_packet_queue(&self) -> &PacketQueue;
@@ -353,16 +369,22 @@ trait NetworkQueue {
 
 type PacketQueue = VecDeque<Packet>;
 
-struct TXQueue(PacketQueue);
-struct RXChatMessages(PacketQueue);
+pub struct TXQueue {
+    queue: PacketQueue,
+}
+
+pub struct RXQueue {
+    queue: PacketQueue,
+    buffer_wrap_index: Option<usize>
+}
 
 impl NetworkQueue for TXQueue {
     fn as_packet_queue(&self) -> &PacketQueue {
-        &self.0
+        &self.queue
     }
 
     fn as_packet_queue_mut(&mut self) -> &mut PacketQueue {
-        &mut self.0
+        &mut self.queue
     }
 
     /// This will keep the specified queue under the PACKET_HISTORY_SIZE limit.
@@ -374,7 +396,7 @@ impl NetworkQueue for TXQueue {
             for _ in 0..(queue_size-PACKET_HISTORY_SIZE) {
                 queue.pop_front();
             }
-            queue.pop_front();
+            queue.pop_front(); // Always keep one empty for TX queues
         }
     }
 
@@ -382,7 +404,6 @@ impl NetworkQueue for TXQueue {
     /// We must be careful to ensure that we do not throw away packets that have
     /// not yet been acknowledged by the end-point.
     fn buffer_packet(&mut self, packet: Packet) {
-
         let sequence = match packet {
             Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } => sequence,
             Packet::Response{ sequence, request_ack: _, code: _ } => sequence,
@@ -392,7 +413,7 @@ impl NetworkQueue for TXQueue {
         let opt_head_seq_num: Option<u64> = self.newest_seq_num();
 
         if opt_head_seq_num.is_none() {
-            self.as_packet_queue_mut().push_back(packet);
+            self.push_back(packet);
             return;
         }
 
@@ -402,12 +423,30 @@ impl NetworkQueue for TXQueue {
 
         // Current packet is newer, and we're adding in sequential order
         if head_seq_num < sequence && head_seq_num+1 == sequence {
-            self.as_packet_queue_mut().push_back(packet);
+            self.push_back(packet);
         }
     }
 }
 
-impl NetworkQueue for RXChatMessages {
+impl NetworkQueue for RXQueue {
+    fn as_packet_queue(&self) -> &PacketQueue {
+        &self.queue
+    }
+
+    fn as_packet_queue_mut(&mut self) -> &mut PacketQueue {
+        &mut self.queue
+    }
+
+    fn discard_older_packets(&mut self) {
+        let queue = self.as_packet_queue_mut();
+        let queue_size = queue.len();
+        if queue_size >= PACKET_HISTORY_SIZE {
+            for _ in 0..(queue_size-PACKET_HISTORY_SIZE) {
+                queue.pop_front();
+            }
+        }
+    }
+
     /// Upon packet receipt, we must maintain linearly increasing sequence number order of received packets.
     /// In a perfect world, all packets arrive in order, but this is not the case in reality.
     ///
@@ -432,12 +471,12 @@ impl NetworkQueue for RXChatMessages {
         let sequence = packet.sequence_number();
 
         // Empty queue
-        let opt_head_seq_num: Option<u64> = self.newest_rx_packet_seq_num();
+        let opt_head_seq_num: Option<u64> = self.newest_seq_num();
         if opt_head_seq_num.is_none() {
-            self.rx_packets.push_back(packet);
+            self.push_back(packet);
             return;
         }
-        let opt_tail_seq_num: Option<u64> = self.oldest_rx_packet_seq_num();
+        let opt_tail_seq_num: Option<u64> = self.oldest_seq_num();
         let newest_seq_num = opt_head_seq_num.unwrap();
         let oldest_seq_num = opt_tail_seq_num.unwrap();
 
@@ -445,37 +484,37 @@ impl NetworkQueue for RXChatMessages {
             // Special case with max_value where we do not need to search for the insertion spot.
             if newest_seq_num == u64::max_value() {
                 if self.is_seq_about_to_wrap(sequence, oldest_seq_num, newest_seq_num) {
-                    self.rx_packets.push_back(packet);
+                    self.push_back(packet);
 
-                    if let Some(buffer_wrap_index) = self.rx_buffer_wrap_index {
-                        self.rx_buffer_wrap_index = Some(buffer_wrap_index - 1);
+                    if let Some(buffer_wrap_index) = self.buffer_wrap_index {
+                        self.buffer_wrap_index = Some(buffer_wrap_index - 1);
                     } else {
-                        self.rx_buffer_wrap_index = Some(self.rx_packets.len() - 1);
+                        self.buffer_wrap_index = Some(self.len() - 1);
                     }
                 } else {
-                    self.rx_packets.push_front(packet);
+                    self.push_front(packet);
                 }
-            } else if sequence > newest_seq_num && self.rx_buffer_wrap_index.is_some() {
+            } else if sequence > newest_seq_num && self.buffer_wrap_index.is_some() {
                 // When wrapped, either this is the newest sequence number so far, or
                 // an older sequence number arrived late.
                 if self.is_seq_sufficiently_far_away(sequence, newest_seq_num) {
-                    if let Some(buffer_wrap_index) = self.rx_buffer_wrap_index {
+                    if let Some(buffer_wrap_index) = self.buffer_wrap_index {
                         let insertion_index = self.find_rx_insertion_index_in_subset(0, buffer_wrap_index, sequence);
-                        self.rx_buffer_wrap_index = Some(buffer_wrap_index + 1);
+                        self.buffer_wrap_index = Some(buffer_wrap_index + 1);
                         self.insert_into_rx_queue(insertion_index, packet);
                     }
                 } else {
-                    self.rx_packets.push_back(packet);
+                    self.push_back(packet);
                 }
             } else if sequence < newest_seq_num {
                 // The new seq num appears to be older than everything,
                 // but it may be far enough in value to induce a wrap.
                 let insertion_index: Option<usize>;
                 if self.is_seq_about_to_wrap(sequence, oldest_seq_num, newest_seq_num) {
-                    insertion_index = Some(self.rx_packets.len());
-                    self.rx_buffer_wrap_index = insertion_index;
-                } else if let Some(buffer_wrap_index) = self.rx_buffer_wrap_index {
-                    insertion_index = self.find_rx_insertion_index_in_subset(buffer_wrap_index, self.rx_packets.len(), sequence);
+                    insertion_index = Some(self.len());
+                    self.buffer_wrap_index = insertion_index;
+                } else if let Some(buffer_wrap_index) = self.buffer_wrap_index {
+                    insertion_index = self.find_rx_insertion_index_in_subset(buffer_wrap_index, self.len(), sequence);
                 } else {
                     insertion_index = self.find_rx_insertion_index(sequence);
                 }
@@ -483,10 +522,10 @@ impl NetworkQueue for RXChatMessages {
                 self.insert_into_rx_queue(insertion_index, packet);
             } else {
                 // Smallest sequence number (in value) that we have seen thus far.
-                self.rx_packets.push_front(packet);
+                self.push_front(packet);
 
-                if self.rx_buffer_wrap_index.is_some() {
-                    self.rx_buffer_wrap_index = Some(self.rx_buffer_wrap_index.unwrap() + 1);
+                if self.buffer_wrap_index.is_some() {
+                    self.buffer_wrap_index = Some(self.buffer_wrap_index.unwrap() + 1);
                 }
             }
         } else {
@@ -497,15 +536,15 @@ impl NetworkQueue for RXChatMessages {
                 // Greater than the oldest and newest seq num in the queue.
                 // Time to see if we have wrapped already, and if not, we
                 // need to see if we are about to wrap based on this insertion.
-                if let Some(buffer_wrap_index) = self.rx_buffer_wrap_index {
+                if let Some(buffer_wrap_index) = self.buffer_wrap_index {
                     insertion_index = self.find_rx_insertion_index_in_subset(0, buffer_wrap_index, sequence);
-                    self.rx_buffer_wrap_index = Some(buffer_wrap_index + 1);
+                    self.buffer_wrap_index = Some(buffer_wrap_index + 1);
                 } else {
                     if self.is_seq_about_to_wrap(sequence, oldest_seq_num, newest_seq_num) {
                         // Sequence is far enough, and we haven't wrapped, so it arrived late.
                         // Push it to the front of the queue
                         insertion_index = Some(0);
-                        self.rx_buffer_wrap_index = Some(1);
+                        self.buffer_wrap_index = Some(1);
                     } else {
                         // No wrap yet, and not about to either, use a blind binary search.
                         insertion_index = self.find_rx_insertion_index(sequence);
@@ -515,43 +554,25 @@ impl NetworkQueue for RXChatMessages {
             self.insert_into_rx_queue(insertion_index, packet);
         }
     }
-
-    fn as_packet_queue(&self) -> &PacketQueue {
-        &self.0
-    }
-
-    fn as_packet_queue_mut(&mut self) -> &mut PacketQueue {
-        &mut self.0
-    }
-
-    fn discard_older_packets(&mut self) {
-        let queue = self.as_packet_queue_mut();
-        let queue_size = queue.len();
-        if queue_size >= PACKET_HISTORY_SIZE {
-            for _ in 0..(queue_size-PACKET_HISTORY_SIZE) {
-                queue.pop_front();
-            }
-        }
-    }
 }
 
-impl RXChatMessages {
+impl RXQueue {
     // Checked insertion against the sentinel used during unit testing
     fn insert_into_rx_queue(&mut self, index: Option<usize>, packet: Packet) {
         if let Some(insertion_index) = index {
             if insertion_index != MATCH_FOUND_SENTINEL {
                 #[cfg(test)]
-                self.rx_packets.insert(insertion_index, packet);
+                self.insert(insertion_index, packet);
             }
             #[cfg(not(test))]
-            self.rx_packets.insert(insertion_index, packet);
+            self.insert(insertion_index, packet);
         }
     }
 
     /// Checks if the insertion of `sequence` induces a newly wrapped queue state.
     /// Sequence must be >=, or <, what we're comparing against. Cannot have wrapped yet.
     fn is_seq_about_to_wrap(&self, sequence: u64, oldest_seq_num: u64, newest_seq_num: u64) -> bool {
-        if self.rx_buffer_wrap_index.is_none() {
+        if self.buffer_wrap_index.is_none() {
             if sequence >= oldest_seq_num && sequence >= newest_seq_num {
                 self.is_seq_sufficiently_far_away(sequence, oldest_seq_num)
                 && self.is_seq_sufficiently_far_away(sequence, newest_seq_num)
@@ -575,7 +596,7 @@ impl RXChatMessages {
     /// We accomplish this by splitting the VecDequeue into a slice tuple and then binary searching on each slice.
     /// Small note: The splitting of VecDequeue is into its 'front' and 'back' halves, based on how 'push_front' and 'push_back' were used.
     fn find_rx_insertion_index(&self, sequence: u64) -> Option<usize> {
-        let (front_slice, back_slice) = self.rx_packets.as_slices();
+        let (front_slice, back_slice) = self.queue.as_slices();
         let f_result = front_slice.binary_search(&Packet::Request{sequence, response_ack: None, cookie: None, action: RequestAction::None});
         let b_result = back_slice.binary_search(&Packet::Request{sequence, response_ack: None, cookie: None, action: RequestAction::None});
 
@@ -609,7 +630,7 @@ impl RXChatMessages {
 
     // Search within the RX queue when we know which subset interests us.
     fn find_rx_insertion_index_in_subset(&self, start: usize, end: usize, sequence: u64) -> Option<usize> {
-        let search_space: Vec<&Packet> = self.rx_packets.iter().skip(start).take(end).collect();
+        let search_space: Vec<&Packet> = self.queue.iter().skip(start).take(end).collect();
         let result = search_space.as_slice().binary_search(&&Packet::Request{sequence, response_ack: None, cookie: None, action: RequestAction::None});
         match result {
             Err(loc) => Some(loc + start),
@@ -625,18 +646,16 @@ impl RXChatMessages {
 pub struct NetworkManager {
     pub statistics:     NetworkStatistics,
     pub tx_packets:       TXQueue,         // Back         = Newest, Front = Oldest
-    rx_packets:           VecDeque<Packet>,         // Back         = Newest, Front = Oldest
-    rx_buffer_wrap_index: Option<usize>,            // Index in rx_packets that sequence number wrap occurs
-    unread_chat_messages: Option<RXChatMessages>, // Back = Newest, Front = Oldest; Messages are drained into the Client; Server does not use this.
+    rx_packets:           RXQueue,         // Back         = Newest, Front = Oldest
+    unread_chat_messages: Option<RXQueue>, // Back = Newest, Front = Oldest; Messages are drained into the Client; Server does not use this.
 }
 
 impl NetworkManager {
     pub fn new() -> Self {
         NetworkManager {
             statistics: NetworkStatistics::new(),
-            tx_packets:  TXQueue(<TXQueue>::new(PACKET_HISTORY_SIZE)),
-            rx_packets:  VecDeque::<Packet>::with_capacity(PACKET_HISTORY_SIZE),
-            rx_buffer_wrap_index: None,
+            tx_packets:  TXQueue{ queue: <TXQueue>::new(PACKET_HISTORY_SIZE) },
+            rx_packets:  RXQueue{ queue: <RXQueue>::new(PACKET_HISTORY_SIZE), buffer_wrap_index: None },
             unread_chat_messages: None,
         }
     }
@@ -646,51 +665,8 @@ impl NetworkManager {
             statistics: self.statistics,
             tx_packets: self.tx_packets,
             rx_packets: self.rx_packets,
-            rx_buffer_wrap_index: self.rx_buffer_wrap_index,
-            unread_chat_messages:  Some(RXChatMessages(<RXChatMessages>::new(PACKET_HISTORY_SIZE))),
+            unread_chat_messages:  Some(RXQueue{ queue: <RXQueue>::new(PACKET_HISTORY_SIZE), buffer_wrap_index: None }),
         }
-    }
-
-    pub fn head_of_tx_packet_queue(&self) -> Option<&Packet> {
-        self.back()
-    }
-
-    pub fn head_of_rx_packet_queue(&self) -> Option<&Packet> {
-        self.rx_packets.back()
-    }
-
-    pub fn tail_of_rx_packet_queue(&self) -> Option<&Packet> {
-        self.rx_packets.front()
-    }
-
-    fn newest_tx_packet_seq_num(&self) -> Option<u64> {
-        let opt_newest_packet = self.head_of_tx_packet_queue();
-
-        if opt_newest_packet.is_some() {
-            let newest_packet = opt_newest_packet.unwrap();
-            Some(newest_packet.sequence_number())
-        } else { None }
-                // Queue is empty
-    }
-
-    fn newest_rx_packet_seq_num(&self) -> Option<u64> {
-        let opt_newest_packet = self.head_of_rx_packet_queue();
-
-        if opt_newest_packet.is_some() {
-            let newest_packet = opt_newest_packet.unwrap();
-            Some(newest_packet.sequence_number())
-        } else { None }
-                // Queue is empty
-    }
-
-    fn oldest_rx_packet_seq_num(&self) -> Option<u64> {
-        let opt_oldest_packet = self.tail_of_rx_packet_queue();
-
-        if opt_oldest_packet.is_some() {
-            let oldest_packet = opt_oldest_packet.unwrap();
-            Some(oldest_packet.sequence_number())
-        } else { None }
-                // Queue is empty
     }
 
 }
@@ -703,8 +679,8 @@ mod test {
     fn test_discard_older_packets_empty_queue() {
         let mut nm = NetworkManager::new();
 
-        nm.discard_older_packets(true);
-        nm.discard_older_packets(false);
+        nm.tx_packets.discard_older_packets();
+        nm.rx_packets.discard_older_packets();
         assert_eq!(nm.tx_packets.len(), 0);
         assert_eq!(nm.rx_packets.len(), 0);
     }
@@ -723,14 +699,14 @@ mod test {
         nm.tx_packets.push_back(pkt.clone());
         nm.tx_packets.push_back(pkt.clone());
 
-        nm.discard_older_packets(true);
+        nm.tx_packets.discard_older_packets();
         assert_eq!(nm.tx_packets.len(), 3);
 
         nm.rx_packets.push_back(pkt.clone());
         nm.rx_packets.push_back(pkt.clone());
         nm.rx_packets.push_back(pkt.clone());
 
-        nm.discard_older_packets(false);
+        nm.rx_packets.discard_older_packets();
         assert_eq!(nm.rx_packets.len(), 3);
     }
 
@@ -748,14 +724,14 @@ mod test {
             nm.tx_packets.push_back(pkt.clone());
         }
         assert_eq!(nm.tx_packets.len(), PACKET_HISTORY_SIZE);
-        nm.discard_older_packets(true);
+        nm.tx_packets.discard_older_packets();
         assert_eq!(nm.tx_packets.len(), PACKET_HISTORY_SIZE-1);
 
         for _ in 0..PACKET_HISTORY_SIZE {
             nm.rx_packets.push_back(pkt.clone());
         }
         assert_eq!(nm.rx_packets.len(), PACKET_HISTORY_SIZE);
-        nm.discard_older_packets(false);
+        nm.rx_packets.discard_older_packets();
         assert_eq!(nm.rx_packets.len(), PACKET_HISTORY_SIZE);
     }
 
@@ -773,14 +749,14 @@ mod test {
             nm.tx_packets.push_back(pkt.clone());
         }
         assert_eq!(nm.tx_packets.len(), PACKET_HISTORY_SIZE+10);
-        nm.discard_older_packets(true);
+        nm.tx_packets.discard_older_packets();
         assert_eq!(nm.tx_packets.len(), PACKET_HISTORY_SIZE-1);
 
         for _ in 0..PACKET_HISTORY_SIZE+5 {
             nm.rx_packets.push_back(pkt.clone());
         }
         assert_eq!(nm.rx_packets.len(), PACKET_HISTORY_SIZE+5);
-        nm.discard_older_packets(false);
+        nm.rx_packets.discard_older_packets();
         assert_eq!(nm.rx_packets.len(), PACKET_HISTORY_SIZE);
     }
 
@@ -794,7 +770,7 @@ mod test {
             action: RequestAction::None
         };
 
-        nm.buffer_tx_packet(pkt);
+        nm.tx_packets.buffer_packet(pkt);
         assert_eq!(nm.tx_packets.len(), 1);
     }
 
@@ -808,7 +784,7 @@ mod test {
             action: RequestAction::None
         };
 
-        nm.buffer_tx_packet(pkt);
+        nm.tx_packets.buffer_packet(pkt);
         let pkt = Packet::Request {
             sequence: 0,
             response_ack: None,
@@ -816,8 +792,8 @@ mod test {
             action: RequestAction::LeaveRoom
         };
 
-        nm.buffer_tx_packet(pkt);
-        let pkt = nm.tx_packets.back().unwrap();
+        nm.tx_packets.buffer_packet(pkt);
+        let pkt = nm.tx_packets.queue.back().unwrap();
         if let Packet::Request { sequence: _, response_ack: _, cookie: _, action } = pkt {
             assert_eq!(*action, RequestAction::None);
         }
@@ -833,14 +809,14 @@ mod test {
             action: RequestAction::None
         };
 
-        nm.buffer_tx_packet(pkt);
+        nm.tx_packets.buffer_packet(pkt);
         let pkt = Packet::Request {
             sequence: 1,
             response_ack: None,
             cookie: None,
             action: RequestAction::LeaveRoom
         };
-        nm.buffer_tx_packet(pkt);
+        nm.tx_packets.buffer_packet(pkt);
         assert_eq!(nm.tx_packets.len(), 2);
     }
 
@@ -854,17 +830,17 @@ mod test {
             action: RequestAction::None
         };
 
-        nm.buffer_tx_packet(pkt);
+        nm.tx_packets.buffer_packet(pkt);
         let pkt = Packet::Request {
             sequence: 0,
             response_ack: None,
             cookie: None,
             action: RequestAction::LeaveRoom
         };
-        nm.buffer_tx_packet(pkt);
+        nm.tx_packets.buffer_packet(pkt);
         assert_eq!(nm.tx_packets.len(), 1);
 
-        let pkt = nm.tx_packets.back().unwrap();
+        let pkt = nm.tx_packets.queue.back().unwrap();
         if let Packet::Request { sequence, response_ack: _, cookie: _, action:_ } = pkt {
             assert_eq!(*sequence, 1);
         }
@@ -880,10 +856,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_tx_packet(pkt);
+            nm.tx_packets.buffer_packet(pkt);
         }
 
-        let mut iter =  nm.tx_packets.iter();
+        let mut iter =  nm.tx_packets.queue.iter();
         for index in 5..PACKET_HISTORY_SIZE+5 {
             let pkt = iter.next().unwrap();
             if let Packet::Request { sequence, response_ack: _, cookie: _, action:_ } = pkt {
@@ -902,10 +878,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         for index in 0..5 {
             let pkt = iter.next().unwrap();
             assert_eq!(index, pkt.sequence_number() as usize);
@@ -922,10 +898,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         for index in 0..5 {
             let pkt = iter.next().unwrap();
             assert_eq!(index, pkt.sequence_number() as usize);
@@ -943,10 +919,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         for index in [0,2,4,6,8,10].iter() {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number() as usize);
@@ -963,10 +939,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         for index in [0,2,4,6,8,10].iter() {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number());
@@ -983,10 +959,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         for index in [0, 1, 2, 5, 6, 8, 9].iter() {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number() as usize);
@@ -1004,10 +980,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         for index in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].iter() {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number() as usize);
@@ -1024,10 +1000,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         for index in [0, 1, 2, 5].iter() {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number() as usize);
@@ -1045,7 +1021,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
         for index in [10, 7, 11, 9, 12, 8, 99, 6].iter() {
@@ -1055,7 +1031,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
         for index in 13..20 {
@@ -1065,10 +1041,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         let mut range = (0..20).collect::<Vec<usize>>();
         range.extend([99].iter().cloned()); // Add in 99
         range.remove(5); // But remove 5 since it was never included
@@ -1089,7 +1065,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
         for index in [10, 7, 11, 9, 12, 8, 99, 6].iter() {
@@ -1099,7 +1075,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
         for index in (13..20).rev() {
@@ -1109,10 +1085,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         let mut range = (0..20).collect::<Vec<usize>>();
         range.extend([99].iter().cloned()); // Add in 99
         range.remove(5); // But remove 5 since it was never included
@@ -1135,7 +1111,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
         {
@@ -1145,7 +1121,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
         for index in 0..5 {
@@ -1155,10 +1131,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         let mut range = (start..u64_max).collect::<Vec<u64>>();
         range.extend([u64_max, 0, 1, 2, 3, 4].iter().cloned()); // Add in u64 max value plus others
         for index in range.iter() {
@@ -1180,7 +1156,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
         {
@@ -1190,7 +1166,7 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
         for index in [5, 0, 4, 1, 3, 2].iter() {
@@ -1200,10 +1176,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         let mut range = (start..u64_max).collect::<Vec<u64>>();
         range.extend([u64_max, 0, 1, 2, 3, 4, 5].iter().cloned()); // Add in u64 max value plus others
         for index in range.iter() {
@@ -1235,10 +1211,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
         range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
         for index in range.iter() {
@@ -1265,10 +1241,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
         range.extend([max_minus_2, max_minus_1, u64_max, two, three].iter().cloned()); // Add in u64 max value plus others
         for index in range.iter() {
@@ -1298,10 +1274,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
         range.extend([max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
         for index in range.iter() {
@@ -1332,10 +1308,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
         range.extend([max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
         for index in range.iter() {
@@ -1366,10 +1342,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
         range.extend([max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
         for index in range.iter() {
@@ -1401,10 +1377,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
         range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
         for index in range.iter() {
@@ -1436,10 +1412,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
         range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
         for index in range.iter() {
@@ -1471,10 +1447,10 @@ mod test {
                 cookie: None,
                 action: RequestAction::None
             };
-            nm.buffer_rx_packet(pkt);
+            nm.rx_packets.buffer_packet(pkt);
         }
 
-        let mut iter = nm.rx_packets.iter();
+        let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
         range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
         for index in range.iter() {
