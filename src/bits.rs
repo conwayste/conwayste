@@ -585,7 +585,7 @@ mod tests {
         let mut grid2 = BitGrid::new(1, 2); // 64x2
         let dst_region = Region::new(16, 1, 32, 3);
         BitGrid::copy(&grid, &mut grid2, dst_region);
-        assert_eq!(grid2.to_pattern(None).0, "$16b32o!".to_owned());   //XXX wtf, grid2 is blank!
+        assert_eq!(grid2.to_pattern(None).0, "$16b32o!".to_owned());
     }
 
     #[test]
