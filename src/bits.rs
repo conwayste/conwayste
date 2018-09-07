@@ -162,7 +162,7 @@ impl BitGrid {
                 }
                 let dst_word_idx = dst_col / 64;
                 let shift = dst_col - dst_word_idx*64;  // right shift amount
-                let mut word = src[src_row][src_col];
+                let mut word = src[src_row][src_col/64];
                 // clear bits that would be beyond dst_right
                 if dst_right - dst_col + 1 < 64 {
                     let mask = !((1u64 << (64 - (dst_right - dst_col + 1))) - 1);
@@ -170,7 +170,7 @@ impl BitGrid {
                 }
                 dst[dst_row][dst_word_idx] |= word >> shift;
                 if shift > 0 && dst_word_idx+1 < dst.width_in_words() {
-                    dst[dst_row][dst_word_idx+1] |= word >> (64 - shift);
+                    dst[dst_row][dst_word_idx+1] |= word << (64 - shift);
                 }
                 src_col += 64;
             }
@@ -580,6 +580,15 @@ mod tests {
     }
 
     #[test]
+    fn copy_out_of_bounds() {
+        let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
+        let mut grid2 = BitGrid::new(1, 2); // 64x2
+        let dst_region = Region::new(17, 3, 32, 5);
+        BitGrid::copy(&grid, &mut grid2, dst_region);
+        assert_eq!(grid2.to_pattern(None).0, "!".to_owned());
+    }
+
+    #[test]
     fn copy_simple2() {
         let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
         let mut grid2 = BitGrid::new(1, 2); // 64x2
@@ -589,7 +598,25 @@ mod tests {
     }
 
     #[test]
+    fn copy_for_multi_line_complicated() {
+        let grid = Pattern("4$b87o$3b100o$3o!".to_owned()).to_new_bit_grid(110, 7).unwrap();
+        let mut grid2 = BitGrid::new(2, 10); // 128x10
+        let dst_region = Region::new(2, 3, 64, 5);
+        BitGrid::copy(&grid, &mut grid2, dst_region);
+        assert_eq!(grid2.to_pattern(None).0, "7$3b63o!".to_owned());
+    }
+
+    #[test]
     fn copy_for_multi_line_complicated2() {
+        let grid = Pattern("4$b87o$3b100o$3o!".to_owned()).to_new_bit_grid(110, 7).unwrap();
+        let mut grid2 = BitGrid::new(2, 10); // 128x10
+        let dst_region = Region::new(2, 3, 65, 5);
+        BitGrid::copy(&grid, &mut grid2, dst_region);
+        assert_eq!(grid2.to_pattern(None).0, "7$3b64o!".to_owned());
+    }
+
+    #[test]
+    fn copy_for_multi_line_complicated3() {
         let grid = Pattern("4$b87o$3b100o$3o!".to_owned()).to_new_bit_grid(110, 7).unwrap();
         let mut grid2 = BitGrid::new(1, 10); // 64x10
         let dst_region = Region::new(2, 3, 5, 5);
