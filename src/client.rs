@@ -35,14 +35,16 @@ use std::net::SocketAddr;
 use std::process::exit;
 use std::str::FromStr;
 use std::thread;
-use std::time::Duration;
-use net::{RequestAction, ResponseCode, Packet, LineCodec, BroadcastChatMessage};
+use std::time::{Duration, Instant};
+use net::{RequestAction, ResponseCode, Packet, LineCodec, BroadcastChatMessage, NetworkManager};
 use tokio_core::reactor::{Core, Timeout};
 use futures::{Future, Sink, Stream, stream};
 use futures::future::ok;
 use futures::sync::mpsc;
 
+const TICK_INTERVAL:         u64   = 10; // milliseconds
 const CLIENT_VERSION: &str = "0.0.1";
+
 
 struct ClientState {
     sequence:         u64,   // sequence number of requests
@@ -53,6 +55,9 @@ struct ClientState {
     room:             Option<String>,
     cookie:           Option<String>,
     chat_msg_seq_num: u64,
+    tick:             usize,
+    network:          NetworkManager,
+    heartbeat:        Option<Instant>,
 }
 
 impl ClientState {
@@ -66,7 +71,19 @@ impl ClientState {
             room:            None,
             cookie:          None,
             chat_msg_seq_num: 0,
+            tick:            0,
+            network:         NetworkManager::new(),
+            heartbeat:       None,
         }
+    }
+
+    fn reinitialize(&mut self) {
+        self.cookie = None;
+        self.sequence = 0;
+        self.response_ack = None;
+        self.last_req_action = None;
+        self.chat_msg_seq_num = 0;
+        self.room = None;
     }
 
     fn in_game(&self) -> bool {
@@ -75,7 +92,7 @@ impl ClientState {
 
     // XXX Once netwayste integration is complete, we'll need to internally send
     // the result of most of these handlers so we can notify a player via UI event.
-    
+
     fn check_for_upgrade(&self, server_version: &String) {
         let client_version = &net::VERSION.to_owned();
         if client_version < server_version {
@@ -86,14 +103,18 @@ impl ClientState {
         }
     }
 
-    fn handle_response_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr, opt_packet: Option<Packet>) {
+    fn handle_incoming_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr, opt_packet: Option<Packet>) {
         // All `None` packets should get filtered out up the hierarchy
         let packet = opt_packet.unwrap();
-        println!("DEBUG: Got packet from server {:?}: {:?}", addr, packet);
         match packet {
-            Packet::Response{sequence: _, request_ack: _, code} => {
+            Packet::Response{sequence, request_ack, code} => {
                 // XXX sequence
                 // XXX request_ack
+                let code = code.clone();
+                if code != ResponseCode::KeepAlive {
+                    println!("DEBUG: Got packet from server {:?}: Sequence: {:?} Request_Ack: {:?} ResponseCode: {:?}", addr, sequence, request_ack, code);
+                }
+
                 match code {
                     ResponseCode::OK => {
                         match self.handle_response_ok() {
@@ -110,6 +131,9 @@ impl ClientState {
                     ResponseCode::RoomList(rooms) => {
                         self.handle_room_list(rooms);
                     }
+                    ResponseCode::KeepAlive => {
+                        self.heartbeat = Some(Instant::now());
+                    },
                     // errors
                     code @ _ => {
                         error!("response from server: {:?}", code);
@@ -127,7 +151,14 @@ impl ClientState {
                     last_game_update_seq: None,
                     last_gen:             None,
                 };
-                let _ = udp_tx.unbounded_send((addr.clone(), packet));
+                let send = udp_tx.unbounded_send((addr.clone(), packet));
+
+                if send.is_err() {
+                    warn!("Could not send UpdateReply{{ {} }} to server", self.chat_msg_seq_num);
+                    self.network.statistics.tx_packets_failed += 1;
+                } else {
+                    self.network.statistics.tx_packets_success += 1;
+                }
             }
             Packet::Request{..} => {
                 warn!("Ignoring packet from server normally sent by clients: {:?}", packet);
@@ -138,8 +169,32 @@ impl ClientState {
         }
     }
 
-    fn handle_tick_event(&self) {
+    fn handle_tick_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr) {
+        // Every 100ms, after we've connected
+        if self.tick % 100 == 0 && self.cookie.is_some() {
+            let keep_alive = Packet::Request {
+                sequence: self.sequence,
+                response_ack: self.response_ack,
+                cookie: self.cookie.clone(),
+                action: RequestAction::KeepAlive
+            };
+            let result = udp_tx.unbounded_send( (addr, keep_alive) );
 
+            if net::has_connection_timed_out(self.heartbeat) {
+                println!("Server is non-responsive, disconnecting.");
+                self.reinitialize();
+            }
+
+            if result.is_err() {
+                warn!("Could not send KeepAlive");
+                self.network.statistics.tx_keep_alive_failed += 1;
+            } else {
+                self.network.statistics.tx_keep_alive_success += 1;
+                info!("Send KeepAlive yay!")
+            }
+        }
+
+        self.tick = 1usize.wrapping_add(self.tick);
     }
 
     fn handle_user_input_event(&mut self,
@@ -157,20 +212,41 @@ impl ClientState {
                 action = self.build_command_request_action(cmd, args);
 
                 if action == RequestAction::Disconnect {
-                    (&exit_tx).unbounded_send(()).unwrap();
+                    exit_tx.unbounded_send(()).unwrap(); // Okay if we panic for FA/we want to quit anyway
                 }
             },
         }
         if action != RequestAction::None {
+            // Sequence number can increment once we're talking to a server
+            if self.cookie != None {
+                self.sequence += 1;
+            }
+
             self.last_req_action = Some(action.clone());
-            let packet = Packet::Request {
+            let mut packet = Packet::Request {
                 sequence:     self.sequence,
                 response_ack: self.response_ack,
                 cookie:       self.cookie.clone(),
-                action:       action,
+                action:       action.clone(),
             };
-            let _ = (&udp_tx).unbounded_send((addr.clone(), packet));
-            self.sequence += 1;
+
+            if let RequestAction::TestSequenceNumber(b) = action.clone() {
+                packet = Packet::Request {
+                    sequence:     b,
+                    response_ack: self.response_ack,
+                    cookie:       self.cookie.clone(),
+                    action:       action,
+                };
+            }
+
+            self.network.buffer_tx_packet(packet.clone());
+            let result = udp_tx.unbounded_send((addr.clone(), packet));
+            if result.is_err() {
+                warn!("Could not send user input cmd to server");
+                self.network.statistics.tx_packets_failed += 1;
+            } else {
+                self.network.statistics.tx_packets_success += 1;
+            }
         }
     }
 
@@ -186,6 +262,7 @@ impl ClientState {
                         println!("Left room {}.", self.room.clone().unwrap());
                     }
                     self.room = None;
+                    self.chat_msg_seq_num = 0;
                 }
                 _ => {
                     //XXX more cases in which server replies OK
@@ -202,6 +279,7 @@ impl ClientState {
     fn handle_logged_in(&mut self, cookie: String, server_version: String) {
         self.cookie = Some(cookie);
 
+        println!("Set client name to {:?}", self.name.clone().unwrap());
         self.check_for_upgrade(&server_version);
     }
 
@@ -261,7 +339,6 @@ impl ClientState {
             "connect" => {
                 if args.len() == 1 {
                     self.name = Some(args[0].clone());
-                    println!("Set client name to {:?}", self.name.clone().unwrap());
                     action = RequestAction::Connect{
                         name:           args[0].clone(),
                         client_version: CLIENT_VERSION.to_owned(),
@@ -311,6 +388,11 @@ impl ClientState {
                 println!("Peace out!");
                 action = RequestAction::Disconnect;
             }
+            "sn" => {
+                if args.len() != 0 {
+                    action = RequestAction::TestSequenceNumber(args[0].parse::<u64>().unwrap());
+                }
+            }
             _ => {
                 println!("ERROR: command not recognized: {}", cmd);
             }
@@ -329,7 +411,7 @@ enum UserInput {
 enum Event {
     TickEvent,
     UserInputEvent(UserInput),
-    Response((SocketAddr, Option<Packet>)),
+    Incoming((SocketAddr, Option<Packet>)),
 //    NotifyAck((SocketAddr, Option<Packet>)),
 }
 
@@ -383,7 +465,7 @@ fn main() {
     let iter_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () )); // just a Stream that emits () forever
     // .and_then is like .map except that it processes returned Futures
     let tick_stream = iter_stream.and_then(|_| {
-        let timeout = Timeout::new(Duration::from_millis(1000), &handle).unwrap();
+        let timeout = Timeout::new(Duration::from_millis(TICK_INTERVAL), &handle).unwrap();
         timeout.and_then(move |_| {
             ok(Event::TickEvent)
         })
@@ -394,7 +476,7 @@ fn main() {
             *opt_packet != None
         })
         .map(|packet_tuple| {
-            Event::Response(packet_tuple)
+            Event::Incoming(packet_tuple)
         })
         .map_err(|_| ());
 
@@ -422,11 +504,11 @@ fn main() {
         .select(stdin_stream)
         .fold(initial_client_state, move |mut client_state: ClientState, event| {
             match event {
-                Event::Response((addr, opt_packet)) => {
-                    client_state.handle_response_event(&udp_tx, addr, opt_packet);
+                Event::Incoming((addr, opt_packet)) => {
+                    client_state.handle_incoming_event(&udp_tx, addr, opt_packet);
                 }
                 Event::TickEvent => {
-                    client_state.handle_tick_event();
+                    client_state.handle_tick_event(&udp_tx, addr);
                 }
                 Event::UserInputEvent(user_input) => {
                     client_state.handle_user_input_event(&udp_tx, &exit_tx, user_input, addr);
@@ -542,6 +624,7 @@ mod test {
     #[test]
     fn handle_logged_in_verify_connection_cookie() {
         let mut client_state = ClientState::new();
+        client_state.name = Some("Dr. Cookie Monster, Esquire".to_owned());
         assert_eq!(client_state.cookie, None);
         client_state.handle_logged_in("cookie monster".to_owned(), CLIENT_VERSION.to_owned());
         assert_eq!(client_state.cookie, Some("cookie monster".to_owned()));
@@ -821,6 +904,7 @@ mod test {
         let user_input = UserInput::Chat("memes".to_owned());
         let addr = fake_socket_addr();
 
+        client_state.cookie = Some("ThisDoesNotReallyMatterAsLongAsItExists".to_owned());
         client_state.handle_user_input_event(&udp_tx, &exit_tx, user_input, addr.clone());
         assert_eq!(client_state.sequence, 1);
 

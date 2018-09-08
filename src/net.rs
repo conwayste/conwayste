@@ -26,6 +26,8 @@ use std::io;
 use std::net::{self, SocketAddr};
 use std::str;
 use std::result;
+use std::time;
+use std::collections::VecDeque;
 
 use self::tokio_core::net::{UdpSocket, UdpCodec};
 use self::tokio_core::reactor::Handle;
@@ -33,6 +35,10 @@ use self::bincode::{serialize, deserialize, Infinite};
 use self::semver::{Version, SemVerError};
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+pub const DEFAULT_HOST: &str = "0.0.0.0";
+pub const DEFAULT_PORT: u16 = 12345;
+const TIMEOUT_IN_SECONDS:    u64   = 5;
+const PACKET_HISTORY_SIZE: usize = 15;
 
 //////////////// Error handling ////////////////
 #[derive(Debug)]
@@ -67,6 +73,7 @@ pub enum RequestAction {
     NewRoom(String),
     JoinRoom(String),
     LeaveRoom,
+    TestSequenceNumber(u64),
 }
 
 // server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
@@ -84,6 +91,8 @@ pub enum ResponseCode {
     ServerError(Option<String>),     // 500
     NotConnected(Option<String>),    // no equivalent in HTTP due to handling at lower (TCP) level
     PleaseUpgrade(Option<String>),   // client should give upgrade msg to user, but continue as if OK
+    KeepAlive,                       // Server's heart is beating
+    OldPacket,                       // Internally used to ignore a packet, just for testing
 }
 
 // chat messages sent from server to all clients other than originating client
@@ -178,7 +187,7 @@ impl UdpCodec for LineCodec {
         match deserialize(buf) {
             Ok(decoded) => Ok((*addr, Some(decoded))),
             Err(e) => {
-                let local: SocketAddr = format!("{}:{}", "127.0.0.1", PORT.to_string()).parse().unwrap();
+                let local: SocketAddr = format!("{}:{}", "127.0.0.1", DEFAULT_PORT.to_string()).parse().unwrap();
                 // We only want to warn when the incoming packet is external to the host system
                 if local != *addr {
                     println!("WARNING: error during packet deserialization: {:?}", e);
@@ -199,19 +208,319 @@ impl UdpCodec for LineCodec {
 #[allow(dead_code)]
 pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket, NetError> {
 
-    let host = if let Some(host) = opt_host { host } else { HOST };
-    let port = if let Some(port) = opt_port { port } else { PORT };
+    let host = if let Some(host) = opt_host { host } else { DEFAULT_HOST };
+    let port = if let Some(port) = opt_port { port } else { DEFAULT_PORT };
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
     let sock = UdpSocket::bind(&addr, &handle).expect("failed to bind socket");
     Ok(sock)
 }
 
-//XXX other functions
-
-pub const HOST: &str = "0.0.0.0";
-pub const PORT: u16 = 12345;
-
 #[allow(dead_code)]
 pub fn get_version() -> result::Result<Version, SemVerError> {
     Version::parse(VERSION)
+}
+
+pub fn has_connection_timed_out(heartbeat: Option<time::Instant>) -> bool {
+    if let Some(heartbeat) = heartbeat {
+        (time::Instant::now() - heartbeat) > time::Duration::from_secs(TIMEOUT_IN_SECONDS)
+    } else { false }
+}
+
+pub struct NetworkStatistics {
+    pub tx_packets_failed: u64,
+    pub tx_packets_success: u64,
+    pub tx_keep_alive_failed: u64,
+    pub tx_keep_alive_success: u64,
+}
+
+impl NetworkStatistics {
+    fn new() -> Self {
+        NetworkStatistics {
+            tx_packets_failed: 0,
+            tx_packets_success: 0,
+            tx_keep_alive_failed: 0,
+            tx_keep_alive_success: 0
+        }
+    }
+}
+
+pub struct NetworkManager {
+    pub statistics:     NetworkStatistics,
+    pub tx_packets:     VecDeque<Packet>, // Back == Newest, Front == Oldest
+    rx_packets:     VecDeque<Packet>, // Back == Newest, Front == Oldest
+}
+
+impl NetworkManager {
+    pub fn new() -> Self {
+        NetworkManager {
+            statistics: NetworkStatistics::new(),
+            tx_packets:  VecDeque::<Packet>::with_capacity(PACKET_HISTORY_SIZE),
+            rx_packets:  VecDeque::<Packet>::with_capacity(PACKET_HISTORY_SIZE),
+        }
+    }
+
+    pub fn newest_tx_packet_in_queue(&self) -> Option<&Packet> {
+        self.tx_packets.back()
+    }
+
+    /// The TX Packet queue must only contain Request packets.
+    fn newest_tx_packet_seq_num(&self) -> Option<u64> {
+        if let Some(newest_packet) = self.newest_tx_packet_in_queue() {
+            if let Packet::Request{ sequence: newest_sequence, response_ack: _, cookie: _, action: _ } = *newest_packet {
+                Some(newest_sequence)
+            } else { panic!("Found something other than a `Request` packet in the buffer: {:?}", newest_packet) }
+                    // Somehow not a Request packet. Panic during development XXX
+        } else { None }
+                // Queue is empty
+    }
+
+    /// This will keep the specified queue under the PACKET_HISTORY_SIZE limit.
+    /// The TX queue needs to ensure a spot is open if we're at capacity.
+    fn discard_older_packets(&mut self, is_tx_queue: bool) {
+        let queue = match is_tx_queue {
+            true => &mut self.tx_packets,
+            false => &mut self.rx_packets,
+        };
+        let queue_size = queue.len();
+        if queue_size >= PACKET_HISTORY_SIZE {
+            for _ in 0..(queue_size-PACKET_HISTORY_SIZE) {
+                queue.pop_front();
+            }
+
+            // Keep 1 spot empty for upcoming enqueue
+            if is_tx_queue {
+                queue.pop_front();
+            }
+        }
+    }
+
+    /// As we buffer new packets, we'll want to throw away the older packets.
+    /// We must be careful to ensure that we do not throw away packets that have
+    /// not yet been acknowledged by the end-point.
+    pub fn buffer_tx_packet(&mut self, packet: Packet) {
+        if let Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } = packet {
+
+            if let Some(newest_seq_num) = self.newest_tx_packet_seq_num() {
+                self.discard_older_packets(true);
+
+                // Current packet is newer, and we're adding in sequential order
+                if newest_seq_num < sequence && newest_seq_num+1 == sequence {
+                    self.tx_packets.push_back(packet);
+                }
+            } else {
+                self.tx_packets.push_back(packet);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_discard_older_packets_empty_queue() {
+        let mut nm = NetworkManager::new();
+
+        nm.discard_older_packets(true);
+        nm.discard_older_packets(false);
+        assert_eq!(nm.tx_packets.len(), 0);
+        assert_eq!(nm.rx_packets.len(), 0);
+    }
+
+    #[test]
+    fn test_discard_older_packets_under_limit_keeps_all_messages() {
+        let mut nm = NetworkManager::new();
+        let pkt = Packet::Request {
+            sequence: 0,
+            response_ack: None,
+            cookie: None,
+            action: RequestAction::None
+        };
+
+        nm.tx_packets.push_back(pkt.clone());
+        nm.tx_packets.push_back(pkt.clone());
+        nm.tx_packets.push_back(pkt.clone());
+
+        nm.discard_older_packets(true);
+        assert_eq!(nm.tx_packets.len(), 3);
+
+        nm.rx_packets.push_back(pkt.clone());
+        nm.rx_packets.push_back(pkt.clone());
+        nm.rx_packets.push_back(pkt.clone());
+
+        nm.discard_older_packets(false);
+        assert_eq!(nm.rx_packets.len(), 3);
+    }
+
+    #[test]
+    fn test_discard_older_packets_equal_to_limit() {
+        let mut nm = NetworkManager::new();
+        let pkt = Packet::Request {
+            sequence: 0,
+            response_ack: None,
+            cookie: None,
+            action: RequestAction::None
+        };
+
+        for _ in 0..PACKET_HISTORY_SIZE {
+            nm.tx_packets.push_back(pkt.clone());
+        }
+        assert_eq!(nm.tx_packets.len(), PACKET_HISTORY_SIZE);
+        nm.discard_older_packets(true);
+        assert_eq!(nm.tx_packets.len(), PACKET_HISTORY_SIZE-1);
+
+        for _ in 0..PACKET_HISTORY_SIZE {
+            nm.rx_packets.push_back(pkt.clone());
+        }
+        assert_eq!(nm.rx_packets.len(), PACKET_HISTORY_SIZE);
+        nm.discard_older_packets(false);
+        assert_eq!(nm.rx_packets.len(), PACKET_HISTORY_SIZE);
+    }
+
+    #[test]
+    fn test_discard_older_packets_exceeds_limit_retains_max() {
+        let mut nm = NetworkManager::new();
+        let pkt = Packet::Request {
+            sequence: 0,
+            response_ack: None,
+            cookie: None,
+            action: RequestAction::None
+        };
+
+        for _ in 0..PACKET_HISTORY_SIZE+10 {
+            nm.tx_packets.push_back(pkt.clone());
+        }
+        assert_eq!(nm.tx_packets.len(), PACKET_HISTORY_SIZE+10);
+        nm.discard_older_packets(true);
+        assert_eq!(nm.tx_packets.len(), PACKET_HISTORY_SIZE-1);
+
+        for _ in 0..PACKET_HISTORY_SIZE+5 {
+            nm.rx_packets.push_back(pkt.clone());
+        }
+        assert_eq!(nm.rx_packets.len(), PACKET_HISTORY_SIZE+5);
+        nm.discard_older_packets(false);
+        assert_eq!(nm.rx_packets.len(), PACKET_HISTORY_SIZE);
+    }
+
+    #[test]
+    fn test_buffer_tx_packet_not_a_request_packet() {
+        let mut nm = NetworkManager::new();
+        let pkt = Packet::Response {
+            sequence: 0,
+            request_ack: None,
+            code: ResponseCode::OK
+        };
+
+        nm.buffer_tx_packet(pkt);
+        assert_eq!(nm.tx_packets.len(), 0);
+    }
+
+    #[test]
+    fn test_buffer_tx_packet_queue_is_empty() {
+        let mut nm = NetworkManager::new();
+        let pkt = Packet::Request {
+            sequence: 0,
+            response_ack: None,
+            cookie: None,
+            action: RequestAction::None
+        };
+
+        nm.buffer_tx_packet(pkt);
+        assert_eq!(nm.tx_packets.len(), 1);
+    }
+
+    #[test]
+    fn test_buffer_tx_packet_sequence_number_reused() {
+        let mut nm = NetworkManager::new();
+        let pkt = Packet::Request {
+            sequence: 0,
+            response_ack: None,
+            cookie: None,
+            action: RequestAction::None
+        };
+
+        nm.buffer_tx_packet(pkt);
+        let pkt = Packet::Request {
+            sequence: 0,
+            response_ack: None,
+            cookie: None,
+            action: RequestAction::LeaveRoom
+        };
+
+        nm.buffer_tx_packet(pkt);
+        let pkt = nm.tx_packets.back().unwrap();
+        if let Packet::Request { sequence: _, response_ack: _, cookie: _, action } = pkt {
+            assert_eq!(*action, RequestAction::None);
+        }
+    }
+
+    #[test]
+    fn test_buffer_tx_packet_basic_sequencing() {
+        let mut nm = NetworkManager::new();
+        let pkt = Packet::Request {
+            sequence: 0,
+            response_ack: None,
+            cookie: None,
+            action: RequestAction::None
+        };
+
+        nm.buffer_tx_packet(pkt);
+        let pkt = Packet::Request {
+            sequence: 1,
+            response_ack: None,
+            cookie: None,
+            action: RequestAction::LeaveRoom
+        };
+        nm.buffer_tx_packet(pkt);
+        assert_eq!(nm.tx_packets.len(), 2);
+    }
+
+    #[test]
+    fn test_buffer_tx_packet_newer_packet_has_smaller_sequence_number() {
+        let mut nm = NetworkManager::new();
+        let pkt = Packet::Request {
+            sequence: 1,
+            response_ack: None,
+            cookie: None,
+            action: RequestAction::None
+        };
+
+        nm.buffer_tx_packet(pkt);
+        let pkt = Packet::Request {
+            sequence: 0,
+            response_ack: None,
+            cookie: None,
+            action: RequestAction::LeaveRoom
+        };
+        nm.buffer_tx_packet(pkt);
+        assert_eq!(nm.tx_packets.len(), 1);
+
+        let pkt = nm.tx_packets.back().unwrap();
+        if let Packet::Request { sequence, response_ack: _, cookie: _, action:_ } = pkt {
+            assert_eq!(*sequence, 1);
+        }
+    }
+
+    #[test]
+    fn test_buffer_tx_packet_max_queue_limit_maintained() {
+        let mut nm = NetworkManager::new();
+        for index in 0..PACKET_HISTORY_SIZE+5 {
+            let pkt = Packet::Request {
+                sequence: index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.buffer_tx_packet(pkt);
+        }
+
+        let mut iter =  nm.tx_packets.iter();
+        for index in 5..PACKET_HISTORY_SIZE+5 {
+            let pkt = iter.next().unwrap();
+            if let Packet::Request { sequence, response_ack: _, cookie: _, action:_ } = pkt {
+                assert_eq!(*sequence, index as u64);
+            }
+        }
+    }
 }
