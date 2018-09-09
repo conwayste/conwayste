@@ -485,8 +485,8 @@ impl ServerState {
     }
 
     fn remove_player(&mut self, player_id: PlayerID, player_cookie: String) {
-        let _opt_v = self.player_map.remove(&player_cookie);
-        let _opt_v = self.players.remove(&player_id);
+        self.player_map.remove(&player_cookie);
+        self.players.remove(&player_id);
     }
 
     fn handle_disconnect(&mut self, player_id: PlayerID) -> ResponseCode {
@@ -545,7 +545,7 @@ impl ServerState {
             RequestAction::None => {
                 return ResponseCode::BadRequest( Some("Invalid request".to_owned()) );
             },
-            RequestAction::TestSequenceNumber(b) => { return ResponseCode::OldPacket; },
+            RequestAction::TestSequenceNumber(_) => { return ResponseCode::OldPacket; },
         }
     }
 
@@ -579,7 +579,7 @@ impl ServerState {
             Packet::Request{sequence, response_ack, cookie, action} => {
 
                 if action.clone() != RequestAction::KeepAlive {
-                    println!("Packet_RX {:?}/{:?}: {:?} {:?} {:?}", addr, cookie, sequence, response_ack, action);
+                    println!("Packet_RX {:?}/{:?}: Sequence: {:?} Response_Ack: {:?} RequestAction: {:?}", addr, cookie, sequence, response_ack, action);
                 }
 
                 match action {
@@ -928,7 +928,7 @@ fn main() {
 
                             if let Some(response_packet) = opt_response_packet {
                                 let response = (addr.clone(), response_packet);
-                                (&tx).unbounded_send(response).unwrap();
+                                tx.unbounded_send(response).unwrap();
                             }
                         } else {
                             let err = decode_result.unwrap_err();

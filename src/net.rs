@@ -306,43 +306,26 @@ pub fn get_version() -> result::Result<Version, SemVerError> {
 }
 
 pub fn has_connection_timed_out(heartbeat: Option<time::Instant>) -> bool {
-    match heartbeat {
-        Some(heartbeat) =>  time::Instant::now() - heartbeat > time::Duration::from_secs(TIMEOUT_IN_SECONDS),
-        None => false
-    }
+    if let Some(heartbeat) = heartbeat {
+        (time::Instant::now() - heartbeat) > time::Duration::from_secs(TIMEOUT_IN_SECONDS)
+    } else { false }
 }
 
 pub struct NetworkStatistics {
-    packets_tx_failed: u64,
-    packets_tx_success: u64,
-    keep_alive_tx_failed: u64,
-    keep_alive_tx_success: u64,
+    pub tx_packets_failed: u64,
+    pub tx_packets_success: u64,
+    pub tx_keep_alive_failed: u64,
+    pub tx_keep_alive_success: u64,
 }
 
 impl NetworkStatistics {
     fn new() -> Self {
         NetworkStatistics {
-            packets_tx_success: 0,
-            packets_tx_failed: 0,
-            keep_alive_tx_failed: 0,
-            keep_alive_tx_success: 0
+            tx_packets_failed: 0,
+            tx_packets_success: 0,
+            tx_keep_alive_failed: 0,
+            tx_keep_alive_success: 0
         }
-    }
-
-    pub fn inc_tx_packets_failed(&mut self) {
-        self.packets_tx_failed += 1;
-    }
-
-    pub fn inc_tx_packets_success(&mut self) {
-        self.packets_tx_success += 1;
-    }
-
-    pub fn inc_tx_keep_alive_failed(&mut self) {
-        self.keep_alive_tx_failed += 1;
-    }
-
-    pub fn inc_tx_keep_alive_success(&mut self) {
-        self.keep_alive_tx_success += 1;
     }
 }
 
@@ -883,10 +866,10 @@ impl RXQueue<BroadcastChatMessage> {
 }
 
 pub struct NetworkManager {
-    pub statistics:     NetworkStatistics,
-    pub tx_packets:       TXQueue,         // Back         = Newest, Front = Oldest
-    pub rx_packets:           RXQueue<Packet>,         // Back         = Newest, Front = Oldest
-    pub rx_chat_messages:     Option<RXQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest; Messages are drained into the Client; Server does not use this.
+    pub statistics:       NetworkStatistics,
+    pub tx_packets:       TXQueue,                               // Back = Newest, Front = Oldest
+    pub rx_packets:       RXQueue<Packet>,                       // Back = Newest, Front = Oldest
+    pub rx_chat_messages: Option<RXQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest; Messages are drained into the Client; Server does not use this.
 }
 
 impl NetworkManager {
