@@ -644,11 +644,8 @@ mod test {
 
         let mut incoming_messages = vec![];
         for x in 0..10 {
-            incoming_messages.push( BroadcastChatMessage {
-                chat_seq: Some(x as u64),
-                player_name: "a player".to_owned(),
-                message: format!("message {}", x)
-            });
+            let new_msg =  BroadcastChatMessage::new(x as u64, "a player".to_owned(), format!("message {}", x));
+            incoming_messages.push(new_msg);
         }
 
         client_state.handle_incoming_chats(Some(incoming_messages));
@@ -660,12 +657,7 @@ mod test {
         let mut client_state = ClientState::new();
         client_state.chat_msg_seq_num = 10;
 
-        let incoming_messages = vec![
-            BroadcastChatMessage {
-                chat_seq: Some(10u64),
-                player_name: "a player".to_owned(),
-                message: format!("message {}", 10)
-            }];
+        let incoming_messages = vec![ BroadcastChatMessage::new(10u64, "a player".to_owned(), format!("message {}", 10))];
 
         client_state.handle_incoming_chats(Some(incoming_messages));
         assert_eq!(client_state.chat_msg_seq_num, 10);
@@ -677,12 +669,7 @@ mod test {
         let mut client_state = ClientState::new();
         client_state.chat_msg_seq_num = 10;
 
-        let incoming_messages = vec![
-            BroadcastChatMessage {
-                chat_seq: Some(11u64),
-                player_name: "a player".to_owned(),
-                message: format!("message {}", 11)
-            }];
+        let incoming_messages = vec![ BroadcastChatMessage::new(11u64, "a player".to_owned(), format!("message {}", 11))];
 
         client_state.handle_incoming_chats(Some(incoming_messages));
     }
@@ -696,11 +683,8 @@ mod test {
 
         let mut incoming_messages = vec![];
         for x in 0..20 {
-            incoming_messages.push( BroadcastChatMessage {
-                chat_seq: Some(x as u64),
-                player_name: "a player".to_owned(),
-                message: format!("message {}", x)
-            });
+            let new_msg =  BroadcastChatMessage::new(x as u64, "a player".to_owned(), format!("message {}", x));
+            incoming_messages.push(new_msg);
         }
 
         client_state.handle_incoming_chats(Some(incoming_messages));

@@ -795,11 +795,7 @@ impl ServerState {
         }
 
         let unsent_messages: Vec<BroadcastChatMessage> = raw_unsent_messages.iter().map(|msg| {
-            BroadcastChatMessage {
-                chat_seq:    Some(msg.seq_num),
-                player_name: msg.player_name.clone(),
-                message:     msg.message.clone()
-            }
+            BroadcastChatMessage::new(msg.seq_num, msg.player_name.clone(), msg.message.clone())
         }).collect();
 
         return Some(unsent_messages);

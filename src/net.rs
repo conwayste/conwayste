@@ -137,7 +137,7 @@ impl Ord for BroadcastChatMessage {
 }
 
 impl BroadcastChatMessage {
-    fn new(sequence: u64, name: String, msg: String) -> BroadcastChatMessage {
+    pub fn new(sequence: u64, name: String, msg: String) -> BroadcastChatMessage {
         BroadcastChatMessage {
             chat_seq: Some(sequence),
             player_name: name,
