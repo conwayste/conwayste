@@ -242,6 +242,20 @@ impl NetworkStatistics {
             tx_keep_alive_success: 0
         }
     }
+
+    fn reset(&mut self) {
+        #![deny(unused_variables)]
+        let Self {
+            ref mut tx_packets_failed,
+            ref mut tx_packets_success,
+            ref mut tx_keep_alive_failed,
+            ref mut tx_keep_alive_success,
+        } = *self;
+        *tx_packets_failed     = 0;
+        *tx_packets_success    = 0;
+        *tx_keep_alive_failed  = 0;
+        *tx_keep_alive_success = 0;
+    }
 }
 
 pub struct NetworkManager {
@@ -257,6 +271,18 @@ impl NetworkManager {
             tx_packets:  VecDeque::<Packet>::with_capacity(PACKET_HISTORY_SIZE),
             rx_packets:  VecDeque::<Packet>::with_capacity(PACKET_HISTORY_SIZE),
         }
+    }
+
+    pub fn reset(&mut self) {
+        #![deny(unused_variables)]
+        let Self {
+            ref mut statistics,
+            ref mut tx_packets,
+            ref mut rx_packets,
+        } = *self;
+        statistics.reset();
+        tx_packets.clear();
+        rx_packets.clear();
     }
 
     pub fn newest_tx_packet_in_queue(&self) -> Option<&Packet> {

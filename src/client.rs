@@ -101,7 +101,7 @@ impl ClientState {
         *cookie           = None;
         *chat_msg_seq_num = 0;
         *tick             = 0;
-        *network          = NetworkManager::new();
+        network.reset();
         *heartbeat        = None;
     }
 
