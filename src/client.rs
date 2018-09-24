@@ -84,6 +84,7 @@ impl ClientState {
         self.last_req_action = None;
         self.chat_msg_seq_num = 0;
         self.room = None;
+        self.network.reinitialize();
     }
 
     fn in_game(&self) -> bool {

@@ -332,6 +332,8 @@ impl NetworkStatistics {
         }
     }
 }
+
+/*
 pub trait Sequenced: Ord {
     fn sequence_number(&self) -> u64;
 }
@@ -347,8 +349,8 @@ impl Sequenced for BroadcastChatMessage {
         self.sequence_number()
     }
 }
-
-pub trait NetworkQueue<T: Sequenced> {
+*/
+pub trait NetworkQueue<T: Ord+Sequenced> {
     fn new(size: usize) -> ItemQueue<T>
     {
         ItemQueue::<T>::with_capacity(size)
@@ -416,6 +418,10 @@ pub trait NetworkQueue<T: Sequenced> {
         } else {
             false
         }
+    }
+
+    fn clear(&mut self) {
+        self.as_queue_type_mut().clear()
     }
 
     fn discard_older_items(&mut self);
@@ -486,7 +492,7 @@ impl NetworkQueue<Packet> for TXQueue {
 }
 
 impl<T> NetworkQueue<T> for RXQueue<T>
-        where T: Sequenced {
+        where T: Ord {
 
     fn as_queue_type(&self) -> &ItemQueue<T> {
         &self.queue
@@ -616,7 +622,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
     }
 }
 
-impl<T> RXQueue<T> where T: Sequenced {
+impl<T> RXQueue<T> where T: Ord {
 
     /// Search within the RX queue, but we have no idea where to insert.
     /// This should cover only within the RX queue and not at the edges (front or back).
@@ -707,6 +713,13 @@ impl NetworkManager {
         }
     }
 
+    pub fn reinitialize(&mut self) {
+        self.tx_packets.clear();
+        self.rx_packets.clear();
+        if let Some(ref mut rx_chat_msgs) = self.rx_chat_messages {
+            rx_chat_msgs.clear();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1495,5 +1508,23 @@ mod test {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number());
         }
+    }
+
+    #[test]
+    fn test_reinitialize_all_queues_cleared() {
+        let mut nm = NetworkManager::new();
+        let pkt = Packet::Request {
+            sequence: 0,
+            response_ack: None,
+            cookie: None,
+            action: RequestAction::None
+        };
+
+        for _ in 0..NETWORK_QUEUE_LENGTH {
+            nm.tx_packets.push_back(pkt.clone());
+        }
+        assert_eq!(nm.tx_packets.len(), NETWORK_QUEUE_LENGTH);
+
+        let chat_msg = BroadcastChatMessage::new(0, "chatchat".to_owned(), "chatchat".to_owned());
     }
 }
