@@ -401,24 +401,23 @@ pub trait NetworkQueue<T: Ord+Sequenced> {
     /// I've deemed 'far away' to mean the half of the max value of the type.
     fn is_seq_sufficiently_far_away(&self, a: u64, b: u64) -> bool {
         static HALFWAYPOINT: u64 = u64::max_value()/2;
-        a - b > HALFWAYPOINT
+        if a > b {
+            a - b > HALFWAYPOINT
+        } else {
+            b - a > HALFWAYPOINT
+        }
     }
 
     /// Checks if the insertion of `sequence` induces a newly wrapped queue state.
-    /// Sequence must be >=, or <, what we're comparing against. Cannot have wrapped yet.
+    /// If we have already wrapped in the buffer, then it shouldn't cause another wrap due to the nature of the problem.
     fn will_seq_cause_a_wrap(&self,
                             buffer_wrap_index: Option<usize>,
                             sequence: u64,
                             oldest_seq_num: u64,
                             newest_seq_num: u64) -> bool {
         if buffer_wrap_index.is_none() {
-            if sequence >= oldest_seq_num && sequence >= newest_seq_num {
-                self.is_seq_sufficiently_far_away(sequence, oldest_seq_num)
-                && self.is_seq_sufficiently_far_away(sequence, newest_seq_num)
-            } else {
-                self.is_seq_sufficiently_far_away(oldest_seq_num, sequence)
-                && self.is_seq_sufficiently_far_away(newest_seq_num, sequence)
-            }
+            self.is_seq_sufficiently_far_away(sequence, oldest_seq_num)
+            && self.is_seq_sufficiently_far_away(sequence, newest_seq_num)
         } else {
             false
         }
@@ -521,7 +520,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
     /// have a corresponding sequence number to delineate order.
     ///
     /// This also handles the case where the sequence number numerically wraps.
-    /// `rx_buffer_wrap_index` is maintained to denote the queue index at which the numerical wrap occurs.
+    /// `buffer_wrap_index` is maintained to denote the queue index at which the numerical wrap occurs.
     /// It is used to determine if a wrap has occurred yet, and if so, helps narrow the queue subset we will insert into.
     ///
     /// For sequence numbers of type 'Byte':
