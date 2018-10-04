@@ -406,7 +406,11 @@ pub trait NetworkQueue<T: Ord+Sequenced> {
 
     /// Checks if the insertion of `sequence` induces a newly wrapped queue state.
     /// Sequence must be >=, or <, what we're comparing against. Cannot have wrapped yet.
-    fn is_seq_about_to_wrap(&self, buffer_wrap_index: Option<usize>, sequence: u64, oldest_seq_num: u64, newest_seq_num: u64) -> bool {
+    fn is_seq_about_to_wrap(&self,
+                            buffer_wrap_index: Option<usize>,
+                            sequence: u64,
+                            oldest_seq_num: u64,
+                            newest_seq_num: u64) -> bool {
         if buffer_wrap_index.is_none() {
             if sequence >= oldest_seq_num && sequence >= newest_seq_num {
                 self.is_seq_sufficiently_far_away(sequence, oldest_seq_num)
@@ -531,8 +535,9 @@ impl<T> NetworkQueue<T> for RXQueue<T>
     ///     [253, 254, 255, 1, 2, 3, 4]
     ///                     ^ wrapping index
     ///
-    /// Because we can receive `T`'s out-of-order even when wrapped, there are checks added below to safeguard against this.
-    /// Primarily, they cover the cases where out-of-order insertion would transition the queue into a wrapped state from a non-wrapped state.
+    /// Because we can receive `T`'s out-of-order even when wrapped, there are checks added below to safeguard
+    /// against this. Primarily, they cover the cases where out-of-order insertion would transition the queue into a
+    /// wrapped state from a non-wrapped state.
     fn buffer_item(&mut self, item: T) {
         let sequence = item.sequence_number();
 
@@ -627,7 +632,8 @@ impl<T> RXQueue<T> where T: Sequenced {
     /// Search within the RX queue, but we have no idea where to insert.
     /// This should cover only within the RX queue and not at the edges (front or back).
     /// We accomplish this by splitting the VecDequeue into a slice tuple and then binary searching on each slice.
-    /// Small note: The splitting of VecDequeue is into its 'front' and 'back' halves, based on how 'push_front' and 'push_back' were used.
+    /// Small note: The splitting of VecDequeue is into its 'front' and 'back' halves, based on how 'push_front'
+    /// and 'push_back' were used.
     fn find_rx_insertion_index(&self, item: &T) -> Option<usize> {
         let (front_slice, back_slice) = self.queue.as_slices();
         let f_result = front_slice.binary_search(&item);
@@ -691,7 +697,9 @@ pub struct NetworkManager {
     pub statistics:       NetworkStatistics,
     pub tx_packets:       TXQueue,                               // Back = Newest, Front = Oldest
     pub rx_packets:       RXQueue<Packet>,                       // Back = Newest, Front = Oldest
-    pub rx_chat_messages: Option<RXQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest; Messages are drained into the Client; Server does not use this.
+    pub rx_chat_messages: Option<RXQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest;
+                                                                 //     Messages are drained into the Client;
+                                                                 //     Server does not use this structure.
 }
 
 impl NetworkManager {
@@ -709,7 +717,10 @@ impl NetworkManager {
             statistics: self.statistics,
             tx_packets: self.tx_packets,
             rx_packets: self.rx_packets,
-            rx_chat_messages:  Some(RXQueue{ queue: RXQueue::<BroadcastChatMessage>::new(NETWORK_QUEUE_LENGTH), buffer_wrap_index: None }),
+            rx_chat_messages:  Some(RXQueue {
+                                        queue: RXQueue::<BroadcastChatMessage>::new(NETWORK_QUEUE_LENGTH),
+                                        buffer_wrap_index: None
+                                }),
         }
     }
 
@@ -1253,7 +1264,16 @@ mod test {
         let two = 2;
         let three = 3;
 
-        let input_order = [max_minus_4, two, max_minus_1, max_minus_5, u64_max, three, max_minus_2, zero, max_minus_3, one];
+        let input_order = [ max_minus_4,
+                            two,
+                            max_minus_1,
+                            max_minus_5,
+                            u64_max,
+                            three,
+                            max_minus_2,
+                            zero,
+                            max_minus_3,
+                            one ];
 
         for index in input_order.iter() {
             let pkt = Packet::Request {
@@ -1267,7 +1287,10 @@ mod test {
 
         let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
-        range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
+        range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three]
+                .iter()
+                .cloned()); // Add in u64 max value plus others
+
         for index in range.iter() {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number());
@@ -1330,7 +1353,8 @@ mod test {
 
         let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
-        range.extend([max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
+        range.extend([max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned());
+
         for index in range.iter() {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number());
@@ -1364,7 +1388,8 @@ mod test {
 
         let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
-        range.extend([max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
+        range.extend([max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned());
+
         for index in range.iter() {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number());
@@ -1398,7 +1423,8 @@ mod test {
 
         let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
-        range.extend([max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
+        range.extend([max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned());
+
         for index in range.iter() {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number());
@@ -1433,7 +1459,8 @@ mod test {
 
         let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
-        range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
+        range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned());
+
         for index in range.iter() {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number());
@@ -1468,7 +1495,10 @@ mod test {
 
         let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
-        range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
+        range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three]
+                .iter()
+                .cloned());
+
         for index in range.iter() {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number());
@@ -1503,7 +1533,10 @@ mod test {
 
         let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
-        range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned()); // Add in u64 max value plus others
+        range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three]
+                .iter()
+                .cloned()); // Add in u64 max value plus others
+
         for index in range.iter() {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number());
