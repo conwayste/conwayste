@@ -406,7 +406,7 @@ pub trait NetworkQueue<T: Ord+Sequenced> {
 
     /// Checks if the insertion of `sequence` induces a newly wrapped queue state.
     /// Sequence must be >=, or <, what we're comparing against. Cannot have wrapped yet.
-    fn is_seq_about_to_wrap(&self,
+    fn will_seq_cause_a_wrap(&self,
                             buffer_wrap_index: Option<usize>,
                             sequence: u64,
                             oldest_seq_num: u64,
@@ -554,7 +554,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
         if sequence < oldest_seq_num {
             // Special case with max_value where we do not need to search for the insertion spot.
             if newest_seq_num == u64::max_value() {
-                if self.is_seq_about_to_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
+                if self.will_seq_cause_a_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
                     self.push_back(item);
 
                     if let Some(buffer_wrap_index) = self.buffer_wrap_index {
@@ -581,7 +581,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
                 // The new seq num appears to be older than everything,
                 // but it may be far enough in value to induce a wrap.
                 let insertion_index: Option<usize>;
-                if self.is_seq_about_to_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
+                if self.will_seq_cause_a_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
                     insertion_index = Some(self.len());
                     self.buffer_wrap_index = insertion_index;
                 } else if let Some(buffer_wrap_index) = self.buffer_wrap_index {
@@ -611,7 +611,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
                     insertion_index = self.find_rx_insertion_index_in_subset(0, buffer_wrap_index, &item);
                     self.buffer_wrap_index = Some(buffer_wrap_index + 1);
                 } else {
-                    if self.is_seq_about_to_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
+                    if self.will_seq_cause_a_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
                         // Sequence is far enough, and we haven't wrapped, so it arrived late.
                         // Push it to the front of the queue
                         insertion_index = Some(0);
@@ -823,7 +823,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_tx_packet_queue_is_empty() {
+    fn test_buffer_item_queue_is_empty() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
             sequence: 0,
@@ -837,7 +837,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_tx_packet_sequence_number_reused() {
+    fn test_buffer_item_sequence_number_reused() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
             sequence: 0,
@@ -862,7 +862,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_tx_packet_basic_sequencing() {
+    fn test_buffer_item_basic_sequencing() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
             sequence: 0,
@@ -883,7 +883,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_tx_packet_newer_packet_has_smaller_sequence_number() {
+    fn test_buffer_item_newer_packet_has_smaller_sequence_number() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
             sequence: 1,
@@ -909,7 +909,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_tx_packet_max_queue_limit_maintained() {
+    fn test_buffer_item_max_queue_limit_maintained() {
         let mut nm = NetworkManager::new();
         for index in 0..NETWORK_QUEUE_LENGTH+5 {
             let pkt = Packet::Request {
@@ -931,7 +931,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_basic_contiguous_ascending() {
+    fn test_buffer_item_basic_contiguous_ascending() {
         let mut nm = NetworkManager::new();
         for index in 0..5 {
             let pkt = Packet::Request {
@@ -951,7 +951,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_basic_contiguous_descending() {
+    fn test_buffer_item_basic_contiguous_descending() {
         let mut nm = NetworkManager::new();
         for index in (0..5).rev() {
             let pkt = Packet::Request {
@@ -971,7 +971,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_basic_sequential_gap_ascending() {
+    fn test_buffer_item_basic_sequential_gap_ascending() {
         let mut nm = NetworkManager::new();
         // TODO Replace with (x,y).step_by(z) once stable
         for index in [0,2,4,6,8,10].iter() {
@@ -992,7 +992,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_basic_sequential_gap_descending() {
+    fn test_buffer_item_basic_sequential_gap_descending() {
         let mut nm = NetworkManager::new();
         for index in [0,2,4,6,8,10].iter().rev() {
             let pkt = Packet::Request {
@@ -1012,7 +1012,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_basic_random() {
+    fn test_buffer_item_basic_random() {
         let mut nm = NetworkManager::new();
         for index in [5, 2, 9, 1, 0, 8, 6].iter() {
             let pkt = Packet::Request {
@@ -1032,7 +1032,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_butterfly_pattern() {
+    fn test_buffer_item_butterfly_pattern() {
         let mut nm = NetworkManager::new();
         // This one is fun because it tests the internal edges of (front_slice and back_slice)
         for index in [0, 10, 1, 9, 2, 8, 3, 7, 4, 6, 5].iter() {
@@ -1053,7 +1053,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_basic_repetition() {
+    fn test_buffer_item_basic_repetition() {
         let mut nm = NetworkManager::new();
         for index in [0, 0, 0, 0, 1, 2, 2, 2, 5].iter() {
             let pkt = Packet::Request {
@@ -1073,7 +1073,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_advanced_sequential_then_pseudorandom_then_sequential() {
+    fn test_buffer_item_advanced_sequential_then_pseudorandom_then_sequential() {
         let mut nm = NetworkManager::new();
 
         for index in 0..5 {
@@ -1117,7 +1117,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_advanced_reverse_sequential_then_random_then_reverse_sequential() {
+    fn test_buffer_item_advanced_reverse_sequential_then_random_then_reverse_sequential() {
         let mut nm = NetworkManager::new();
 
         for index in (0..5).rev() {
@@ -1161,7 +1161,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_basic_wrapping_case() {
+    fn test_buffer_item_basic_wrapping_case() {
         let mut nm = NetworkManager::new();
         let u64_max = <u64>::max_value();
         let start = u64_max - 5;
@@ -1206,7 +1206,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_basic_wrapping_case_then_out_of_order() {
+    fn test_buffer_item_basic_wrapping_case_then_out_of_order() {
         let mut nm = NetworkManager::new();
         let u64_max = <u64>::max_value();
         let start = u64_max - 5;
@@ -1251,7 +1251,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_advanced_wrapping_case_everything_out_of_order() {
+    fn test_buffer_item_advanced_wrapping_case_everything_out_of_order() {
         let mut nm = NetworkManager::new();
         let u64_max = <u64>::max_value();
         let max_minus_5 = u64_max - 5;
@@ -1298,7 +1298,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_advanced_max_sequence_number_arrives_after_a_wrap() {
+    fn test_buffer_item_advanced_max_sequence_number_arrives_after_a_wrap() {
         let mut nm = NetworkManager::new();
         let u64_max = <u64>::max_value();
         let max_minus_2 = u64_max - 2;
@@ -1328,7 +1328,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_advanced_oldest_sequence_number_arrived_last() {
+    fn test_buffer_item_advanced_oldest_sequence_number_arrived_last() {
         let mut nm = NetworkManager::new();
         let u64_max = <u64>::max_value();
         let max_minus_3 = u64_max - 3;
@@ -1362,7 +1362,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_advanced_wrap_occurs_with_two_item_queue() {
+    fn test_buffer_item_advanced_wrap_occurs_with_two_item_queue() {
         let mut nm = NetworkManager::new();
         let u64_max = <u64>::max_value();
         let max_minus_3 = u64_max - 3;
@@ -1397,7 +1397,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_advanced_wrap_occurs_with_two_item_queue_in_reverse() {
+    fn test_buffer_item_advanced_wrap_occurs_with_two_item_queue_in_reverse() {
         let mut nm = NetworkManager::new();
         let u64_max = <u64>::max_value();
         let max_minus_3 = u64_max - 3;
@@ -1432,7 +1432,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_advanced_wrapping_case_max_arrives_first() {
+    fn test_buffer_item_advanced_wrapping_case_max_arrives_first() {
         let mut nm = NetworkManager::new();
         let u64_max = <u64>::max_value();
         let max_minus_5 = u64_max - 5;
@@ -1468,7 +1468,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_advanced_wrapping_case_sequence_number_descending() {
+    fn test_buffer_item_advanced_wrapping_case_sequence_number_descending() {
         let mut nm = NetworkManager::new();
         let u64_max = <u64>::max_value();
         let max_minus_5 = u64_max - 5;
@@ -1506,7 +1506,7 @@ mod test {
     }
 
     #[test]
-    fn test_buffer_rx_packet_advanced_wrapping_case_sequence_number_alternating() {
+    fn test_buffer_item_advanced_wrapping_case_sequence_number_alternating() {
         let mut nm = NetworkManager::new();
         let u64_max = <u64>::max_value();
         let max_minus_5 = u64_max - 5;
