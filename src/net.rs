@@ -333,7 +333,7 @@ impl NetworkStatistics {
     }
 }
 
-/*
+
 pub trait Sequenced: Ord {
     fn sequence_number(&self) -> u64;
 }
@@ -349,7 +349,7 @@ impl Sequenced for BroadcastChatMessage {
         self.sequence_number()
     }
 }
-*/
+
 pub trait NetworkQueue<T: Ord+Sequenced> {
     fn new(size: usize) -> ItemQueue<T>
     {
@@ -492,7 +492,7 @@ impl NetworkQueue<Packet> for TXQueue {
 }
 
 impl<T> NetworkQueue<T> for RXQueue<T>
-        where T: Ord {
+        where T: Sequenced {
 
     fn as_queue_type(&self) -> &ItemQueue<T> {
         &self.queue
@@ -622,7 +622,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
     }
 }
 
-impl<T> RXQueue<T> where T: Ord {
+impl<T> RXQueue<T> where T: Sequenced {
 
     /// Search within the RX queue, but we have no idea where to insert.
     /// This should cover only within the RX queue and not at the edges (front or back).
