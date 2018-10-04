@@ -555,12 +555,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
             if newest_seq_num == u64::max_value() {
                 if self.will_seq_cause_a_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
                     self.push_back(item);
-
-                    if let Some(buffer_wrap_index) = self.buffer_wrap_index {
-                        self.buffer_wrap_index = Some(buffer_wrap_index - 1);
-                    } else {
-                        self.buffer_wrap_index = Some(self.len() - 1);
-                    }
+                    self.buffer_wrap_index = Some(self.len() - 1);
                 } else {
                     self.push_front(item);
                 }
@@ -592,13 +587,14 @@ impl<T> NetworkQueue<T> for RXQueue<T>
                 self.insert_into_rx_queue(insertion_index, item);
             } else {
                 // Smallest sequence number (in value) that we have seen thus far.
+                panic!("Previously thought to be dead code. Prove us wrong!");
                 self.push_front(item);
 
                 if self.buffer_wrap_index.is_some() {
                     self.buffer_wrap_index = Some(self.buffer_wrap_index.unwrap() + 1);
                 }
             }
-        } else {
+        } else { // Sequence >= oldest_seq_num
             let insertion_index: Option<usize>;
             if sequence < newest_seq_num {
                 insertion_index = self.find_rx_insertion_index(&item);
