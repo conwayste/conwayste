@@ -15,8 +15,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
-use std::fmt;
-use std::char;
+use std::{char, cmp, fmt};
 
 use bits::{BitGrid, BitOperation, CharGrid};
 
@@ -198,13 +197,6 @@ pub enum CellState {
     Fog,
 }
 
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
-pub struct CellStateWithPosition {
-    col: usize,
-    row: usize,
-    state: CellState,
-}
-
 impl CellState {
     /// Convert this `CellState` to a `char`. When the state is `Alive(None)` or `Dead`, this will
     /// match what would be found in a .rle file. `Wall`, `Alive(Some(player_id))`, and `Fog` are
@@ -297,6 +289,44 @@ impl GenState {
                 walls.modify_bits_in_word(row, word_col, mask, BitOperation::Set);
             }
             _ => unimplemented!()
+        }
+    }
+
+    /// Copies from `src` BitGrid to this GenState as the player specified by `opt_player_id`,
+    /// unless `opt_player_id` is `None`. This is an "or" operation, so any existing alive cells
+    /// are retained, though they may change ownership.  Walls, however, are preserved. Fog is
+    /// cleared on a cell-by-cell basis, rather than using fog radius.
+    ///
+    /// IMPORTANT: dst_region should not extend beyond GenState, nor beyond player's writable
+    /// region. Caller may ensure this using Region::intersection.
+    ///
+    /// The top-left cell (that is, the cell at `(0,0)`) in `src` gets written to `(dst_region.top(),
+    /// dst_region.left())` in `dst`.
+    pub fn copy_from_bit_grid(&mut self, src: &BitGrid, dst_region: Region, opt_player_id: Option<usize>) {
+        BitGrid::copy(src, &mut self.cells, dst_region);
+        if let Some(player_id) = opt_player_id {
+            BitGrid::copy(src, &mut self.player_states[player_id].cells, dst_region);
+
+            for row in dst_region.top()..=dst_region.bottom() {
+                let row = row as usize;
+                // This actually can operate on cells to the left and right of dst_region, but that
+                // shouldn't matter, since it's enforcing an invariant that should already be true.
+                for word_col in (dst_region.left()/64)..=(dst_region.right()/64) {
+                    let word_col = word_col as usize;
+                    // for each wall bit that's 1, clear it in player's cells
+                    self.player_states[player_id].cells[row][word_col] &= !self.wall_cells[row][word_col];
+                    // for each player cell bit that's 1, clear it in player's fog
+                    self.player_states[player_id].fog[row][word_col] &= !self.player_states[player_id].cells[row][word_col];
+                }
+            }
+        }
+        // on the rows in dst_region, for each wall bit that's 1, clear it in dst.cells
+        for row in dst_region.top()..=dst_region.bottom() {
+            let row = row as usize;
+            for word_col in (dst_region.left()/64)..=(dst_region.right()/64) {
+                let word_col = word_col as usize;
+                self.cells[row][word_col] &= !self.wall_cells[row][word_col];
+            }
         }
     }
 }
@@ -1299,6 +1329,22 @@ impl Region {
         self.top     <= row &&
         row <= self.bottom()
     }
+
+    pub fn intersection(&self, other: Region) -> Option<Region> {
+        let left = cmp::max(self.left(), other.left());
+        let right = cmp::min(self.right(), other.right());
+        if left > right {
+            return None;
+        }
+        let width = right - left + 1;
+        let top = cmp::max(self.top(), other.top());
+        let bottom = cmp::min(self.bottom(), other.bottom());
+        if top > bottom {
+            return None;
+        }
+        let height = bottom - top + 1;
+        Some(Region::new(left, top, width as usize, height as usize))
+    }
 }
 
 
@@ -2149,6 +2195,34 @@ mod region_tests {
 
         assert!(!region1.contains(-50, -50));
         assert!(!region2.contains(50, 50));
+    }
+
+    #[test]
+    fn region_no_intersection() {
+        let region1 = Region::new(1, 10, 100, 200);
+        let region2 = Region::new(-100, -200, 100, 200);
+        assert_eq!(region1.intersection(region2), None);
+        assert_eq!(region2.intersection(region1), None);
+    }
+
+    #[test]
+    fn region_intersection_with_self() {
+        let region1 = Region::new(1, 10, 100, 200);
+        assert_eq!(region1.intersection(region1), Some(region1));
+    }
+
+    #[test]
+    fn region_intersection_overlap() {
+        let region1 = Region::new( 1,  10, 100, 200);
+        let region2 = Region::new(90, 120, 100, 200);
+        assert_eq!(region1.intersection(region2), Some(Region::new(90, 120, 11, 90)));
+    }
+
+    #[test]
+    fn region_no_intersection_overlap_one_dim() {
+        let region1 = Region::new(0, 0, 2, 2);
+        let region2 = Region::new(3, 0, 2, 2);
+        assert_eq!(region1.intersection(region2), None);
     }
 }
 
