@@ -545,7 +545,7 @@ impl ServerState {
             RequestAction::None => {
                 return ResponseCode::BadRequest( Some("Invalid request".to_owned()) );
             },
-            RequestAction::TestSequenceNumber(b) => { return ResponseCode::OldPacket; },
+            RequestAction::TestSequenceNumber(_) => { return ResponseCode::OldPacket; },
         }
     }
 
@@ -795,11 +795,7 @@ impl ServerState {
         }
 
         let unsent_messages: Vec<BroadcastChatMessage> = raw_unsent_messages.iter().map(|msg| {
-            BroadcastChatMessage {
-                chat_seq:    Some(msg.seq_num),
-                player_name: msg.player_name.clone(),
-                message:     msg.message.clone()
-            }
+            BroadcastChatMessage::new(msg.seq_num, msg.player_name.clone(), msg.message.clone())
         }).collect();
 
         return Some(unsent_messages);
@@ -955,7 +951,7 @@ fn main() {
 
                     server_state.remove_timed_out_clients();
 
-                    // Send a KeepAlive every scond
+                    // Send a KeepAlive every second
                     if (server_state.tick % 100) == 0 {
                         for player in server_state.players.values() {
                             let keep_alive = Packet::Response {
