@@ -303,16 +303,21 @@ impl GenState {
     /// The top-left cell (that is, the cell at `(0,0)`) in `src` gets written to `(dst_region.top(),
     /// dst_region.left())` in `dst`.
     pub fn copy_from_bit_grid(&mut self, src: &BitGrid, dst_region: Region, opt_player_id: Option<usize>) {
+
         BitGrid::copy(src, &mut self.cells, dst_region);
+
         if let Some(player_id) = opt_player_id {
+
             BitGrid::copy(src, &mut self.player_states[player_id].cells, dst_region);
 
             for row in dst_region.top()..=dst_region.bottom() {
                 let row = row as usize;
+
                 // This actually can operate on cells to the left and right of dst_region, but that
                 // shouldn't matter, since it's enforcing an invariant that should already be true.
-                for word_col in (dst_region.left()/64)..=(dst_region.right()/64) {
+                for word_col in (dst_region.left()/64) ..= (dst_region.right()/64) {
                     let word_col = word_col as usize;
+
                     // for each wall bit that's 1, clear it in player's cells
                     self.player_states[player_id].cells[row][word_col] &= !self.wall_cells[row][word_col];
                     // for each player cell bit that's 1, clear it in player's fog
@@ -320,11 +325,14 @@ impl GenState {
                 }
             }
         }
+
         // on the rows in dst_region, for each wall bit that's 1, clear it in dst.cells
         for row in dst_region.top()..=dst_region.bottom() {
             let row = row as usize;
-            for word_col in (dst_region.left()/64)..=(dst_region.right()/64) {
+
+            for word_col in (dst_region.left()/64) ..= (dst_region.right()/64) {
                 let word_col = word_col as usize;
+
                 self.cells[row][word_col] &= !self.wall_cells[row][word_col];
             }
         }
