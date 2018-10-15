@@ -77,18 +77,43 @@ impl ClientState {
         }
     }
 
-    fn reinitialize(&mut self) {
-        self.cookie = None;
-        self.sequence = 0;
-        self.response_ack = None;
-        self.last_req_action = None;
-        self.chat_msg_seq_num = 0;
-        self.room = None;
-        self.network.reinitialize();
+    fn reset(&mut self) {
+        // Design pattern taken from https://blog.getseq.net/rust-at-datalust-how-we-organize-a-complex-rust-codebase/
+        // The intention is that new fields added to ClientState will cause compiler errors unless
+        // we add them here.
+        #![deny(unused_variables)]
+        let Self {
+            ref mut sequence,
+            ref mut response_ack,
+            ref mut last_req_action,
+            name: ref _name,
+            ref mut room,
+            ref mut cookie,
+            ref mut chat_msg_seq_num,
+            ref mut tick,
+            ref mut network,
+            ref mut heartbeat,
+        } = *self;
+        *sequence         = 0;
+        *response_ack     = None;
+        *last_req_action  = None;
+        *room             = None;
+        *cookie           = None;
+        *chat_msg_seq_num = 0;
+        *tick             = 0;
+        network.reset();
+        *heartbeat        = None;
     }
 
     fn in_game(&self) -> bool {
         self.room.is_some()
+    }
+
+    fn disconnecting(&self) -> bool {
+        if let Some(ref action) = self.last_req_action {
+            return action == &RequestAction::Disconnect
+        }
+        false
     }
 
     // XXX Once netwayste integration is complete, we'll need to internally send
@@ -180,10 +205,13 @@ impl ClientState {
                 action: RequestAction::KeepAlive
             };
             let result = udp_tx.unbounded_send( (addr, keep_alive) );
+            let timed_out = net::has_connection_timed_out(self.heartbeat);
 
-            if net::has_connection_timed_out(self.heartbeat) {
-                println!("Server is non-responsive, disconnecting.");
-                self.reinitialize();
+            if timed_out || self.disconnecting() {
+                if timed_out {
+                    println!("Server is non-responsive, disconnecting.");
+                }
+                self.reset();
             }
 
             if result.is_err() {
@@ -213,7 +241,7 @@ impl ClientState {
                 action = self.build_command_request_action(cmd, args);
 
                 if action == RequestAction::Disconnect {
-                    exit_tx.unbounded_send(()).unwrap(); // Okay if we panic for FA/we want to quit anyway
+                    //exit_tx.unbounded_send(()).unwrap(); // Okay if we panic for FA/we want to quit anyway
                 }
             },
         }

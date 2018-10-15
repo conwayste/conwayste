@@ -331,6 +331,20 @@ impl NetworkStatistics {
             tx_keep_alive_success: 0
         }
     }
+
+    fn reset(&mut self) {
+        #![deny(unused_variables)]
+        let Self {
+            ref mut tx_packets_failed,
+            ref mut tx_packets_success,
+            ref mut tx_keep_alive_failed,
+            ref mut tx_keep_alive_success,
+        } = *self;
+        *tx_packets_failed     = 0;
+        *tx_packets_success    = 0;
+        *tx_keep_alive_failed  = 0;
+        *tx_keep_alive_success = 0;
+    }
 }
 
 
@@ -587,12 +601,12 @@ impl<T> NetworkQueue<T> for RXQueue<T>
                 self.insert_into_rx_queue(insertion_index, item);
             } else {
                 // Smallest sequence number (in value) that we have seen thus far.
-                panic!("Previously thought to be dead code. Prove us wrong!");
                 self.push_front(item);
 
                 if self.buffer_wrap_index.is_some() {
                     self.buffer_wrap_index = Some(self.buffer_wrap_index.unwrap() + 1);
                 }
+                panic!("Previously thought to be dead code. Prove us wrong!");
             }
         } else { // Sequence >= oldest_seq_num
             let insertion_index: Option<usize>;
@@ -719,11 +733,19 @@ impl NetworkManager {
         }
     }
 
-    pub fn reinitialize(&mut self) {
-        self.tx_packets.clear();
-        self.rx_packets.clear();
-        if let Some(ref mut rx_chat_msgs) = self.rx_chat_messages {
-            rx_chat_msgs.clear();
+    pub fn reset(&mut self) {
+        #![deny(unused_variables)]
+        let Self {
+            ref mut statistics,
+            ref mut tx_packets,
+            ref mut rx_packets,
+            ref mut rx_chat_messages,
+        } = *self;
+        statistics.reset();
+        tx_packets.clear();
+        rx_packets.clear();
+        if let Some(chat_messages) = rx_chat_messages {
+            chat_messages.clear();
         }
     }
 }
