@@ -52,7 +52,8 @@ use tokio_core::reactor::{Core, Timeout};
 use rand::Rng;
 use semver::Version;
 
-const TICK_INTERVAL:         u64   = 10; // milliseconds
+const TICK_INTERVAL_IN_MS:      u64 = 10;
+const NETWORK_INTERVAL_IN_MS: u64 = 1000;
 const MAX_ROOM_NAME:         usize = 16;
 const MAX_NUM_CHAT_MESSAGES: usize = 128;
 const MAX_AGE_CHAT_MESSAGES: usize = 60*5; // seconds
@@ -869,6 +870,7 @@ impl ServerState {
 enum Event {
     TickEvent,
     Request((SocketAddr, Option<Packet>)),
+    NetworkEvent,
 //    Notify((SocketAddr, Option<Packet>)),
 }
 
@@ -893,7 +895,7 @@ fn main() {
 
     let iter_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () ));
     let tick_stream = iter_stream.and_then(|_| {
-        let timeout = Timeout::new(Duration::from_millis(TICK_INTERVAL), &handle).unwrap();
+        let timeout = Timeout::new(Duration::from_millis(TICK_INTERVAL_IN_MS), &handle).unwrap();
         timeout.and_then(move |_| {
             ok(Event::TickEvent)
         })
@@ -908,8 +910,17 @@ fn main() {
         })
         .map_err(|_| ());
 
+    let network_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () ));
+    let network_stream = network_stream.and_then(|_| {
+        let timeout = Timeout::new(Duration::from_millis(NETWORK_INTERVAL_IN_MS), &handle).unwrap();
+        timeout.and_then(move |_| {
+            ok(Event::NetworkEvent)
+        })
+    }).map_err(|_| ());
+
     let server_fut = tick_stream
         .select(packet_stream)
+        .select(network_stream)
         .fold(initial_server_state, move |mut server_state: ServerState, event: Event | {
             match event {
                 Event::Request(packet_tuple) => {
@@ -950,21 +961,19 @@ fn main() {
                     }
 
                     server_state.remove_timed_out_clients();
-
-                    // Send a KeepAlive every second
-                    if (server_state.tick % 100) == 0 {
-                        for player in server_state.players.values() {
-                            let keep_alive = Packet::Response {
-                                sequence: player.next_resp_seq-1,
-                                request_ack: player.request_ack,
-                                code: ResponseCode::KeepAlive
-                            };
-
-                            tx.unbounded_send( (player.addr, keep_alive) ).unwrap();
-                        }
-                    }
-
                     server_state.tick  = 1usize.wrapping_add(server_state.tick);
+                }
+
+                Event::NetworkEvent => {
+                    for player in server_state.players.values() {
+                        let keep_alive = Packet::Response {
+                            sequence: player.next_resp_seq-1,
+                            request_ack: player.request_ack,
+                            code: ResponseCode::KeepAlive
+                        };
+
+                        tx.unbounded_send( (player.addr, keep_alive) ).unwrap();
+                    }
                 }
             }
 

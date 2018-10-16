@@ -42,7 +42,8 @@ use futures::{Future, Sink, Stream, stream};
 use futures::future::ok;
 use futures::sync::mpsc;
 
-const TICK_INTERVAL:         u64   = 10; // milliseconds
+const TICK_INTERVAL_IN_MS:         u64    = 100;
+const NETWORK_INTERVAL_IN_MS:       u64    = 100; // mi
 const CLIENT_VERSION: &str = "0.0.1";
 
 
@@ -195,9 +196,15 @@ impl ClientState {
         }
     }
 
+    fn handle_network_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr) {
+        if self.cookie.is_some() {
+            // determine what needs to be resent
+        }
+    }
+
     fn handle_tick_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr) {
         // Every 100ms, after we've connected
-        if self.tick % 100 == 0 && self.cookie.is_some() {
+        if self.cookie.is_some() {
             let keep_alive = Packet::Request {
                 sequence: self.sequence,
                 response_ack: self.response_ack,
@@ -239,10 +246,6 @@ impl ClientState {
             }
             UserInput::Command{cmd, args} => {
                 action = self.build_command_request_action(cmd, args);
-
-                if action == RequestAction::Disconnect {
-                    //exit_tx.unbounded_send(()).unwrap(); // Okay if we panic for FA/we want to quit anyway
-                }
             },
         }
         if action != RequestAction::None {
@@ -336,8 +339,9 @@ impl ClientState {
             chat_messages.retain(|ref chat_message| {
                 self.chat_msg_seq_num < chat_message.chat_seq.unwrap()
             });
-            // This loop does two things: 1) update chat_msg_seq_num, and
-            // 2) prints messages from other players
+            // This loop does two things:
+            //  1) update chat_msg_seq_num, and
+            //  2) prints messages from other players
             for chat_message in chat_messages {
                 let chat_seq = chat_message.chat_seq.unwrap();
                 self.chat_msg_seq_num = std::cmp::max(chat_seq, self.chat_msg_seq_num);
@@ -439,6 +443,7 @@ enum Event {
     TickEvent,
     UserInputEvent(UserInput),
     Incoming((SocketAddr, Option<Packet>)),
+    NetworkEvent,
 //    NotifyAck((SocketAddr, Option<Packet>)),
 }
 
@@ -492,7 +497,7 @@ fn main() {
     let iter_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () )); // just a Stream that emits () forever
     // .and_then is like .map except that it processes returned Futures
     let tick_stream = iter_stream.and_then(|_| {
-        let timeout = Timeout::new(Duration::from_millis(TICK_INTERVAL), &handle).unwrap();
+        let timeout = Timeout::new(Duration::from_millis(TICK_INTERVAL_IN_MS), &handle).unwrap();
         timeout.and_then(move |_| {
             ok(Event::TickEvent)
         })
@@ -526,9 +531,18 @@ fn main() {
             Event::UserInputEvent(user_input)
         }).map_err(|_| ());
 
+    let network_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () ));
+    let network_stream = network_stream.and_then(|_| {
+        let timeout = Timeout::new(Duration::from_millis(NETWORK_INTERVAL_IN_MS), &handle).unwrap();
+        timeout.and_then(move |_| {
+            ok(Event::NetworkEvent)
+        })
+    }).map_err(|_| ());
+
     let main_loop_fut = tick_stream
         .select(packet_stream)
         .select(stdin_stream)
+        .select(network_stream)
         .fold(initial_client_state, move |mut client_state: ClientState, event| {
             match event {
                 Event::Incoming((addr, opt_packet)) => {
@@ -539,6 +553,9 @@ fn main() {
                 }
                 Event::UserInputEvent(user_input) => {
                     client_state.handle_user_input_event(&udp_tx, &exit_tx, user_input, addr);
+                }
+                Event::NetworkEvent => {
+                    client_state.handle_network_event(&udp_tx, addr);
                 }
             }
 
