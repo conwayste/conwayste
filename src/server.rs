@@ -330,6 +330,16 @@ impl ServerState {
         opt_player.unwrap()
     }
 
+    fn get_player_mut(&mut self, player_id: PlayerID) -> &mut Player {
+        let opt_player = self.players.get_mut(&player_id);
+
+        if opt_player.is_none() {
+            panic!("player_id: {} could not be found!", player_id);
+        }
+
+        opt_player.unwrap()
+    }
+
     fn get_room_id(&self, player_id: PlayerID) -> Option<RoomID> {
         let player = self.get_player(player_id);
         if player.game_info == None {
@@ -564,6 +574,19 @@ impl ServerState {
         return true;
     }
 
+    fn is_previously_arrived_packet(&mut self, player_id: PlayerID, sequence: u64) -> bool {
+        // TODO: Long term Check to see if we have buffered the packet already
+        // Short term: check if it is young enough
+        let player: &mut Player = self.get_player_mut(player_id);
+        if let Some(request_ack) = player.request_ack {
+            if sequence <= request_ack {
+                return true;
+            }
+        }
+        player.request_ack = Some(sequence);
+        false
+    }
+
     fn get_player_id_by_cookie(&self, cookie: &str) -> Option<PlayerID> {
         match self.player_map.get(cookie) {
             Some(player_id) => Some(*player_id),
@@ -624,6 +647,11 @@ impl ServerState {
                         }
                     }
 */
+
+                    if self.is_previously_arrived_packet(player_id, sequence) {
+                        return Ok(None)
+                    }
+
                     match action {
                         RequestAction::Connect{..} => unreachable!(),
                         _ => {
@@ -667,20 +695,23 @@ impl ServerState {
     fn handle_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Packet {
         let response_code = self.process_request_action(player_id, action.clone());
 
-        let sequence = if action != RequestAction::KeepAlive {
+        let (mut sequence, mut request_ack) = (0, None);
+
+        if action != RequestAction::KeepAlive {
             let opt_player: Option<&mut Player> = self.players.get_mut(&player_id);
 
-            let sequence = match opt_player {
-                Some(player) => player.increment_response_seq_num(),
-                None => 0
-            };
-
-            sequence
-        } else { 0 }; // Does not matter since KeepAlive is not responded to.
+            match opt_player {
+                Some(player) => {
+                    sequence = player.increment_response_seq_num();
+                    request_ack = player.request_ack;
+                }
+                None => {}
+            }
+        }
 
         Packet::Response{
             sequence:    sequence,
-            request_ack: None,
+            request_ack: request_ack,
             code:        response_code,
         }
     }
