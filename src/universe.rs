@@ -1265,12 +1265,34 @@ impl Universe {
     }
 
 
-    // TODO: each_changed
-
-
     /// Get a Region of the same size as the universe.
     pub fn region(&self) -> Region {
         Region::new(0, 0, self.width, self.height)
+    }
+
+
+    /// Copies from `src` BitGrid to this GenState as the player specified by `opt_player_id`,
+    /// unless `opt_player_id` is `None`.
+    ///
+    /// This function is similar to `GenState::copy_from_bit_grid` except that 1) when a `player_id`
+    /// is specified, the specified player's writable region is used, and 2) the latest generation
+    /// is written to.
+    ///
+    /// Panics if `opt_player_id` is `Some(player_id)` and `player_id` is out of range.
+    pub fn copy_from_bit_grid(&mut self, src: &BitGrid, dst_region: Region, opt_player_id: Option<usize>) {
+        let region;
+        if let Some(player_id) = opt_player_id {
+            if let Some(_region) = dst_region.intersection(self.player_writable[player_id]) {
+                region = _region;
+            } else {
+                // nothing to do because `dst_region` completely outside of player's writable region
+                return;
+            }
+        } else {
+            region = dst_region;
+        }
+        let latest_gen = &mut self.gen_states[self.state_index];
+        latest_gen.copy_from_bit_grid(src, region, opt_player_id);
     }
 }
 
@@ -1359,6 +1381,7 @@ impl Region {
 #[cfg(test)]
 mod universe_tests {
     use super::*;
+    use rle::Pattern;
 
     fn generate_test_universe_with_default_params() -> Universe {
         let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
@@ -1939,6 +1962,48 @@ mod universe_tests {
             assert_eq!(state, CellState::Fog, "expected fog at col {} row {} but found {:?}", col, row, state);
         });
     }
+
+    #[test]
+    fn universe_copy_from_bit_grid_as_player() {
+        let mut uni = generate_test_universe_with_default_params();
+        let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
+
+        let write_pattern_as = Some(1); // player 1
+        let dst_region = Region::new(0, 0, 32, 3);
+
+        uni.copy_from_bit_grid(&grid, dst_region, write_pattern_as);
+
+        {
+            let genstate = &uni.gen_states[uni.state_index];
+            assert_eq!(genstate.cells.to_pattern(None).0, "32o$32o!".to_owned());
+            assert_eq!(genstate.wall_cells.to_pattern(None).0, "!".to_owned());
+            assert_eq!(genstate.player_states[0].cells.to_pattern(None).0, "!".to_owned());
+            assert_eq!(genstate.player_states[0].fog[0][0], u64::max_value());  // complete fog for player 0
+            assert_eq!(genstate.player_states[0].fog[1][0], u64::max_value());  // complete fog for player 0
+            assert_eq!(genstate.player_states[1].cells.to_pattern(None).0, "32o$32o!".to_owned());
+        }
+    }
+
+    #[test]
+    fn universe_copy_from_bit_grid_as_player_out_of_range() {
+        let mut uni = generate_test_universe_with_default_params();
+        let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
+
+        let write_pattern_as = Some(0); // player 0
+        let dst_region = Region::new(0, 0, 32, 3); // out of range for player 0
+
+        uni.copy_from_bit_grid(&grid, dst_region, write_pattern_as);
+
+        {
+            let genstate = &uni.gen_states[uni.state_index];
+            assert_eq!(genstate.cells.to_pattern(None).0, "!".to_owned());
+            assert_eq!(genstate.wall_cells.to_pattern(None).0, "!".to_owned());
+            assert_eq!(genstate.player_states[0].cells.to_pattern(None).0, "!".to_owned()); // no player 0 cells
+            assert_eq!(genstate.player_states[0].fog[0][0], u64::max_value());  // complete fog for player 0
+            assert_eq!(genstate.player_states[0].fog[1][0], u64::max_value());  // complete fog for player 0
+            assert_eq!(genstate.player_states[1].cells.to_pattern(None).0, "!".to_owned()); // no player 1 cells
+        }
+    }
 }
 
 #[cfg(test)]
@@ -2150,6 +2215,46 @@ mod genstate_tests {
         Pattern("o!".to_owned()).to_grid(&mut genstate, write_pattern_as).unwrap();
         let visibility = Some(1); // as player 1
         assert_eq!(genstate.get_run(0, 0, visibility), (1, 'o'));
+    }
+
+    #[test]
+    fn gen_state_copy_from_bit_grid_simple() {
+        let mut genstate = make_gen_state();
+        let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
+
+        let write_pattern_as = None;
+        let dst_region = Region::new(0, 0, 32, 3);
+        genstate.copy_from_bit_grid(&grid, dst_region, write_pattern_as);
+
+        assert_eq!(genstate.cells.to_pattern(None).0, "32o$32o!".to_owned());
+        assert_eq!(genstate.wall_cells.to_pattern(None).0, "!".to_owned());
+        for player_id in 0..genstate.player_states.len() {
+            assert_eq!(genstate.player_states[player_id].cells.to_pattern(None).0, "!".to_owned());
+        }
+    }
+
+    #[test]
+    fn gen_state_copy_from_bit_grid_as_player() {
+        let mut genstate = make_gen_state();
+        let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
+
+        assert_eq!(genstate.player_states[0].fog[0][0], u64::max_value());  // complete fog for player 0
+        assert_eq!(genstate.player_states[1].fog[0][0], 0);                 // no fog here for player 1
+
+        let write_pattern_as = Some(1); // player 1
+        let raw_dst_region = Region::new(0, 0, 32, 3);
+
+        // intersect with player 1 writable region from make_gen_state()
+        let dst_region = raw_dst_region.intersection(Region::new(0, 0, 80, 80)).unwrap();
+
+        genstate.copy_from_bit_grid(&grid, dst_region, write_pattern_as);
+
+        assert_eq!(genstate.cells.to_pattern(None).0, "32o$32o!".to_owned());
+        assert_eq!(genstate.wall_cells.to_pattern(None).0, "!".to_owned());
+        assert_eq!(genstate.player_states[0].cells.to_pattern(None).0, "!".to_owned());
+        assert_eq!(genstate.player_states[0].fog[0][0], u64::max_value());  // complete fog for player 0
+        assert_eq!(genstate.player_states[0].fog[1][0], u64::max_value());  // complete fog for player 0
+        assert_eq!(genstate.player_states[1].cells.to_pattern(None).0, "32o$32o!".to_owned());
     }
 }
 
