@@ -19,6 +19,8 @@ use std::{char, cmp, fmt};
 
 use bits::{BitGrid, BitOperation, CharGrid};
 
+use rle::{Pattern, NO_OP_CHAR};
+
 type UniverseError = String;
 
 /// Builder paradigm to create `Universe` structs with default values.
@@ -175,6 +177,7 @@ pub struct Universe {
 // Describes the state of the universe for a particular generation
 // This includes any cells alive, known, and each player's own gen states
 // for this current session
+#[derive(Debug, Clone)]
 struct GenState {
     gen_or_none:   Option<usize>,        // Some(generation number) (redundant info); if None, this is an unused buffer
     cells:         BitGrid,              // 1 = cell is known to be Alive
@@ -183,6 +186,14 @@ struct GenState {
     player_states: Vec<PlayerGenState>,  // player-specific info (indexed by player_id)
 }
 
+#[derive(Debug, Clone)]
+struct GenStateDiff {
+    gen0:    usize,
+    gen1:    usize,
+    pattern: Pattern,
+}
+
+#[derive(Debug, Clone)]
 struct PlayerGenState {
     cells:     BitGrid,   // cells belonging to this player (if 1 here, must be 1 in GenState cells)
     fog:       BitGrid,   // cells that are currently invisible to the player
@@ -337,6 +348,43 @@ impl GenState {
             }
         }
     }
+
+    /// Creates a "diff" RLE pattern (contained within GenStateDiff) showing the changes present in
+    /// `new`, using `self` as a base (that is, `self` is assumed to be "old"). If `visibility` is
+    /// not `None`, only the changes visible to specified player will be recorded.
+    ///
+    /// The `gen0` field of the result will be equal to `self.gen_or_none.unwrap()` and the `gen1`
+    /// field will be equal to `new.gen_or_none.unwrap()`.
+    ///
+    /// Panics:
+    ///
+    /// * This will panic if either `self.gen_or_none` or `new.gen_or_none` is `None`.
+    /// * This will panic if the lengths of the `player_states` vectors do not match.
+    /// * This will panic if the dimensions of the grids do not match.
+    pub fn diff(&self, new: &GenState, visibility: Option<usize>) -> GenStateDiff {
+        if self.height() != new.height() || self.width() != new.width() {
+            panic!("Dimensions do not match: {}x{} vs {}x{}", self.width(), self.height(), new.width(), new.height());
+        }
+
+        let self_gen = self.gen_or_none.unwrap();
+        let new_gen = new.gen_or_none.unwrap();
+
+        if self.player_states.len() != new.player_states.len() {
+            panic!("Player state vectors do not match");
+        }
+
+        let pair = GenStatePair {
+            gen_state0: &self,
+            gen_state1: &new,
+        };
+        let pattern = pair.to_pattern(visibility);
+
+        GenStateDiff {
+            gen0: self_gen,
+            gen1: new_gen,
+            pattern,
+        }
+    }
 }
 
 impl CharGrid for GenState {
@@ -471,6 +519,65 @@ impl CharGrid for GenState {
         } else {
             return (min_run, CellState::Dead.to_char());
         }
+    }
+}
+
+
+/// This internal struct is only needed so we can implement CharGrid::to_pattern. It's a little silly...
+struct GenStatePair<'a,'b> {
+    gen_state0: &'a GenState,
+    gen_state1: &'b GenState,
+}
+
+
+impl<'a,'b> CharGrid for GenStatePair<'a,'b> {
+    /// Width in cells
+    fn width(&self) -> usize {
+        self.gen_state0.width()
+    }
+
+    /// Height in cells
+    fn height(&self) -> usize {
+        self.gen_state0.height()
+    }
+
+    fn write_at_position(&mut self, _col: usize, _row: usize, _ch: char, _visibility: Option<usize>) {
+        unimplemented!("This is a read-only struct!");
+    }
+
+    /// Is `ch` a valid character?
+    fn is_valid(ch: char) -> bool {
+        if ch == NO_OP_CHAR {
+            return true;
+        }
+        GenState::is_valid(ch)
+    }
+
+    /// Given a starting cell at `(col, row)`, get the character at that cell, and the number of
+    /// contiguous identical cells considering only this cell and the cells to the right of it.
+    /// This is intended for exporting to RLE.
+    ///
+    /// The `visibility` parameter, if not `None`, is used to generate a run as observed by a
+    /// particular player.
+    ///
+    /// # Returns
+    ///
+    /// `(run_length, ch)`
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if `col`, `row`, or `visibility` (`Some(player_id)`) are out of bounds.
+    fn get_run(&self, col: usize, row: usize, visibility: Option<usize>) -> (usize, char) {
+        let (run0, ch0) = self.gen_state0.get_run(col, row, visibility);
+        let (run1, ch1) = self.gen_state1.get_run(col, row, visibility);
+        let ch;
+        if ch0 == ch1 {
+            ch = NO_OP_CHAR;  // no change
+        } else {
+            ch = ch1;         // change here; return the new character
+        }
+        let run = cmp::min(run0, run1);
+        (run, ch)
     }
 }
 
@@ -2256,7 +2363,24 @@ mod genstate_tests {
         assert_eq!(genstate.player_states[0].fog[1][0], u64::max_value());  // complete fog for player 0
         assert_eq!(genstate.player_states[1].cells.to_pattern(None).0, "32o$32o!".to_owned());
     }
+
+
+    #[test]
+    fn gen_state_pair_get_run_simple() {
+        let gs0 = make_gen_state();
+        let mut gs1 = make_gen_state();
+        Pattern("o!".to_owned()).to_grid(&mut gs1, None).unwrap();
+
+        let pair = GenStatePair {
+            gen_state0: &gs0,
+            gen_state1: &gs1,
+        };
+
+        assert_eq!(pair.get_run(0, 0, None), (1, 'o'));
+        assert_eq!(pair.get_run(1, 0, None), (gs0.width() - 1, '"'));
+    }
 }
+
 
 #[cfg(test)]
 mod region_tests {

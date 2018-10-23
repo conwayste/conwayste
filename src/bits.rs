@@ -29,7 +29,7 @@ pub enum BitOperation {
 }
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct BitGrid(pub Vec<Vec<u64>>);
 
 impl BitGrid {
@@ -287,7 +287,7 @@ pub trait CharGrid {
     ///
     /// # Panics
     ///
-    /// This function will panic if `col` or `row` are out of bounds.
+    /// This function will panic if `col`, `row`, or `visibility` (`Some(player_id)`) are out of bounds.
     fn get_run(&self, col: usize, row: usize, visibility: Option<usize>) -> (usize, char);
 }
 

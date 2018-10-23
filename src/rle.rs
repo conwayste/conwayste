@@ -16,7 +16,7 @@
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
 const MAX_NUMBER: usize = 50000;
-const NO_OP_CHAR: char = '"';
+pub const NO_OP_CHAR: char = '"';
 
 use bits::{BitGrid, CharGrid};
 use std::collections::BTreeMap;
@@ -24,18 +24,18 @@ use std::str::FromStr;
 
 
 /// This contains just the RLE pattern string. For example: "4bobo$7b3o!"
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Pattern(pub String);
 
 /// Represents the contents of a RLE file.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct PatternFile {
     pub comment_lines: Vec<String>,
     header_line: HeaderLine,
     pub pattern: Pattern,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 struct HeaderLine {
     pub x: usize, // width (cols)
     pub y: usize, // height (rows)
