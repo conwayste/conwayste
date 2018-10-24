@@ -567,7 +567,7 @@ impl<'a,'b> CharGrid for GenStatePair<'a,'b> {
     /// # Panics
     ///
     /// This function will panic if `col`, `row`, or `visibility` (`Some(player_id)`) are out of bounds.
-    fn get_run(&self, col: usize, row: usize, visibility: Option<usize>) -> (usize, char) {
+    fn get_run(&self, mut col: usize, row: usize, visibility: Option<usize>) -> (usize, char) {
         let (run0, ch0) = self.gen_state0.get_run(col, row, visibility);
         let (run1, ch1) = self.gen_state1.get_run(col, row, visibility);
         let ch;
@@ -576,8 +576,24 @@ impl<'a,'b> CharGrid for GenStatePair<'a,'b> {
         } else {
             ch = ch1;         // change here; return the new character
         }
-        let run = cmp::min(run0, run1);
-        (run, ch)
+        let mut run = cmp::min(run0, run1);
+        let mut total_run = run;
+        if ch == NO_OP_CHAR {
+            loop {
+                col += run;
+                if col >= self.width() {
+                    break;
+                }
+                let (run0, ch0) = self.gen_state0.get_run(col, row, visibility);
+                let (run1, ch1) = self.gen_state1.get_run(col, row, visibility);
+                if ch0 != ch1 {
+                    break;
+                }
+                run = cmp::min(run0, run1);
+                total_run += run;
+            }
+        }
+        (total_run, ch)
     }
 }
 
@@ -2378,6 +2394,40 @@ mod genstate_tests {
 
         assert_eq!(pair.get_run(0, 0, None), (1, 'o'));
         assert_eq!(pair.get_run(1, 0, None), (gs0.width() - 1, '"'));
+    }
+
+    #[test]
+    fn gen_state_pair_get_run_simple2() {
+        let mut gs0 = make_gen_state();
+        Pattern("2o3b5o!".to_owned()).to_grid(&mut gs0, None).unwrap();
+        let mut gs1 = make_gen_state();
+        Pattern("2o3b5o!".to_owned()).to_grid(&mut gs1, None).unwrap();
+
+        let pair = GenStatePair {
+            gen_state0: &gs0,
+            gen_state1: &gs1,
+        };
+
+        assert_eq!(pair.get_run(0, 0, None), (gs0.width(), '"'));
+    }
+
+    #[test]
+    fn gen_state_pair_get_run_simple3() {
+        let mut gs0 = make_gen_state();
+        Pattern("4b5o!".to_owned()).to_grid(&mut gs0, None).unwrap();
+        let mut gs1 = make_gen_state();
+        Pattern("3b5o!".to_owned()).to_grid(&mut gs1, None).unwrap();
+
+        let pair = GenStatePair {
+            gen_state0: &gs0,
+            gen_state1: &gs1,
+        };
+
+        assert_eq!(pair.get_run(0,       0, None), (3, '"'));
+        assert_eq!(pair.get_run(3,       0, None), (1, 'o'));
+        assert_eq!(pair.get_run(3+1,     0, None), (4, '"'));
+        assert_eq!(pair.get_run(3+1+4,   0, None), (1, 'b'));
+        assert_eq!(pair.get_run(3+1+4+1, 0, None), (gs0.width() - (3+1+4+1), '"'));
     }
 }
 
