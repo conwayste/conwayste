@@ -23,11 +23,9 @@ extern crate bincode;
 extern crate semver;
 
 use std::cmp::{PartialEq, PartialOrd, Ordering};
-use std::io;
+use std::fmt::Debug;
+use std::{io, fmt, str, result, time};
 use std::net::{self, SocketAddr};
-use std::str;
-use std::result;
-use std::time;
 use std::collections::VecDeque;
 
 use self::tokio_core::net::{UdpSocket, UdpCodec};
@@ -193,7 +191,7 @@ pub enum UniUpdateType {
     NoChange,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum Packet {
     Request {
         // sent by client
@@ -237,6 +235,23 @@ impl Packet {
             }
         } else {
             unimplemented!(); // UpdateReply is not saved
+        }
+    }
+}
+
+impl fmt::Debug for Packet {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Packet::Request{ sequence, response_ack, cookie: _, action } => {
+                write!(f, "[Request] sequence: {} ack: {:?} event: {:?}", sequence, response_ack, action)
+            }
+            Packet::Response{ sequence, request_ack, code } => {
+                write!(f, "[Response] sequence: {} ack: {:?} event: {:?}", sequence, request_ack, code)
+            }
+            Packet::Update{ chats: _, game_updates, universe_update } => {
+                write!(f, "[Update] game_updates: {:?} universe_update: {:?}", game_updates, universe_update)
+            }
+            _ => unimplemented!()
         }
     }
 }
@@ -364,7 +379,7 @@ impl Sequenced for BroadcastChatMessage {
     }
 }
 
-pub trait NetworkQueue<T: Ord+Sequenced> {
+pub trait NetworkQueue<T: Ord+Sequenced+Debug> {
     fn new(size: usize) -> ItemQueue<T>
     {
         ItemQueue::<T>::with_capacity(size)
@@ -438,7 +453,29 @@ pub trait NetworkQueue<T: Ord+Sequenced> {
     }
 
     fn clear(&mut self) {
-        self.as_queue_type_mut().clear()
+        self.as_queue_type_mut().clear();
+    }
+
+    fn remove(&mut self, pkt: &T) -> T {
+        let result = {
+            let search_space: Vec<&T> = self.as_queue_type_mut().iter().collect();
+            search_space.as_slice().binary_search(&pkt)
+        };
+        match result {
+            Err(_) => panic!("Could not remove transmitted item from queue"),
+            Ok(index) => {
+                let pkt = self.as_queue_type_mut().remove(index).unwrap();
+                //println!("{:?}", pkt);
+                return pkt;
+            }
+        }
+    }
+
+    fn pop_front_with_count(&mut self, mut num_to_remove: usize) {
+        while num_to_remove > 0 {
+            self.as_queue_type_mut().pop_front();
+            num_to_remove -= 1;
+        }
     }
 
     fn discard_older_items(&mut self);
@@ -455,7 +492,7 @@ pub struct TXQueue {
 
 pub struct RXQueue<T> {
     pub queue: ItemQueue<T>,
-    pub buffer_wrap_index: Option<usize>
+    pub buffer_wrap_index: Option<usize>,
 }
 
 impl NetworkQueue<Packet> for TXQueue {
@@ -506,10 +543,41 @@ impl NetworkQueue<Packet> for TXQueue {
             self.push_back(item);
         }
     }
+
+    fn remove(&mut self, pkt: &Packet) -> Packet {
+        // In the TX queue case, removing a Packet::Response means its request_ack is equivalent to
+        // the Packet::Request's sequence number which  actually resides in the queue
+        let opt_search_id: &Option<u64> = match pkt {
+            // TODO double check Packet::Request when implementing Server-side
+            Packet::Request{ sequence: _, response_ack, cookie: _, action: _ } => response_ack,
+            Packet::Response{ sequence: _, request_ack, code: _ } => request_ack,
+            _ => unimplemented!() // !("Update/UpdateReply not yet implemented")
+        };
+        let search_id = if let &Some(si) = opt_search_id { si } else { panic!("Cannot remove because the 'ack' was None") };
+        let dummy_packet = Packet::Request{
+            sequence: search_id,
+            response_ack: None,
+            cookie: None,
+            action: RequestAction::None
+        };
+
+        let result = {
+            let search_space: Vec<&Packet> = self.as_queue_type_mut().iter().collect();
+            search_space.as_slice().binary_search(&&dummy_packet)
+        };
+        match result {
+            Err(_) => panic!("Could not remove transmitted item from TX queue"),
+            Ok(index) => {
+                let pkt = self.as_queue_type_mut().remove(index).unwrap();
+                return pkt;
+            }
+        }
+    }
+
 }
 
 impl<T> NetworkQueue<T> for RXQueue<T>
-        where T: Sequenced {
+        where T: Sequenced+Debug {
 
     fn as_queue_type(&self) -> &ItemQueue<T> {
         &self.queue
@@ -636,7 +704,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
     }
 }
 
-impl<T> RXQueue<T> where T: Sequenced {
+impl<T> RXQueue<T> where T: Sequenced+Debug {
 
     /// Search within the RX queue, but we have no idea where to insert.
     /// This should cover only within the RX queue and not at the edges (front or back).
@@ -700,6 +768,22 @@ impl<T> RXQueue<T> where T: Sequenced {
             self.as_queue_type_mut().insert(insertion_index, item);
         }
     }
+
+    // The requirement is that what we return must implement Iterator, and TakeWhile fulfill this. Pretty neat.
+    // Seq_num as a parameter specifies the starting sequence number to iterate over. Since packets can arrive
+    // out-of-order, the rx queue may be contiguous but not complete.
+    // Ex: Assume packet SN we're waiting for an ack is 10, but the rx queue contains [12, 13, 14, 16]
+   // pub fn get_contiguous_packets_count(&self, mut seq_num: u64) -> impl Iterator<Item=&T> {
+    pub fn get_contiguous_packets_count(&self, mut seq_num: u64) -> usize {
+        let iter = self.queue.iter().take_while(move |x| {
+            let ready = x.sequence_number() == seq_num;
+            if ready {
+                seq_num += 1;
+            }
+            ready
+        });
+        iter.count()
+    }
 }
 
 pub struct NetworkManager {
@@ -716,7 +800,8 @@ impl NetworkManager {
         NetworkManager {
             statistics: NetworkStatistics::new(),
             tx_packets:  TXQueue{ queue: TXQueue::new(NETWORK_QUEUE_LENGTH) },
-            rx_packets:  RXQueue{ queue: RXQueue::<Packet>::new(NETWORK_QUEUE_LENGTH), buffer_wrap_index: None },
+            rx_packets:  RXQueue{ queue: RXQueue::<Packet>::new(NETWORK_QUEUE_LENGTH),
+                                                                buffer_wrap_index: None },
             rx_chat_messages: None,
         }
     }
@@ -728,7 +813,7 @@ impl NetworkManager {
             rx_packets: self.rx_packets,
             rx_chat_messages:  Some(RXQueue {
                                         queue: RXQueue::<BroadcastChatMessage>::new(NETWORK_QUEUE_LENGTH),
-                                        buffer_wrap_index: None
+                                        buffer_wrap_index: None,
                                 }),
         }
     }
@@ -746,6 +831,7 @@ impl NetworkManager {
         rx_packets.clear();
         if let Some(chat_messages) = rx_chat_messages {
             chat_messages.clear();
+            chat_messages.buffer_wrap_index = None;
         }
     }
 }
@@ -1576,5 +1662,37 @@ mod test {
         assert_eq!(nm.tx_packets.len(), NETWORK_QUEUE_LENGTH);
 
         let chat_msg = BroadcastChatMessage::new(0, "chatchat".to_owned(), "chatchat".to_owned());
+    }
+
+    #[test]
+    fn test_get_contiguous_packets_iter() {
+        let mut nm = NetworkManager::new();
+        for index in 0..5 {
+            let pkt = Packet::Request {
+                sequence: index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.rx_packets.buffer_item(pkt);
+        }
+        for index in 8..10 {
+            let pkt = Packet::Request {
+                sequence: index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.rx_packets.buffer_item(pkt);
+        }
+
+        let mut count = nm.rx_packets.get_contiguous_packets_count(0);
+        let mut iter = nm.rx_packets.as_queue_type().iter();
+        for index in 0..5 {
+            let pkt = iter.next().unwrap();
+            assert_eq!(index, pkt.sequence_number() as usize);
+            // Verify that the packet is not dequeued
+            assert_eq!(index, nm.rx_packets.as_queue_type().get(index).unwrap().sequence_number() as usize);
+        }
     }
 }

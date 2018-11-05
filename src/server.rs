@@ -575,8 +575,7 @@ impl ServerState {
     }
 
     fn is_previously_arrived_packet(&mut self, player_id: PlayerID, sequence: u64) -> bool {
-        // TODO: Long term Check to see if we have buffered the packet already
-        // Short term: check if it is young enough
+        // TODO: There's a CLEAR and obvious bug here related to out-of-order arrivals that will be fixed shortly.
         let player: &mut Player = self.get_player_mut(player_id);
         if let Some(request_ack) = player.request_ack {
             if sequence <= request_ack {

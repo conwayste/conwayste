@@ -48,10 +48,12 @@ const CLIENT_VERSION: &str = "0.0.1";
 
 
 struct ClientState {
-    sequence:         u64,   // sequence number of requests
-    response_ack:     Option<u64>,  // last acknowledged response sequence number from server
-    last_req_action:  Option<RequestAction>,   // last one we sent to server TODO: this is wrong;
-                                              // assumes network is well-behaved
+    sequence:         u64,          // Sequence number of requests
+    response_ack:     Option<u64>,  // Last acknowledged response "sequence number" from server
+    response_sequence: u64,         // Next expected sequence number from the server used to know which received
+                                    //  packet to process next
+    last_req_action:  Option<RequestAction>,   // Last one we sent to server TODO: this is wrong;
+                                               //   assumes network is well-behaved
     name:             Option<String>,
     room:             Option<String>,
     cookie:           Option<String>,
@@ -66,6 +68,7 @@ impl ClientState {
     fn new() -> Self {
         ClientState {
             sequence:        0,
+            response_sequence: 0,
             response_ack:    None,
             last_req_action: None,
             name:            None,
@@ -85,6 +88,7 @@ impl ClientState {
         #![deny(unused_variables)]
         let Self {
             ref mut sequence,
+            ref mut response_sequence,
             ref mut response_ack,
             ref mut last_req_action,
             name: ref _name,
@@ -96,6 +100,7 @@ impl ClientState {
             ref mut heartbeat,
         } = *self;
         *sequence         = 0;
+        *response_sequence = 0;
         *response_ack     = None;
         *last_req_action  = None;
         *room             = None;
@@ -130,42 +135,70 @@ impl ClientState {
         }
     }
 
+    fn process_queued_rx_packets(&mut self) {
+        // If we can, start popping off the RX queue and handle contigous packets immediately
+        let mut dequeue_count = 0;
+
+        let rx_queue_count = self.network.rx_packets.get_contiguous_packets_count(self.response_sequence);
+        while dequeue_count < rx_queue_count {
+            let packet = self.network.rx_packets.as_queue_type_mut().pop_front().unwrap();
+            match packet {
+                Packet::Response{sequence: _, request_ack: _, code} => {
+                    dequeue_count += 1;
+                    self.response_sequence += 1;
+                    self.process_event_code(code);
+                }
+                _ => panic!("Development bug: Non-response packet found in client RX queue")
+            }
+        }
+    }
+
+    fn process_event_code(&mut self, code: ResponseCode) {
+        match code {
+            ResponseCode::OK => {
+                match self.handle_response_ok() {
+                    Ok(_) => {},
+                    Err(e) => println!("{:?}", e)
+                }
+            }
+            ResponseCode::LoggedIn(ref cookie, ref server_version) => {
+                self.handle_logged_in(cookie.to_string(), server_version.to_string());
+            }
+            ResponseCode::PlayerList(ref player_names) => {
+                self.handle_player_list(player_names.to_vec());
+            }
+            ResponseCode::RoomList(ref rooms) => {
+                self.handle_room_list(rooms.to_vec());
+            }
+            ResponseCode::KeepAlive => {
+                self.heartbeat = Some(Instant::now());
+            },
+            // errors
+            _ => {
+                error!("unknown response from server: {:?}", code);
+            }
+        }
+    }
+
     fn handle_incoming_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr, opt_packet: Option<Packet>) {
         // All `None` packets should get filtered out up the hierarchy
         let packet = opt_packet.unwrap();
-        match packet {
+        match packet.clone() {
             Packet::Response{sequence, request_ack, code} => {
                 // XXX sequence
                 // XXX request_ack
                 let code = code.clone();
                 if code != ResponseCode::KeepAlive {
-                    println!("DEBUG: Got packet from server {:?}: Sequence: {:?} Request_Ack: {:?} ResponseCode: {:?}", addr, sequence, request_ack, code);
+                    println!("DEBUG: Got packet from server {:?}: Sequence: {:?} Request_Ack: {:?} ResponseCode: {:?}",
+                                addr, sequence, request_ack, code);
                 }
 
-                match code {
-                    ResponseCode::OK => {
-                        match self.handle_response_ok() {
-                            Ok(_) => {},
-                            Err(e) => println!("{:?}", e)
-                        }
-                    }
-                    ResponseCode::LoggedIn(cookie, server_version) => {
-                        self.handle_logged_in(cookie, server_version);
-                    }
-                    ResponseCode::PlayerList(player_names) => {
-                        self.handle_player_list(player_names);
-                    }
-                    ResponseCode::RoomList(rooms) => {
-                        self.handle_room_list(rooms);
-                    }
-                    ResponseCode::KeepAlive => {
-                        self.heartbeat = Some(Instant::now());
-                    },
-                    // errors
-                    code @ _ => {
-                        error!("response from server: {:?}", code);
-                    }
-                }
+                // When a packet is acked, we can remove it from the TX buffer and buffer the response for later processing
+                let _ = self.network.tx_packets.remove(&packet);
+                self.network.rx_packets.buffer_item(packet);
+
+                self.process_queued_rx_packets();
+
             }
             // TODO game_updates, universe_update
             Packet::Update{chats, game_updates: _, universe_update: _} => {
@@ -196,9 +229,13 @@ impl ClientState {
         }
     }
 
-    fn handle_network_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr) {
+    fn handle_network_event(&mut self, _udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, _addr: SocketAddr) {
         if self.cookie.is_some() {
-            // determine what needs to be resent
+            // Determine what can be processed
+            // Determine what needs to be resent
+            // Resend anything remaining in TX queue if it has also expired.
+            //
+            self.process_queued_rx_packets();
         }
     }
 
@@ -246,7 +283,7 @@ impl ClientState {
             }
             UserInput::Command{cmd, args} => {
                 action = self.build_command_request_action(cmd, args);
-            },
+            }
         }
         if action != RequestAction::None {
             // Sequence number can increment once we're talking to a server
@@ -624,6 +661,7 @@ fn parse_stdin(mut input: String) -> UserInput {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::{thread, time};
 
     fn fake_socket_addr() -> SocketAddr {
         use std::net::{IpAddr, Ipv4Addr};
@@ -949,4 +987,134 @@ mod test {
         assert_eq!(client_state.sequence, 2);
     }
 
+    #[test]
+    fn handle_incoming_event_basic_tx_rx_queueing() {
+        let mut client_state = ClientState::new();
+        let (udp_tx, _) = mpsc::unbounded();
+        let (exit_tx, _) = mpsc::unbounded();
+        let addr = fake_socket_addr();
+        let connect_cmd = UserInput::Command{cmd: "connect".to_owned(), args: vec!["name".to_owned()]};
+        let new_room_cmd = UserInput::Command{cmd: "new".to_owned(), args: vec!["room_name".to_owned()]};
+        let join_room_cmd = UserInput::Command{cmd: "join".to_owned(), args: vec!["room_name".to_owned()]};
+        let leave_room_cmd = UserInput::Command{cmd: "leave".to_owned(), args: vec![]};
+
+        client_state.sequence = 0;
+        client_state.response_sequence = 1;
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, connect_cmd, addr);         // Seq 0
+        client_state.cookie = Some("ThisDoesNotReallyMatterAsLongAsItExists".to_owned());
+        // dequeue connect since we don't actually want to process it later
+        client_state.network.tx_packets.clear();
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, new_room_cmd, addr);        // Seq 1
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, join_room_cmd, addr);       // Seq 2
+        client_state.room = Some("room_name".to_owned());
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, leave_room_cmd, addr);      // Seq 3
+        assert_eq!(client_state.sequence, 3);
+        assert_eq!(client_state.response_sequence, 1);
+        assert_eq!(client_state.network.tx_packets.len(), 3);
+        assert_eq!(client_state.network.rx_packets.len(), 0);
+
+        let room_response = Packet::Response{sequence: 1, request_ack: Some(1), code: ResponseCode::OK};
+        let join_response = Packet::Response{sequence: 2, request_ack: Some(2), code: ResponseCode::OK};
+        let leave_response = Packet::Response{sequence:3, request_ack: Some(3), code: ResponseCode::OK};
+
+        client_state.handle_incoming_event(&udp_tx, addr, Some(leave_response));    // 3 arrives
+        assert_eq!(client_state.network.tx_packets.len(), 2);
+        assert_eq!(client_state.network.rx_packets.len(), 1);
+        client_state.handle_incoming_event(&udp_tx, addr, Some(join_response));     // 2 arrives
+        assert_eq!(client_state.network.tx_packets.len(), 1);
+        assert_eq!(client_state.network.rx_packets.len(), 2);
+        client_state.handle_incoming_event(&udp_tx, addr, Some(room_response));     // 1 arrives
+        assert_eq!(client_state.network.tx_packets.len(), 0);
+        // RX should be cleared out because upon processing packet sequence '1', RX queue will be contiguous
+        assert_eq!(client_state.network.rx_packets.len(), 0);
+    }
+
+    #[test]
+    fn handle_incoming_event_basic_tx_rx_queueing_cannot_process_all_responses() {
+        let mut client_state = ClientState::new();
+        let (udp_tx, _) = mpsc::unbounded();
+        let (exit_tx, _) = mpsc::unbounded();
+        let addr = fake_socket_addr();
+        let connect_cmd = UserInput::Command{cmd: "connect".to_owned(), args: vec!["name".to_owned()]};
+        let new_room_cmd = UserInput::Command{cmd: "new".to_owned(), args: vec!["room_name".to_owned()]};
+        let join_room_cmd = UserInput::Command{cmd: "join".to_owned(), args: vec!["room_name".to_owned()]};
+        let leave_room_cmd = UserInput::Command{cmd: "leave".to_owned(), args: vec![]};
+
+        client_state.sequence = 0;
+        client_state.response_sequence = 1;
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, connect_cmd, addr);         // Seq 0
+        client_state.cookie = Some("ThisDoesNotReallyMatterAsLongAsItExists".to_owned());
+        // dequeue connect since we don't actually want to process it later
+        client_state.network.tx_packets.clear();
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, new_room_cmd, addr);          // Seq 1
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, join_room_cmd.clone(), addr); // Seq 2
+        client_state.room = Some("room_name".to_owned());
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, leave_room_cmd, addr);        // Seq 3
+        client_state.room = None; // Temporarily set to None so we can process the next join
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, join_room_cmd, addr);         // Seq 4
+        client_state.room = Some("room_name".to_owned());
+        assert_eq!(client_state.sequence, 4);
+        assert_eq!(client_state.response_sequence, 1);
+        assert_eq!(client_state.network.tx_packets.len(), 4);
+        assert_eq!(client_state.network.rx_packets.len(), 0);
+
+        let room_response = Packet::Response{sequence: 1, request_ack: Some(1), code: ResponseCode::OK};
+        let join_response = Packet::Response{sequence: 2, request_ack: Some(2), code: ResponseCode::OK};
+        let _leave_response = Packet::Response{sequence: 3, request_ack: Some(3), code: ResponseCode::OK};
+        let join2_response = Packet::Response{sequence: 4, request_ack: Some(4), code: ResponseCode::OK};
+
+        // The intent is that 3 never arrives
+        client_state.handle_incoming_event(&udp_tx, addr, Some(join2_response));    // 4 arrives
+        assert_eq!(client_state.network.tx_packets.len(), 3);
+        assert_eq!(client_state.network.rx_packets.len(), 1);
+        client_state.handle_incoming_event(&udp_tx, addr, Some(join_response));     // 2 arrives
+        assert_eq!(client_state.network.tx_packets.len(), 2);
+        assert_eq!(client_state.network.rx_packets.len(), 2);
+        client_state.handle_incoming_event(&udp_tx, addr, Some(room_response));     // 1 arrives
+        assert_eq!(client_state.network.tx_packets.len(), 1);
+        assert_eq!(client_state.network.rx_packets.len(), 1);
+    }
+
+    #[test]
+    fn handle_incoming_event_basic_tx_rx_queueing_arrives_at_server_out_of_order() {
+        let mut client_state = ClientState::new();
+        let (udp_tx, _) = mpsc::unbounded();
+        let (exit_tx, _) = mpsc::unbounded();
+        let addr = fake_socket_addr();
+        let connect_cmd = UserInput::Command{cmd: "connect".to_owned(), args: vec!["name".to_owned()]};
+        let new_room_cmd = UserInput::Command{cmd: "new".to_owned(), args: vec!["room_name".to_owned()]};
+        let join_room_cmd = UserInput::Command{cmd: "join".to_owned(), args: vec!["room_name".to_owned()]};
+        let leave_room_cmd = UserInput::Command{cmd: "leave".to_owned(), args: vec![]};
+
+        client_state.sequence = 0;
+        client_state.response_sequence = 1;
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, connect_cmd, addr);         // Seq 0
+        client_state.cookie = Some("ThisDoesNotReallyMatterAsLongAsItExists".to_owned());
+        // dequeue connect since we don't actually want to process it later
+        client_state.network.tx_packets.clear();
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, new_room_cmd, addr);        // Seq 1
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, join_room_cmd, addr);       // Seq 2
+        client_state.room = Some("room_name".to_owned());
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, leave_room_cmd, addr);      // Seq 3
+        assert_eq!(client_state.sequence, 3);
+        assert_eq!(client_state.response_sequence, 1);
+        assert_eq!(client_state.network.tx_packets.len(), 3);
+        assert_eq!(client_state.network.rx_packets.len(), 0);
+
+        // An out-of-order arrival at the server means the response packet's sequence number will not be 1:1 mapping
+        // as in the first basic tested above. End result should be the same in both cases.
+        let room_response = Packet::Response{sequence: 2, request_ack: Some(1), code: ResponseCode::OK};
+        let join_response = Packet::Response{sequence: 3, request_ack: Some(2), code: ResponseCode::OK};
+        let leave_response = Packet::Response{sequence:1, request_ack: Some(3), code: ResponseCode::OK};
+
+        client_state.handle_incoming_event(&udp_tx, addr, Some(leave_response));    // client 3 arrives, can process
+        assert_eq!(client_state.network.tx_packets.len(), 2);
+        assert_eq!(client_state.network.rx_packets.len(), 0);
+        client_state.handle_incoming_event(&udp_tx, addr, Some(join_response));     // client 2 arrives, cannot process
+        assert_eq!(client_state.network.tx_packets.len(), 1);
+        assert_eq!(client_state.network.rx_packets.len(), 1);
+        client_state.handle_incoming_event(&udp_tx, addr, Some(room_response));     // client 1 arrives, can process all
+        assert_eq!(client_state.network.tx_packets.len(), 0);
+        assert_eq!(client_state.network.rx_packets.len(), 0);
+    }
 }
