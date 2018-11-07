@@ -193,7 +193,9 @@ impl ClientState {
                                 addr, sequence, request_ack, code);
                 }
 
-                // When a packet is acked, we can remove it from the TX buffer and buffer the response for later processing
+                // When a packet is acked, we can remove it from the TX buffer and buffer the response for
+                // later processing. Removing a "Response packet" from the TX queue (aka Request queue) simply means
+                // using the response's response_ack to determine what `Request` sequence number the server acked.
                 let _ = self.network.tx_packets.remove(&packet);
                 self.network.rx_packets.buffer_item(packet);
 
@@ -229,13 +231,31 @@ impl ClientState {
         }
     }
 
-    fn handle_network_event(&mut self, _udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, _addr: SocketAddr) {
+    fn handle_network_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr) {
         if self.cookie.is_some() {
             // Determine what can be processed
             // Determine what needs to be resent
             // Resend anything remaining in TX queue if it has also expired.
             //
             self.process_queued_rx_packets();
+
+            let indices = self.network.tx_packets.get_retransmit_indices();
+
+            for index in indices {
+                if let Some(pkt) = self.network.tx_packets.queue.get(index) {
+                    let result = udp_tx.unbounded_send((addr, (*pkt).clone()));
+
+                    if result.is_err() {
+                        warn!("Could not retransmit pkt to server");
+                        self.network.statistics.tx_packets_failed += 1;
+                    } else {
+                        self.network.statistics.tx_packets_success += 1;
+                    }
+                } else {
+                    panic!("ERROR: Index in timestamp queue out-of-bounds in tx packets queue: {}\n{:?}\n{:?}",
+                            index, self.network.tx_packets.queue, self.network.tx_packets.timestamps);
+                }
+            }
         }
     }
 
