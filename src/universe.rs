@@ -177,7 +177,7 @@ pub struct Universe {
 // Describes the state of the universe for a particular generation
 // This includes any cells alive, known, and each player's own gen states
 // for this current session
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct GenState {
     gen_or_none:   Option<usize>,        // Some(generation number) (redundant info); if None, this is an unused buffer
     cells:         BitGrid,              // 1 = cell is known to be Alive
@@ -193,7 +193,7 @@ struct GenStateDiff {
     pattern: Pattern,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct PlayerGenState {
     cells:     BitGrid,   // cells belonging to this player (if 1 here, must be 1 in GenState cells)
     fog:       BitGrid,   // cells that are currently invisible to the player
@@ -462,6 +462,7 @@ impl CharGrid for GenState {
     fn is_valid(ch: char) -> bool {
         match ch {
             'o' | 'b' | 'A'..='W' | '?' => true,
+            NO_OP_CHAR => true,
             _ => false
         }
     }
@@ -2428,6 +2429,83 @@ mod genstate_tests {
         assert_eq!(pair.get_run(3+1,     0, None), (4, '"'));
         assert_eq!(pair.get_run(3+1+4,   0, None), (1, 'b'));
         assert_eq!(pair.get_run(3+1+4+1, 0, None), (gs0.width() - (3+1+4+1), '"'));
+    }
+
+    #[test]
+    fn gen_state_diff_simple1() {
+        let gs0 = make_gen_state();
+        let mut gs1 = make_gen_state();
+        Pattern("o!".to_owned()).to_grid(&mut gs1, None).unwrap();
+
+        let gsdiff = gs0.diff(&gs1, None);
+        assert_eq!(gsdiff.pattern.0.len(), 659);
+        let mut gsdiff_pattern_iter = gsdiff.pattern.0.split('$');
+        assert_eq!(gsdiff_pattern_iter.next().unwrap(), "o255\"");
+        assert_eq!(gsdiff_pattern_iter.next().unwrap(), "256\"");
+        assert_eq!(gsdiff_pattern_iter.next().unwrap(), "256\"");
+        // if you keep doing this, you'll eventually get a string containing \r\n
+    }
+
+    #[test]
+    fn gen_state_diff_and_restore_simple1() {
+        let gs0 = make_gen_state();
+        let mut gs1 = make_gen_state();
+        let visibility = None;
+        Pattern("o!".to_owned()).to_grid(&mut gs1, visibility).unwrap();
+
+        let gsdiff = gs0.diff(&gs1, visibility);
+
+        let mut new_gs = make_gen_state();
+
+        gsdiff.pattern.to_grid(&mut new_gs, visibility).unwrap();
+        assert_eq!(new_gs, gs1);
+    }
+
+    #[test]
+    fn gen_state_diff_and_restore_complex1() {
+        let gs0 = make_gen_state();
+        let mut gs1 = make_gen_state();
+        let visibility = None;
+        let pat_str = "b2o23b2o21b$b2o23bo22b$24bobo22b$15b2o7b2o23b$2o13bobo31b$2o13bob2o30b$16b2o31b$16bo32b$44b2o3b$16bo27b2o3b$16b2o31b$2o13bob2o13bo3bo12b$2o13bobo13bo5bo7b2o2b$15b2o14bo13b2o2b$31b2o3bo12b$b2o30b3o13b$b2o46b$33b3o13b$31b2o3bo12b$31bo13b2o2b$31bo5bo7b2o2b$32bo3bo12b2$44b2o3b$44b2o3b5$37b2o10b$37bobo7b2o$39bo7b2o$37b3o9b$22bobo24b$21b3o25b$21b3o25b$21bo15b3o9b$25bobo11bo9b$21b2o4bo9bobo9b$16b2o4bo3b2o9b2o10b$15bobo6bo24b$15bo33b$14b2o!".to_owned();
+        Pattern(pat_str).to_grid(&mut gs1, visibility).unwrap();
+
+        let gsdiff = gs0.diff(&gs1, visibility);
+
+        let mut new_gs = make_gen_state();
+
+        gsdiff.pattern.to_grid(&mut new_gs, visibility).unwrap();
+        assert_eq!(new_gs.gen_or_none, gs1.gen_or_none);
+        assert_eq!(new_gs.cells, gs1.cells);
+        assert_eq!(new_gs.known, gs1.known);
+        assert_eq!(new_gs.wall_cells, gs1.wall_cells);
+        for i in 0..new_gs.player_states.len() {
+            assert_eq!(new_gs.player_states[i].cells, gs1.player_states[i].cells);
+            //assert_eq!(new_gs.player_states[i].fog, gs1.player_states[i].fog);  // OK for fog to differ, because normally the fog would already
+                                                                                  // be cleared where pattern is being written.
+        }
+    }
+
+    #[test]
+    fn gen_state_diff_and_restore_complex1_with_visibility() {
+        let gs0 = make_gen_state();
+        let mut gs1 = make_gen_state();
+        let visibility = Some(1);
+        let pat_str = "b2o23b2o21b$b2o23bo22b$24bobo22b$15b2o7b2o23b$2o13bobo31b$2o13bob2o30b$16b2o31b$16bo32b$44b2o3b$16bo27b2o3b$16b2o31b$2o13bob2o13bo3bo12b$2o13bobo13bo5bo7b2o2b$15b2o14bo13b2o2b$31b2o3bo12b$b2o30b3o13b$b2o46b$33b3o13b$31b2o3bo12b$31bo13b2o2b$31bo5bo7b2o2b$32bo3bo12b2$44b2o3b$44b2o3b5$37b2o10b$37bobo7b2o$39bo7b2o$37b3o9b$22bobo24b$21b3o25b$21b3o25b$21bo15b3o9b$25bobo11bo9b$21b2o4bo9bobo9b$16b2o4bo3b2o9b2o10b$15bobo6bo24b$15bo33b$14b2o!".to_owned();
+        Pattern(pat_str).to_grid(&mut gs1, visibility).unwrap();
+
+        let gsdiff = gs0.diff(&gs1, visibility);
+
+        let mut new_gs = make_gen_state();
+
+        gsdiff.pattern.to_grid(&mut new_gs, visibility).unwrap();
+        assert_eq!(new_gs.gen_or_none, gs1.gen_or_none);
+        assert_eq!(new_gs.cells, gs1.cells);
+        assert_eq!(new_gs.known, gs1.known);
+        assert_eq!(new_gs.wall_cells, gs1.wall_cells);
+        for i in 0..new_gs.player_states.len() {
+            assert_eq!(new_gs.player_states[i].cells, gs1.player_states[i].cells);
+            assert_eq!(new_gs.player_states[i].fog, gs1.player_states[i].fog);
+        }
     }
 }
 
