@@ -26,7 +26,6 @@ extern crate tokio_core;
 extern crate futures;
 
 mod net;
-
 use std::env;
 use std::io::{self, Read, ErrorKind};
 use std::error::Error;
@@ -324,7 +323,7 @@ impl ClientState {
                     sequence:     b,
                     response_ack: self.response_ack,
                     cookie:       self.cookie.clone(),
-                    action:       action,
+                    action:       action.clone(),
                 };
             }
 
@@ -335,6 +334,13 @@ impl ClientState {
                 self.network.statistics.tx_packets_failed += 1;
             } else {
                 self.network.statistics.tx_packets_success += 1;
+            }
+
+            if action == RequestAction::Disconnect {
+                let result = exit_tx.unbounded_send(());
+                if result.is_err() {
+                    warn!("Something really bad is going on... client cannot exit");
+                }
             }
         }
     }
