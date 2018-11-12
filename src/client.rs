@@ -41,8 +41,8 @@ use futures::{Future, Sink, Stream, stream};
 use futures::future::ok;
 use futures::sync::mpsc;
 
-const TICK_INTERVAL_IN_MS:         u64    = 100;
-const NETWORK_INTERVAL_IN_MS:       u64    = 100; // mi
+const TICK_INTERVAL_IN_MS:          u64    = 100;
+const NETWORK_INTERVAL_IN_MS:       u64    = 100;
 const CLIENT_VERSION: &str = "0.0.1";
 
 
@@ -186,20 +186,18 @@ impl ClientState {
             Packet::Response{sequence, request_ack, code} => {
                 // XXX sequence
                 // XXX request_ack
+                self.process_event_code(ResponseCode::KeepAlive); // On any incoming event update the heartbeat.
                 let code = code.clone();
                 if code != ResponseCode::KeepAlive {
-                    println!("DEBUG: Got packet from server {:?}: Sequence: {:?} Request_Ack: {:?} ResponseCode: {:?}",
-                                addr, sequence, request_ack, code);
+                    println!("[Response] sequence: {} ack: {:?} event: {:?}", sequence, request_ack, code);
+                    // When a packet is acked, we can remove it from the TX buffer and buffer the response for
+                    // later processing. Removing a "Response packet" from the TX queue (aka Request queue) simply means
+                    // using the response's response_ack to determine what `Request` sequence number the server acked.
+                    let _ = self.network.tx_packets.remove(&packet);
+                    self.network.rx_packets.buffer_item(packet);
+
+                    self.process_queued_rx_packets();
                 }
-
-                // When a packet is acked, we can remove it from the TX buffer and buffer the response for
-                // later processing. Removing a "Response packet" from the TX queue (aka Request queue) simply means
-                // using the response's response_ack to determine what `Request` sequence number the server acked.
-                let _ = self.network.tx_packets.remove(&packet);
-                self.network.rx_packets.buffer_item(packet);
-
-                self.process_queued_rx_packets();
-
             }
             // TODO game_updates, universe_update
             Packet::Update{chats, game_updates: _, universe_update: _} => {
@@ -232,6 +230,13 @@ impl ClientState {
 
     fn handle_network_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr) {
         if self.cookie.is_some() {
+            let keep_alive = Packet::Request {
+                cookie: self.cookie.clone(),
+                sequence: self.sequence,
+                response_ack: None,
+                action: RequestAction::KeepAlive
+            };
+            udp_tx.unbounded_send( (addr, keep_alive) ).unwrap();
             // Determine what can be processed
             // Determine what needs to be resent
             // Resend anything remaining in TX queue if it has also expired.
@@ -317,6 +322,8 @@ impl ClientState {
                 cookie:       self.cookie.clone(),
                 action:       action.clone(),
             };
+
+            println!("{:?}", packet);
 
             if let RequestAction::TestSequenceNumber(b) = action.clone() {
                 packet = Packet::Request {

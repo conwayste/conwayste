@@ -602,7 +602,7 @@ impl ServerState {
             Packet::Request{sequence, response_ack, cookie, action} => {
 
                 if action.clone() != RequestAction::KeepAlive {
-                    println!("Packet_RX {:?}/{:?}: Sequence: {:?} Response_Ack: {:?} RequestAction: {:?}", addr, cookie, sequence, response_ack, action);
+                    println!("[Request] cookie: {:?} sequence: {} ack: {:?} event: {:?}", cookie, sequence, response_ack, action);
                 }
 
                 match action {
@@ -637,17 +637,7 @@ impl ServerState {
                         }
                     };
 
-/*                    {
-                        let player_next_sequence_num: u64 = self.get_player(player_id).next_resp_seq;
-                        println!("{} <= {}", sequence, player_next_sequence_num - 1);
-                        if sequence <= (player_next_sequence_num - 1) && action != RequestAction::KeepAlive {
-                            self.silence_error = true;
-                            return Err(Box::new(io::Error::new(ErrorKind::AlreadyExists, "")));
-                        }
-                    }
-*/
-
-                    if self.is_previously_arrived_packet(player_id, sequence) {
+                    if action != RequestAction::KeepAlive && self.is_previously_arrived_packet(player_id, sequence) {
                         return Ok(None)
                     }
 
@@ -723,7 +713,7 @@ impl ServerState {
             // Sequence is assumed to start at 0 for all new connections
             let response = Packet::Response{
                 sequence:    0,
-                request_ack: None,
+                request_ack: Some(0), // Should start at seq_num 0 unless client's network state was not properly reset
                 code:        ResponseCode::LoggedIn(cookie, net::VERSION.to_owned()),
             };
             return response;
@@ -997,11 +987,10 @@ fn main() {
                 Event::NetworkEvent => {
                     for player in server_state.players.values() {
                         let keep_alive = Packet::Response {
-                            sequence: player.next_resp_seq-1,
-                            request_ack: player.request_ack,
+                            sequence: 0,
+                            request_ack: None,
                             code: ResponseCode::KeepAlive
                         };
-
                         tx.unbounded_send( (player.addr, keep_alive) ).unwrap();
                     }
                 }

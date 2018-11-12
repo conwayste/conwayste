@@ -30,6 +30,7 @@ use std::collections::VecDeque;
 
 use self::tokio_core::net::{UdpSocket, UdpCodec};
 use self::tokio_core::reactor::Handle;
+use self::futures::sync::mpsc;
 use self::bincode::{serialize, deserialize, Infinite};
 use self::semver::{Version, SemVerError};
 
@@ -243,8 +244,8 @@ impl Packet {
 impl fmt::Debug for Packet {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Packet::Request{ sequence, response_ack, cookie: _, action } => {
-                write!(f, "[Request] sequence: {} ack: {:?} event: {:?}", sequence, response_ack, action)
+            Packet::Request{ sequence, response_ack, cookie, action } => {
+                write!(f, "[Request] cookie: {:?} sequence: {} ack: {:?} event: {:?}", cookie, sequence, response_ack, action)
             }
             Packet::Response{ sequence, request_ack, code } => {
                 write!(f, "[Response] sequence: {} ack: {:?} event: {:?}", sequence, request_ack, code)
@@ -252,7 +253,10 @@ impl fmt::Debug for Packet {
             Packet::Update{ chats: _, game_updates, universe_update } => {
                 write!(f, "[Update] game_updates: {:?} universe_update: {:?}", game_updates, universe_update)
             }
-            _ => unimplemented!()
+            #[cfg(not(test))]
+            _ => {unimplemented!()}
+            #[cfg(test)]
+            _ => {Result::Ok(())}
         }
     }
 }
