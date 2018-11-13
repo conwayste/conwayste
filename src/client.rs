@@ -24,10 +24,11 @@ extern crate log;
 extern crate env_logger;
 extern crate tokio_core;
 extern crate futures;
+extern crate chrono;
 
 mod net;
 use std::env;
-use std::io::{self, Read, ErrorKind};
+use std::io::{self, Read, ErrorKind, Write};
 use std::error::Error;
 use std::iter;
 use std::net::SocketAddr;
@@ -40,6 +41,8 @@ use tokio_core::reactor::{Core, Timeout};
 use futures::{Future, Sink, Stream, stream};
 use futures::future::ok;
 use futures::sync::mpsc;
+use log::LevelFilter;
+use chrono::Local;
 
 const TICK_INTERVAL_IN_MS:          u64    = 100;
 const NETWORK_INTERVAL_IN_MS:       u64    = 100;
@@ -157,7 +160,7 @@ impl ClientState {
             ResponseCode::OK => {
                 match self.handle_response_ok() {
                     Ok(_) => {},
-                    Err(e) => println!("{:?}", e)
+                    Err(e) => error!("{:?}", e)
                 }
             }
             ResponseCode::LoggedIn(ref cookie, ref server_version) => {
@@ -189,7 +192,7 @@ impl ClientState {
                 self.process_event_code(ResponseCode::KeepAlive); // On any incoming event update the heartbeat.
                 let code = code.clone();
                 if code != ResponseCode::KeepAlive {
-                    println!("[Response] sequence: {} ack: {:?} event: {:?}", sequence, request_ack, code);
+                    trace!("[Response] sequence: {} ack: {:?} event: {:?}", sequence, request_ack, code);
                     // When a packet is acked, we can remove it from the TX buffer and buffer the response for
                     // later processing. Removing a "Response packet" from the TX queue (aka Request queue) simply means
                     // using the response's response_ack to determine what `Request` sequence number the server acked.
@@ -277,7 +280,7 @@ impl ClientState {
 
             if timed_out || self.disconnecting() {
                 if timed_out {
-                    println!("Server is non-responsive, disconnecting.");
+                    trace!("Server is non-responsive, disconnecting.");
                 }
                 self.reset();
             }
@@ -287,7 +290,6 @@ impl ClientState {
                 self.network.statistics.tx_keep_alive_failed += 1;
             } else {
                 self.network.statistics.tx_keep_alive_success += 1;
-                info!("Send KeepAlive yay!")
             }
         }
 
@@ -323,7 +325,7 @@ impl ClientState {
                 action:       action.clone(),
             };
 
-            println!("{:?}", packet);
+            trace!("{:?}", packet);
 
             if let RequestAction::TestSequenceNumber(b) = action.clone() {
                 packet = Packet::Request {
@@ -357,23 +359,23 @@ impl ClientState {
             match last_action {
                 &RequestAction::JoinRoom(ref room_name) => {
                     self.room = Some(room_name.clone());
-                    println!("Joined room {}.", room_name);
+                    info!("Joined room {}.", room_name);
                 }
                 &RequestAction::LeaveRoom => {
                     if self.in_game() {
-                        println!("Left room {}.", self.room.clone().unwrap());
+                        info!("Left room {}.", self.room.clone().unwrap());
                     }
                     self.room = None;
                     self.chat_msg_seq_num = 0;
                 }
                 _ => {
                     //XXX more cases in which server replies OK
-                    println!("OK :)");
+                    info!("OK :)");
                 }
             }
             return Ok(());
         } else {
-            //println!("OK, but we didn't make a request :/");
+            error!("OK, but we didn't make a request :/");
             return Err(Box::new(io::Error::new(ErrorKind::Other, "invalid packet - server-only")));
         }
     }
@@ -381,27 +383,27 @@ impl ClientState {
     fn handle_logged_in(&mut self, cookie: String, server_version: String) {
         self.cookie = Some(cookie);
 
-        println!("Set client name to {:?}", self.name.clone().unwrap());
+        info!("Set client name to {:?}", self.name.clone().unwrap());
         self.check_for_upgrade(&server_version);
     }
 
     fn handle_player_list(&mut self, player_names: Vec<String>) {
-        println!("---BEGIN PLAYER LIST---");
+        info!("---BEGIN PLAYER LIST---");
         for (i, player_name) in player_names.iter().enumerate() {
-            println!("{}\tname: {}", i, player_name);
+            info!("{}\tname: {}", i, player_name);
         }
-        println!("---END PLAYER LIST---");
+        info!("---END PLAYER LIST---");
     }
 
     fn handle_room_list(&mut self, rooms: Vec<(String, u64, bool)>) {
-        println!("---BEGIN GAME ROOM LIST---");
+        info!("---BEGIN GAME ROOM LIST---");
         for (game_name, num_players, game_running) in rooms {
-            println!("#players: {},\trunning? {:?},\tname: {:?}",
+            info!("#players: {},\trunning? {:?},\tname: {:?}",
                         num_players,
                         game_running,
                         game_name);
         }
-        println!("---END GAME ROOM LIST---");
+        info!("---END GAME ROOM LIST---");
     }
 
     fn handle_incoming_chats(&mut self, chats: Option<Vec<BroadcastChatMessage>> ) {
@@ -421,7 +423,7 @@ impl ClientState {
 
                 if let Some(ref client_name) = self.name.as_ref() {
                     if *client_name != &chat_message.player_name {
-                        println!("{}: {}", chat_message.player_name, chat_message.message);
+                        info!("{}: {}", chat_message.player_name, chat_message.message);
                     }
                 } else {
                    panic!("Client name not set!");
@@ -444,12 +446,12 @@ impl ClientState {
                         name:           args[0].clone(),
                         client_version: CLIENT_VERSION.to_owned(),
                     };
-                } else { println!("ERROR: expected client name only"); }
+                } else { debug!("ERROR: expected client name only"); }
             }
             "disconnect" => {
                 if args.len() == 0 {
                     action = RequestAction::Disconnect;
-                } else { println!("ERROR: expected no arguments to disconnect"); }
+                } else { debug!("ERROR: expected no arguments to disconnect"); }
             }
             "list" => {
                 if args.len() == 0 {
@@ -460,33 +462,33 @@ impl ClientState {
                         // lobby
                         action = RequestAction::ListRooms;
                     }
-                } else { println!("ERROR: expected no arguments to list"); }
+                } else { debug!("ERROR: expected no arguments to list"); }
             }
             "new" => {
                 if args.len() == 1 {
                     action = RequestAction::NewRoom(args[0].clone());
-                } else { println!("ERROR: expected name of room only"); }
+                } else { debug!("ERROR: expected name of room only"); }
             }
             "join" => {
                 if args.len() == 1 {
                     if !self.in_game() {
                         action = RequestAction::JoinRoom(args[0].clone());
                     } else {
-                        println!("ERROR: you are already in a game");
+                        debug!("ERROR: you are already in a game");
                     }
-                } else { println!("ERROR: expected room name only"); }
+                } else { debug!("ERROR: expected room name only"); }
             }
             "leave" => {
                 if args.len() == 0 {
                     if self.in_game() {
                         action = RequestAction::LeaveRoom;
                     } else {
-                        println!("ERROR: you are already in the lobby");
+                        debug!("ERROR: you are already in the lobby");
                     }
-                } else { println!("ERROR: expected no arguments to leave"); }
+                } else { debug!("ERROR: expected no arguments to leave"); }
             }
             "quit" => {
-                println!("Peace out!");
+                trace!("Peace out!");
                 action = RequestAction::Disconnect;
             }
             "sn" => {
@@ -495,7 +497,7 @@ impl ClientState {
                 }
             }
             _ => {
-                println!("ERROR: command not recognized: {}", cmd);
+                debug!("ERROR: command not recognized: {}", cmd);
             }
         }
         return action;
@@ -533,7 +535,19 @@ fn print_help() {
 
 //////////////////// Main /////////////////////
 fn main() {
-    drop(env_logger::init());
+    env_logger::Builder::new()
+    .format(|buf, record| {
+        writeln!(buf,
+            "{} [{:5}] - {}",
+            Local::now().format("%a %Y-%m-%d %H:%M:%S%.6f"),
+            record.level(),
+            record.args(),
+        )
+    })
+    .filter(None, LevelFilter::Trace)
+    .filter(Some("futures"), LevelFilter::Off)
+    .filter(Some("tokio_core"), LevelFilter::Off)
+    .init();
 
     let addr = env::args().nth(1).unwrap_or("127.0.0.1:12345".to_owned());
     let addr = addr.parse::<SocketAddr>()
@@ -541,7 +555,7 @@ fn main() {
                     error!("failed to parse address {:?}: {:?}", addr, e);
                     exit(1);
                 });
-    println!("Connecting to {:?}", addr);
+    trace!("Connecting to {:?}", addr);
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
@@ -559,7 +573,8 @@ fn main() {
     let (udp_tx, udp_rx) = mpsc::unbounded();    // create a channel because we can't pass the sink around everywhere
     let (exit_tx, exit_rx) = mpsc::unbounded();  // send () to exit_tx channel to quit the client
 
-    println!("Accepting commands to remote {:?} from local {:?}.\nType /help for more info...", addr, local_addr);
+    trace!("Accepting commands to remote {:?} from local {:?}.", addr, local_addr);
+    trace!("Type /help for more info...");
 
     // initialize state
     let initial_client_state = ClientState::new();

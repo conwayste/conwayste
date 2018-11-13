@@ -30,13 +30,14 @@ extern crate semver;
 #[cfg(test)]
 #[macro_use]
 extern crate proptest;
+extern crate chrono;
 
 mod net;
 
 use net::{RequestAction, ResponseCode, Packet, LineCodec, UniUpdateType, BroadcastChatMessage};
 
 use std::error::Error;
-use std::io::{self, ErrorKind};
+use std::io::{self, ErrorKind, Write};
 use std::iter;
 use std::net::SocketAddr;
 use std::process::exit;
@@ -51,6 +52,8 @@ use futures::sync::mpsc;
 use tokio_core::reactor::{Core, Timeout};
 use rand::Rng;
 use semver::Version;
+use chrono::Local;
+use log::LevelFilter;
 
 const TICK_INTERVAL_IN_MS:      u64 = 10;
 const NETWORK_INTERVAL_IN_MS: u64 = 1000;
@@ -602,7 +605,7 @@ impl ServerState {
             Packet::Request{sequence, response_ack, cookie, action} => {
 
                 if action.clone() != RequestAction::KeepAlive {
-                    println!("[Request] cookie: {:?} sequence: {} ack: {:?} event: {:?}", cookie, sequence, response_ack, action);
+                    trace!("[Request] cookie: {:?} sequence: {} ack: {:?} event: {:?}", cookie, sequence, response_ack, action);
                 }
 
                 match action {
@@ -796,7 +799,7 @@ impl ServerState {
                     // Player is caught up
                     return None;
                 } else if chat_msg_seq_num > newest_msg.seq_num {
-                    println!("ERROR: misbehaving client {:?};\nClient says it has more messages than we sent!", player);
+                    error!("Misbehaving client {:?};\nClient says it has more messages than we sent!", player);
                     return None;
                 } else {
                     let amount_to_consume = room.get_message_skip_count(chat_msg_seq_num);
@@ -863,7 +866,7 @@ impl ServerState {
 
         for (p_id, p) in self.players.iter() {
             if net::has_connection_timed_out(p.heartbeat) {
-                println!("Player({}) has timed out", p.cookie);
+                info!("Player({}) has timed out", p.cookie);
                 timed_out_players.push(*p_id);
             }
         }
@@ -896,7 +899,19 @@ enum Event {
 
 //////////////////// Main /////////////////////
 fn main() {
-    drop(env_logger::init());
+    env_logger::Builder::new()
+    .format(|buf, record| {
+        writeln!(buf,
+            "{} [{:5}] - {}",
+            Local::now().format("%a %Y-%m-%d %H:%M:%S%.6f"),
+            record.level(),
+            record.args(),
+        )
+    })
+    .filter(None, LevelFilter::Trace)
+    .filter(Some("futures"), LevelFilter::Off)
+    .filter(Some("tokio_core"), LevelFilter::Off)
+    .init();
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
@@ -960,7 +975,7 @@ fn main() {
                         } else {
                             let err = decode_result.unwrap_err();
                             if !server_state.silence_error {
-                                println!("ERROR decoding packet from {:?}: {:?}", addr, err);
+                                error!("Decoding packet failed, from {:?}: {:?}", addr, err);
                             }
                             server_state.silence_error = false;
                         }

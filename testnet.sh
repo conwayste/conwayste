@@ -34,8 +34,8 @@ function tmuxkill()
 tmuxkill
 cargo build
 
-tmux new-session -d -s server "export RUST_BACKTRACE=1; ./target/debug/server; read"
-tmux new-session -d -s client "export RUST_BACKTRACE=1; ./target/debug/client; read"
+tmux new-session -d -s server "export RUST_BACKTRACE=1; export RUST_LOG=server; ./target/debug/server; read"
+tmux new-session -d -s client "export RUST_BACKTRACE=1; export RUST_LOG=client; ./target/debug/client; read"
 
 echo "Listing sessions..."
 tmux ls
@@ -53,10 +53,7 @@ fi
 echo "Attached to tmux-sessions..."
 
 send client "/connect TestUser1"
-: '
 send client "/new TestRoom"
 send client "/join TestRoom"
 send client "/list"
 send client "/leave"
-send client "/disconnect"
-'

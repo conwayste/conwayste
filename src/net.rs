@@ -299,7 +299,7 @@ impl UdpCodec for LineCodec {
                 let local: SocketAddr = format!("{}:{}", "127.0.0.1", DEFAULT_PORT.to_string()).parse().unwrap();
                 // We only want to warn when the incoming packet is external to the host system
                 if local != *addr {
-                    println!("WARNING: error during packet deserialization: {:?}", e);
+                    warn!("WARNING: error during packet deserialization: {:?}", e);
                 }
                 Ok((*addr, None))
             }
@@ -470,7 +470,6 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug> {
             Err(_) => panic!("Could not remove transmitted item from queue"),
             Ok(index) => {
                 let pkt = self.as_queue_type_mut().remove(index).unwrap();
-                //println!("{:?}", pkt);
                 return pkt;
             }
         }
