@@ -178,7 +178,7 @@ pub struct Universe {
 // This includes any cells alive, known, and each player's own gen states
 // for this current session
 #[derive(Debug, Clone, PartialEq)]
-struct GenState {
+pub struct GenState {
     gen_or_none:   Option<usize>,        // Some(generation number) (redundant info); if None, this is an unused buffer
     cells:         BitGrid,              // 1 = cell is known to be Alive
     wall_cells:    BitGrid,              // 1 = is a wall cell (should this just be fixed for the universe?)
@@ -187,10 +187,10 @@ struct GenState {
 }
 
 #[derive(Debug, Clone)]
-struct GenStateDiff {
-    gen0:    usize,
-    gen1:    usize,
-    pattern: Pattern,
+pub struct GenStateDiff {
+    pub gen0:    usize,
+    pub gen1:    usize,
+    pub pattern: Pattern,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -355,6 +355,18 @@ impl GenState {
     ///
     /// The `gen0` field of the result will be equal to `self.gen_or_none.unwrap()` and the `gen1`
     /// field will be equal to `new.gen_or_none.unwrap()`.
+    ///
+    /// When `visibility` is `Some(player_id)`, then for all possible `gs0` and `gs1` where
+    /// `player_id` is valid and dimensions match, the following should be true:
+    ///
+    ///  ```no_run
+    ///  # use conway::universe::GenState;
+    ///  # fn do_eet(gs0: GenState, gs1: GenState, mut new_gs: GenState, visibility: Option<usize>) {
+    ///  let gsdiff = gs0.diff(&gs1, visibility);
+    ///  gsdiff.pattern.to_grid(&mut new_gs, visibility).unwrap();
+    ///  assert_eq!(new_gs, gs1);
+    ///  # }
+    ///  ```
     ///
     /// Panics:
     ///
