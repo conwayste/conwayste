@@ -144,6 +144,7 @@ impl ClientState {
         let rx_queue_count = self.network.rx_packets.get_contiguous_packets_count(self.response_sequence);
         while dequeue_count < rx_queue_count {
             let packet = self.network.rx_packets.as_queue_type_mut().pop_front().unwrap();
+            trace!("{:?}", packet);
             match packet {
                 Packet::Response{sequence: _, request_ack: _, code} => {
                     dequeue_count += 1;
@@ -192,7 +193,6 @@ impl ClientState {
                 self.process_event_code(ResponseCode::KeepAlive); // On any incoming event update the heartbeat.
                 let code = code.clone();
                 if code != ResponseCode::KeepAlive {
-                    trace!("[Response] sequence: {} ack: {:?} event: {:?}", sequence, request_ack, code);
                     // When a packet is acked, we can remove it from the TX buffer and buffer the response for
                     // later processing. Removing a "Response packet" from the TX queue (aka Request queue) simply means
                     // using the response's response_ack to determine what `Request` sequence number the server acked.
@@ -446,12 +446,12 @@ impl ClientState {
                         name:           args[0].clone(),
                         client_version: CLIENT_VERSION.to_owned(),
                     };
-                } else { debug!("ERROR: expected client name only"); }
+                } else { error!("Expected client name as the sole argument (no spaces allowed)."); }
             }
             "disconnect" => {
                 if args.len() == 0 {
                     action = RequestAction::Disconnect;
-                } else { debug!("ERROR: expected no arguments to disconnect"); }
+                } else { debug!("Command failed: Expected no arguments to disconnect"); }
             }
             "list" => {
                 if args.len() == 0 {
@@ -462,30 +462,30 @@ impl ClientState {
                         // lobby
                         action = RequestAction::ListRooms;
                     }
-                } else { debug!("ERROR: expected no arguments to list"); }
+                } else { debug!("Command failed: Expected no arguments to list"); }
             }
             "new" => {
                 if args.len() == 1 {
                     action = RequestAction::NewRoom(args[0].clone());
-                } else { debug!("ERROR: expected name of room only"); }
+                } else { debug!("Command failed: Expected name of room (no spaces allowed)"); }
             }
             "join" => {
                 if args.len() == 1 {
                     if !self.in_game() {
                         action = RequestAction::JoinRoom(args[0].clone());
                     } else {
-                        debug!("ERROR: you are already in a game");
+                        debug!("Command failed: You are already in a game");
                     }
-                } else { debug!("ERROR: expected room name only"); }
+                } else { debug!("Command failed: Expected room name only (no spaces allowed)"); }
             }
             "leave" => {
                 if args.len() == 0 {
                     if self.in_game() {
                         action = RequestAction::LeaveRoom;
                     } else {
-                        debug!("ERROR: you are already in the lobby");
+                        debug!("Command failed: You are already in the lobby");
                     }
-                } else { debug!("ERROR: expected no arguments to leave"); }
+                } else { debug!("Command failed: Expected no arguments to leave"); }
             }
             "quit" => {
                 trace!("Peace out!");
@@ -497,7 +497,7 @@ impl ClientState {
                 }
             }
             _ => {
-                debug!("ERROR: command not recognized: {}", cmd);
+                debug!("Command not recognized: {}", cmd);
             }
         }
         return action;
