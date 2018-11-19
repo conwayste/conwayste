@@ -46,6 +46,37 @@ const RETRANSMISSION_THRESHOLD: Duration = Duration::from_millis(100);
 // (110 is the avg weight of an amino acid in daltons :] Much larger than our current queue size)
 const MATCH_FOUND_SENTINEL: usize = 110;
 
+//////////////// Public Macros /////////////////
+
+#[macro_export]
+macro_rules! netwayste_send {
+    ($_self:ident, $tx:expr, $dest:expr, ($failmsg:expr $(, $args:expr)*)) => {
+        let result = $tx.unbounded_send($dest);
+        if result.is_err() {
+            warn!($failmsg, $( $args)*);
+            $_self.network.statistics.tx_packets_failed += 1;
+        } else {
+            $_self.network.statistics.tx_packets_success += 1;
+        }
+    };
+    ($_self:ident, $tx:expr, $dest:expr) => {
+        let result = $tx.unbounded_send($dest);
+        if result.is_err() {
+            error!("Could not send KeepAlive heartbeat!");
+            $_self.network.statistics.tx_keep_alive_failed += 1;
+        } else {
+            $_self.network.statistics.tx_keep_alive_success += 1;
+        }
+    };
+    ($tx:expr, ()) => {
+        let result = $tx.unbounded_send(());
+        if result.is_err() {
+            error!("Something really bad is going on... client cannot exit!");
+        } else {
+        }
+    };
+}
+
 //////////////// Error handling ////////////////
 #[derive(Debug)]
 pub enum NetError {

@@ -213,14 +213,9 @@ impl ClientState {
                     last_game_update_seq: None,
                     last_gen:             None,
                 };
-                let send = udp_tx.unbounded_send((addr.clone(), packet));
 
-                if send.is_err() {
-                    warn!("Could not send UpdateReply{{ {} }} to server", self.chat_msg_seq_num);
-                    self.network.statistics.tx_packets_failed += 1;
-                } else {
-                    self.network.statistics.tx_packets_success += 1;
-                }
+                netwayste_send!(self, udp_tx, (addr.clone(), packet),
+                         ("Could not send UpdateReply{{ {} }} to server", self.chat_msg_seq_num));
             }
             Packet::Request{..} => {
                 warn!("Ignoring packet from server normally sent by clients: {:?}", packet);
@@ -239,7 +234,9 @@ impl ClientState {
                 response_ack: None,
                 action: RequestAction::KeepAlive
             };
-            udp_tx.unbounded_send( (addr, keep_alive) ).unwrap();
+
+            netwayste_send!(self, udp_tx, (addr, keep_alive));
+
             // Determine what can be processed
             // Determine what needs to be resent
             // Resend anything remaining in TX queue if it has also expired.
@@ -250,14 +247,8 @@ impl ClientState {
 
             for index in indices {
                 if let Some(pkt) = self.network.tx_packets.queue.get(index) {
-                    let result = udp_tx.unbounded_send((addr, (*pkt).clone()));
-
-                    if result.is_err() {
-                        warn!("Could not retransmit pkt to server");
-                        self.network.statistics.tx_packets_failed += 1;
-                    } else {
-                        self.network.statistics.tx_packets_success += 1;
-                    }
+                    netwayste_send!(self, udp_tx, (addr, (*pkt).clone()),
+                                    ("Could not retransmit packet to server: {:?}", pkt));
                 } else {
                     panic!("ERROR: Index in timestamp queue out-of-bounds in tx packets queue: {}\n{:?}\n{:?}",
                             index, self.network.tx_packets.queue, self.network.tx_packets.timestamps);
@@ -275,7 +266,6 @@ impl ClientState {
                 cookie: self.cookie.clone(),
                 action: RequestAction::KeepAlive
             };
-            let result = udp_tx.unbounded_send( (addr, keep_alive) );
             let timed_out = net::has_connection_timed_out(self.heartbeat);
 
             if timed_out || self.disconnecting() {
@@ -285,12 +275,7 @@ impl ClientState {
                 self.reset();
             }
 
-            if result.is_err() {
-                warn!("Could not send KeepAlive");
-                self.network.statistics.tx_keep_alive_failed += 1;
-            } else {
-                self.network.statistics.tx_keep_alive_success += 1;
-            }
+            netwayste_send!(self, udp_tx, (addr, keep_alive));
         }
 
         self.tick = 1usize.wrapping_add(self.tick);
@@ -337,19 +322,12 @@ impl ClientState {
             }
 
             self.network.tx_packets.buffer_item(packet.clone());
-            let result = udp_tx.unbounded_send((addr.clone(), packet));
-            if result.is_err() {
-                warn!("Could not send user input cmd to server");
-                self.network.statistics.tx_packets_failed += 1;
-            } else {
-                self.network.statistics.tx_packets_success += 1;
-            }
+
+            netwayste_send!(self, udp_tx, (addr.clone(), packet),
+                            ("Could not send user input cmd to server"));
 
             if action == RequestAction::Disconnect {
-                let result = exit_tx.unbounded_send(());
-                if result.is_err() {
-                    warn!("Something really bad is going on... client cannot exit");
-                }
+                netwayste_send!(exit_tx, ());
             }
         }
     }
