@@ -62,8 +62,9 @@ function IssueInRoomCommands()
 
 function LeaveRooms()
 {
-    send client "/leave"
-    send client2 "/leave"
+    for i in ${CLIENTLIST[@]}; do
+        send $i "/leave"
+    done
 }
 
 
@@ -98,7 +99,7 @@ echo "Attached to tmux-sessions."
 for i in ${CLIENTLIST[@]}; do
     ConnectToServerDefaultTestRoom $i
 done
-
+sleep 1
 # First basic test... spam 500 /list and chat messages
 roomCmdCount=500
 until [[ $roomCmdCount -eq 0 ]];
