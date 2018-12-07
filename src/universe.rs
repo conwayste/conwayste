@@ -1466,7 +1466,7 @@ impl Universe {
     // return Err("invalid - too large difference, gen0:<num> gen1:<num>") if the difference
     // between `diff.gen0` and `diff.gen1` is too large.
     // gen0 must be less than gen1, otherwise a panic results
-    pub fn apply(&mut self, diff: &GenStateDiff) -> Result<Option<usize>, String> {
+    pub fn apply(&mut self, diff: &GenStateDiff, visibility: Option<usize>) -> Result<Option<usize>, String> {
         assert!(diff.gen0 < diff.gen1, format!("expected gen0 < gen1, but {} >= {}",
                                                diff.gen0, diff.gen1));
         // if diff too large, return Err(...)
@@ -1492,16 +1492,40 @@ impl Universe {
         if opt_gen0_idx.is_none() {
             return Ok(None);
         }
+        let gen0_idx = opt_gen0_idx.unwrap();
 
-        // 3) make room for the new gen_state
-        //XXX
+        // 3) make room for the new gen_state (make room in the circular buffer)
+        for i in 0..self.gen_states.len() {
+            if let Some(gen) = self.gen_states[i].gen_or_none {
+                if gen <= diff.gen1 - gen_state_len {
+                    self.gen_states[i].gen_or_none = None; // indicate uninitialized
+                }
+            }
+        }
 
         // 4a) copy from the gen_state for gen0 to what will be the gen_state for gen1
-        //XXX
-        // 4b) apply the diff!
-        //XXX
+        // TODO: This needs some serious cleanup
+        let gen1_idx = (gen0_idx + diff.gen1 - diff.gen0) % gen_state_len;
+        let cut_idx = cmp::max(gen0_idx, gen1_idx);
+        {
+            let (lower, upper): (&mut [GenState], &mut [GenState]) = self.gen_states.split_at_mut(cut_idx);
+            if gen1_idx < cut_idx {
+                lower[gen1_idx].clear();
+                upper[gen0_idx - cut_idx].copy(&mut lower[gen1_idx]); // this is an |= operation, hence the clear before this
+            } else {
+                upper[gen1_idx - cut_idx].clear();
+                lower[gen0_idx].copy(&mut upper[gen1_idx - cut_idx]); // this is an |= operation, hence the clear before this
+            }
+        }
 
-        // 5) update self.generation, and self.gen_states[gen1_idx].gen_or_none
+        // 4b) apply the diff!
+        diff.pattern.to_grid(&mut self.gen_states[gen1_idx], visibility)?;
+
+        // 5) update self.generation, self.state_index, and self.gen_states[gen1_idx].gen_or_none
+        let new_gen = diff.gen1;
+        self.generation = new_gen;
+        self.state_index = gen1_idx;
+        self.gen_states[gen1_idx].gen_or_none = Some(new_gen);
 
         Ok(Some(new_gen))
     }
