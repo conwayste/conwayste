@@ -176,6 +176,19 @@ impl BitGrid {
             }
         }
     }
+
+    /// Get a Region of the same size as the BitGrid.
+    pub fn region(&self) -> Region {
+        Region::new(0, 0, self.width(), self.height())
+    }
+
+    /// Clear this BitGrid.
+    pub fn clear(&mut self) {
+        let region = {
+            self.region()
+        };
+        self.modify_region(region, BitOperation::Clear);
+    }
 }
 
 

@@ -397,6 +397,32 @@ impl GenState {
             pattern,
         }
     }
+
+    /// Zeroes out all bit grids. Note: this means fog is cleared for all players.
+    pub fn clear(&mut self) {
+        let region = Region::new(0, 0, self.width(), self.height());
+        self.cells.modify_region(region, BitOperation::Clear);
+        self.known.modify_region(region, BitOperation::Clear);
+        self.wall_cells.modify_region(region, BitOperation::Clear);
+
+        for player_id in 0..self.player_states.len() {
+            let p = &mut self.player_states[player_id];
+            p.cells.modify_region(region, BitOperation::Clear);
+            p.fog.modify_region(region, BitOperation::Clear);
+        }
+    }
+
+    pub fn copy(&self, dest: &mut GenState) {
+        let region = Region::new(0, 0, self.width(), self.height());
+        BitGrid::copy(&self.cells, &mut dest.cells, region);
+        BitGrid::copy(&self.known, &mut dest.known, region);
+        BitGrid::copy(&self.wall_cells, &mut dest.wall_cells, region);
+
+        for player_id in 0..dest.player_states.len() {
+            BitGrid::copy(&self.player_states[player_id].cells, &mut dest.player_states[player_id].cells, region);
+            BitGrid::copy(&self.player_states[player_id].fog, &mut dest.player_states[player_id].fog, region);
+        }
+    }
 }
 
 impl CharGrid for GenState {
@@ -1429,6 +1455,55 @@ impl Universe {
         }
         let latest_gen = &mut self.gen_states[self.state_index];
         latest_gen.copy_from_bit_grid(src, region, opt_player_id);
+    }
+
+
+    // return Ok(Some(new_gen)) or Ok(None) if nothing new
+    // The "nothing new" case can happen if:
+    //      - the generation to be applied is already present
+    //      - there is already a greater generation present
+    //      - the base generation of this diff could not be found
+    // return Err("invalid - too large difference, gen0:<num> gen1:<num>") if the difference
+    // between `diff.gen0` and `diff.gen1` is too large.
+    // gen0 must be less than gen1, otherwise a panic results
+    pub fn apply(&mut self, diff: &GenStateDiff) -> Result<Option<usize>, String> {
+        assert!(diff.gen0 < diff.gen1, format!("expected gen0 < gen1, but {} >= {}",
+                                               diff.gen0, diff.gen1));
+        // if diff too large, return Err(...)
+        let gen_state_len = self.gen_states.len();
+        if diff.gen1 - diff.gen0 >= gen_state_len {
+            return Err(format!("diff is across too many generations to be applied: {} >= {}",
+                               diff.gen1 - diff.gen0, gen_state_len));
+        }
+
+        // 1) find the gen0 in our gen_states; if not found, return Ok(None)
+        let mut opt_gen0_idx = None;
+        for i in 0..self.gen_states.len() {
+            if let Some(gen) = self.gen_states[i].gen_or_none {
+                if gen == diff.gen0 {
+                    opt_gen0_idx = Some(i);
+                }
+                // 2) ensure that no generation is >= gen1; if so, return Ok(None)
+                if gen >= diff.gen1 {
+                    return Ok(None);
+                }
+            }
+        }
+        if opt_gen0_idx.is_none() {
+            return Ok(None);
+        }
+
+        // 3) make room for the new gen_state
+        //XXX
+
+        // 4a) copy from the gen_state for gen0 to what will be the gen_state for gen1
+        //XXX
+        // 4b) apply the diff!
+        //XXX
+
+        // 5) update self.generation, and self.gen_states[gen1_idx].gen_or_none
+
+        Ok(Some(new_gen))
     }
 }
 
