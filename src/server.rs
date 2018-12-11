@@ -641,6 +641,7 @@ impl ServerState {
                     };
 
                     if action != RequestAction::KeepAlive && self.is_previously_arrived_packet(player_id, sequence) {
+                        trace!("\t [ALREADY RECEIVED]");
                         return Ok(None)
                     }
 

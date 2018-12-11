@@ -44,8 +44,8 @@ use futures::sync::mpsc;
 use log::LevelFilter;
 use chrono::Local;
 
-const TICK_INTERVAL_IN_MS:          u64    = 100;
-const NETWORK_INTERVAL_IN_MS:       u64    = 100;
+const TICK_INTERVAL_IN_MS:          u64    = 1000;
+const NETWORK_INTERVAL_IN_MS:       u64    = 1000;
 const CLIENT_VERSION: &str = "0.0.1";
 
 
@@ -228,14 +228,6 @@ impl ClientState {
 
     fn handle_network_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr) {
         if self.cookie.is_some() {
-            let keep_alive = Packet::Request {
-                cookie: self.cookie.clone(),
-                sequence: self.sequence,
-                response_ack: None,
-                action: RequestAction::KeepAlive
-            };
-
-            netwayste_send!(self, udp_tx, (addr, keep_alive));
 
             // Determine what can be processed
             // Determine what needs to be resent
@@ -247,6 +239,7 @@ impl ClientState {
 
             for index in indices {
                 if let Some(pkt) = self.network.tx_packets.queue.get(index) {
+                    trace!("[RESENDING] {:?}", pkt);
                     netwayste_send!(self, udp_tx, (addr, (*pkt).clone()),
                                     ("Could not retransmit packet to server: {:?}", pkt));
                 } else {
@@ -260,10 +253,11 @@ impl ClientState {
     fn handle_tick_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr) {
         // Every 100ms, after we've connected
         if self.cookie.is_some() {
+            // Send a keep alive heartbeat if the connection is live
             let keep_alive = Packet::Request {
-                sequence: self.sequence,
-                response_ack: self.response_ack,
                 cookie: self.cookie.clone(),
+                sequence: self.sequence,
+                response_ack: None,
                 action: RequestAction::KeepAlive
             };
             let timed_out = net::has_connection_timed_out(self.heartbeat);
@@ -273,9 +267,9 @@ impl ClientState {
                     trace!("Server is non-responsive, disconnecting.");
                 }
                 self.reset();
+            } else {
+                netwayste_send!(self, udp_tx, (addr, keep_alive));
             }
-
-            netwayste_send!(self, udp_tx, (addr, keep_alive));
         }
 
         self.tick = 1usize.wrapping_add(self.tick);
@@ -416,6 +410,9 @@ impl ClientState {
         match cmd.as_str() {
             "help" => {
                 print_help();
+            }
+            "stats" => {
+                self.network.printStatistics();
             }
             "connect" => {
                 if args.len() == 1 {

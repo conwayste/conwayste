@@ -893,6 +893,13 @@ impl NetworkManager {
             chat_messages.buffer_wrap_index = None;
         }
     }
+
+    pub fn printStatistics(&self) {
+        info!("Tx Successes: {}", self.statistics.tx_packets_success);
+        info!("Tx Failures:  {}", self.statistics.tx_packets_failed);
+        info!("KeepAlive Successes: {}", self.statistics.tx_keep_alive_success);
+        info!("KeepAlive Failures:  {}", self.statistics.tx_keep_alive_failed);
+    }
 }
 
 #[cfg(test)]
