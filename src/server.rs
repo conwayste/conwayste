@@ -34,7 +34,7 @@ extern crate chrono;
 
 mod net;
 
-use net::{RequestAction, ResponseCode, Packet, LineCodec, UniUpdateType, BroadcastChatMessage};
+use net::{RequestAction, ResponseCode, Packet, LineCodec, UniUpdateType, BroadcastChatMessage, NetworkManager, NetworkQueue};
 
 use std::error::Error;
 use std::io::{self, ErrorKind, Write};
@@ -55,12 +55,12 @@ use semver::Version;
 use chrono::Local;
 use log::LevelFilter;
 
-const TICK_INTERVAL_IN_MS:      u64 = 10;
-const NETWORK_INTERVAL_IN_MS: u64 = 1000;
-const MAX_ROOM_NAME:         usize = 16;
-const MAX_NUM_CHAT_MESSAGES: usize = 128;
-const MAX_AGE_CHAT_MESSAGES: usize = 60*5; // seconds
-const SERVER_ID:             PlayerID = PlayerID(u64::max_value()); // 0xFFFF....FFFF
+const TICK_INTERVAL_IN_MS:    u64      = 10;
+const NETWORK_INTERVAL_IN_MS: u64      = 25;    // Arbitrarily chosen
+const MAX_ROOM_NAME:          usize    = 16;
+const MAX_NUM_CHAT_MESSAGES:  usize    = 128;
+const MAX_AGE_CHAT_MESSAGES:  usize    = 60*5; // seconds
+const SERVER_ID:              PlayerID = PlayerID(u64::max_value()); // 0xFFFF....FFFF
 
 #[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
 struct PlayerID(u64);
@@ -86,7 +86,7 @@ struct Player {
     cookie:        String,
     addr:          SocketAddr,
     name:          String,
-    request_ack:   Option<u64>,          // most recent request sequence number received
+    request_ack:   Option<u64>,          // most recent request sequence number received. This +1 is what we'd next expect.
     next_resp_seq: u64,                  // This is the sequence number for the Response packet the Server sends to the Client
     game_info:     Option<PlayerInGameInfo>,   // none means in lobby
     heartbeat:     Option<time::Instant>,
@@ -175,10 +175,10 @@ struct Room {
 struct ServerState {
     tick:           usize,
     players:        HashMap<PlayerID, Player>,
-    player_map:     HashMap<String, PlayerID>,      // map cookie to player ID
+    player_map:     HashMap<String, PlayerID>,  // map cookie to player ID
     rooms:          HashMap<RoomID, Room>,
-    room_map:       HashMap<String, RoomID>,      // map room name to room ID
-    silence_error:  bool,   // TODO move into own struct with other 'config' members
+    room_map:       HashMap<String, RoomID>,    // map room name to room ID
+    network_map:    HashMap<PlayerID, NetworkManager>,  // map Player ID to Player
 }
 
 //////////////// Utilities ///////////////////////
@@ -577,15 +577,18 @@ impl ServerState {
         return true;
     }
 
-    fn is_previously_arrived_packet(&mut self, player_id: PlayerID, sequence: u64) -> bool {
+    // Request_ack contains the last processed sequence number. If one arrives older (less than)
+    // than the last processed, it must be rejected.
+    // FIXME Does not handle wrapped sequence number case yet.
+    fn is_previously_processed_packet(&mut self, player_id: PlayerID, sequence: u64) -> bool {
         // TODO: There's a CLEAR and obvious bug here related to out-of-order arrivals that will be fixed shortly.
-        let player: &mut Player = self.get_player_mut(player_id);
+        // request_ack is not being updated properly
+        let player: &Player = self.get_player(player_id);
         if let Some(request_ack) = player.request_ack {
-            if sequence <= request_ack {
+            if sequence < request_ack {
                 return true;
             }
         }
-        player.request_ack = Some(sequence);
         false
     }
 
@@ -596,9 +599,45 @@ impl ServerState {
         }
     }
 
-    // always returns either Ok(Some(Packet::Response{...})), Ok(None), or error
+    /// Returns true if the packet already exists in the queue, otherwise it will be added
+    /// in sequence_number order.
+    fn add_packet_to_queue(&mut self, player_id: PlayerID, packet: Packet) -> bool {
+        // Unwrap should be safe since a player ID was already found.
+        let network: &mut NetworkManager = self.network_map.get_mut(&player_id).unwrap();
+        let already_exists = network.rx_packets.buffer_item(packet);
+        already_exists
+    }
+
+    fn can_process_packet(&mut self, player_id: PlayerID, sequence_number: u64) -> bool {
+        let player: &mut Player = self.get_player_mut(player_id);
+        if let Some(ack) = player.request_ack {
+            ack+1 == sequence_number
+        } else {
+            player.request_ack = Some(sequence_number);
+            true
+        } // has not been set yet
+    }
+
+    fn process_player_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Result<Option<Packet>, Box<Error>> {
+        match action {
+            RequestAction::Connect{..} => unreachable!(),
+            _ => {
+                let response = self.handle_request_action(player_id, action.clone());
+                Ok(Some(response))
+            }
+        }
+    }
+
+    // Inspect the packet's contents for acceptance, or reject it.
+    // `Response`/`Update` packets are invalid in this context
+    // Acceptance criteria for `Request`
+    //  1. Cookie must be present and valid
+    //  2. Ignore KeepAlive
+    //  3. Client should notified if version requires updating
+    //  4. Ignore if already received or processed
+    // Always returns either Ok(Some(Packet::Response{...})), Ok(None), or error.
     fn decode_packet(&mut self, addr: SocketAddr, packet: Packet) -> Result<Option<Packet>, Box<Error>> {
-        match packet {
+        match packet.clone() {
             _pkt @ Packet::Response{..} | _pkt @ Packet::Update{..} => {
                 return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "invalid packet - server-only")));
             }
@@ -606,6 +645,8 @@ impl ServerState {
 
                 if action.clone() != RequestAction::KeepAlive {
                     trace!("[Request] cookie: {:?} sequence: {} ack: {:?} event: {:?}", cookie, sequence, response_ack, action);
+                } else {
+                    return Ok(None);
                 }
 
                 match action {
@@ -640,24 +681,28 @@ impl ServerState {
                         }
                     };
 
-                    if action != RequestAction::KeepAlive && self.is_previously_arrived_packet(player_id, sequence) {
-                        trace!("\t [ALREADY RECEIVED]");
-                        return Ok(None)
+                    // Check to see if it can be processed right away, otherwise buffer it for later consumption.
+                    // Not sure if I like this name but it'll do for now.
+                    if self.can_process_packet(player_id, sequence) {
+                        trace!("\t [PROCESS IMMEDIATE]");
+                        return self.process_player_request_action(player_id, action);
                     }
 
-                    match action {
-                        RequestAction::Connect{..} => unreachable!(),
-                        _ => {
-                            let response = self.handle_request_action(player_id, action.clone());
-
-                            if action != RequestAction::KeepAlive {
-                                Ok(Some(response))
-                            } else {
-                                self.silence_error = true;
-                                Err(Box::new(io::Error::new(ErrorKind::AlreadyExists, "")))
-                            }
-                        }
+                    // Packet may be resent but already processed.
+                    if self.is_previously_processed_packet(player_id, sequence) {
+                        trace!("\t [ALREADY PROCESSED]");
+                        return Ok(None);
                     }
+
+                    // Returns true if the packet already exists in the queue
+                    if self.add_packet_to_queue(player_id, packet) {
+                        trace!("\t [ALREADY QUEUED]");
+                        return Ok(None);
+                    }
+
+                    // In the event we buffered it, we do not send a response
+                    trace!("\t [BUFFERED]");
+                    Ok(None)
                 }
             }
             Packet::UpdateReply{cookie, last_chat_seq, last_game_update_seq: _, last_gen: _} => {
@@ -885,7 +930,7 @@ impl ServerState {
             rooms:      HashMap::<RoomID, Room>::new(),
             player_map: HashMap::<String, PlayerID>::new(),
             room_map:   HashMap::<String, RoomID>::new(),
-            silence_error: false,
+            network_map: HashMap::<PlayerID, NetworkManager>::new(),
         }
     }
 }
@@ -975,10 +1020,7 @@ fn main() {
                             }
                         } else {
                             let err = decode_result.unwrap_err();
-                            if !server_state.silence_error {
-                                error!("Decoding packet failed, from {:?}: {:?}", addr, err);
-                            }
-                            server_state.silence_error = false;
+                            error!("Decoding packet failed, from {:?}: {:?}", addr, err);
                         }
                     }
                 }
@@ -1001,6 +1043,7 @@ fn main() {
                 }
 
                 Event::NetworkEvent => {
+                    // TODO Add code for buffeted packet processing
                     for player in server_state.players.values() {
                         let keep_alive = Packet::Response {
                             sequence: 0,
