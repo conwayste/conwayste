@@ -197,7 +197,7 @@ impl ClientState {
                     // later processing. Removing a "Response packet" from the TX queue (aka Request queue) simply means
                     // using the response's response_ack to determine what `Request` sequence number the server acked.
                     let _ = self.network.tx_packets.remove(&packet);
-                    self.network.rx_packets.buffer_item(packet);
+                    let _ = self.network.rx_packets.buffer_item(packet);
 
                     self.process_queued_rx_packets();
                 }
@@ -315,7 +315,7 @@ impl ClientState {
                 };
             }
 
-            self.network.tx_packets.buffer_item(packet.clone());
+            let _ = self.network.tx_packets.buffer_item(packet.clone());
 
             netwayste_send!(self, udp_tx, (addr.clone(), packet),
                             ("Could not send user input cmd to server"));
@@ -391,7 +391,7 @@ impl ClientState {
                 self.chat_msg_seq_num = std::cmp::max(chat_seq, self.chat_msg_seq_num);
 
                 let mut queue = self.network.rx_chat_messages.as_mut().unwrap();
-                queue.buffer_item(chat_message.clone());
+                let _ = queue.buffer_item(chat_message.clone());
 
                 if let Some(ref client_name) = self.name.as_ref() {
                     if *client_name != &chat_message.player_name {
@@ -412,7 +412,7 @@ impl ClientState {
                 print_help();
             }
             "stats" => {
-                self.network.printStatistics();
+                self.network.print_statistics();
             }
             "connect" => {
                 if args.len() == 1 {

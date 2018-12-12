@@ -514,7 +514,7 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug> {
     }
 
     fn discard_older_items(&mut self);
-    fn buffer_item(&mut self, item: T);
+    fn buffer_item(&mut self, item: T) -> bool;
     fn as_queue_type(&self) -> &ItemQueue<T>;
     fn as_queue_type_mut(&mut self) -> &mut ItemQueue<T>;
 }
@@ -556,11 +556,11 @@ impl NetworkQueue<Packet> for TXQueue {
     /// As we buffer new packets, we'll want to throw away the older packets.
     /// We must be careful to ensure that we do not throw away packets that have
     /// not yet been acknowledged by the end-point.
-    fn buffer_item(&mut self, item: Packet) {
+    fn buffer_item(&mut self, item: Packet) -> bool {
         let sequence = match item {
             Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } => sequence,
             Packet::Response{ sequence, request_ack: _, code: _ } => sequence,
-            _ => return
+            _ => return false, //do nothing
         };
 
         let opt_head_seq_num: Option<u64> = self.newest_seq_num();
@@ -568,7 +568,7 @@ impl NetworkQueue<Packet> for TXQueue {
         if opt_head_seq_num.is_none() {
             self.push_back(item);
             self.timestamps.push_back(Instant::now());
-            return;
+            return false;
         }
 
         let head_seq_num = opt_head_seq_num.unwrap(); // unwrap safe
@@ -581,6 +581,8 @@ impl NetworkQueue<Packet> for TXQueue {
             self.push_back(item);
             self.timestamps.push_back(Instant::now());
         }
+
+        false   // Will need to scan if already present in packet
     }
 
     fn remove(&mut self, pkt: &Packet) -> Packet {
@@ -678,14 +680,15 @@ impl<T> NetworkQueue<T> for RXQueue<T>
     /// Because we can receive `T`'s out-of-order even when wrapped, there are checks added below to safeguard
     /// against this. Primarily, they cover the cases where out-of-order insertion would transition the queue into a
     /// wrapped state from a non-wrapped state.
-    fn buffer_item(&mut self, item: T) {
+    fn buffer_item(&mut self, item: T) -> bool {
+        let mut packet_exists: bool = false;
         let sequence = item.sequence_number();
 
         // Empty queue
         let opt_head_seq_num: Option<u64> = self.newest_seq_num();
         if opt_head_seq_num.is_none() {
             self.push_back(item);
-            return;
+            return packet_exists;
         }
         let opt_tail_seq_num: Option<u64> = self.oldest_seq_num();
         let newest_seq_num = opt_head_seq_num.unwrap();
@@ -707,7 +710,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
                     if let Some(buffer_wrap_index) = self.buffer_wrap_index {
                         let insertion_index = self.find_rx_insertion_index_in_subset(0, buffer_wrap_index, &item);
                         self.buffer_wrap_index = Some(buffer_wrap_index + 1);
-                        self.insert_into_rx_queue(insertion_index, item);
+                        packet_exists = self.insert_into_rx_queue(insertion_index, item);
                     }
                 } else {
                     self.push_back(item);
@@ -725,7 +728,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
                     insertion_index = self.find_rx_insertion_index(&item);
                 }
 
-                self.insert_into_rx_queue(insertion_index, item);
+                packet_exists = self.insert_into_rx_queue(insertion_index, item);
             } else {
                 // Smallest sequence number (in value) that we have seen thus far.
                 self.push_front(item);
@@ -758,8 +761,9 @@ impl<T> NetworkQueue<T> for RXQueue<T>
                     }
                 }
             }
-            self.insert_into_rx_queue(insertion_index, item);
+            packet_exists = self.insert_into_rx_queue(insertion_index, item);
         }
+        packet_exists
     }
 }
 
@@ -817,7 +821,8 @@ impl<T> RXQueue<T> where T: Sequenced+Debug {
     }
 
     // Checked insertion against the sentinel used during unit testing
-    fn insert_into_rx_queue(&mut self, index: Option<usize>, item: T) {
+    fn insert_into_rx_queue(&mut self, index: Option<usize>, item: T) -> bool {
+        let mut exists: bool = false;
         if let Some(insertion_index) = index {
             if insertion_index != MATCH_FOUND_SENTINEL {
                 #[cfg(test)]
@@ -825,7 +830,8 @@ impl<T> RXQueue<T> where T: Sequenced+Debug {
             }
             #[cfg(not(test))]
             self.as_queue_type_mut().insert(insertion_index, item);
-        }
+        } else { exists = true; } // Packet is present in queue, hence None.
+        return exists;
     }
 
     // The requirement is that what we return must implement Iterator, and TakeWhile fulfill this. Pretty neat.
@@ -894,7 +900,7 @@ impl NetworkManager {
         }
     }
 
-    pub fn printStatistics(&self) {
+    pub fn print_statistics(&self) {
         info!("Tx Successes: {}", self.statistics.tx_packets_success);
         info!("Tx Failures:  {}", self.statistics.tx_packets_failed);
         info!("KeepAlive Successes: {}", self.statistics.tx_keep_alive_success);
