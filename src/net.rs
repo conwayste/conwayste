@@ -59,6 +59,7 @@ macro_rules! netwayste_send {
             $_self.network.statistics.tx_packets_success += 1;
         }
     };
+/*  Fix the macro later
     ($_self:ident, $tx:expr, $dest:expr) => {
         let result = $tx.unbounded_send($dest);
         if result.is_err() {
@@ -66,6 +67,14 @@ macro_rules! netwayste_send {
             $_self.network.statistics.tx_keep_alive_failed += 1;
         } else {
             $_self.network.statistics.tx_keep_alive_success += 1;
+        }
+    };
+*/
+    ($tx:expr, $dest:expr, ($failmsg:expr $(, $args:expr)*)) => {
+        let result = $tx.unbounded_send($dest);
+        if result.is_err() {
+            warn!($failmsg, $( $args)*);
+        } else {
         }
     };
     ($tx:expr, ()) => {

@@ -268,7 +268,7 @@ impl ClientState {
                 }
                 self.reset();
             } else {
-                netwayste_send!(self, udp_tx, (addr, keep_alive));
+                netwayste_send!(self, udp_tx, (addr, keep_alive), ("Could not send KeepAlive packets"));
             }
         }
 

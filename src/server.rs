@@ -32,6 +32,7 @@ extern crate semver;
 extern crate proptest;
 extern crate chrono;
 
+#[macro_use]
 mod net;
 
 use net::{RequestAction, ResponseCode, Packet, LineCodec, UniUpdateType, BroadcastChatMessage, NetworkManager, NetworkQueue};
@@ -599,8 +600,9 @@ impl ServerState {
         }
     }
 
-    /// Returns true if the packet already exists in the queue, otherwise it will be added
-    /// in sequence_number order.
+    /// Returns true if the packet already exists in the queue, otherwise it will return false, and
+    /// will be added in sequence_number order.
+    /// Boolean is used for debug tracing.
     fn add_packet_to_queue(&mut self, player_id: PlayerID, packet: Packet) -> bool {
         // Unwrap should be safe since a player ID was already found.
         let network: &mut NetworkManager = self.network_map.get_mut(&player_id).unwrap();
@@ -613,9 +615,10 @@ impl ServerState {
         if let Some(ack) = player.request_ack {
             ack+1 == sequence_number
         } else {
+            // request_ack has not been set yet, likely first packet
             player.request_ack = Some(sequence_number);
             true
-        } // has not been set yet
+        }
     }
 
     fn process_player_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Result<Option<Packet>, Box<Error>> {
@@ -626,6 +629,111 @@ impl ServerState {
                 Ok(Some(response))
             }
         }
+    }
+
+    fn process_queued_rx_packets(&mut self, player_id: PlayerID) -> (u64, Option<Vec<Packet>>) {
+        // If we can, start popping off the RX queue and handle contiguous packets immediately
+        let mut dequeue_count = 0;
+        let mut responses: Vec<Packet> = vec![];
+
+        // unwrap safe because caller should verify player_id exists
+        let player_processed_seq_num = self.get_player(player_id).request_ack;
+        let latest_processed_seq_num;
+
+        if let Some(seq_num) = player_processed_seq_num {
+            latest_processed_seq_num = seq_num;
+        } else {
+            // if request_ack is None, we shouldn't have processed anything
+            latest_processed_seq_num = 0;
+        }
+
+        let rx_queue_count;
+        let mut processable_packets: Vec<Packet> = vec![];
+        {
+            let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
+            if let Some(player_net) = network {
+                rx_queue_count = player_net.rx_packets.get_contiguous_packets_count(latest_processed_seq_num);
+                while dequeue_count < rx_queue_count {
+                    let packet = player_net.rx_packets.as_queue_type_mut().pop_front().unwrap();
+                    processable_packets.push(packet);
+                }
+            } else {
+                return (0, None);
+            }
+        }
+
+        for packet in processable_packets {
+            trace!("{:?}\n\t[Buffered Process]", packet);
+            match packet {
+                Packet::Request{sequence, response_ack: _, cookie: _, action} => {
+                    #[cfg(debug_assertions)]
+                    assert!(sequence == latest_processed_seq_num);
+
+                    dequeue_count += 1;
+                    let response_packet = self.handle_request_action(player_id, action);
+                    responses.push(response_packet);
+                }
+                _ => panic!("Development bug: Non-response packet found in client buffered RX queue")
+            }
+        }
+
+        return (dequeue_count as u64, Some(responses));
+    }
+
+    fn process_buffered_packets_in_rooms(&mut self) -> Option<Vec<(SocketAddr, Packet)>> {
+        let mut players_to_update: Vec<PlayerID> = vec![];
+        let mut response_packets: Vec<(SocketAddr, Packet)> = vec![];
+        if self.rooms.len() == 0 {
+            return None;
+        }
+
+        // For each room, determine if each player has unread messages based on chat_msg_seq_num
+        for room in self.rooms.values() {
+            if room.player_ids.len() == 0 {
+                continue;
+            }
+
+            for player_id in &room.player_ids {
+                let opt_player = self.players.get(&player_id);
+                if opt_player.is_none() { continue; }
+
+                let player: &Player = opt_player.unwrap();
+                if player.game_info.is_none() { continue; }
+
+                players_to_update.push(*player_id);
+            }
+        }
+
+        for player_id in players_to_update {
+            let (dequeue_count, responses) = self.process_queued_rx_packets(player_id);
+
+            if dequeue_count == 0 {
+                continue;
+            }
+
+            // Update latest player processed sequence number by the amount we dequeued
+            let player: &mut Player = self.get_player_mut(player_id);
+            player.request_ack = player.request_ack
+                                    .and_then(|current_seq_num| {
+                                        Some(dequeue_count).map(|dequeue_count| dequeue_count + current_seq_num)
+                                    });
+
+            // Only keep the non-OK responses as those were replied when the packet first arrived.
+            let mut responses = responses.unwrap();
+            responses.retain(|r| {
+                match r {
+                    Packet::Response{sequence:_, code, request_ack:_} => {
+                        *code != ResponseCode::OK
+                    }
+                    _ => panic!("[ERROR] Found non-response in player RX buffer. PlayerID: {}, NonResponse: {:?}", player_id, r)
+                }
+            });
+            for response in responses {
+                response_packets.push((player.addr, response));
+            }
+        }
+
+        return Some(response_packets);
     }
 
     // Inspect the packet's contents for acceptance, or reject it.
@@ -1016,7 +1124,7 @@ fn main() {
 
                             if let Some(response_packet) = opt_response_packet {
                                 let response = (addr.clone(), response_packet);
-                                tx.unbounded_send(response).unwrap();
+                                netwayste_send!(tx, response, ("[EVENT::REQUEST] Immediate response failed."));
                             }
                         } else {
                             let err = decode_result.unwrap_err();
@@ -1033,7 +1141,7 @@ fn main() {
 
                         if let Some(update_packets) = opt_update_packets {
                             for update in update_packets {
-                                tx.unbounded_send(update).unwrap();
+                                netwayste_send!(tx, update, ("[EVENT::TICK] Could not send client update."));
                             }
                         }
                     }
@@ -1043,14 +1151,24 @@ fn main() {
                 }
 
                 Event::NetworkEvent => {
-                    // TODO Add code for buffeted packet processing
+                    // Process players in rooms
+                    let all_room_player_responses = server_state.process_buffered_packets_in_rooms();
+                    if let Some(responses) = all_room_player_responses {
+                        for response in responses {
+                            netwayste_send!(tx, response, ("[EVENT::NET::ROOMS] Could send response."));
+                        }
+                    }
+
+                    // TODO Process players in lobby
+
+                    // TODO Send keep alives to those that did not get a response this pass
                     for player in server_state.players.values() {
                         let keep_alive = Packet::Response {
                             sequence: 0,
                             request_ack: None,
                             code: ResponseCode::KeepAlive
                         };
-                        tx.unbounded_send( (player.addr, keep_alive) ).unwrap();
+                        netwayste_send!(tx, (player.addr, keep_alive), ("[EVENT::NET::KEEPALIVE] Could not send to Player: {:?}", player));
                     }
                 }
             }
