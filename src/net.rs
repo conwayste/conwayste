@@ -59,24 +59,23 @@ macro_rules! netwayste_send {
             $_self.network.statistics.tx_packets_success += 1;
         }
     };
-/*  Fix the macro later
-    ($_self:ident, $tx:expr, $dest:expr) => {
-        let result = $tx.unbounded_send($dest);
-        if result.is_err() {
-            error!("Could not send KeepAlive heartbeat!");
-            $_self.network.statistics.tx_keep_alive_failed += 1;
-        } else {
-            $_self.network.statistics.tx_keep_alive_success += 1;
-        }
-    };
-*/
-    ($tx:expr, $dest:expr, ($failmsg:expr $(, $args:expr)*)) => {
+    ($tx:ident, $dest:expr, ($failmsg:expr $(, $args:expr)*)) => {
         let result = $tx.unbounded_send($dest);
         if result.is_err() {
             warn!($failmsg, $( $args)*);
         } else {
         }
     };
+/*    ($_self:ident, $tx:expr, $dest:expr) => {
+        let result = $tx.unbounded_send($dest);
+        if result.is_err() {
+            error!();
+            $_self.network.statistics.tx_keep_alive_failed += 1;
+        } else {
+            $_self.network.statistics.tx_keep_alive_success += 1;
+        }
+    };
+    */
     ($tx:expr, ()) => {
         let result = $tx.unbounded_send(());
         if result.is_err() {
@@ -378,8 +377,6 @@ pub fn has_connection_timed_out(heartbeat: Option<Instant>) -> bool {
 pub struct NetworkStatistics {
     pub tx_packets_failed: u64,
     pub tx_packets_success: u64,
-    pub tx_keep_alive_failed: u64,
-    pub tx_keep_alive_success: u64,
 }
 
 impl NetworkStatistics {
@@ -387,8 +384,6 @@ impl NetworkStatistics {
         NetworkStatistics {
             tx_packets_failed: 0,
             tx_packets_success: 0,
-            tx_keep_alive_failed: 0,
-            tx_keep_alive_success: 0
         }
     }
 
@@ -397,13 +392,9 @@ impl NetworkStatistics {
         let Self {
             ref mut tx_packets_failed,
             ref mut tx_packets_success,
-            ref mut tx_keep_alive_failed,
-            ref mut tx_keep_alive_success,
         } = *self;
         *tx_packets_failed     = 0;
         *tx_packets_success    = 0;
-        *tx_keep_alive_failed  = 0;
-        *tx_keep_alive_success = 0;
     }
 }
 
@@ -912,8 +903,6 @@ impl NetworkManager {
     pub fn print_statistics(&self) {
         info!("Tx Successes: {}", self.statistics.tx_packets_success);
         info!("Tx Failures:  {}", self.statistics.tx_packets_failed);
-        info!("KeepAlive Successes: {}", self.statistics.tx_keep_alive_success);
-        info!("KeepAlive Failures:  {}", self.statistics.tx_keep_alive_failed);
     }
 }
 
