@@ -50,6 +50,7 @@ const MATCH_FOUND_SENTINEL: usize = 110;
 
 #[macro_export]
 macro_rules! netwayste_send {
+    // Client
     ($_self:ident, $tx:expr, $dest:expr, ($failmsg:expr $(, $args:expr)*)) => {
         let result = $tx.unbounded_send($dest);
         if result.is_err() {
@@ -59,11 +60,11 @@ macro_rules! netwayste_send {
             $_self.network.statistics.tx_packets_success += 1;
         }
     };
+    // Server
     ($tx:ident, $dest:expr, ($failmsg:expr $(, $args:expr)*)) => {
         let result = $tx.unbounded_send($dest);
         if result.is_err() {
             warn!($failmsg, $( $args)*);
-        } else {
         }
     };
 /*    ($_self:ident, $tx:expr, $dest:expr) => {
@@ -76,11 +77,11 @@ macro_rules! netwayste_send {
         }
     };
     */
+    // Temp placeholder for client for exit()
     ($tx:expr, ()) => {
         let result = $tx.unbounded_send(());
         if result.is_err() {
             error!("Something really bad is going on... client cannot exit!");
-        } else {
         }
     };
 }

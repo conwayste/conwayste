@@ -341,7 +341,6 @@ impl ClientState {
                     self.chat_msg_seq_num = 0;
                 }
                 _ => {
-                    //XXX more cases in which server replies OK
                     info!("OK :)");
                 }
             }

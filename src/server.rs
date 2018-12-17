@@ -58,6 +58,7 @@ use log::LevelFilter;
 
 const TICK_INTERVAL_IN_MS:    u64      = 10;
 const NETWORK_INTERVAL_IN_MS: u64      = 25;    // Arbitrarily chosen
+const HEARTBEAT_INTERVAL_IN_MS: u64    = 1000;    // Arbitrarily chosen
 const MAX_ROOM_NAME:          usize    = 16;
 const MAX_NUM_CHAT_MESSAGES:  usize    = 128;
 const MAX_AGE_CHAT_MESSAGES:  usize    = 60*5; // seconds
@@ -680,39 +681,18 @@ impl ServerState {
         return (dequeue_count as u64, Some(responses));
     }
 
-    fn process_buffered_packets_in_rooms(&mut self) -> Option<Vec<(SocketAddr, Packet)>> {
-        let mut players_to_update: Vec<PlayerID> = vec![];
+    fn process_player_buffered_packets(&mut self, players_to_update: &Vec<PlayerID>) -> Option<Vec<(SocketAddr, Packet)>> {
         let mut response_packets: Vec<(SocketAddr, Packet)> = vec![];
-        if self.rooms.len() == 0 {
-            return None;
-        }
-
-        // For each room, determine if each player has unread messages based on chat_msg_seq_num
-        for room in self.rooms.values() {
-            if room.player_ids.len() == 0 {
-                continue;
-            }
-
-            for player_id in &room.player_ids {
-                let opt_player = self.players.get(&player_id);
-                if opt_player.is_none() { continue; }
-
-                let player: &Player = opt_player.unwrap();
-                if player.game_info.is_none() { continue; }
-
-                players_to_update.push(*player_id);
-            }
-        }
 
         for player_id in players_to_update {
-            let (dequeue_count, responses) = self.process_queued_rx_packets(player_id);
+            let (dequeue_count, responses) = self.process_queued_rx_packets(*player_id);
 
             if dequeue_count == 0 {
                 continue;
             }
 
             // Update latest player processed sequence number by the amount we dequeued
-            let player: &mut Player = self.get_player_mut(player_id);
+            let player: &mut Player = self.get_player_mut(*player_id);
             player.request_ack = player.request_ack
                                     .and_then(|current_seq_num| {
                                         Some(dequeue_count).map(|dequeue_count| dequeue_count + current_seq_num)
@@ -733,7 +713,63 @@ impl ServerState {
             }
         }
 
-        return Some(response_packets);
+        if response_packets.len() != 0 {
+            Some(response_packets)
+        } else {
+            None
+        }
+    }
+
+    fn process_buffered_packets_in_lobby(&mut self) -> Option<Vec<(SocketAddr, Packet)>> {
+        let mut players_to_update: Vec<PlayerID> = vec![];
+
+        if self.players.len() == 0 {
+            return None;
+        }
+
+        for player in self.players.values() {
+            if player.game_info.is_some() {
+                continue;
+            }
+            players_to_update.push(player.player_id);
+        }
+
+        if players_to_update.len() != 0 {
+            self.process_player_buffered_packets(&players_to_update)
+        } else {
+            None
+        }
+    }
+
+    fn process_buffered_packets_in_rooms(&mut self) -> Option<Vec<(SocketAddr, Packet)>> {
+        let mut players_to_update: Vec<PlayerID> = vec![];
+
+        if self.rooms.len() == 0 {
+            return None;
+        }
+
+        // For each room, determine if each player has unread messages based on chat_msg_seq_num
+        for room in self.rooms.values() {
+            if room.player_ids.len() == 0 {
+                continue;
+            }
+
+            for player_id in &room.player_ids {
+                let opt_player: Option<&Player> = self.players.get(&player_id);
+                if opt_player.is_none() { continue; }
+
+                let player: &Player = opt_player.unwrap();
+                if player.game_info.is_none() { continue; }
+
+                players_to_update.push(*player_id);
+            }
+        }
+
+        if players_to_update.len() != 0 {
+            return self.process_player_buffered_packets(&players_to_update);
+        } else {
+            None
+        }
     }
 
     // Inspect the packet's contents for acceptance, or reject it.
@@ -1048,6 +1084,7 @@ enum Event {
     TickEvent,
     Request((SocketAddr, Option<Packet>)),
     NetworkEvent,
+    HeartBeat,
 //    Notify((SocketAddr, Option<Packet>)),
 }
 
@@ -1107,9 +1144,18 @@ fn main() {
         })
     }).map_err(|_| ());
 
+    let heartbeat_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () ));
+    let heartbeat_stream = heartbeat_stream.and_then(|_| {
+        let timeout = Timeout::new(Duration::from_millis(HEARTBEAT_INTERVAL_IN_MS), &handle).unwrap();
+        timeout.and_then(move |_| {
+            ok(Event::HeartBeat)
+        })
+    }).map_err(|_| ());
+
     let server_fut = tick_stream
         .select(packet_stream)
         .select(network_stream)
+        .select(heartbeat_stream)
         .fold(initial_server_state, move |mut server_state: ServerState, event: Event | {
             match event {
                 Event::Request(packet_tuple) => {
@@ -1155,20 +1201,28 @@ fn main() {
                     let all_room_player_responses = server_state.process_buffered_packets_in_rooms();
                     if let Some(responses) = all_room_player_responses {
                         for response in responses {
-                            netwayste_send!(tx, response, ("[EVENT::NET::ROOMS] Could send response."));
+                            netwayste_send!(tx, response.clone(), ("[EVENT::NET::ROOMS] Could send response: {:?}", response));
                         }
                     }
 
-                    // TODO Process players in lobby
+                    // Process players in lobby
+                    let all_lobby_player_responses = server_state.process_buffered_packets_in_lobby();
+                    if let Some(responses) = all_lobby_player_responses {
+                        for response in responses {
+                            netwayste_send!(tx, response.clone(), ("[EVENT::NET::LOBBY] Could send response: {:?}", response));
+                        }
+                    }
 
-                    // TODO Send keep alives to those that did not get a response this pass
+                }
+
+                Event::HeartBeat => {
                     for player in server_state.players.values() {
                         let keep_alive = Packet::Response {
                             sequence: 0,
                             request_ack: None,
                             code: ResponseCode::KeepAlive
                         };
-                        netwayste_send!(tx, (player.addr, keep_alive), ("[EVENT::NET::KEEPALIVE] Could not send to Player: {:?}", player));
+                        netwayste_send!(tx, (player.addr, keep_alive), ("[EVENT::HEARTBEAT] Could not send to Player: {:?}", player));
                     }
                 }
             }
