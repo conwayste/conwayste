@@ -264,7 +264,7 @@ pub enum Packet {
 }
 
 impl Packet {
-    fn sequence_number(&self) -> u64 {
+    pub fn sequence_number(&self) -> u64 {
         if let Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } = self {
             *sequence
         } else if let Packet::Response{ sequence, request_ack: _, code: _ } = self {
@@ -522,6 +522,7 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug> {
 
 type ItemQueue<T> = VecDeque<T>;
 
+#[derive(Debug)]
 pub struct TXQueue {
     pub queue: ItemQueue<Packet>,
     pub timestamps: VecDeque<Instant>,
@@ -608,7 +609,8 @@ impl NetworkQueue<Packet> for TXQueue {
             search_space.as_slice().binary_search(&&dummy_packet)
         };
         match result {
-            Err(_) => panic!("Could not remove transmitted item from TX queue"),
+            Err(_) => panic!("Could not remove transmitted item from TX queue. Trying to remove {:?}, from {:?}",
+                             dummy_packet, self),
             Ok(index) => {
                 let pkt = self.as_queue_type_mut().remove(index).unwrap();
                 self.timestamps.remove(index);

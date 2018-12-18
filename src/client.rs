@@ -196,6 +196,8 @@ impl ClientState {
                     // When a packet is acked, we can remove it from the TX buffer and buffer the response for
                     // later processing. Removing a "Response packet" from the TX queue (aka Request queue) simply means
                     // using the response's response_ack to determine what `Request` sequence number the server acked.
+                    println!("Packet to remove: {:?}", packet);
+                    println!("TX packets: {:?}", self.network.tx_packets);
                     let _ = self.network.tx_packets.remove(&packet);
                     let _ = self.network.rx_packets.buffer_item(packet);
 

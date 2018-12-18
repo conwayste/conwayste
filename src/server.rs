@@ -583,11 +583,9 @@ impl ServerState {
     // than the last processed, it must be rejected.
     // FIXME Does not handle wrapped sequence number case yet.
     fn is_previously_processed_packet(&mut self, player_id: PlayerID, sequence: u64) -> bool {
-        // TODO: There's a CLEAR and obvious bug here related to out-of-order arrivals that will be fixed shortly.
-        // request_ack is not being updated properly
         let player: &Player = self.get_player(player_id);
         if let Some(request_ack) = player.request_ack {
-            if sequence < request_ack {
+            if sequence <= request_ack {
                 return true;
             }
         }
@@ -614,10 +612,11 @@ impl ServerState {
     fn can_process_packet(&mut self, player_id: PlayerID, sequence_number: u64) -> bool {
         let player: &mut Player = self.get_player_mut(player_id);
         if let Some(ack) = player.request_ack {
+            println!("\t\tAck: {} Sqn: {}", ack, sequence_number);
             ack+1 == sequence_number
         } else {
             // request_ack has not been set yet, likely first packet
-            player.request_ack = Some(sequence_number);
+            player.request_ack = Some(0);
             true
         }
     }
@@ -632,12 +631,12 @@ impl ServerState {
         }
     }
 
-    fn process_queued_rx_packets(&mut self, player_id: PlayerID) -> (u64, Option<Vec<Packet>>) {
+    fn process_queued_rx_packets(&mut self, player_id: PlayerID) -> Option<Vec<Packet>> {
         // If we can, start popping off the RX queue and handle contiguous packets immediately
         let mut dequeue_count = 0;
         let mut responses: Vec<Packet> = vec![];
 
-        // unwrap safe because caller should verify player_id exists
+        // Get the last packet we've sent to this player
         let player_processed_seq_num = self.get_player(player_id).request_ack;
         let latest_processed_seq_num;
 
@@ -654,15 +653,27 @@ impl ServerState {
             let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
             if let Some(player_net) = network {
                 rx_queue_count = player_net.rx_packets.get_contiguous_packets_count(latest_processed_seq_num);
+                trace!("LATEST_PROCESSED_SEQ_NUM: {} RX_QUEUE_COUNT: {}", latest_processed_seq_num, rx_queue_count);
+                trace!("RX Packet Queue: {:?}", player_net.rx_packets.as_queue_type());
                 while dequeue_count < rx_queue_count {
                     let packet = player_net.rx_packets.as_queue_type_mut().pop_front().unwrap();
-                    processable_packets.push(packet);
+
+                    // It is possible that by the time the Event::NetworkEvent future runs,
+                    // new packet(s) arrive and are processed immediately. We do not want to reprocess
+                    // anything that was previously buffered.
+                    if packet.sequence_number() > latest_processed_seq_num
+                    {
+                        processable_packets.push(packet);
+                    }
+
+                    dequeue_count += 1;
                 }
             } else {
-                return (0, None);
+                return None;
             }
         }
 
+        let buffered_process_count = processable_packets.len();
         for packet in processable_packets {
             trace!("{:?}\n\t[Buffered Process]", packet);
             match packet {
@@ -670,7 +681,6 @@ impl ServerState {
                     #[cfg(debug_assertions)]
                     assert!(sequence == latest_processed_seq_num);
 
-                    dequeue_count += 1;
                     let response_packet = self.handle_request_action(player_id, action);
                     responses.push(response_packet);
                 }
@@ -678,16 +688,23 @@ impl ServerState {
             }
         }
 
-        return (dequeue_count as u64, Some(responses));
+        return Some(responses);
     }
 
     fn process_player_buffered_packets(&mut self, players_to_update: &Vec<PlayerID>) -> Option<Vec<(SocketAddr, Packet)>> {
         let mut response_packets: Vec<(SocketAddr, Packet)> = vec![];
 
         for player_id in players_to_update {
-            let (dequeue_count, responses) = self.process_queued_rx_packets(*player_id);
+            let opt_responses = self.process_queued_rx_packets(*player_id);
+            let mut responses: Vec<Packet>;
 
-            if dequeue_count == 0 {
+            if let Some(r) = opt_responses {
+                responses = r;
+            } else {
+                return None;
+            }
+
+            if responses.len() == 0 {
                 continue;
             }
 
@@ -695,11 +712,10 @@ impl ServerState {
             let player: &mut Player = self.get_player_mut(*player_id);
             player.request_ack = player.request_ack
                                     .and_then(|current_seq_num| {
-                                        Some(dequeue_count).map(|dequeue_count| dequeue_count + current_seq_num)
+                                        Some(responses.len() as u64).map(|dequeue_count| dequeue_count + current_seq_num)
                                     });
 
             // Only keep the non-OK responses as those were replied when the packet first arrived.
-            let mut responses = responses.unwrap();
             responses.retain(|r| {
                 match r {
                     Packet::Response{sequence:_, code, request_ack:_} => {
@@ -885,7 +901,12 @@ impl ServerState {
             match opt_player {
                 Some(player) => {
                     sequence = player.increment_response_seq_num();
-                    request_ack = player.request_ack;
+                    if let Some(ack) = player.request_ack {
+                        player.request_ack = Some(ack+1);
+                        request_ack = player.request_ack;
+                    } else {
+                        panic!("Player's request ack has never been set. It should have been set after the first packet!");
+                    }
                 }
                 None => {}
             }
@@ -1043,6 +1064,7 @@ impl ServerState {
         // save player into players hash map, and save player ID into hash map using cookie
         self.player_map.insert(cookie, player_id);
         self.players.insert(player_id, player);
+        self.network_map.insert(player_id, NetworkManager::new());
 
         let player = self.players.get_mut(&player_id).unwrap();
 
@@ -1212,7 +1234,6 @@ fn main() {
                             netwayste_send!(tx, response.clone(), ("[EVENT::NET::LOBBY] Could send response: {:?}", response));
                         }
                     }
-
                 }
 
                 Event::HeartBeat => {
