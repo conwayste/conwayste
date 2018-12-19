@@ -39,7 +39,7 @@ function tmuxkill()
 function ConnectToServerDefaultTestRoom()
 {
     send $1 "/connect Test$1"
-    sleep 10
+    sleep 5
     send $1 "/new TestRoom"
     send $1 "/join TestRoom"
 }
@@ -115,7 +115,7 @@ cargo build
 
 tmux new-session -d -s server "export RUST_BACKTRACE=1; export RUST_LOG=server; ./target/debug/server; read"
 for i in ${CLIENTLIST[@]}; do
-    print "$i"
+    printf "Starting client $i"
     tmux new-session -d -s $i "export RUST_BACKTRACE=1; export RUST_LOG=client; ./target/debug/client; read"
 done
 
@@ -145,7 +145,7 @@ EnableTrafficControl
 
 echo "Basic test: Spam 500 /list and chat messages"
 # First basic test... spam 500 /list and chat messages
-roomCmdCount=10
+roomCmdCount=50
 until [[ $roomCmdCount -eq 0 ]];
 do
     for i in ${CLIENTLIST[@]}; do
