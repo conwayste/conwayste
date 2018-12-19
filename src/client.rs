@@ -140,13 +140,14 @@ impl ClientState {
     fn process_queued_rx_packets(&mut self) {
         // If we can, start popping off the RX queue and handle contigous packets immediately
         let mut dequeue_count = 0;
+        let mut max_request_ack_seen = 0;
 
         let rx_queue_count = self.network.rx_packets.get_contiguous_packets_count(self.response_sequence);
         while dequeue_count < rx_queue_count {
             let packet = self.network.rx_packets.as_queue_type_mut().pop_front().unwrap();
             trace!("{:?}", packet);
             match packet {
-                Packet::Response{sequence: _, request_ack: _, code} => {
+                Packet::Response{sequence: _, request_ack, code} => {
                     dequeue_count += 1;
                     self.response_sequence += 1;
                     self.process_event_code(code);

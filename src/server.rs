@@ -638,7 +638,7 @@ impl ServerState {
 
         // Get the last packet we've sent to this player
         let player_processed_seq_num = self.get_player(player_id).request_ack;
-        let latest_processed_seq_num;
+        let mut latest_processed_seq_num;
 
         if let Some(seq_num) = player_processed_seq_num {
             latest_processed_seq_num = seq_num;
@@ -652,9 +652,7 @@ impl ServerState {
         {
             let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
             if let Some(player_net) = network {
-                rx_queue_count = player_net.rx_packets.get_contiguous_packets_count(latest_processed_seq_num);
-                trace!("LATEST_PROCESSED_SEQ_NUM: {} RX_QUEUE_COUNT: {}", latest_processed_seq_num, rx_queue_count);
-                trace!("RX Packet Queue: {:?}", player_net.rx_packets.as_queue_type());
+                rx_queue_count = player_net.rx_packets.get_contiguous_packets_count(latest_processed_seq_num+1);
                 while dequeue_count < rx_queue_count {
                     let packet = player_net.rx_packets.as_queue_type_mut().pop_front().unwrap();
 
@@ -678,11 +676,12 @@ impl ServerState {
             trace!("{:?}\n\t[Buffered Process]", packet);
             match packet {
                 Packet::Request{sequence, response_ack: _, cookie: _, action} => {
-                    #[cfg(debug_assertions)]
+                    latest_processed_seq_num += 1;
                     assert!(sequence == latest_processed_seq_num);
 
                     let response_packet = self.handle_request_action(player_id, action);
                     responses.push(response_packet);
+
                 }
                 _ => panic!("Development bug: Non-response packet found in client buffered RX queue")
             }
@@ -709,12 +708,10 @@ impl ServerState {
             }
 
             // Update latest player processed sequence number by the amount we dequeued
-            let player: &mut Player = self.get_player_mut(*player_id);
-            player.request_ack = player.request_ack
-                                    .and_then(|current_seq_num| {
-                                        Some(responses.len() as u64).map(|dequeue_count| dequeue_count + current_seq_num)
-                                    });
 
+            let player: &mut Player = self.get_player_mut(*player_id);
+
+            /*
             // Only keep the non-OK responses as those were replied when the packet first arrived.
             responses.retain(|r| {
                 match r {
@@ -724,6 +721,7 @@ impl ServerState {
                     _ => panic!("[ERROR] Found non-response in player RX buffer. PlayerID: {}, NonResponse: {:?}", player_id, r)
                 }
             });
+            */
             for response in responses {
                 response_packets.push((player.addr, response));
             }
