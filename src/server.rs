@@ -561,7 +561,6 @@ impl ServerState {
             RequestAction::None => {
                 return ResponseCode::BadRequest( Some("Invalid request".to_owned()) );
             },
-            RequestAction::TestSequenceNumber(_) => { return ResponseCode::OldPacket; },
         }
     }
 
@@ -671,7 +670,6 @@ impl ServerState {
             }
         }
 
-        let buffered_process_count = processable_packets.len();
         for packet in processable_packets {
             trace!("{:?}\n\t[Buffered Process]", packet);
             match packet {
@@ -711,17 +709,6 @@ impl ServerState {
 
             let player: &mut Player = self.get_player_mut(*player_id);
 
-            /*
-            // Only keep the non-OK responses as those were replied when the packet first arrived.
-            responses.retain(|r| {
-                match r {
-                    Packet::Response{sequence:_, code, request_ack:_} => {
-                        *code != ResponseCode::OK
-                    }
-                    _ => panic!("[ERROR] Found non-response in player RX buffer. PlayerID: {}, NonResponse: {:?}", player_id, r)
-                }
-            });
-            */
             for response in responses {
                 response_packets.push((player.addr, response));
             }

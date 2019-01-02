@@ -302,21 +302,12 @@ impl ClientState {
             self.last_req_action = Some(action.clone());
             let mut packet = Packet::Request {
                 sequence:     self.sequence,
-                response_ack: self.response_ack,
+                response_ack: Some(self.response_sequence),
                 cookie:       self.cookie.clone(),
                 action:       action.clone(),
             };
 
             trace!("{:?}", packet);
-
-            if let RequestAction::TestSequenceNumber(b) = action.clone() {
-                packet = Packet::Request {
-                    sequence:     b,
-                    response_ack: self.response_ack,
-                    cookie:       self.cookie.clone(),
-                    action:       action.clone(),
-                };
-            }
 
             let _ = self.network.tx_packets.buffer_item(packet.clone());
 
@@ -467,11 +458,6 @@ impl ClientState {
             "quit" => {
                 trace!("Peace out!");
                 action = RequestAction::Disconnect;
-            }
-            "sn" => {
-                if args.len() != 0 {
-                    action = RequestAction::TestSequenceNumber(args[0].parse::<u64>().unwrap());
-                }
             }
             _ => {
                 debug!("Command not recognized: {}", cmd);

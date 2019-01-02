@@ -119,7 +119,6 @@ pub enum RequestAction {
     NewRoom(String),
     JoinRoom(String),
     LeaveRoom,
-    TestSequenceNumber(u64),
 }
 
 // server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
@@ -138,7 +137,6 @@ pub enum ResponseCode {
     NotConnected(Option<String>),    // no equivalent in HTTP due to handling at lower (TCP) level
     PleaseUpgrade(Option<String>),   // client should give upgrade msg to user, but continue as if OK
     KeepAlive,                       // Server's heart is beating
-    OldPacket,                       // Internally used to ignore a packet, just for testing
 }
 
 // chat messages sent from server to all clients other than originating client
