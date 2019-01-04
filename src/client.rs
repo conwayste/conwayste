@@ -33,7 +33,7 @@ mod utils;
 mod video;
 mod viewport;
 
-use conway::{BigBang, Universe, CellState, Region, PlayerBuilder};
+use conway::universe::{BigBang, Universe, CellState, Region, PlayerBuilder};
 
 use ggez::conf;
 use ggez::event::*;
