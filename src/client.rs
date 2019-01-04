@@ -51,9 +51,9 @@ const CLIENT_VERSION: &str = "0.0.1";
 
 struct ClientState {
     sequence:         u64,          // Sequence number of requests
-    response_ack:     Option<u64>,  // Last acknowledged response "sequence number" from server
-    response_sequence: u64,         // Next expected sequence number from the server used to know which received
-                                    //  packet to process next
+                                    // Last acknowledged response "sequence number" from server
+    response_sequence: u64,         // Value of the next expected sequence number from the server,
+                                    // and/or indicates the sequence number of the next process-able rx packet
     last_req_action:  Option<RequestAction>,   // Last one we sent to server TODO: this is wrong;
                                                //   assumes network is well-behaved
     name:             Option<String>,
@@ -71,7 +71,6 @@ impl ClientState {
         ClientState {
             sequence:        0,
             response_sequence: 0,
-            response_ack:    None,
             last_req_action: None,
             name:            None,
             room:            None,
@@ -91,7 +90,6 @@ impl ClientState {
         let Self {
             ref mut sequence,
             ref mut response_sequence,
-            ref mut response_ack,
             ref mut last_req_action,
             name: ref _name,
             ref mut room,
@@ -103,7 +101,6 @@ impl ClientState {
         } = *self;
         *sequence         = 0;
         *response_sequence = 0;
-        *response_ack     = None;
         *last_req_action  = None;
         *room             = None;
         *cookie           = None;
@@ -195,14 +192,19 @@ impl ClientState {
                 let code = code.clone();
                 if code != ResponseCode::KeepAlive {
                     // When a packet is acked, we can remove it from the TX buffer and buffer the response for
-                    // later processing. Removing a "Response packet" from the TX queue (aka Request queue) simply means
-                    // using the response's response_ack to determine what `Request` sequence number the server acked.
-                    println!("Packet to remove: {:?}", packet);
-                    println!("TX packets: {:?}", self.network.tx_packets);
-                    let _ = self.network.tx_packets.remove(&packet);
-                    let _ = self.network.rx_packets.buffer_item(packet);
+                    // later processing.
+                    // Removing a "Response packet" from the client's request TX buffer appears to be nonsense at first.
+                    // This works because remove() targets different ID's depending on the Packet type. In the case of
+                    // a Response packet, the target identifier is the `request_ack`.
 
-                    self.process_queued_rx_packets();
+                    if self.response_sequence <= sequence {
+                        println!("Packet to remove: {:?}", packet);
+                        // println!("TX packets: {:?}", self.network.tx_packets);
+                        let _ = self.network.tx_packets.remove(&packet);
+                        let _ = self.network.rx_packets.buffer_item(packet);
+
+                        self.process_queued_rx_packets();
+                    }
                 }
             }
             // TODO game_updates, universe_update
@@ -240,8 +242,10 @@ impl ClientState {
 
             let indices = self.network.tx_packets.get_retransmit_indices();
 
+            // Retransmit all packets after that are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
             for index in indices {
                 if let Some(pkt) = self.network.tx_packets.queue.get(index) {
+                    /// XXX ameen: Need to modify the response_ack to refresh to the latest self.response_sequence
                     trace!("[RESENDING] {:?}", pkt);
                     netwayste_send!(self, udp_tx, (addr, (*pkt).clone()),
                                     ("Could not retransmit packet to server: {:?}", pkt));

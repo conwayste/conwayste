@@ -630,7 +630,7 @@ impl ServerState {
         }
     }
 
-    fn process_queued_rx_packets(&mut self, player_id: PlayerID) -> Option<Vec<Packet>> {
+    fn process_queued_rx_packets(&mut self, player_id: PlayerID) {
         // If we can, start popping off the RX queue and handle contiguous packets immediately
         let mut dequeue_count = 0;
         let mut responses: Vec<Packet> = vec![];
@@ -642,22 +642,23 @@ impl ServerState {
         if let Some(seq_num) = player_processed_seq_num {
             latest_processed_seq_num = seq_num;
         } else {
-            // if request_ack is None, we shouldn't have processed anything
+            // if request_ack is None, we shouldn't have processed anything yet
             latest_processed_seq_num = 0;
         }
 
+        // Collect the next batch of received packets we can process.
         let rx_queue_count;
         let mut processable_packets: Vec<Packet> = vec![];
         {
             let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
             if let Some(player_net) = network {
                 rx_queue_count = player_net.rx_packets.get_contiguous_packets_count(latest_processed_seq_num+1);
+                // ameen: can I use take().filter().collect()?
                 while dequeue_count < rx_queue_count {
                     let packet = player_net.rx_packets.as_queue_type_mut().pop_front().unwrap();
 
-                    // It is possible that by the time the Event::NetworkEvent future runs,
-                    // new packet(s) arrive and are processed immediately. We do not want to reprocess
-                    // anything that was previously buffered.
+                    // It is possible that a previously buffered packet (due to out-of-order) was resent by the client,
+                    // and processed immediately upon receipt. We need to skip these.
                     if packet.sequence_number() > latest_processed_seq_num
                     {
                         processable_packets.push(packet);
@@ -665,8 +666,6 @@ impl ServerState {
 
                     dequeue_count += 1;
                 }
-            } else {
-                return None;
             }
         }
 
@@ -685,33 +684,39 @@ impl ServerState {
             }
         }
 
-        return Some(responses);
+        // Buffer all responses to the client for [re-]transmission
+        let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
+        if let Some(player_net) = network {
+            for response in responses {
+                player_net.tx_packets.buffer_item(response);
+            }
+        }
     }
 
     fn process_player_buffered_packets(&mut self, players_to_update: &Vec<PlayerID>) -> Option<Vec<(SocketAddr, Packet)>> {
         let mut response_packets: Vec<(SocketAddr, Packet)> = vec![];
 
         for player_id in players_to_update {
-            let opt_responses = self.process_queued_rx_packets(*player_id);
-            let mut responses: Vec<Packet>;
+            self.process_queued_rx_packets(*player_id);
 
-            if let Some(r) = opt_responses {
-                responses = r;
+            // If any processed packets result in responses, prepare them below for transmission
+            let player_addr: SocketAddr = self.get_player_mut(*player_id).addr;
+
+            let player_network: Option<&NetworkManager> = self.network_map.get(player_id);
+            if let Some(player_net) = player_network {
+                if player_net.tx_packets.len() == 0 {
+                    continue;
+                }
+
+                let responses = player_net.tx_packets.as_queue_type().iter();
+                for response in responses {
+                    trace!("[TX PREP] {:?}", response);
+                    response_packets.push((player_addr, response.clone()));
+                }
             } else {
-                return None;
-            }
-
-            if responses.len() == 0 {
                 continue;
             }
 
-            // Update latest player processed sequence number by the amount we dequeued
-
-            let player: &mut Player = self.get_player_mut(*player_id);
-
-            for response in responses {
-                response_packets.push((player.addr, response));
-            }
         }
 
         if response_packets.len() != 0 {
@@ -802,7 +807,6 @@ impl ServerState {
                         }
                     }
                 }
-
                 // handle connect (create user, and save cookie)
                 if let RequestAction::Connect{name, client_version} = action {
                     if validate_client_version(client_version) {
@@ -825,6 +829,13 @@ impl ServerState {
                             return Err(Box::new(io::Error::new(ErrorKind::PermissionDenied, "invalid cookie")));
                         }
                     };
+
+                    // Clear out the transmission queue of any packets the client has acknowledged
+                    if let Some(response_ack) = response_ack {
+                        if let Some(ref mut player_network) = self.network_map.get_mut(&player_id) {
+                            player_network.tx_packets.as_queue_type_mut().retain(|ref pkt| pkt.sequence_number() > response_ack);
+                        }
+                    }
 
                     // Check to see if it can be processed right away, otherwise buffer it for later consumption.
                     // Not sure if I like this name but it'll do for now.

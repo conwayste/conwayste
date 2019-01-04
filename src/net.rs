@@ -39,7 +39,7 @@ pub const DEFAULT_HOST: &str = "0.0.0.0";
 pub const DEFAULT_PORT: u16 = 12345;
 const TIMEOUT_IN_SECONDS:    u64   = 5;
 const NETWORK_QUEUE_LENGTH: usize = 15;
-const RETRANSMISSION_THRESHOLD: Duration = Duration::from_millis(100);
+const RETRANSMISSION_THRESHOLD_IN_MS: Duration = Duration::from_millis(100);
 
 // For unit testing, I cover duplicate sequence numbers. The search returns Ok(index) on a slice with a matching value.
 // Instead of returning that index, I return this much larger value and avoid insertion into the queues.
@@ -632,7 +632,7 @@ impl TXQueue {
     pub fn get_retransmit_indices(&self) -> Vec<usize> {
         let iter = self.timestamps.iter();
         iter.enumerate()
-            .filter(|(_,&ts)| (Instant::now() - ts) >= RETRANSMISSION_THRESHOLD)
+            .filter(|(_,&ts)| (Instant::now() - ts) >= RETRANSMISSION_THRESHOLD_IN_MS)
             .map(|(i, _)| i)
             .collect::<Vec<usize>>()
     }
@@ -835,11 +835,10 @@ impl<T> RXQueue<T> where T: Sequenced+Debug {
         return exists;
     }
 
-    // The requirement is that what we return must implement Iterator, and TakeWhile fulfill this. Pretty neat.
     // Seq_num as a parameter specifies the starting sequence number to iterate over. Since packets can arrive
     // out-of-order, the rx queue may be contiguous but not complete.
-    // Ex: Assume packet SN we're waiting for an ack is 10, but the rx queue contains [12, 13, 14, 16]
-   // pub fn get_contiguous_packets_count(&self, mut seq_num: u64) -> impl Iterator<Item=&T> {
+    // Ex: Assume the next packet SN to process is 10, and the rx queue has buffered [10, 11, 12, 14, 16],
+    // the contiguous packet count would be 3.
     pub fn get_contiguous_packets_count(&self, mut seq_num: u64) -> usize {
         let iter = self.queue.iter().take_while(move |x| {
             let ready = x.sequence_number() == seq_num;
