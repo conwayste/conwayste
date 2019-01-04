@@ -970,18 +970,6 @@ impl Universe {
     }
 
 
-    /// Return width in cells.
-    pub fn width(&self) -> usize {
-        return self.width;
-    }
-
-
-    /// Return height in cells.
-    pub fn height(&self) -> usize {
-        return self.height;
-    }
-
-
     /// Get the latest generation number (1-based).
     pub fn latest_gen(&self) -> usize {
         assert!(self.generation != 0);
@@ -1528,6 +1516,34 @@ impl Universe {
         self.gen_states[gen1_idx].gen_or_none = Some(new_gen);
 
         Ok(Some(new_gen))
+    }
+}
+
+
+impl CharGrid for Universe {
+    fn is_valid(ch: char) -> bool {
+        GenState::is_valid(ch)
+    }
+
+    fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: Option<usize>) {
+        unimplemented!("YAGNI");
+    }
+
+    /// Return width in cells.
+    fn width(&self) -> usize {
+        return self.width;
+    }
+
+
+    /// Return height in cells.
+    fn height(&self) -> usize {
+        return self.height;
+    }
+
+
+    fn get_run(&self, col: usize, row: usize, visibility: Option<usize>) -> (usize, char) {
+        let gen_state = &self.gen_states[self.state_index];
+        gen_state.get_run(col, row, visibility)
     }
 }
 
