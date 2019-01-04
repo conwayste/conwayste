@@ -1454,6 +1454,8 @@ impl Universe {
     // return Err("invalid - too large difference, gen0:<num> gen1:<num>") if the difference
     // between `diff.gen0` and `diff.gen1` is too large.
     // gen0 must be less than gen1, otherwise a panic results
+    // Note: if pattern is invalid (that is, `to_grid` would return an error), the Universe will
+    // not be restored to its original state.
     pub fn apply(&mut self, diff: &GenStateDiff, visibility: Option<usize>) -> Result<Option<usize>, String> {
         assert!(diff.gen0 < diff.gen1, format!("expected gen0 < gen1, but {} >= {}",
                                                diff.gen0, diff.gen1));
