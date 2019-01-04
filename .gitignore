@@ -1,3 +1,4 @@
 target
 .sw?
 .*.sw?
+rusty-tags.*
