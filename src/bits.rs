@@ -62,7 +62,11 @@ impl BitGrid {
         }
     }
 
-    // Sets or clears a rectangle of bits. Panics if Region is out of range.
+    /// Sets, clears, or toggles a rectangle of bits.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if `region` is out of range.
     pub fn modify_region(&mut self, region: Region, op: BitOperation) {
         for y in region.top() .. region.bottom() + 1 {
             assert!(y >= 0);
@@ -184,10 +188,11 @@ impl BitGrid {
 
     /// Clear this BitGrid.
     pub fn clear(&mut self) {
-        let region = {
-            self.region()
-        };
-        self.modify_region(region, BitOperation::Clear);
+        for row in &mut self.0 {
+            for col_idx in 0..row.len() {
+                row[col_idx] = 0;
+            }
+        }
     }
 }
 
@@ -324,10 +329,10 @@ impl CharGrid for BitGrid {
         let shift = 63 - (col & (64 - 1));
         match ch {
             'b' => {
-                self[row][word_col] &= !(1 << shift)
+                self.modify_bits_in_word(row, word_col, 1 << shift, BitOperation::Clear)
             }
             'o' => {
-                self[row][word_col] |=   1 << shift
+                self.modify_bits_in_word(row, word_col, 1 << shift, BitOperation::Set)
             }
             _ => panic!("invalid character: {:?}", ch)
         }
@@ -719,5 +724,17 @@ mod tests {
         let grid = BitGrid::new(1,1);
         let pattern = grid.to_pattern(None);
         assert_eq!(pattern.0.as_str(), "!");
+    }
+
+    #[test]
+    fn clear_all_ones_really_is_clear() {
+        let pat = Pattern("64o$64o$64o$64o$64o$64o$64o$64o$64o$64o$64o$64o!".to_owned());
+        let mut grid = pat.to_new_bit_grid(64, 12).unwrap();
+        grid.clear();
+        for row in &grid.0 {
+            for col_idx in 0..row.len() {
+                assert_eq!(row[col_idx], 0);
+            }
+        }
     }
 }
