@@ -19,5 +19,5 @@
 extern crate env_logger;
 
 pub mod universe;
-pub mod bits;
+pub mod grids;
 pub mod rle;

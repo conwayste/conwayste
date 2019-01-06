@@ -18,7 +18,7 @@
 const MAX_NUMBER: usize = 50000;
 pub const NO_OP_CHAR: char = '"';
 
-use bits::{BitGrid, CharGrid};
+use grids::{BitGrid, CharGrid};
 use std::collections::BTreeMap;
 use std::str::FromStr;
 

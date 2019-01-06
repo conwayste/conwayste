@@ -17,7 +17,7 @@
 
 use std::{char, cmp, fmt};
 
-use bits::{BitGrid, BitOperation, CharGrid};
+use grids::{BitGrid, BitOperation, CharGrid};
 
 use rle::{Pattern, NO_OP_CHAR};
 
