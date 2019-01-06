@@ -34,6 +34,8 @@ mod video;
 mod viewport;
 
 use conway::universe::{BigBang, Universe, CellState, Region, PlayerBuilder};
+use conway::grids::CharGrid;
+use conway::rle::Pattern;
 
 use ggez::conf;
 use ggez::event::*;
@@ -985,6 +987,11 @@ impl MainState {
                             }
                             Keycode::LGui => {
                             
+                            }
+                            Keycode::D => {
+                                // TODO: do something with this debug code
+                                let pat = self.uni.to_pattern(None);
+                                println!("PATTERN DUMP:\n{}", pat.0);
                             }
                             _ => {
                                 println!("Unrecognized keycode {}", keycode);
