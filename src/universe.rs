@@ -1527,8 +1527,8 @@ impl CharGrid for Universe {
         GenState::is_valid(ch)
     }
 
-    fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: Option<usize>) {
-        unimplemented!("YAGNI");
+    fn write_at_position(&mut self, _col: usize, _row: usize, _ch: char, _visibility: Option<usize>) {
+        unimplemented!("This interface is not intended for modifying Universes");
     }
 
     /// Return width in cells.
