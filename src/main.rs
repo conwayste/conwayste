@@ -1,4 +1,4 @@
-/*  Copyright 2017 the ConWaysteTheEnemy Developers.
+/*  Copyright 2017 the Conwayste Developers.
  *
  *  This file is part of libconway.
  *
@@ -19,7 +19,7 @@
 extern crate conway;
 
 use std::{thread, time};
-use conway::*;
+use conway::universe::*;
 
 fn main() {
     let mut uni = Universe::new(128, 32, true, 16, 2, vec![Region::new(40,6,16,8), Region::new(60,16,8,8)], 16).unwrap();
