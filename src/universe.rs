@@ -1519,6 +1519,36 @@ impl Universe {
 
         Ok(Some(new_gen))
     }
+
+    // If it's possible to generate a diff between the GenStates specified by `gen0` and `gen1`, do
+    // so. Otherwise, return `None`.
+    //
+    // The optional `visibility` specifies the player this is viewed as.
+    //
+    // # Panics
+    //
+    // * This panics if `gen0` >= `gen1`.
+    // * This panics if `visibility` is out of range.
+    pub fn diff(&self, gen0: usize, gen1: usize, visibility: Option<usize>) -> Option<GenStateDiff> {
+        assert!(gen0 < gen1, format!("expected gen0 < gen1, but {} >= {}", gen0, gen1));
+        let mut opt_genstate0 = None;
+        let mut opt_genstate1 = None;
+        for gen_idx in 0..self.gen_states.len() {
+            let gs = &self.gen_states[gen_idx];
+            if let Some(gen) = gs.gen_or_none {
+                if gen == gen0 {
+                    opt_genstate0 = Some(gs);
+                } else if gen == gen1 {
+                    opt_genstate1 = Some(gs);
+                }
+            }
+        }
+        if opt_genstate0.is_none() || opt_genstate1.is_none() {
+            None
+        } else {
+            Some(opt_genstate0.unwrap().diff(opt_genstate1.unwrap(), visibility))
+        }
+    }
 }
 
 
@@ -2256,6 +2286,38 @@ mod universe_tests {
             assert_eq!(genstate.player_states[0].fog[1][0], u64::max_value());  // complete fog for player 0
             assert_eq!(genstate.player_states[1].cells.to_pattern(None).0, "!".to_owned()); // no player 1 cells
         }
+    }
+
+    #[test]
+    fn universe_diff_crazy_numbers_is_none() {
+        let uni = generate_test_universe_with_default_params();
+        assert!(uni.diff(123, 456, None).is_none());
+    }
+
+    #[test]
+    #[should_panic]
+    fn universe_diff_crazier_numbers_panics() {
+        let uni = generate_test_universe_with_default_params();
+        assert!(uni.diff(456, 456, None).is_none());
+    }
+
+    #[test]
+    fn universe_diff_good_numbers_is_valid() {
+        let mut uni = generate_test_universe_with_default_params();
+        let player1 = 1;
+        // glider
+        uni.toggle(16, 15, player1).unwrap();
+        uni.toggle(17, 16, player1).unwrap();
+        uni.toggle(15, 17, player1).unwrap();
+        uni.toggle(16, 17, player1).unwrap();
+        uni.toggle(17, 17, player1).unwrap();
+        let gens = 4;
+        for _ in 0..gens {
+            uni.next();
+        }
+        let diff = uni.diff(2, 3, None).unwrap();
+        assert_eq!(diff.gen0, 2);
+        assert_eq!(diff.gen1, 3);
     }
 }
 
