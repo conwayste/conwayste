@@ -2318,6 +2318,14 @@ mod universe_tests {
         let diff = uni.diff(2, 3, None).unwrap();
         assert_eq!(diff.gen0, 2);
         assert_eq!(diff.gen1, 3);
+        let pat_str = diff.pattern.0.as_str();
+        let s = pat_str.split("256\"$")
+                       .filter(|&s| {
+                           s != "\r\n" && s != ""
+                       })
+                       .next()
+                       .unwrap();
+        assert_eq!(s, "15\"b240\"$15\"Bb239\"$17\"B238\"$");
     }
 }
 
