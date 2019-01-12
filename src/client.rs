@@ -203,11 +203,15 @@ impl ClientState {
                     // This works because remove() targets different ID's depending on the Packet type. In the case of
                     // a Response packet, the target identifier is the `request_ack`.
 
+                    // Only process responses we haven't seen
                     if self.response_sequence <= sequence {
-                        println!("Packet to remove: {:?}", packet);
+                        trace!("RX Buffering: Resp.Seq.: {}, {:?}", self.response_sequence, packet);
                         // println!("TX packets: {:?}", self.network.tx_packets);
-                        let _ = self.network.tx_packets.remove(&packet);
-                        let _ = self.network.rx_packets.buffer_item(packet);
+                        // None means the packet was not found so we've probably already removed it.
+                        if let Some(_) = self.network.tx_packets.remove(&packet)
+                        {
+                            let _ = self.network.rx_packets.buffer_item(packet);
+                        }
 
                         self.process_queued_rx_packets();
                     }

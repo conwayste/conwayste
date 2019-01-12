@@ -24,7 +24,7 @@ extern crate semver;
 
 use std::cmp::{PartialEq, PartialOrd, Ordering};
 use std::fmt::Debug;
-use std::{io, fmt, str, result, time::{Duration, Instant}};
+use std::{io, fmt, str, result, time::{Duration, Instant}, iter};
 use std::net::{self, SocketAddr};
 use std::collections::VecDeque;
 
@@ -514,16 +514,19 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug> {
         self.as_queue_type_mut().clear();
     }
 
-    fn remove(&mut self, pkt: &T) -> T {
+    fn remove(&mut self, pkt: &T) -> Option<T> {
         let result = {
             let search_space: Vec<&T> = self.as_queue_type_mut().iter().collect();
             search_space.as_slice().binary_search(&pkt)
         };
         match result {
-            Err(_) => panic!("Could not remove transmitted item from queue"),
+            Err(_) => {
+                warn!("Could not remove transmitted item from queue!\nQueue: {:?}", self.as_queue_type());
+                return None;
+            }
             Ok(index) => {
                 let pkt = self.as_queue_type_mut().remove(index).unwrap();
-                return pkt;
+                return Some(pkt);
             }
         }
     }
@@ -609,7 +612,7 @@ impl NetworkQueue<Packet> for TXQueue {
         false   // Will need to scan if already present in packet
     }
 
-    fn remove(&mut self, pkt: &Packet) -> Packet {
+    fn remove(&mut self, pkt: &Packet) -> Option<Packet> {
         // In the TX queue case, removing a Packet::Response means its request_ack is equivalent to
         // the Packet::Request's sequence number which  actually resides in the queue
         let opt_search_id: &Option<u64> = match pkt {
@@ -631,12 +634,17 @@ impl NetworkQueue<Packet> for TXQueue {
             search_space.as_slice().binary_search(&&dummy_packet)
         };
         match result {
-            Err(_) => panic!("Could not remove transmitted item from TX queue. Trying to remove {:?}, from {:?}",
-                             dummy_packet, self),
+            Err(_) => {
+                warn!("Could not remove transmitted item from TX queue.\n\tTrying to remove {:?}, from", dummy_packet);
+                for pkt in self.as_queue_type().iter() {
+                    warn!("\t{:?}", pkt);
+                }
+                return None;
+            }
             Ok(index) => {
                 let pkt = self.as_queue_type_mut().remove(index).unwrap();
                 self.timestamps.remove(index);
-                return pkt;
+                return Some(pkt);
             }
         }
     }
