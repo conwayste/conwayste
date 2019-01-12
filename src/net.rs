@@ -603,8 +603,9 @@ impl NetworkQueue<Packet> for TXQueue {
         // ameen: re-evaluate need
         //self.discard_older_items();
 
-        // Current item is newer, and we're adding in sequential order
-        if head_seq_num < sequence && head_seq_num+1 == sequence {
+        // Current item is newer than the head. I don't think its possible to
+        // queue something to the head unless we've wrapped SQNs.
+        if head_seq_num < sequence {//&& head_seq_num+1 == sequence {
             self.push_back(item);
             self.timestamps.push_back(Instant::now());
         }
