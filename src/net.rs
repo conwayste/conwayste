@@ -127,6 +127,8 @@ pub enum ResponseCode {
     // success - these are all 200 in HTTP
     OK,                              // 200 no data
     LoggedIn(String, String),                // player is logged in -- provide cookie
+    JoinedRoom(String),
+    LeaveRoom,
     PlayerList(Vec<String>),
     RoomList(Vec<(String, u64, bool)>), // (room name, # players, started?)
     // errors

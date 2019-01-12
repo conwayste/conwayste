@@ -497,7 +497,7 @@ impl ServerState {
         }
         player.game_info = None;
 
-        return ResponseCode::OK;
+        return ResponseCode::LeaveRoom;
     }
 
     fn remove_player(&mut self, player_id: PlayerID, player_cookie: String) {
@@ -1344,7 +1344,7 @@ mod test {
             server.join_room(player_id, String::from(room_name));
         }
 
-        // A chatless player now has something to to say
+        // A chat-less player now has something to to say
         server.decode_packet(fake_socket_addr(), Packet::UpdateReply {
             cookie: player_cookie.clone(),
             last_chat_seq: Some(1),

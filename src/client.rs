@@ -135,7 +135,7 @@ impl ClientState {
     }
 
     fn process_queued_rx_packets(&mut self) {
-        // If we can, start popping off the RX queue and handle contigous packets immediately
+        // If we can, start popping off the RX queue and handle contiguous packets immediately
         let mut dequeue_count = 0;
         let mut max_request_ack_seen = 0;
 
@@ -164,6 +164,12 @@ impl ClientState {
             }
             ResponseCode::LoggedIn(ref cookie, ref server_version) => {
                 self.handle_logged_in(cookie.to_string(), server_version.to_string());
+            }
+            ResponseCode::LeaveRoom => {
+                self.handle_left_room();
+            }
+            ResponseCode::JoinedRoom(ref room_name) => {
+                self.handle_joined_room(room_name);
             }
             ResponseCode::PlayerList(ref player_names) => {
                 self.handle_player_list(player_names.to_vec());
@@ -273,6 +279,9 @@ impl ClientState {
                 if timed_out {
                     trace!("Server is non-responsive, disconnecting.");
                 }
+                if self.disconnecting() {
+                    trace!("Disconnected from the server.")
+                }
                 self.reset();
             } else {
                 netwayste_send!(self, udp_tx, (addr, keep_alive), ("Could not send KeepAlive packets"));
@@ -327,17 +336,6 @@ impl ClientState {
     fn handle_response_ok(&mut self) -> Result<(), Box<Error>> {
         if let Some(ref last_action) = self.last_req_action {
             match last_action {
-                &RequestAction::JoinRoom(ref room_name) => {
-                    self.room = Some(room_name.clone());
-                    info!("Joined room {}.", room_name);
-                }
-                &RequestAction::LeaveRoom => {
-                    if self.in_game() {
-                        info!("Left room {}.", self.room.clone().unwrap());
-                    }
-                    self.room = None;
-                    self.chat_msg_seq_num = 0;
-                }
                 _ => {
                     info!("OK :)");
                 }
@@ -345,15 +343,27 @@ impl ClientState {
             return Ok(());
         } else {
             error!("OK, but we didn't make a request :/");
-            return Err(Box::new(io::Error::new(ErrorKind::Other, "invalid packet - server-only")));
+            return Err(Box::new(io::Error::new(ErrorKind::Other, "Received OK without connection")));
         }
     }
-
     fn handle_logged_in(&mut self, cookie: String, server_version: String) {
         self.cookie = Some(cookie);
 
         info!("Set client name to {:?}", self.name.clone().unwrap());
         self.check_for_upgrade(&server_version);
+    }
+
+    fn handle_joined_room(&mut self, room_name: &String) {
+            self.room = Some(room_name.clone());
+            info!("Joined room: {}", room_name);
+    }
+
+    fn handle_left_room(&mut self) {
+        if self.in_game() {
+            info!("Left room {}.", self.room.clone().unwrap());
+        }
+        self.room = None;
+        self.chat_msg_seq_num = 0;
     }
 
     fn handle_player_list(&mut self, player_names: Vec<String>) {
