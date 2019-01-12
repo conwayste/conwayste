@@ -238,7 +238,8 @@ pub enum Packet {
     Request {
         // sent by client
         sequence:        u64,
-        response_ack:    Option<u64>,    // most recent response sequence number received
+        response_ack:    Option<u64>,    // Next expected  sequence number the Server responds with to the Client.
+                                         // Stated differently, the client has seen Server responses from 0 to response_ack-1.
         cookie:          Option<String>, // present if and only if action != connect
         action:          RequestAction,
     },
@@ -279,16 +280,36 @@ impl Packet {
             unimplemented!(); // UpdateReply is not saved
         }
     }
+    pub fn set_response_sequence(&mut self, new_ack: Option<u64>) {
+        if let Packet::Request{ref sequence, ref mut response_ack, ref cookie, ref action} = *self {
+            *response_ack = new_ack;
+        } else {
+            unimplemented!();
+        }
+    }
+
+    pub fn response_sequence(&self) -> u64 {
+        if let Packet::Request{ref sequence, ref response_ack, ref cookie, ref action} = *self {
+            if let Some(response_ack) = response_ack
+            {
+                *response_ack
+            } else {
+                0
+            }
+        } else {
+            unimplemented!();
+        }
+    }
 }
 
 impl fmt::Debug for Packet {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Packet::Request{ sequence, response_ack, cookie, action } => {
-                write!(f, "[Request] cookie: {:?} sequence: {} ack: {:?} event: {:?}", cookie, sequence, response_ack, action)
+                write!(f, "[Request] cookie: {:?} sequence: {} resp_ack: {:?} event: {:?}", cookie, sequence, response_ack, action)
             }
             Packet::Response{ sequence, request_ack, code } => {
-                write!(f, "[Response] sequence: {} ack: {:?} event: {:?}", sequence, request_ack, code)
+                write!(f, "[Response] sequence: {} req_ack: {:?} event: {:?}", sequence, request_ack, code)
             }
             Packet::Update{ chats: _, game_updates, universe_update } => {
                 write!(f, "[Update] game_updates: {:?} universe_update: {:?}", game_updates, universe_update)
@@ -568,6 +589,7 @@ impl NetworkQueue<Packet> for TXQueue {
         let opt_head_seq_num: Option<u64> = self.newest_seq_num();
 
         if opt_head_seq_num.is_none() {
+            trace!("[TX Buffer] self.push_back(...): {:?}", item);
             self.push_back(item);
             self.timestamps.push_back(Instant::now());
             return false;

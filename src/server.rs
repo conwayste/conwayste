@@ -611,7 +611,7 @@ impl ServerState {
     fn can_process_packet(&mut self, player_id: PlayerID, sequence_number: u64) -> bool {
         let player: &mut Player = self.get_player_mut(player_id);
         if let Some(ack) = player.request_ack {
-            println!("\t\tAck: {} Sqn: {}", ack, sequence_number);
+            trace!("[CAN PROCESS?] Ack: {} Sqn: {}", ack, sequence_number);
             ack+1 == sequence_number
         } else {
             // request_ack has not been set yet, likely first packet
@@ -670,7 +670,7 @@ impl ServerState {
         }
 
         for packet in processable_packets {
-            trace!("{:?}\n\t[Buffered Process]", packet);
+            trace!("[Processing Client Request from RX Buffer]: {:?}", packet);
             match packet {
                 Packet::Request{sequence, response_ack: _, cookie: _, action} => {
                     latest_processed_seq_num += 1;
@@ -688,6 +688,7 @@ impl ServerState {
         let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
         if let Some(player_net) = network {
             for response in responses {
+                trace!("[A Response to Client Request added to TX Buffer]{:?}", response);
                 player_net.tx_packets.buffer_item(response);
             }
         }
@@ -708,12 +709,13 @@ impl ServerState {
                     continue;
                 }
 
-                let responses = player_net.tx_packets.as_queue_type().iter();
+                let responses = player_net.tx_packets.as_queue_type().into_iter();
                 for response in responses {
-                    trace!("[TX PREP] {:?}", response);
+                    trace!("[Sending a Response to Client from TX Buffer] {:?}", response);
                     response_packets.push((player_addr, response.clone()));
                 }
             } else {
+                trace!("I haven't found a NetworkManager for Player: {}", player_id);
                 continue;
             }
 
@@ -794,7 +796,7 @@ impl ServerState {
             Packet::Request{sequence, response_ack, cookie, action} => {
 
                 if action.clone() != RequestAction::KeepAlive {
-                    trace!("[Request] cookie: {:?} sequence: {} ack: {:?} event: {:?}", cookie, sequence, response_ack, action);
+                    trace!("[Request] cookie: {:?} sequence: {} resp_ack: {:?} event: {:?}", cookie, sequence, response_ack, action);
                 } else {
                     return Ok(None);
                 }
@@ -833,14 +835,22 @@ impl ServerState {
                     // Clear out the transmission queue of any packets the client has acknowledged
                     if let Some(response_ack) = response_ack {
                         if let Some(ref mut player_network) = self.network_map.get_mut(&player_id) {
-                            player_network.tx_packets.as_queue_type_mut().retain(|ref pkt| pkt.sequence_number() > response_ack);
+                            player_network.tx_packets.as_queue_type_mut().retain(|ref resp_pkt|
+                                if response_ack > 0 && (resp_pkt.sequence_number() > response_ack-1)
+                                {
+                                    true
+                                } else { false }
+                                // else {
+                                    // TODO handle wrapped case & unit tests
+                                // }
+                            );
                         }
                     }
 
                     // Check to see if it can be processed right away, otherwise buffer it for later consumption.
                     // Not sure if I like this name but it'll do for now.
                     if self.can_process_packet(player_id, sequence) {
-                        trace!("\t [PROCESS IMMEDIATE]");
+                        trace!("[PROCESS IMMEDIATE]");
                         return self.process_player_request_action(player_id, action);
                     }
 
