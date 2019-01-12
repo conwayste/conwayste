@@ -625,6 +625,13 @@ impl ServerState {
             RequestAction::Connect{..} => unreachable!(),
             _ => {
                 let response = self.handle_request_action(player_id, action.clone());
+
+                // Buffer all responses to the client for [re-]transmission
+                let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
+                if let Some(player_net) = network {
+                    trace!("[A Response to Client Request added to TX Buffer]{:?}", response);
+                    player_net.tx_packets.buffer_item(response.clone());
+                }
                 Ok(Some(response))
             }
         }
@@ -633,7 +640,6 @@ impl ServerState {
     fn process_queued_rx_packets(&mut self, player_id: PlayerID) {
         // If we can, start popping off the RX queue and handle contiguous packets immediately
         let mut dequeue_count = 0;
-        let mut responses: Vec<Packet> = vec![];
 
         // Get the last packet we've sent to this player
         let player_processed_seq_num = self.get_player(player_id).request_ack;
@@ -675,23 +681,12 @@ impl ServerState {
                 Packet::Request{sequence, response_ack: _, cookie: _, action} => {
                     latest_processed_seq_num += 1;
                     assert!(sequence == latest_processed_seq_num);
-
-                    let response_packet = self.handle_request_action(player_id, action);
-                    responses.push(response_packet);
-
+                    let _response_packet = self.process_player_request_action(player_id, action);
                 }
                 _ => panic!("Development bug: Non-response packet found in client buffered RX queue")
             }
         }
 
-        // Buffer all responses to the client for [re-]transmission
-        let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
-        if let Some(player_net) = network {
-            for response in responses {
-                trace!("[A Response to Client Request added to TX Buffer]{:?}", response);
-                player_net.tx_packets.buffer_item(response);
-            }
-        }
     }
 
     fn process_player_buffered_packets(&mut self, players_to_update: &Vec<PlayerID>) -> Option<Vec<(SocketAddr, Packet)>> {
@@ -914,7 +909,9 @@ impl ServerState {
                         panic!("Player's request ack has never been set. It should have been set after the first packet!");
                     }
                 }
-                None => {}
+                None => {
+                    panic!("Player not found for {:?} while handling request action {:?}", player_id, action);
+                }
             }
         }
 
