@@ -1446,16 +1446,29 @@ impl Universe {
     }
 
 
-    // return Ok(Some(new_gen)) or Ok(None) if nothing new
-    // The "nothing new" case can happen if:
-    //      - the generation to be applied is already present
-    //      - there is already a greater generation present
-    //      - the base generation of this diff could not be found
-    // return Err("invalid - too large difference, gen0:<num> gen1:<num>") if the difference
-    // between `diff.gen0` and `diff.gen1` is too large.
-    // gen0 must be less than gen1, otherwise a panic results
-    // Note: if pattern is invalid (that is, `to_grid` would return an error), the Universe will
-    // not be restored to its original state.
+    /// Apply `diff` to our `Universe`. Generally this is executed by the client in response to an
+    /// update from the server.
+    ///
+    /// # Return values
+    ///
+    /// * `Ok(Some(new_gen))` if the update was applied.
+    /// * `Ok(None)` if the update is valid but was not applied because either:
+    ///     - the generation to be applied is already present,
+    ///     - there is already a greater generation present, or
+    ///     - the base generation of this diff (that is, `diff.gen0`) could not be found.
+    /// * `Err(msg)` if the update is invalid, either because:
+    ///     - the difference between `diff.gen0` and `diff.gen1` is too large. Since the server
+    ///     knows the client's buffer size, this should not happen. In this case, no updates are
+    ///     made to the `Universe`.
+    ///     - the RLE pattern is invalid. NOTE: in this case, the pattern is only partially written
+    ///     and all other updates (e.g., increasing the generation count) are made as if it were
+    ///     valid.
+    ///
+    /// # Panics
+    ///
+    /// This will panic if:
+    /// * `gen0` is not less than `gen1`.
+    /// * `visibility` is out of range.
     pub fn apply(&mut self, diff: &GenStateDiff, visibility: Option<usize>) -> Result<Option<usize>, String> {
         assert!(diff.gen0 < diff.gen1, format!("expected gen0 < gen1, but {} >= {}",
                                                diff.gen0, diff.gen1));
@@ -1493,7 +1506,7 @@ impl Universe {
             }
         }
 
-        // 4a) copy from the gen_state for gen0 to what will be the gen_state for gen1
+        // 4) copy from the gen_state for gen0 to what will be the gen_state for gen1
         // TODO: This needs some serious cleanup
         let gen1_idx = (gen0_idx + diff.gen1 - diff.gen0) % gen_state_len;
         let cut_idx = cmp::max(gen0_idx, gen1_idx);
@@ -1508,14 +1521,14 @@ impl Universe {
             }
         }
 
-        // 4b) apply the diff!
-        diff.pattern.to_grid(&mut self.gen_states[gen1_idx], visibility)?;
-
         // 5) update self.generation, self.state_index, and self.gen_states[gen1_idx].gen_or_none
         let new_gen = diff.gen1;
         self.generation = new_gen;
         self.state_index = gen1_idx;
         self.gen_states[gen1_idx].gen_or_none = Some(new_gen);
+
+        // 6) apply the diff!
+        diff.pattern.to_grid(&mut self.gen_states[gen1_idx], visibility)?;
 
         Ok(Some(new_gen))
     }
