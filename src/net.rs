@@ -37,7 +37,7 @@ pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
 pub const DEFAULT_PORT: u16 = 12345;
 const TIMEOUT_IN_SECONDS:    u64   = 5;
-const NETWORK_QUEUE_LENGTH: usize = 15;
+const NETWORK_QUEUE_LENGTH: usize = 150;
 const RETRANSMISSION_THRESHOLD_IN_MS: Duration = Duration::from_millis(100);
 
 // For unit testing, I cover duplicate sequence numbers. The search returns Ok(index) on a slice with a matching value.
