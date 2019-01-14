@@ -472,7 +472,7 @@ impl ServerState {
                     room_id: gs.room_id.clone(),
                     chat_msg_seq_num: None
                 });
-                return ResponseCode::OK;
+                return ResponseCode::JoinedRoom(room_name);
             }
         }
         return ResponseCode::BadRequest(Some(format!("no room named {:?}", room_name)));
@@ -532,7 +532,7 @@ impl ServerState {
             RequestAction::Disconnect      => {
                 return self.handle_disconnect(player_id);
             },
-            RequestAction::KeepAlive       => {
+            RequestAction:: KeepAlive(_) => {
                 let player: &mut Player = self.players.get_mut(&player_id).unwrap();
                 player.heartbeat = Some(time::Instant::now());
                 return ResponseCode::OK;
@@ -774,6 +774,22 @@ impl ServerState {
             None
         }
     }
+    fn clear_transmission_queue_on_ack(&mut self, player_id: &PlayerID, response_ack: Option<u64>) {
+        // Clear out the transmission queue of any packets the client has acknowledged
+        if let Some(response_ack) = response_ack {
+            if let Some(ref mut player_network) = self.network_map.get_mut(&player_id) {
+                player_network.tx_packets.as_queue_type_mut().retain(|ref resp_pkt|
+                    if response_ack > 0 && (resp_pkt.sequence_number() > response_ack-1)
+                    {
+                        true
+                    } else { false }
+                    // else {
+                        // TODO handle wrapped case & unit tests
+                    // }
+                );
+            }
+        }
+    }
 
     // Inspect the packet's contents for acceptance, or reject it.
     // `Response`/`Update` packets are invalid in this context
@@ -790,17 +806,15 @@ impl ServerState {
             }
             Packet::Request{sequence, response_ack, cookie, action} => {
 
-                if action.clone() != RequestAction::KeepAlive {
-                    trace!("[Request] cookie: {:?} sequence: {} resp_ack: {:?} event: {:?}", cookie, sequence, response_ack, action);
-                } else {
-                    return Ok(None);
-                }
-
                 match action {
                     RequestAction::Connect{..} => (),
+                    RequestAction::KeepAlive(_) => (),
                     _ => {
                         if cookie == None {
                             return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "no cookie")));
+                        } else {
+                            trace!("[Request] cookie: {:?} sequence: {} resp_ack: {:?} event: {:?}", cookie, sequence,
+                                                                                                 response_ack, action);
                         }
                     }
                 }
@@ -827,20 +841,18 @@ impl ServerState {
                         }
                     };
 
-                    // Clear out the transmission queue of any packets the client has acknowledged
-                    if let Some(response_ack) = response_ack {
-                        if let Some(ref mut player_network) = self.network_map.get_mut(&player_id) {
-                            player_network.tx_packets.as_queue_type_mut().retain(|ref resp_pkt|
-                                if response_ack > 0 && (resp_pkt.sequence_number() > response_ack-1)
-                                {
-                                    true
-                                } else { false }
-                                // else {
-                                    // TODO handle wrapped case & unit tests
-                                // }
-                            );
+                    match action.clone() {
+                        RequestAction::KeepAlive(resp_ack) => {
+                            // If the client stops transmitting new events, the Server will never get a reply for
+                            // the last set of responses (1 or more). This will result in the transmission queue contents
+                            // flooding the Client.
+                            self.clear_transmission_queue_on_ack(&player_id, Some(resp_ack));
+                            return Ok(None);
                         }
+                        _ => (),
                     }
+
+                    self.clear_transmission_queue_on_ack(&player_id, response_ack);
 
                     // Check to see if it can be processed right away, otherwise buffer it for later consumption.
                     // Not sure if I like this name but it'll do for now.
@@ -896,21 +908,24 @@ impl ServerState {
 
         let (mut sequence, mut request_ack) = (0, None);
 
-        if action != RequestAction::KeepAlive {
-            let opt_player: Option<&mut Player> = self.players.get_mut(&player_id);
+        match action {
+            RequestAction::KeepAlive(_) => (), // Filtered away at the decoding packet layer
+            _ => {
+                let opt_player: Option<&mut Player> = self.players.get_mut(&player_id);
 
-            match opt_player {
-                Some(player) => {
-                    sequence = player.increment_response_seq_num();
-                    if let Some(ack) = player.request_ack {
-                        player.request_ack = Some(ack+1);
-                        request_ack = player.request_ack;
-                    } else {
-                        panic!("Player's request ack has never been set. It should have been set after the first packet!");
+                match opt_player {
+                    Some(player) => {
+                        sequence = player.increment_response_seq_num();
+                        if let Some(ack) = player.request_ack {
+                            player.request_ack = Some(ack+1);
+                            request_ack = player.request_ack;
+                        } else {
+                            panic!("Player's request ack has never been set. It should have been set after the first packet!");
+                        }
                     }
-                }
-                None => {
-                    panic!("Player not found for {:?} while handling request action {:?}", player_id, action);
+                    None => {
+                        panic!("Player not found for {:?} while handling request action {:?}", player_id, action);
+                    }
                 }
             }
         }

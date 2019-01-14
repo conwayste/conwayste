@@ -284,7 +284,7 @@ impl ClientState {
                 cookie: self.cookie.clone(),
                 sequence: self.sequence,
                 response_ack: None,
-                action: RequestAction::KeepAlive
+                action: RequestAction::KeepAlive(self.response_sequence),
             };
             let timed_out = net::has_connection_timed_out(self.heartbeat);
 

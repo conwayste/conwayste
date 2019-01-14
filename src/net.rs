@@ -111,7 +111,7 @@ pub enum RequestAction {
     None,   // never actually sent
     Connect{name: String, client_version: String},      // server replies w/ OK/PleaseUpgrade; TODO: password
     Disconnect,
-    KeepAlive,
+    KeepAlive(u64),     // Response ack
     ListPlayers,
     ChatMessage(String),
     ListRooms,
