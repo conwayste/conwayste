@@ -108,6 +108,8 @@ impl ClientState {
         *tick             = 0;
         network.reset();
         *heartbeat        = None;
+
+        trace!("ClientState reset!");
     }
 
     fn in_game(&self) -> bool {

@@ -24,13 +24,12 @@ extern crate semver;
 
 use std::cmp::{PartialEq, PartialOrd, Ordering};
 use std::fmt::Debug;
-use std::{io, fmt, str, result, time::{Duration, Instant}, iter};
+use std::{io, fmt, str, result, time::{Duration, Instant}};
 use std::net::{self, SocketAddr};
 use std::collections::VecDeque;
 
 use self::tokio_core::net::{UdpSocket, UdpCodec};
 use self::tokio_core::reactor::Handle;
-use self::futures::sync::mpsc;
 use self::bincode::{serialize, deserialize, Infinite};
 use self::semver::{Version, SemVerError};
 
@@ -281,7 +280,7 @@ impl Packet {
         }
     }
     pub fn set_response_sequence(&mut self, new_ack: Option<u64>) {
-        if let Packet::Request{ref sequence, ref mut response_ack, ref cookie, ref action} = *self {
+        if let Packet::Request{sequence: _, ref mut response_ack, cookie: _, action: _} = *self {
             *response_ack = new_ack;
         } else {
             unimplemented!();
@@ -289,7 +288,7 @@ impl Packet {
     }
 
     pub fn response_sequence(&self) -> u64 {
-        if let Packet::Request{ref sequence, ref response_ack, ref cookie, ref action} = *self {
+        if let Packet::Request{sequence: _, ref response_ack, cookie: _, action: _} = *self {
             if let Some(response_ack) = response_ack
             {
                 *response_ack
@@ -437,11 +436,8 @@ impl Sequenced for BroadcastChatMessage {
     }
 }
 
-pub trait NetworkQueue<T: Ord+Sequenced+Debug> {
-    fn new(size: usize) -> ItemQueue<T>
-    {
-        ItemQueue::<T>::with_capacity(size)
-    }
+pub trait NetworkQueue<T: Ord+Sequenced+Debug+Clone> {
+    fn new() -> Self;
 
     fn head_of_queue(&self) -> Option<&T> {
         self.as_queue_type().back()
@@ -514,22 +510,7 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug> {
         self.as_queue_type_mut().clear();
     }
 
-    fn remove(&mut self, pkt: &T) -> Option<T> {
-        let result = {
-            let search_space: Vec<&T> = self.as_queue_type_mut().iter().collect();
-            search_space.as_slice().binary_search(&pkt)
-        };
-        match result {
-            Err(_) => {
-                warn!("Packet not present in queue!\nQueue: {:?}", self.as_queue_type());
-                return None;
-            }
-            Ok(index) => {
-                let pkt = self.as_queue_type_mut().remove(index).unwrap();
-                return Some(pkt);
-            }
-        }
-    }
+    fn remove(&mut self, pkt: &T) -> Option<T>;
 
     fn pop_front_with_count(&mut self, mut num_to_remove: usize) {
         while num_to_remove > 0 {
@@ -546,122 +527,13 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug> {
 
 type ItemQueue<T> = VecDeque<T>;
 
-#[derive(Debug)]
-pub struct TXQueue {
-    pub queue: ItemQueue<Packet>,
-    pub timestamps: VecDeque<Instant>,
-}
-
-pub struct RXQueue<T> {
+pub struct NetQueue<T> {
     pub queue: ItemQueue<T>,
+    pub timestamps: VecDeque<Instant>,
     pub buffer_wrap_index: Option<usize>,
 }
 
-impl NetworkQueue<Packet> for TXQueue {
-    fn as_queue_type(&self) -> &ItemQueue<Packet> {
-        &self.queue
-    }
-
-    fn as_queue_type_mut(&mut self) -> &mut ItemQueue<Packet> {
-        &mut self.queue
-    }
-
-    /// This will keep the specified queue under the NETWORK_QUEUE_LENGTH limit.
-    /// The TX queue needs to ensure a spot is open if we're at capacity.
-    fn discard_older_items(&mut self) {
-        let queue = self.as_queue_type_mut();
-        let queue_size = queue.len();
-        if queue_size >= NETWORK_QUEUE_LENGTH {
-            for _ in 0..(queue_size-NETWORK_QUEUE_LENGTH) {
-                queue.pop_front();
-            }
-            queue.pop_front(); // Always keep one empty for TX queues
-        }
-    }
-
-    /// As we buffer new packets, we'll want to throw away the older packets.
-    /// We must be careful to ensure that we do not throw away packets that have
-    /// not yet been acknowledged by the end-point.
-    fn buffer_item(&mut self, item: Packet) -> bool {
-        let sequence = match item {
-            Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } => sequence,
-            Packet::Response{ sequence, request_ack: _, code: _ } => sequence,
-            _ => return false, //do nothing
-        };
-
-        let opt_head_seq_num: Option<u64> = self.newest_seq_num();
-
-        if opt_head_seq_num.is_none() {
-            trace!("[TX Buffer] self.push_back(...): {:?}", item);
-            self.push_back(item);
-            self.timestamps.push_back(Instant::now());
-            return false;
-        }
-
-        let head_seq_num = opt_head_seq_num.unwrap(); // unwrap safe
-
-        // ameen: re-evaluate need
-        //self.discard_older_items();
-
-        // Current item is newer than the head. I don't think its possible to
-        // queue something to the head unless we've wrapped SQNs.
-        if head_seq_num < sequence {//&& head_seq_num+1 == sequence {
-            self.push_back(item);
-            self.timestamps.push_back(Instant::now());
-        }
-
-        false   // Will need to scan if already present in packet
-    }
-
-    fn remove(&mut self, pkt: &Packet) -> Option<Packet> {
-        // In the TX queue case, removing a Packet::Response means its request_ack is equivalent to
-        // the Packet::Request's sequence number which  actually resides in the queue
-        let opt_search_id: &Option<u64> = match pkt {
-            // TODO double check Packet::Request when implementing Server-side
-            Packet::Request{ sequence: _, response_ack, cookie: _, action: _ } => response_ack,
-            Packet::Response{ sequence: _, request_ack, code: _ } => request_ack,
-            _ => unimplemented!() // !("Update/UpdateReply not yet implemented")
-        };
-        let search_id = if let &Some(si) = opt_search_id { si } else { panic!("Cannot remove because the 'ack' was None") };
-        let dummy_packet = Packet::Request{
-            sequence: search_id,
-            response_ack: None,
-            cookie: None,
-            action: RequestAction::None
-        };
-
-        let result = {
-            let search_space: Vec<&Packet> = self.as_queue_type_mut().iter().collect();
-            search_space.as_slice().binary_search(&&dummy_packet)
-        };
-        match result {
-            Err(_) => {
-                warn!("Could not remove transmitted item from TX queue.\n\tTrying to remove {:?}, from", dummy_packet);
-                for pkt in self.as_queue_type().iter() {
-                    warn!("\t{:?}", pkt);
-                }
-                return None;
-            }
-            Ok(index) => {
-                let pkt = self.as_queue_type_mut().remove(index).unwrap();
-                self.timestamps.remove(index);
-                return Some(pkt);
-            }
-        }
-    }
-
-    fn clear(&mut self) {
-        let Self {
-            ref mut queue,
-            ref mut timestamps,
-        } = *self;
-
-        queue.clear();
-        timestamps.clear();
-    }
-}
-
-impl TXQueue {
+impl NetQueue<Packet> {
     pub fn get_retransmit_indices(&self) -> Vec<usize> {
         let iter = self.timestamps.iter();
         iter.enumerate()
@@ -671,8 +543,16 @@ impl TXQueue {
     }
 }
 
-impl<T> NetworkQueue<T> for RXQueue<T>
-        where T: Sequenced+Debug {
+impl<T> NetworkQueue<T> for NetQueue<T>
+        where T: Sequenced+Debug+Clone {
+
+    fn new() -> Self {
+        NetQueue {
+            queue:          ItemQueue::<T>::with_capacity(NETWORK_QUEUE_LENGTH),
+            timestamps:     VecDeque::<Instant>::with_capacity(NETWORK_QUEUE_LENGTH),
+            buffer_wrap_index: None
+        }
+    }
 
     fn as_queue_type(&self) -> &ItemQueue<T> {
         &self.queue
@@ -692,7 +572,37 @@ impl<T> NetworkQueue<T> for RXQueue<T>
         }
     }
 
-    /// Upon packet receipt, we must maintain linearly increasing sequence number order of received items of type `T`.
+    fn clear(&mut self) {
+        let Self {
+            ref mut queue,
+            ref mut timestamps,
+            ref mut buffer_wrap_index,
+        } = *self;
+
+        queue.clear();
+        timestamps.clear();
+        *buffer_wrap_index = None;
+    }
+
+    fn remove(&mut self, pkt: &T) -> Option<T> {
+        let result = {
+            let search_space: Vec<&T> = self.as_queue_type_mut().iter().collect();
+            search_space.as_slice().binary_search(&pkt)
+        };
+        match result {
+            Err(_) => {
+                warn!("Packet not present in queue!\nQueue: {:?}", self.as_queue_type());
+                return None;
+            }
+            Ok(index) => {
+                let pkt = self.as_queue_type_mut().remove(index).unwrap();
+                self.timestamps.remove(index);
+                return Some(pkt);
+            }
+        }
+    }
+
+    /// Upon packet tx or rx, we must maintain linearly increasing sequence number order of items of type `T`.
     /// In a perfect world, all `T`'s arrive in order, but this is not the case in reality. All T's are `Sequenced and
     /// have a corresponding sequence number to delineate order.
     ///
@@ -711,7 +621,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
     ///     [253, 254, 255, 1, 2, 3, 4]
     ///                     ^ wrapping index
     ///
-    /// Because we can receive `T`'s out-of-order even when wrapped, there are checks added below to safeguard
+    /// Because we may tx or rx `T`'s out-of-order even when wrapped, there are checks added below to safeguard
     /// against this. Primarily, they cover the cases where out-of-order insertion would transition the queue into a
     /// wrapped state from a non-wrapped state.
     fn buffer_item(&mut self, item: T) -> bool {
@@ -722,6 +632,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
         let opt_head_seq_num: Option<u64> = self.newest_seq_num();
         if opt_head_seq_num.is_none() {
             self.push_back(item);
+            self.timestamps.push_back(Instant::now());
             return packet_exists;
         }
         let opt_tail_seq_num: Option<u64> = self.oldest_seq_num();
@@ -733,9 +644,11 @@ impl<T> NetworkQueue<T> for RXQueue<T>
             if newest_seq_num == u64::max_value() {
                 if self.will_seq_cause_a_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
                     self.push_back(item);
+                    self.timestamps.push_back(Instant::now());
                     self.buffer_wrap_index = Some(self.len() - 1);
                 } else {
                     self.push_front(item);
+                    self.timestamps.push_back(Instant::now());
                 }
             } else if sequence > newest_seq_num && self.buffer_wrap_index.is_some() {
                 // When wrapped, either this is the newest sequence number so far, or
@@ -748,6 +661,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
                     }
                 } else {
                     self.push_back(item);
+                    self.timestamps.push_back(Instant::now());
                 }
             } else if sequence < newest_seq_num {
                 // The new seq num appears to be older than everything,
@@ -766,6 +680,7 @@ impl<T> NetworkQueue<T> for RXQueue<T>
             } else {
                 // Smallest sequence number (in value) that we have seen thus far.
                 self.push_front(item);
+                self.timestamps.push_back(Instant::now());
 
                 if self.buffer_wrap_index.is_some() {
                     self.buffer_wrap_index = Some(self.buffer_wrap_index.unwrap() + 1);
@@ -801,10 +716,9 @@ impl<T> NetworkQueue<T> for RXQueue<T>
     }
 }
 
-impl<T> RXQueue<T> where T: Sequenced+Debug {
+impl<T> NetQueue<T> where T: Sequenced+Debug+Clone {
 
-    /// Search within the RX queue, but we have no idea where to insert.
-    /// This should cover only within the RX queue and not at the edges (front or back).
+    /// Searching within the queue, but when we have no idea where to insert.
     /// We accomplish this by splitting the VecDequeue into a slice tuple and then binary searching on each slice.
     /// Small note: The splitting of VecDequeue is into its 'front' and 'back' halves, based on how 'push_front'
     /// and 'push_back' were used.
@@ -859,18 +773,22 @@ impl<T> RXQueue<T> where T: Sequenced+Debug {
         let mut exists: bool = false;
         if let Some(insertion_index) = index {
             if insertion_index != MATCH_FOUND_SENTINEL {
-                #[cfg(test)]
-                self.as_queue_type_mut().insert(insertion_index, item);
+                if cfg!(test) {
+                    self.as_queue_type_mut().insert(insertion_index, item.clone());
+                    self.timestamps.push_back(Instant::now());
+                }
             }
-            #[cfg(not(test))]
-            self.as_queue_type_mut().insert(insertion_index, item);
+            if !(cfg!(test)) {
+                self.as_queue_type_mut().insert(insertion_index, item);
+                self.timestamps.push_back(Instant::now());
+            }
         } else { exists = true; } // Packet is present in queue, hence None.
         return exists;
     }
 
     // Seq_num as a parameter specifies the starting sequence number to iterate over. Since packets can arrive
-    // out-of-order, the rx queue may be contiguous but not complete.
-    // Ex: Assume the next packet SN to process is 10, and the rx queue has buffered [10, 11, 12, 14, 16],
+    // out-of-order, the queue may be contiguous but not complete.
+    // Ex: Assume the next packet SN to process is 10, and the queue has buffered [10, 11, 12, 14, 16],
     // the contiguous packet count would be 3.
     pub fn get_contiguous_packets_count(&self, mut seq_num: u64) -> usize {
         let iter = self.queue.iter().take_while(move |x| {
@@ -886,9 +804,9 @@ impl<T> RXQueue<T> where T: Sequenced+Debug {
 
 pub struct NetworkManager {
     pub statistics:       NetworkStatistics,
-    pub tx_packets:       TXQueue,                               // Back = Newest, Front = Oldest
-    pub rx_packets:       RXQueue<Packet>,                       // Back = Newest, Front = Oldest
-    pub rx_chat_messages: Option<RXQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest;
+    pub tx_packets:       NetQueue<Packet>,                       // Back = Newest, Front = Oldest
+    pub rx_packets:       NetQueue<Packet>,                       // Back = Newest, Front = Oldest
+    pub rx_chat_messages: Option<NetQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest;
                                                                  //     Messages are drained into the Client;
                                                                  //     Server does not use this structure.
 }
@@ -897,9 +815,8 @@ impl NetworkManager {
     pub fn new() -> Self {
         NetworkManager {
             statistics: NetworkStatistics::new(),
-            tx_packets:  TXQueue{ queue: TXQueue::new(NETWORK_QUEUE_LENGTH), timestamps: VecDeque::<Instant>::new() },
-            rx_packets:  RXQueue{ queue: RXQueue::<Packet>::new(NETWORK_QUEUE_LENGTH),
-                                                                buffer_wrap_index: None },
+            tx_packets:  NetQueue::<Packet>::new(),
+            rx_packets:  NetQueue::<Packet>::new(),
             rx_chat_messages: None,
         }
     }
@@ -909,10 +826,7 @@ impl NetworkManager {
             statistics: self.statistics,
             tx_packets: self.tx_packets,
             rx_packets: self.rx_packets,
-            rx_chat_messages:  Some(RXQueue {
-                                        queue: RXQueue::<BroadcastChatMessage>::new(NETWORK_QUEUE_LENGTH),
-                                        buffer_wrap_index: None,
-                                }),
+            rx_chat_messages:  Some(NetQueue::<BroadcastChatMessage>::new()),
         }
     }
 
