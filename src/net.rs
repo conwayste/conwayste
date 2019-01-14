@@ -521,7 +521,7 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug> {
         };
         match result {
             Err(_) => {
-                warn!("Could not remove transmitted item from queue!\nQueue: {:?}", self.as_queue_type());
+                warn!("Packet not present in queue!\nQueue: {:?}", self.as_queue_type());
                 return None;
             }
             Ok(index) => {
