@@ -148,7 +148,7 @@ impl BigBang {
         let universe = Universe::new(
             self.width,
             self.height,
-            self.is_server,
+            self.is_server,        // if false, allow receiving generation 1 as GenStateDiff
             self.history,
             self.num_players,      // number of players in the game (player numbers are 0-based)
             self.player_writable.clone(), // writable region (indexed by player_id)
@@ -186,10 +186,10 @@ pub struct GenState {
     player_states: Vec<PlayerGenState>,  // player-specific info (indexed by player_id)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GenStateDiff {
-    pub gen0:    usize,
-    pub gen1:    usize,
+    pub gen0:    usize,         // must be >= 0; zero means diff is based off of the beginning of time
+    pub gen1:    usize,         // must be >= 1
     pub pattern: Pattern,
 }
 
@@ -889,7 +889,7 @@ impl Universe {
             let mut known = BitGrid::new(width_in_words, height);
             
             if is_server && i == 0 {
-                // could use modify_region but its much cheaper this way
+                // could use modify_region but it's much cheaper this way
                 for y in 0 .. height {
                     for x in 0 .. width_in_words {
                         known[y][x] = u64::max_value();   // if server, all cells are known
@@ -898,7 +898,7 @@ impl Universe {
             }
 
             gen_states.push(GenState {
-                gen_or_none:   if i == 0 { Some(1) } else { None },
+                gen_or_none:   if i == 0 && is_server { Some(1) } else { None },
                 cells:         BitGrid::new(width_in_words, height),
                 wall_cells:    BitGrid::new(width_in_words, height),
                 known:         known,
@@ -1474,17 +1474,31 @@ impl Universe {
                                                diff.gen0, diff.gen1));
         // if diff too large, return Err(...)
         let gen_state_len = self.gen_states.len();
-        if diff.gen1 - diff.gen0 >= gen_state_len {
+        if diff.gen0 > 0 && diff.gen1 - diff.gen0 >= gen_state_len {
             return Err(format!("diff is across too many generations to be applied: {} >= {}",
                                diff.gen1 - diff.gen0, gen_state_len));
         }
 
-        // 1) find the gen0 in our gen_states; if not found, return Ok(None)
+        // 1) If incremental update, find the gen0 in our gen_states; if not found, return
+        //    Ok(None).
         let mut opt_gen0_idx = None;
+        let mut opt_largest_gen_idx = None;
+        let mut opt_largest_gen_value = None;
         for i in 0..self.gen_states.len() {
             if let Some(gen) = self.gen_states[i].gen_or_none {
-                if gen == diff.gen0 {
-                    opt_gen0_idx = Some(i);
+                if diff.gen0 > 0 {
+                    if gen == diff.gen0 {
+                        opt_gen0_idx = Some(i);
+                    }
+                }
+                if let Some(largest_gen) = opt_largest_gen_value {
+                    if gen > largest_gen {
+                        opt_largest_gen_value = Some(gen);
+                        opt_largest_gen_idx   = Some(i);
+                    }
+                } else {
+                    opt_largest_gen_value = Some(gen);
+                    opt_largest_gen_idx   = Some(i);
                 }
                 // 2) ensure that no generation is >= gen1; if so, return Ok(None)
                 if gen >= diff.gen1 {
@@ -1492,33 +1506,43 @@ impl Universe {
                 }
             }
         }
-        if opt_gen0_idx.is_none() {
+        if diff.gen0 > 0 && opt_gen0_idx.is_none() {
             return Ok(None);
         }
-        let gen0_idx = opt_gen0_idx.unwrap();
 
         // 3) make room for the new gen_state (make room in the circular buffer)
         for i in 0..self.gen_states.len() {
             if let Some(gen) = self.gen_states[i].gen_or_none {
-                if gen <= diff.gen1 - gen_state_len {
+                if gen + gen_state_len <= diff.gen1 {
                     self.gen_states[i].gen_or_none = None; // indicate uninitialized
                 }
             }
         }
 
-        // 4) copy from the gen_state for gen0 to what will be the gen_state for gen1
+        let gen1_idx = if let Some(largest_gen_idx) = opt_largest_gen_idx {
+            let largest_gen = opt_largest_gen_value.unwrap();
+            (largest_gen_idx + diff.gen1 - largest_gen) % gen_state_len
+        } else {
+            0
+        };
+        // 4) If incremental update, then copy from the gen_state for gen0 to what will be the
+        //    gen_state for gen1.
         // TODO: This needs some serious cleanup
-        let gen1_idx = (gen0_idx + diff.gen1 - diff.gen0) % gen_state_len;
-        let cut_idx = cmp::max(gen0_idx, gen1_idx);
-        {
-            let (lower, upper): (&mut [GenState], &mut [GenState]) = self.gen_states.split_at_mut(cut_idx);
-            if gen1_idx < cut_idx {
-                lower[gen1_idx].clear();
-                upper[gen0_idx - cut_idx].copy(&mut lower[gen1_idx]); // this is an |= operation, hence the clear before this
-            } else {
-                upper[gen1_idx - cut_idx].clear();
-                lower[gen0_idx].copy(&mut upper[gen1_idx - cut_idx]); // this is an |= operation, hence the clear before this
+        if diff.gen0 > 0 {
+            let gen0_idx = opt_gen0_idx.unwrap();
+            let cut_idx = cmp::max(gen0_idx, gen1_idx);
+            {
+                let (lower, upper): (&mut [GenState], &mut [GenState]) = self.gen_states.split_at_mut(cut_idx);
+                if gen1_idx < cut_idx {
+                    lower[gen1_idx].clear();
+                    upper[gen0_idx - cut_idx].copy(&mut lower[gen1_idx]); // this is an |= operation, hence the clear before this
+                } else {
+                    upper[gen1_idx - cut_idx].clear();
+                    lower[gen0_idx].copy(&mut upper[gen1_idx - cut_idx]); // this is an |= operation, hence the clear before this
+                }
             }
+        } else {
+            self.gen_states[gen1_idx].clear();
         }
 
         // 5) update self.generation, self.state_index, and self.gen_states[gen1_idx].gen_or_none
@@ -1679,7 +1703,7 @@ mod universe_tests {
     use super::*;
     use rle::Pattern;
 
-    fn generate_test_universe_with_default_params() -> Universe {
+    fn generate_test_universe_with_default_params(is_server: bool) -> Universe {
         let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
         let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
         let players = vec![player0, player1];
@@ -1687,7 +1711,7 @@ mod universe_tests {
         let bigbang = BigBang::new()
             .width(256)
             .height(128)
-            .server_mode(true)
+            .server_mode(is_server)
             .history(16)
             .fog_radius(9)
             .add_players(players)
@@ -1698,7 +1722,7 @@ mod universe_tests {
 
     #[test]
     fn new_universe_with_valid_dims() {
-        let uni = generate_test_universe_with_default_params();
+        let uni = generate_test_universe_with_default_params(true);
         let universe_as_region = Region::new(0, 0, 256, 128);
 
         assert_eq!(uni.width(), 256);
@@ -1737,14 +1761,14 @@ mod universe_tests {
 
     #[test]
     fn new_universe_first_gen_is_one() {
-        let uni = generate_test_universe_with_default_params();
+        let uni = generate_test_universe_with_default_params(true);
         assert_eq!(uni.latest_gen(), 1);
     }
 
     #[test]
     #[should_panic]
     fn universe_with_no_gens_panics() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         uni.generation = 0;
         uni.latest_gen();
     }
@@ -1767,7 +1791,7 @@ mod universe_tests {
 
     #[test]
     fn next_test_data1() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
 
         // r-pentomino
         let _ = uni.toggle(16, 15, 0);
@@ -1785,7 +1809,7 @@ mod universe_tests {
 
     #[test]
     fn set_unchecked_with_valid_rows_and_cols() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let max_width = uni.width()-1;
         let max_height = uni.height()-1;
         let mut cell_state;
@@ -1811,13 +1835,13 @@ mod universe_tests {
     #[test]
     #[should_panic]
     fn set_unchecked_with_invalid_rols_and_cols_panics() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         uni.set_unchecked(257, 129, CellState::Alive(None));
     }
 
     #[test]
     fn universe_cell_states_are_dead_on_creation() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let max_width = uni.width()-1;
         let max_height = uni.height()-1;
         
@@ -1831,7 +1855,7 @@ mod universe_tests {
 
     #[test]
     fn set_checked_verify_players_remain_within_writable_regions() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let max_width = uni.width()-1;
         let max_height = uni.height()-1;
         let player_id = 1; // writing into player 1's regions
@@ -1861,7 +1885,7 @@ mod universe_tests {
 
     #[test]
     fn set_checked_cannot_set_a_fog_cell() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let player_id = 1; // writing into player 1's regions
         let alive_player_cell = CellState::Alive(Some(player_id));
         let state_index = uni.state_index;
@@ -1878,7 +1902,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_unchecked_cell_toggled_is_owned_by_player() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let state_index = uni.state_index;
         let row = 0;
         let col = 0;
@@ -1895,7 +1919,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_unchecked_cell_toggled_by_both_players_repetitively() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let state_index = uni.state_index;
         let row = 0;
         let col = 0;
@@ -1920,7 +1944,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_checked_outside_a_player_writable_region_fails() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let player_one = 0;
         let player_two = 1;
         let row = 0;
@@ -1932,7 +1956,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_checked_players_cannot_toggle_a_wall_cell() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let player_one = 0;
         let player_two = 1;
         let row = 0;
@@ -1947,7 +1971,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_checked_players_can_toggle_an_known_cell_if_writable() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let player_one = 0;
         let player_two = 1;
         let row = 0;
@@ -1962,7 +1986,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_checked_players_cannot_toggle_an_unknown_cell() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let player_one = 0;
         let player_two = 1;
         let row = 0;
@@ -2023,7 +2047,7 @@ mod universe_tests {
 
     #[test]
     fn verify_fog_circle_bitmap_generation() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
 
         let fog_radius_of_nine = vec![
             vec![0xf007ffffffffffff],
@@ -2205,7 +2229,7 @@ mod universe_tests {
 
     #[test]
     fn each_non_dead_detects_some_cells() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let player1 = 1;
 
         // glider
@@ -2244,7 +2268,7 @@ mod universe_tests {
 
     #[test]
     fn each_non_dead_detects_fog() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let player0 = 0;
         let player1 = 1;
 
@@ -2261,7 +2285,7 @@ mod universe_tests {
 
     #[test]
     fn universe_copy_from_bit_grid_as_player() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
 
         let write_pattern_as = Some(1); // player 1
@@ -2282,7 +2306,7 @@ mod universe_tests {
 
     #[test]
     fn universe_copy_from_bit_grid_as_player_out_of_range() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
 
         let write_pattern_as = Some(0); // player 0
@@ -2302,21 +2326,46 @@ mod universe_tests {
     }
 
     #[test]
+    fn universe_apply_basic() {
+        let mut s_uni = generate_test_universe_with_default_params(true);  // server
+        let mut c_uni = generate_test_universe_with_default_params(false); // client
+        let player1 = 1;
+        // glider
+        s_uni.toggle(16, 15, player1).unwrap();
+        s_uni.toggle(17, 16, player1).unwrap();
+        s_uni.toggle(15, 17, player1).unwrap();
+        s_uni.toggle(16, 17, player1).unwrap();
+        s_uni.toggle(17, 17, player1).unwrap();
+        let gens = 4;
+        for _ in 0..gens {
+            s_uni.next();
+        }
+        s_uni.gen_states[0].clear(); //XXX delete
+        let mut diff = s_uni.diff(1, 5, None).unwrap();   //XXX diff should be 0->5
+        diff.gen0 = 0; //XXX delete
+        assert_eq!(c_uni.apply(&diff, None), Ok(Some(5)));
+        let s_idx = s_uni.state_index;
+        let c_idx = c_uni.state_index;
+        assert_eq!(s_uni.gen_states[s_idx].gen_or_none, c_uni.gen_states[c_idx].gen_or_none);
+        assert_eq!(s_uni.gen_states[s_idx].cells, c_uni.gen_states[c_idx].cells);
+    }
+
+    #[test]
     fn universe_diff_crazy_numbers_is_none() {
-        let uni = generate_test_universe_with_default_params();
+        let uni = generate_test_universe_with_default_params(true);
         assert!(uni.diff(123, 456, None).is_none());
     }
 
     #[test]
     #[should_panic]
     fn universe_diff_crazier_numbers_panics() {
-        let uni = generate_test_universe_with_default_params();
+        let uni = generate_test_universe_with_default_params(true);
         assert!(uni.diff(456, 456, None).is_none());
     }
 
     #[test]
     fn universe_diff_good_numbers_is_valid() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(true);
         let player1 = 1;
         // glider
         uni.toggle(16, 15, player1).unwrap();
