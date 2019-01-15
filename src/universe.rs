@@ -1582,10 +1582,15 @@ impl Universe {
                 }
             }
         }
-        if opt_genstate0.is_none() || opt_genstate1.is_none() {
-            None
+        if gen0 == 0 && opt_genstate1.is_some() {
+            let pattern = opt_genstate1.unwrap().to_pattern(visibility);
+            Some(GenStateDiff{gen0, gen1, pattern})
         } else {
-            Some(opt_genstate0.unwrap().diff(opt_genstate1.unwrap(), visibility))
+            if opt_genstate0.is_none() || opt_genstate1.is_none() {
+                None
+            } else {
+                Some(opt_genstate0.unwrap().diff(opt_genstate1.unwrap(), visibility))
+            }
         }
     }
 }
@@ -2342,9 +2347,7 @@ mod universe_tests {
         for _ in 0..gens {
             s_uni.next();
         }
-        s_uni.gen_states[0].clear(); //XXX delete
-        let mut diff = s_uni.diff(1, 5, None).unwrap();   //XXX diff should be 0->5
-        diff.gen0 = 0; //XXX delete
+        let diff = s_uni.diff(0, 5, None).unwrap();
         assert_eq!(c_uni.apply(&diff, None), Ok(Some(5)));
         let s_idx = s_uni.state_index;
         let c_idx = c_uni.state_index;
