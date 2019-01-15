@@ -1456,10 +1456,12 @@ impl Universe {
     ///     - the generation to be applied is already present,
     ///     - there is already a greater generation present, or
     ///     - the base generation of this diff (that is, `diff.gen0`) could not be found.
+    ///       A base generation of 0 is a special case -- it is always found.
     /// * `Err(msg)` if the update is invalid, either because:
     ///     - the difference between `diff.gen0` and `diff.gen1` is too large. Since the server
     ///     knows the client's buffer size, this should not happen. In this case, no updates are
-    ///     made to the `Universe`.
+    ///     made to the `Universe`. A base generation of 0 is a special case -- the difference is
+    ///     never too large.
     ///     - the RLE pattern is invalid. NOTE: in this case, the pattern is only partially written
     ///     and all other updates (e.g., increasing the generation count) are made as if it were
     ///     valid.
