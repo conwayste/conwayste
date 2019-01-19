@@ -624,15 +624,18 @@ impl ServerState {
         match action {
             RequestAction::Connect{..} => unreachable!(),
             _ => {
-                let response = self.handle_request_action(player_id, action.clone());
+                if let Some(response) = self.handle_request_action(player_id, action.clone()) {
 
-                // Buffer all responses to the client for [re-]transmission
-                let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
-                if let Some(player_net) = network {
-                    trace!("[A Response to Client Request added to TX Buffer]{:?}", response);
-                    player_net.tx_packets.buffer_item(response.clone());
+                    // Buffer all responses to the client for [re-]transmission
+                    let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
+                    if let Some(player_net) = network {
+                        trace!("[A Response to Client Request added to TX Buffer]{:?}", response);
+                        player_net.tx_packets.buffer_item(response.clone());
+                    }
+                    Ok(Some(response))
+                } else {
+                    Ok(None)
                 }
-                Ok(Some(response))
             }
         }
     }
@@ -903,13 +906,13 @@ impl ServerState {
         }
     }
 
-    fn handle_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Packet {
+    fn handle_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Option<Packet> {
         let response_code = self.process_request_action(player_id, action.clone());
 
         let (mut sequence, mut request_ack) = (0, None);
 
         match action {
-            RequestAction::KeepAlive(_) => (), // Filtered away at the decoding packet layer
+            RequestAction::KeepAlive(_) => unreachable!(), // Filtered away at the decoding packet layer
             _ => {
                 let opt_player: Option<&mut Player> = self.players.get_mut(&player_id);
 
@@ -924,17 +927,19 @@ impl ServerState {
                         }
                     }
                     None => {
-                        panic!("Player not found for {:?} while handling request action {:?}", player_id, action);
+                        // This happens with Disconnect packets -- player was deleted at top of this
+                        // function.
+                        return None;
                     }
                 }
             }
         }
 
-        Packet::Response{
+        Some(Packet::Response{
             sequence:    sequence,
             request_ack: request_ack,
             code:        response_code,
-        }
+        })
     }
 
     fn handle_new_connection(&mut self, name: String, addr: SocketAddr) -> Packet {
@@ -2159,7 +2164,7 @@ mod test {
             let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
             player.player_id
         };
-        let pkt: Packet = server.handle_request_action(player_id, RequestAction::ListRooms);
+        let pkt: Packet = server.handle_request_action(player_id, RequestAction::ListRooms).unwrap();
         match pkt {
             Packet::Response{code, sequence, request_ack} => {
                 assert_eq!(code, ResponseCode::RoomList(vec![]));
