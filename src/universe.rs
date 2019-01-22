@@ -1449,6 +1449,13 @@ impl Universe {
     /// Apply `diff` to our `Universe`. Generally this is executed by the client in response to an
     /// update from the server.
     ///
+    /// # Arguments
+    ///
+    /// * `diff`: reference to a `GenStateDiff` containing a base generation number, a new
+    /// generation number, and a pattern showing how to make the new generation out of the base.
+    /// * `visibility`: an optional `player_id` indicating the player to apply this for. If `None`,
+    /// the pattern must not have any fog.
+    ///
     /// # Return values
     ///
     /// * `Ok(Some(new_gen))` if the update was applied.
@@ -1710,7 +1717,15 @@ mod universe_tests {
     use super::*;
     use rle::Pattern;
 
-    fn generate_test_universe_with_default_params(is_server: bool) -> Universe {
+    #[derive(PartialEq)]
+    enum UniType {
+        Server,
+        Client,
+    }
+
+    const GEN_BUFSIZE: usize = 16;
+
+    fn generate_test_universe_with_default_params(uni_type: UniType) -> Universe {
         let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
         let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
         let players = vec![player0, player1];
@@ -1718,8 +1733,8 @@ mod universe_tests {
         let bigbang = BigBang::new()
             .width(256)
             .height(128)
-            .server_mode(is_server)
-            .history(16)
+            .server_mode(uni_type == UniType::Server)
+            .history(GEN_BUFSIZE)
             .fog_radius(9)
             .add_players(players)
             .birth();
@@ -1729,7 +1744,7 @@ mod universe_tests {
 
     #[test]
     fn new_universe_with_valid_dims() {
-        let uni = generate_test_universe_with_default_params(true);
+        let uni = generate_test_universe_with_default_params(UniType::Server);
         let universe_as_region = Region::new(0, 0, 256, 128);
 
         assert_eq!(uni.width(), 256);
@@ -1768,14 +1783,14 @@ mod universe_tests {
 
     #[test]
     fn new_universe_first_gen_is_one() {
-        let uni = generate_test_universe_with_default_params(true);
+        let uni = generate_test_universe_with_default_params(UniType::Server);
         assert_eq!(uni.latest_gen(), 1);
     }
 
     #[test]
     #[should_panic]
     fn universe_with_no_gens_panics() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         uni.generation = 0;
         uni.latest_gen();
     }
@@ -1798,7 +1813,7 @@ mod universe_tests {
 
     #[test]
     fn next_test_data1() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
 
         // r-pentomino
         let _ = uni.toggle(16, 15, 0);
@@ -1816,7 +1831,7 @@ mod universe_tests {
 
     #[test]
     fn set_unchecked_with_valid_rows_and_cols() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let max_width = uni.width()-1;
         let max_height = uni.height()-1;
         let mut cell_state;
@@ -1842,13 +1857,13 @@ mod universe_tests {
     #[test]
     #[should_panic]
     fn set_unchecked_with_invalid_rols_and_cols_panics() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         uni.set_unchecked(257, 129, CellState::Alive(None));
     }
 
     #[test]
     fn universe_cell_states_are_dead_on_creation() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let max_width = uni.width()-1;
         let max_height = uni.height()-1;
         
@@ -1862,7 +1877,7 @@ mod universe_tests {
 
     #[test]
     fn set_checked_verify_players_remain_within_writable_regions() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let max_width = uni.width()-1;
         let max_height = uni.height()-1;
         let player_id = 1; // writing into player 1's regions
@@ -1892,7 +1907,7 @@ mod universe_tests {
 
     #[test]
     fn set_checked_cannot_set_a_fog_cell() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let player_id = 1; // writing into player 1's regions
         let alive_player_cell = CellState::Alive(Some(player_id));
         let state_index = uni.state_index;
@@ -1909,7 +1924,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_unchecked_cell_toggled_is_owned_by_player() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let state_index = uni.state_index;
         let row = 0;
         let col = 0;
@@ -1926,7 +1941,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_unchecked_cell_toggled_by_both_players_repetitively() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let state_index = uni.state_index;
         let row = 0;
         let col = 0;
@@ -1951,7 +1966,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_checked_outside_a_player_writable_region_fails() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let player_one = 0;
         let player_two = 1;
         let row = 0;
@@ -1963,7 +1978,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_checked_players_cannot_toggle_a_wall_cell() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let player_one = 0;
         let player_two = 1;
         let row = 0;
@@ -1978,7 +1993,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_checked_players_can_toggle_an_known_cell_if_writable() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let player_one = 0;
         let player_two = 1;
         let row = 0;
@@ -1993,7 +2008,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_checked_players_cannot_toggle_an_unknown_cell() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let player_one = 0;
         let player_two = 1;
         let row = 0;
@@ -2054,7 +2069,7 @@ mod universe_tests {
 
     #[test]
     fn verify_fog_circle_bitmap_generation() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
 
         let fog_radius_of_nine = vec![
             vec![0xf007ffffffffffff],
@@ -2236,7 +2251,7 @@ mod universe_tests {
 
     #[test]
     fn each_non_dead_detects_some_cells() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let player1 = 1;
 
         // glider
@@ -2275,7 +2290,7 @@ mod universe_tests {
 
     #[test]
     fn each_non_dead_detects_fog() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let player0 = 0;
         let player1 = 1;
 
@@ -2292,7 +2307,7 @@ mod universe_tests {
 
     #[test]
     fn universe_copy_from_bit_grid_as_player() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
 
         let write_pattern_as = Some(1); // player 1
@@ -2313,7 +2328,7 @@ mod universe_tests {
 
     #[test]
     fn universe_copy_from_bit_grid_as_player_out_of_range() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
 
         let write_pattern_as = Some(0); // player 0
@@ -2334,8 +2349,8 @@ mod universe_tests {
 
     #[test]
     fn universe_apply_basic() {
-        let mut s_uni = generate_test_universe_with_default_params(true);  // server
-        let mut c_uni = generate_test_universe_with_default_params(false); // client
+        let mut s_uni = generate_test_universe_with_default_params(UniType::Server);
+        let mut c_uni = generate_test_universe_with_default_params(UniType::Client); // client is missing generation 1
         let player1 = 1;
         // glider
         s_uni.toggle(16, 15, player1).unwrap();
@@ -2356,21 +2371,102 @@ mod universe_tests {
     }
 
     #[test]
+    fn universe_apply_basic_player_visibility() {
+        let mut s_uni = generate_test_universe_with_default_params(UniType::Server);
+        let mut c_uni = generate_test_universe_with_default_params(UniType::Client); // client is missing generation 1
+        let player1 = 1;
+        // glider
+        s_uni.toggle(16, 15, player1).unwrap();
+        s_uni.toggle(17, 16, player1).unwrap();
+        s_uni.toggle(15, 17, player1).unwrap();
+        s_uni.toggle(16, 17, player1).unwrap();
+        s_uni.toggle(17, 17, player1).unwrap();
+        // r-pentomino
+        s_uni.toggle(89+16, 68+15, 0).unwrap();
+        s_uni.toggle(89+17, 68+15, 0).unwrap();
+        s_uni.toggle(89+15, 68+16, 0).unwrap();
+        s_uni.toggle(89+16, 68+16, 0).unwrap();
+        s_uni.toggle(89+16, 68+17, 0).unwrap();
+        let gens = 4;
+        for _ in 0..gens {
+            s_uni.next();
+        }
+        let player_id = 0;
+        let diff = s_uni.diff(0, 5, Some(player_id)).unwrap();
+        assert_eq!(c_uni.apply(&diff, Some(player_id)), Ok(Some(5)));
+        let s_idx = s_uni.state_index;
+        let c_idx = c_uni.state_index;
+        assert_eq!(s_uni.gen_states[s_idx].gen_or_none, c_uni.gen_states[c_idx].gen_or_none);
+        assert!(s_uni.gen_states[s_idx].cells != c_uni.gen_states[c_idx].cells); // player 0 doesn't know about player 1's cells
+        assert_eq!(s_uni.gen_states[s_idx].player_states[0].cells, c_uni.gen_states[c_idx].player_states[0].cells);
+    }
+
+    #[test]
+    fn universe_apply_but_already_applied() {
+        let mut s_uni = generate_test_universe_with_default_params(UniType::Server);  // server
+        let mut c_uni = generate_test_universe_with_default_params(UniType::Client); // client is missing generation 1
+        let player1 = 1;
+        // glider
+        s_uni.toggle(16, 15, player1).unwrap();
+        s_uni.toggle(17, 16, player1).unwrap();
+        s_uni.toggle(15, 17, player1).unwrap();
+        s_uni.toggle(16, 17, player1).unwrap();
+        s_uni.toggle(17, 17, player1).unwrap();
+        let gens = 4;
+        for _ in 0..gens {
+            s_uni.next();
+        }
+        let diff = s_uni.diff(0, 5, None).unwrap();
+        c_uni.apply(&diff, None).unwrap();
+        assert_eq!(c_uni.apply(&diff, None).unwrap(), None); // applying a second time does nothing
+        // earlier gen
+        let diff2 = s_uni.diff(0, 4, None).unwrap();
+        assert_eq!(c_uni.apply(&diff2, None).unwrap(), None); // applying does noting if our gen is later than diff's gen
+    }
+
+    #[test]
+    fn universe_apply_but_base_gen_absent() {
+        let mut s_uni = generate_test_universe_with_default_params(UniType::Server);  // server
+        let mut c_uni = generate_test_universe_with_default_params(UniType::Client); // client is missing generation 1
+        let player1 = 1;
+        // glider
+        s_uni.toggle(16, 15, player1).unwrap();
+        s_uni.toggle(17, 16, player1).unwrap();
+        s_uni.toggle(15, 17, player1).unwrap();
+        s_uni.toggle(16, 17, player1).unwrap();
+        s_uni.toggle(17, 17, player1).unwrap();
+        let gens = 4;
+        for _ in 0..gens {
+            s_uni.next();
+        }
+        let diff = s_uni.diff(1, 5, None).unwrap();
+        assert_eq!(c_uni.apply(&diff, None).unwrap(), None); // we don't have base gen (1), so can't apply it
+    }
+
+    #[test]
+    fn universe_apply_too_large_range() {
+        let base = 3;
+        let diff = GenStateDiff{gen0: base, gen1: base + GEN_BUFSIZE + 1, pattern: Pattern("!".to_owned())};
+        let mut c_uni = generate_test_universe_with_default_params(UniType::Client);
+        assert_eq!(c_uni.apply(&diff, None), Err("diff is across too many generations to be applied: 17 >= 16".to_owned()));
+    }
+
+    #[test]
     fn universe_diff_crazy_numbers_is_none() {
-        let uni = generate_test_universe_with_default_params(true);
+        let uni = generate_test_universe_with_default_params(UniType::Server);
         assert!(uni.diff(123, 456, None).is_none());
     }
 
     #[test]
     #[should_panic]
     fn universe_diff_crazier_numbers_panics() {
-        let uni = generate_test_universe_with_default_params(true);
+        let uni = generate_test_universe_with_default_params(UniType::Server);
         assert!(uni.diff(456, 456, None).is_none());
     }
 
     #[test]
     fn universe_diff_good_numbers_is_valid() {
-        let mut uni = generate_test_universe_with_default_params(true);
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let player1 = 1;
         // glider
         uni.toggle(16, 15, player1).unwrap();
