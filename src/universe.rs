@@ -1566,15 +1566,15 @@ impl Universe {
         Ok(Some(new_gen))
     }
 
-    // If it's possible to generate a diff between the GenStates specified by `gen0` and `gen1`, do
-    // so. Otherwise, return `None`.
-    //
-    // The optional `visibility` specifies the player this is viewed as.
-    //
-    // # Panics
-    //
-    // * This panics if `gen0` >= `gen1`.
-    // * This panics if `visibility` is out of range.
+    /// If it's possible to generate a diff between the GenStates specified by `gen0` and `gen1`, do
+    /// so. Otherwise, return `None`.
+    ///
+    /// The optional `visibility` specifies the player this is viewed as.
+    ///
+    /// # Panics
+    ///
+    /// * Panics if `gen0` >= `gen1`.
+    /// * Panics if `visibility` is out of range.
     pub fn diff(&self, gen0: usize, gen1: usize, visibility: Option<usize>) -> Option<GenStateDiff> {
         assert!(gen0 < gen1, format!("expected gen0 < gen1, but {} >= {}", gen0, gen1));
         let mut opt_genstate0 = None;
@@ -2489,6 +2489,25 @@ mod universe_tests {
                        .next()
                        .unwrap();
         assert_eq!(s, "15\"b240\"$15\"Bb239\"$17\"B238\"$");
+    }
+
+    #[test]
+    fn universe_diff_zero_base_gen() {
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
+        let player1 = 1;
+        // glider
+        uni.toggle(16, 15, player1).unwrap();
+        uni.toggle(17, 16, player1).unwrap();
+        uni.toggle(15, 17, player1).unwrap();
+        uni.toggle(16, 17, player1).unwrap();
+        uni.toggle(17, 17, player1).unwrap();
+        let gens = 4;
+        for _ in 0..gens {
+            uni.next();
+        }
+        let diff = uni.diff(0, 4, None).unwrap();
+        assert_eq!(diff.gen0, 0);
+        assert_eq!(diff.gen1, 4);
     }
 }
 
