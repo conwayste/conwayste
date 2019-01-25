@@ -126,6 +126,10 @@ impl ColorSettings {
 
 
 fn init_patterns(s: &mut MainState) -> Result<(), ()> {
+    let pat = Pattern("10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW$10bW$10bW$10b16W48$100b2A5b2A$100b2A5b2A2$104b2A$104b2A5$122b2Ab2A$121bA5bA$121bA6bA2b2A$121b3A3bA3b2A$126bA!".to_owned());
+    //XXX apply to universe, then return Ok
+    //XXX return Ok(());
+    // TODO: remove the following
     /*
     // R pentomino
     s.uni.toggle(16, 15, 0)?;
@@ -990,7 +994,8 @@ impl MainState {
                             }
                             Keycode::D => {
                                 // TODO: do something with this debug code
-                                let pat = self.uni.to_pattern(None);
+                                let visibility = None;  // can also do Some(player_id)
+                                let pat = self.uni.to_pattern(visibility);
                                 println!("PATTERN DUMP:\n{}", pat.0);
                             }
                             _ => {
