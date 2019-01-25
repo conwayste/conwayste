@@ -1,0 +1,3 @@
+[submodule "netwayste"]
+	path = netwayste
+	url = https://github.com/conwayste/netwayste
