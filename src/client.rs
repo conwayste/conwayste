@@ -245,34 +245,15 @@ impl ClientState {
 
     fn handle_network_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr) {
         if self.cookie.is_some() {
-            let mut error_occurred = false;
             // Determine what can be processed
             // Determine what needs to be resent
             // Resend anything remaining in TX queue if it has also expired.
             //
             self.process_queued_rx_packets();
 
-            let indices = self.network.tx_packets.get_retransmit_indices();
+            self.network.retransmit_expired_tx_packets(udp_tx, addr, Some(self.response_sequence));
 
-            // Retransmit all packets after that are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
-            for index in indices.iter() {
-                if let Some(ref mut pkt) = self.network.tx_packets.queue.get_mut(*index) {
-                    // `response_sequence` may have advanced since this was last queued
-                    pkt.set_response_sequence(Some(self.response_sequence));
-                    trace!("[RESENDING] {:?}", pkt);
-                    netwayste_send!(self, udp_tx, (addr, (*pkt).clone()),
-                                    ("Could not retransmit packet to server: {:?}", pkt));
-                } else {
-                    error_occurred = true;
-                }
-            }
 
-            if error_occurred {
-                // Panic during development, probably want to make this Error! later on
-                panic!("ERROR: Index in timestamp queue out-of-bounds in tx packets queue,
-                                or perhaps `None`?:\n\t {:?}\n{:?}\n{:?}",
-                        indices, self.network.tx_packets.queue, self.network.tx_packets.timestamps);
-            }
         }
     }
 

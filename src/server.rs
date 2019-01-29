@@ -695,25 +695,6 @@ impl ServerState {
         for player_id in players_to_update {
             self.process_queued_rx_packets(*player_id);
 
-            // If any processed packets result in responses, prepare them below for transmission
-            let player_addr: SocketAddr = self.get_player_mut(*player_id).addr;
-
-            let player_network: Option<&NetworkManager> = self.network_map.get(player_id);
-            if let Some(player_net) = player_network {
-                if player_net.tx_packets.len() == 0 {
-                    continue;
-                }
-
-                let responses = player_net.tx_packets.as_queue_type().into_iter();
-                for response in responses {
-                    trace!("[Sending a Response to Client from TX Buffer] {:?}", response);
-                    response_packets.push((player_addr, response.clone()));
-                }
-            } else {
-                trace!("I haven't found a NetworkManager for Player: {}", player_id);
-                continue;
-            }
-
         }
 
         if response_packets.len() != 0 {
@@ -742,6 +723,44 @@ impl ServerState {
         } else {
             None
         }
+    }
+
+    fn resend_expired_tx_messages(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>) {
+        let mut players_to_update: Vec<PlayerID> = vec![];
+
+        if self.players.len() == 0 {
+            return;
+        }
+
+        for player in self.players.values() {
+            if player.game_info.is_some() {
+                continue;
+            }
+            players_to_update.push(player.player_id);
+        }
+
+        if players_to_update.len() != 0 {
+            for player_id in players_to_update {
+                // If any processed packets result in responses, prepare them below for transmission
+                let player_addr: SocketAddr = self.get_player_mut(player_id).addr;
+                let ack = self.get_player_mut(player_id).request_ack;
+
+                let player_network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
+                if let Some(player_net) = player_network {
+                    if player_net.tx_packets.len() == 0 {
+                        continue;
+                    }
+
+                    player_net.retransmit_expired_tx_packets(udp_tx, player_addr, ack);
+
+                    trace!("[Sending a Response to Client from TX Buffer]: {:?}", player_id);
+                } else {
+                    trace!("I haven't found a NetworkManager for Player: {}", player_id);
+                    continue;
+                }
+            }
+        }
+
     }
 
     fn process_buffered_packets_in_rooms(&mut self) -> Option<Vec<(SocketAddr, Packet)>> {
@@ -778,15 +797,22 @@ impl ServerState {
         // Clear out the transmission queue of any packets the client has acknowledged
         if let Some(response_ack) = response_ack {
             if let Some(ref mut player_network) = self.network_map.get_mut(&player_id) {
-                player_network.tx_packets.as_queue_type_mut().retain(|ref resp_pkt|
-                    if response_ack > 0 && (resp_pkt.sequence_number() > response_ack-1)
+                let mut removal_count = 0;
+                for resp_pkt in player_network.tx_packets.as_queue_type_mut().iter() {
+                    if response_ack > 0 && (resp_pkt.sequence_number() <= response_ack-1)
                     {
-                        true
-                    } else { false }
+                        removal_count += 1;
+                    } else {
+                        break;
+                    }
                     // else {
                         // TODO handle wrapped case & unit tests
                     // }
-                );
+                }
+
+                if removal_count != 0 {
+                    player_network.tx_pop_front_with_count(removal_count);
+                }
             }
         }
     }
@@ -1252,6 +1278,8 @@ fn main() {
                             netwayste_send!(tx, response.clone(), ("[EVENT::NET::LOBBY] Could send response: {:?}", response));
                         }
                     }
+
+                    server_state.resend_expired_tx_messages(&tx);
                 }
 
                 Event::HeartBeat => {

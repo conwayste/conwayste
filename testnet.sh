@@ -145,7 +145,7 @@ EnableTrafficControl
 
 echo "Basic test: Spam 500 /list and chat messages"
 # First basic test... spam 500 /list and chat messages
-roomCmdCount=5000
+roomCmdCount=1000
 until [[ $roomCmdCount -eq 0 ]];
 do
     for i in ${CLIENTLIST[@]}; do

@@ -28,6 +28,7 @@ use std::{io, fmt, str, result, time::{Duration, Instant}};
 use std::net::{self, SocketAddr};
 use std::collections::VecDeque;
 
+use self::futures::sync::mpsc;
 use self::tokio_core::net::{UdpSocket, UdpCodec};
 use self::tokio_core::reactor::Handle;
 use self::bincode::{serialize, deserialize, Infinite};
@@ -38,7 +39,7 @@ pub const DEFAULT_HOST: &str = "0.0.0.0";
 pub const DEFAULT_PORT: u16 = 12345;
 const TIMEOUT_IN_SECONDS:    u64   = 5;
 const NETWORK_QUEUE_LENGTH: usize = 150;
-const RETRANSMISSION_THRESHOLD_IN_MS: Duration = Duration::from_millis(100);
+const RETRANSMISSION_THRESHOLD_IN_MS: Duration = Duration::from_millis(2000);
 
 // For unit testing, I cover duplicate sequence numbers. The search returns Ok(index) on a slice with a matching value.
 // Instead of returning that index, I return this much larger value and avoid insertion into the queues.
@@ -54,9 +55,7 @@ macro_rules! netwayste_send {
         let result = $tx.unbounded_send($dest);
         if result.is_err() {
             warn!($failmsg, $( $args)*);
-            $_self.network.statistics.tx_packets_failed += 1;
         } else {
-            $_self.network.statistics.tx_packets_success += 1;
         }
     };
     // Server
@@ -280,9 +279,13 @@ impl Packet {
         }
     }
     pub fn set_response_sequence(&mut self, new_ack: Option<u64>) {
-        if let Packet::Request{sequence: _, ref mut response_ack, cookie: _, action: _} = *self {
+        if let Packet::Request{ sequence: _, ref mut response_ack, cookie: _, action: _ } = *self {
             *response_ack = new_ack;
-        } else {
+        }
+        else if let Packet::Response{ sequence: _, ref mut request_ack, code: _ } = *self {
+            *request_ack = new_ack;
+        }
+        else {
             unimplemented!();
         }
     }
@@ -512,13 +515,6 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug+Clone> {
 
     fn remove(&mut self, pkt: &T) -> Option<T>;
 
-    fn pop_front_with_count(&mut self, mut num_to_remove: usize) {
-        while num_to_remove > 0 {
-            self.as_queue_type_mut().pop_front();
-            num_to_remove -= 1;
-        }
-    }
-
     fn discard_older_items(&mut self);
     fn buffer_item(&mut self, item: T) -> bool;
     fn as_queue_type(&self) -> &ItemQueue<T>;
@@ -541,6 +537,7 @@ impl NetQueue<Packet> {
             .map(|(i, _)| i)
             .collect::<Vec<usize>>()
     }
+
 }
 
 impl<T> NetworkQueue<T> for NetQueue<T>
@@ -851,6 +848,44 @@ impl NetworkManager {
         info!("Tx Successes: {}", self.statistics.tx_packets_success);
         info!("Tx Failures:  {}", self.statistics.tx_packets_failed);
     }
+
+    pub fn retransmit_expired_tx_packets(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr, confirmed_ack: Option<u64>) {
+        let mut error_occurred = false;
+        let mut failed_index = 0;
+        let indices = self.tx_packets.get_retransmit_indices();
+
+        // Retransmit all packets after that are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
+        for index in indices.iter() {
+            if let Some(ref mut pkt) = self.tx_packets.queue.get_mut(*index) {
+                // `response_sequence` may have advanced since this was last queued
+                pkt.set_response_sequence(confirmed_ack);
+                trace!("[Retransmitting] {:?}", pkt);
+                netwayste_send!(self, udp_tx, (addr, (*pkt).clone()),
+                                ("Could not retransmit packet to server: {:?}", pkt));
+            } else {
+                error_occurred = true;
+                failed_index = *index;
+                break;
+            }
+        }
+
+        if error_occurred {
+            // Panic during development, probably want to make this error later on
+            panic!("ERROR: Index ({}) in timestamp queue out-of-bounds in tx packets queue,
+                            or perhaps `None`?:\n\t {:?}\n{:?}\n{:?}",
+                    failed_index, indices, self.tx_packets.queue.len(), self.tx_packets.timestamps.len());
+        }
+    }
+
+    pub fn tx_pop_front_with_count(&mut self, mut num_to_remove: usize) {
+        while num_to_remove > 0 {
+            self.tx_packets.as_queue_type_mut().pop_front();
+            self.tx_packets.timestamps.pop_front();
+            num_to_remove -= 1;
+        }
+    }
+
+
 }
 
 #[cfg(test)]
