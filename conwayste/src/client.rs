@@ -190,7 +190,36 @@ fn init_patterns(s: &mut MainState) -> Result<(), ()> {
     s.uni.toggle(132, 81, 0)?;
     s.uni.toggle(132, 82, 0)?;
 
-    //Wall!
+    //Wall in player 0 area!
+    let bw = 5; // buffer width
+
+    // right side
+    for row in (70-bw)..(83+bw+1) {
+        s.uni.set_unchecked(132+bw, row, CellState::Wall);
+    }
+
+    // top side
+    for col in (100-bw)..109 {
+        s.uni.set_unchecked(col, 70-bw, CellState::Wall);
+    }
+    for col in 114..(132+bw+1) {
+        s.uni.set_unchecked(col, 70-bw, CellState::Wall);
+    }
+
+    // left side
+    for row in (70-bw)..(83+bw+1) {
+        s.uni.set_unchecked(100-bw, row, CellState::Wall);
+    }
+
+    // bottom side
+    for col in (100-bw)..120 {
+        s.uni.set_unchecked(col, 83+bw, CellState::Wall);
+    }
+    for col in 125..(132+bw+1) {
+        s.uni.set_unchecked(col, 83+bw, CellState::Wall);
+    }
+
+    //Wall in player 1!
     for row in 10..19 {
         s.uni.set_unchecked(25, row, CellState::Wall);
     }
@@ -792,7 +821,7 @@ impl EventHandler for MainState {
 struct GameOfLifeDrawParams {
     bg_color: Color,
     fg_color: Color,
-    player_id: isize, // Player color >=0, Playerless < 0
+    player_id: isize, // Player color >=0, Playerless < 0  // TODO: use Option<usize> instead
     draw_counter: bool,
 }
 
