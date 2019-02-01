@@ -16,9 +16,6 @@ serde        = "1.0"
 serde_derive = "1.0"
 rand = "0.4"
 
-[profile.dev]
-opt-level = 2
-
 [[bin]]
 name = "server"
 path = "src/server.rs"
