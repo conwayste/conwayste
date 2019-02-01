@@ -49,7 +49,7 @@ use futures::*;
 use futures::future::ok;
 use futures::sync::mpsc;
 use tokio_core::reactor::{Core, Timeout};
-use rand::Rng;
+use rand::RngCore;
 use semver::Version;
 
 const TICK_INTERVAL:         u64   = 10; // milliseconds
