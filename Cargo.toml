@@ -1,0 +1,11 @@
+[workspace]
+
+members = [
+  "conwayste",
+  "netwayste",
+  "libconway",
+]
+
+[profile.dev]
+opt-level = 2
+
