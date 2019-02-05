@@ -5,7 +5,7 @@ Multiplayer Conway's Game of Life!
 ![life in action](https://giant.gfycat.com/BlaringTidyDutchsmoushond.gif)
 
 ## Installation
-Clone this repositories with the submodules:
+Clone this repository with the submodules:
 
 ```
 $ git clone --recursive https://github.com/conwayste/conwayste
