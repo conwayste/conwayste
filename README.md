@@ -5,7 +5,7 @@ This crate is part of [Conwayste](https://github.com/conwayste/conwayste), a mul
 
 See the documentation at [docs.rs](https://docs.rs/conway/latest/conway/).
 
-# Usage
+## Usage
 
 Put this in your Cargo.toml and hack away, friend:
 
