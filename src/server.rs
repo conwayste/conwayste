@@ -736,9 +736,6 @@ impl ServerState {
         }
 
         for player in self.players.values() {
-            if player.game_info.is_some() {
-                continue;
-            }
             players_to_update.push(player.player_id);
         }
 
