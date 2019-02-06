@@ -180,7 +180,7 @@ struct ServerState {
     player_map:     HashMap<String, PlayerID>,  // map cookie to player ID
     rooms:          HashMap<RoomID, Room>,
     room_map:       HashMap<String, RoomID>,    // map room name to room ID
-    network_map:    HashMap<PlayerID, NetworkManager>,  // map Player ID to Player
+    network_map:    HashMap<PlayerID, NetworkManager>,  // map Player ID to Player's network data
 }
 
 //////////////// Utilities ///////////////////////
@@ -533,7 +533,7 @@ impl ServerState {
                 return self.handle_disconnect(player_id);
             },
             RequestAction:: KeepAlive(_) => {
-                let player: &mut Player = self.players.get_mut(&player_id).unwrap();
+                let player: &mut Player = self.get_player_mut(player_id);
                 player.heartbeat = Some(time::Instant::now());
                 return ResponseCode::OK;
             },
@@ -600,7 +600,6 @@ impl ServerState {
 
     /// Returns true if the packet already exists in the queue, otherwise it will return false, and
     /// will be added in sequence_number order.
-    /// Boolean is used for debug tracing.
     fn add_packet_to_queue(&mut self, player_id: PlayerID, packet: Packet) -> bool {
         // Unwrap should be safe since a player ID was already found.
         let network: &mut NetworkManager = self.network_map.get_mut(&player_id).unwrap();
@@ -608,6 +607,7 @@ impl ServerState {
         already_exists
     }
 
+    /// Checks to see if the incoming packet is immediately processable
     fn can_process_packet(&mut self, player_id: PlayerID, sequence_number: u64) -> bool {
         let player: &mut Player = self.get_player_mut(player_id);
         if let Some(ack) = player.request_ack {
@@ -620,6 +620,8 @@ impl ServerState {
         }
     }
 
+    /// Processes a player's request action for all non Connect requests. If necessary, a response is buffered
+    /// for later transmission
     fn process_player_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Result<Option<Packet>, Box<Error>> {
         match action {
             RequestAction::Connect{..} => unreachable!(),
@@ -640,6 +642,7 @@ impl ServerState {
         }
     }
 
+    /// Determine how many contiguous packets are processable and process their requests for the given player.
     fn process_queued_rx_packets(&mut self, player_id: PlayerID) {
         // If we can, start popping off the RX queue and handle contiguous packets immediately
         let mut dequeue_count = 0;
@@ -689,31 +692,22 @@ impl ServerState {
                 _ => panic!("Development bug: Non-response packet found in client buffered RX queue")
             }
         }
-
     }
 
-    fn process_player_buffered_packets(&mut self, players_to_update: &Vec<PlayerID>) -> Option<Vec<(SocketAddr, Packet)>> {
-        let mut response_packets: Vec<(SocketAddr, Packet)> = vec![];
-
+    fn process_player_buffered_packets(&mut self, players_to_update: &Vec<PlayerID>) {
         for player_id in players_to_update {
             self.process_queued_rx_packets(*player_id);
-
-        }
-
-        if response_packets.len() != 0 {
-            Some(response_packets)
-        } else {
-            None
         }
     }
 
-    fn process_buffered_packets_in_lobby(&mut self) -> Option<Vec<(SocketAddr, Packet)>> {
+    fn process_buffered_packets_in_lobby(&mut self){
         let mut players_to_update: Vec<PlayerID> = vec![];
 
         if self.players.len() == 0 {
-            return None;
+            return;
         }
 
+        // Skip players if they're in a game
         for player in self.players.values() {
             if player.game_info.is_some() {
                 continue;
@@ -722,13 +716,11 @@ impl ServerState {
         }
 
         if players_to_update.len() != 0 {
-            self.process_player_buffered_packets(&players_to_update)
-        } else {
-            None
+            self.process_player_buffered_packets(&players_to_update);
         }
     }
 
-    fn resend_expired_tx_messages(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>) {
+    fn resend_expired_tx_packets(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>) {
         let mut players_to_update: Vec<PlayerID> = vec![];
 
         if self.players.len() == 0 {
@@ -760,14 +752,13 @@ impl ServerState {
                 }
             }
         }
-
     }
 
-    fn process_buffered_packets_in_rooms(&mut self) -> Option<Vec<(SocketAddr, Packet)>> {
+    fn process_buffered_packets_in_rooms(&mut self) {
         let mut players_to_update: Vec<PlayerID> = vec![];
 
         if self.rooms.len() == 0 {
-            return None;
+            return;
         }
 
         // For each room, determine if each player has unread messages based on chat_msg_seq_num
@@ -788,13 +779,12 @@ impl ServerState {
         }
 
         if players_to_update.len() != 0 {
-            return self.process_player_buffered_packets(&players_to_update);
-        } else {
-            None
+            self.process_player_buffered_packets(&players_to_update);
         }
     }
+
+    /// Clear out the transmission queue of any packets the client has acknowledged
     fn clear_transmission_queue_on_ack(&mut self, player_id: &PlayerID, response_ack: Option<u64>) {
-        // Clear out the transmission queue of any packets the client has acknowledged
         if let Some(response_ack) = response_ack {
             if let Some(ref mut player_network) = self.network_map.get_mut(&player_id) {
                 let mut removal_count = 0;
@@ -817,14 +807,14 @@ impl ServerState {
         }
     }
 
-    // Inspect the packet's contents for acceptance, or reject it.
-    // `Response`/`Update` packets are invalid in this context
-    // Acceptance criteria for `Request`
-    //  1. Cookie must be present and valid
-    //  2. Ignore KeepAlive
-    //  3. Client should notified if version requires updating
-    //  4. Ignore if already received or processed
-    // Always returns either Ok(Some(Packet::Response{...})), Ok(None), or error.
+    /// Inspect the packet's contents for acceptance, or reject it.
+    /// `Response`/`Update` packets are invalid in this context
+    /// Acceptance criteria for `Request`
+    ///  1. Cookie must be present and valid
+    ///  2. Ignore KeepAlive
+    ///  3. Client should notified if version requires updating
+    ///  4. Ignore if already received or processed
+    /// Always returns either Ok(Some(Packet::Response{...})), Ok(None), or error.
     fn decode_packet(&mut self, addr: SocketAddr, packet: Packet) -> Result<Option<Packet>, Box<Error>> {
         match packet.clone() {
             _pkt @ Packet::Response{..} | _pkt @ Packet::Update{..} => {
@@ -869,15 +859,16 @@ impl ServerState {
 
                     match action.clone() {
                         RequestAction::KeepAlive(resp_ack) => {
-                            // If the client stops transmitting new events, the Server will never get a reply for
-                            // the last set of responses (1 or more). This will result in the transmission queue contents
-                            // flooding the Client.
+                            // If the client does not send new requests, the Server will never get a reply for
+                            // the set of responses it may have sent. This will result in the transmission queue contents
+                            // flooding the Client on retranmission.
                             self.clear_transmission_queue_on_ack(&player_id, Some(resp_ack));
                             return Ok(None);
                         }
                         _ => (),
                     }
 
+                    // For the non-KeepAlive case
                     self.clear_transmission_queue_on_ack(&player_id, response_ack);
 
                     // Check to see if it can be processed right away, otherwise buffer it for later consumption.
@@ -887,7 +878,7 @@ impl ServerState {
                         return self.process_player_request_action(player_id, action);
                     }
 
-                    // Packet may be resent but already processed.
+                    // Packet may be resent by client but since been processed.
                     if self.is_previously_processed_packet(player_id, sequence) {
                         trace!("\t [ALREADY PROCESSED]");
                         return Ok(None);
@@ -932,7 +923,7 @@ impl ServerState {
     fn handle_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Option<Packet> {
         let response_code = self.process_request_action(player_id, action.clone());
 
-        let (mut sequence, mut request_ack) = (0, None);
+        let (sequence, request_ack);//= (0, None);
 
         match action {
             RequestAction::KeepAlive(_) => unreachable!(), // Filtered away at the decoding packet layer
@@ -1112,7 +1103,7 @@ impl ServerState {
         self.players.insert(player_id, player);
         self.network_map.insert(player_id, NetworkManager::new());
 
-        let player = self.players.get_mut(&player_id).unwrap();
+        let player = self.get_player_mut(player_id);
 
         // We expect that the Server proceed with `1` after the connection has been established
         player.increment_response_seq_num();
@@ -1266,22 +1257,12 @@ fn main() {
 
                 Event::NetworkEvent => {
                     // Process players in rooms
-                    let all_room_player_responses = server_state.process_buffered_packets_in_rooms();
-                    if let Some(responses) = all_room_player_responses {
-                        for response in responses {
-                            netwayste_send!(tx, response.clone(), ("[EVENT::NET::ROOMS] Could send response: {:?}", response));
-                        }
-                    }
+                    server_state.process_buffered_packets_in_rooms();
 
                     // Process players in lobby
-                    let all_lobby_player_responses = server_state.process_buffered_packets_in_lobby();
-                    if let Some(responses) = all_lobby_player_responses {
-                        for response in responses {
-                            netwayste_send!(tx, response.clone(), ("[EVENT::NET::LOBBY] Could send response: {:?}", response));
-                        }
-                    }
+                    server_state.process_buffered_packets_in_lobby();
 
-                    server_state.resend_expired_tx_messages(&tx);
+                    server_state.resend_expired_tx_packets(&tx);
                 }
 
                 Event::HeartBeat => {
@@ -1322,17 +1303,6 @@ mod test {
     fn fake_socket_addr() -> SocketAddr {
         use std::net::{IpAddr, Ipv4Addr};
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 5678)
-    }
-
-    fn serverstate_get_player_by_id(server: &mut ServerState, player_id: PlayerID) -> &mut Player {
-        let opt_player = server.players.get_mut(&player_id);
-
-        if opt_player.is_none() {
-            panic!("Player not found");
-        }
-
-        let player: &mut Player = opt_player.unwrap();
-        player
     }
 
     #[test]
@@ -1470,7 +1440,8 @@ mod test {
         }
 
         {
-            let player = serverstate_get_player_by_id(&mut server, player_id);
+            //let player = server.get_player_mut(player_id);
+            let player = server.get_player_mut(player_id);
             // player has not acknowledged any yet
             #[should_panic]
             assert_eq!(player.get_confirmed_chat_seq_num(), None);
@@ -1478,7 +1449,7 @@ mod test {
 
         // player acknowledged four of the six
         let acked_message_count = {
-            let player = serverstate_get_player_by_id(&mut server, player_id);
+            let player = server.get_player_mut(player_id);
             player.update_chat_seq_num(Some(4));
 
             player.get_confirmed_chat_seq_num().unwrap()
@@ -1490,7 +1461,7 @@ mod test {
 
         // player acknowledged all six
         let acked_message_count = {
-            let player = serverstate_get_player_by_id(&mut server, player_id);
+            let player = server.get_player_mut(player_id);
             player.update_chat_seq_num(Some(6));
 
             player.get_confirmed_chat_seq_num().unwrap()
@@ -1533,7 +1504,7 @@ mod test {
 
         let acked_message_count = {
             // Ack up until 0xFFFFFFFFFFFFFFFD
-            let player = serverstate_get_player_by_id(&mut server, player_id);
+            let player = server.get_player_mut(player_id);
             player.update_chat_seq_num(Some(start_seq_num + 4));
 
             player.get_confirmed_chat_seq_num().unwrap()
@@ -1586,7 +1557,7 @@ mod test {
         }
 
         {
-            let player = serverstate_get_player_by_id(&mut server, player_id);
+            let player = server.get_player_mut(player_id);
             player.update_chat_seq_num(Some(1));
         }
         {
@@ -1632,7 +1603,7 @@ mod test {
             assert_eq!(messages.unwrap().len(), 1);
         }
         {
-            let player = serverstate_get_player_by_id(&mut server, player_id);
+            let player = server.get_player_mut(player_id);
             player.update_chat_seq_num(Some(1));
         }
 
@@ -1790,7 +1761,7 @@ mod test {
 
             p.player_id
         };
-        assert_eq!(server.join_room(player_id, room_name.to_owned()), ResponseCode::OK);
+        assert_eq!(server.join_room(player_id, room_name.to_owned()), ResponseCode::JoinedRoom("some room".to_owned()));
     }
 
     #[test]
@@ -1806,7 +1777,7 @@ mod test {
 
             p.player_id
         };
-        assert_eq!(server.join_room(player_id, room_name.clone()), ResponseCode::OK);
+        assert_eq!(server.join_room(player_id, room_name.clone()), ResponseCode::JoinedRoom("some room".to_owned()));
         assert_eq!( server.join_room(player_id, room_name), ResponseCode::BadRequest(Some("cannot join game because in-game".to_owned())) );
     }
 
@@ -1841,7 +1812,7 @@ mod test {
             server.join_room(player_id, room_name.to_owned());
         }
 
-        assert_eq!( server.leave_room(player_id), ResponseCode::OK );
+        assert_eq!( server.leave_room(player_id), ResponseCode::LeaveRoom );
 
     }
 
@@ -2187,6 +2158,7 @@ mod test {
         let mut server = ServerState::new();
         let player_id: PlayerID = {
             let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+            player.request_ack = Some(1);
             player.player_id
         };
         let pkt: Packet = server.handle_request_action(player_id, RequestAction::ListRooms).unwrap();
@@ -2194,7 +2166,7 @@ mod test {
             Packet::Response{code, sequence, request_ack} => {
                 assert_eq!(code, ResponseCode::RoomList(vec![]));
                 assert_eq!(sequence, 1);
-                assert_eq!(request_ack, None);
+                assert_eq!(request_ack, Some(2));
             }
             _ => panic!("Unexpected Packet type on Response path: {:?}", pkt)
         }
@@ -2345,7 +2317,7 @@ mod test {
 
         // Assume that the client has acknowledged two chats
         {
-            let player: &mut Player = server.players.get_mut(&player_id).unwrap();
+            let player: &mut Player = server.get_player_mut(player_id);
             player.update_chat_seq_num(Some(2));
         }
 

@@ -51,9 +51,8 @@ const CLIENT_VERSION: &str = "0.0.1";
 
 struct ClientState {
     sequence:         u64,          // Sequence number of requests
-                                    // Last acknowledged response "sequence number" from server
     response_sequence: u64,         // Value of the next expected sequence number from the server,
-                                    // and/or indicates the sequence number of the next process-able rx packet
+                                    // and indicates the sequence number of the next process-able rx packet
     last_req_action:  Option<RequestAction>,   // Last one we sent to server TODO: this is wrong;
                                                //   assumes network is well-behaved
     name:             Option<String>,
@@ -139,14 +138,13 @@ impl ClientState {
     fn process_queued_rx_packets(&mut self) {
         // If we can, start popping off the RX queue and handle contiguous packets immediately
         let mut dequeue_count = 0;
-        let mut max_request_ack_seen = 0;
 
         let rx_queue_count = self.network.rx_packets.get_contiguous_packets_count(self.response_sequence);
         while dequeue_count < rx_queue_count {
             let packet = self.network.rx_packets.as_queue_type_mut().pop_front().unwrap();
             trace!("{:?}", packet);
             match packet {
-                Packet::Response{sequence: _, request_ack, code} => {
+                Packet::Response{sequence: _, request_ack: _, code} => {
                     dequeue_count += 1;
                     self.response_sequence += 1;
                     self.process_event_code(code);
@@ -193,9 +191,7 @@ impl ClientState {
         // All `None` packets should get filtered out up the hierarchy
         let packet = opt_packet.unwrap();
         match packet.clone() {
-            Packet::Response{sequence, request_ack, code} => {
-                // XXX sequence
-                // XXX request_ack
+            Packet::Response{sequence, request_ack: _, code} => {
                 self.process_event_code(ResponseCode::KeepAlive); // On any incoming event update the heartbeat.
                 let code = code.clone();
                 if code != ResponseCode::KeepAlive {
@@ -248,12 +244,9 @@ impl ClientState {
             // Determine what can be processed
             // Determine what needs to be resent
             // Resend anything remaining in TX queue if it has also expired.
-            //
             self.process_queued_rx_packets();
 
             self.network.retransmit_expired_tx_packets(udp_tx, addr, Some(self.response_sequence));
-
-
         }
     }
 
@@ -307,7 +300,7 @@ impl ClientState {
             }
 
             self.last_req_action = Some(action.clone());
-            let mut packet = Packet::Request {
+            let packet = Packet::Request {
                 sequence:     self.sequence,
                 response_ack: Some(self.response_sequence),
                 cookie:       self.cookie.clone(),
@@ -680,7 +673,6 @@ fn parse_stdin(mut input: String) -> UserInput {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::{thread, time};
 
     fn fake_socket_addr() -> SocketAddr {
         use std::net::{IpAddr, Ipv4Addr};

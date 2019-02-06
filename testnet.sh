@@ -148,7 +148,7 @@ function main()
     EnableTrafficControl
 
     # First basic test... spam 500 /list and chat messages
-    roomCmdCount=1
+    roomCmdCount=500
 
     echo "Basic test: Spam $roomCmdCount /list and chat messages"
 
