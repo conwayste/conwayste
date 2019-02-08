@@ -1,0 +1,6 @@
+[submodule "netwayste"]
+	path = netwayste
+	url = https://github.com/conwayste/netwayste
+[submodule "libconway"]
+	path = libconway
+	url = https://github.com/conwayste/libconway

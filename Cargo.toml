@@ -1,28 +1,11 @@
-[package]
-name = "conwayste"
-version = "0.0.4"
-authors = [ "Ameen Manghi <manghirs@gmail.com>", "Aaron Miller <aaron.miller04@gmail.com>" ]
-license = "GPL-3.0+"
+[workspace]
 
-[dependencies]
-conway       = "0.2.0" # { git = "https://github.com/conwayste/libconway", branch = "aaron/rle" }   # XXX notice the branch
-ggez         = "0.4.3"
-env_logger   = "0.3"
-log          = "0.3"
-sdl2         = "0.31.0"
-version      = "2.0.1"
-toml         = "0.4.5"
-serde        = "1.0"
-serde_derive = "1.0"
-rand = "0.4"
+members = [
+  "conwayste",
+  "netwayste",
+  "libconway",
+]
 
 [profile.dev]
 opt-level = 2
 
-[[bin]]
-name = "server"
-path = "src/server.rs"
-
-[[bin]]
-name = "client"
-path = "src/client.rs"

@@ -4,7 +4,13 @@ Multiplayer Conway's Game of Life!
 
 ![life in action](https://giant.gfycat.com/BlaringTidyDutchsmoushond.gif)
 
-## Installing Dependencies
+## Installation
+Clone this repository with the submodules:
+
+```
+$ git clone --recursive https://github.com/conwayste/conwayste
+```
+
 `conwayste` depends on `SDL2`, `SDL2_Mixer` and `SDL2_Image`. We do plan on bundling these libraries with the binary at some point in the future, but for now you will need to manually install them. The versions (at least) needed are:
 
 * `SDL2 v2.0.5`
@@ -66,21 +72,15 @@ ln -s ../resources target    # Needed only for the Client
 ## Running the server
 
 ```
+cd netwayste
 cargo run --bin server 0.0.0.0:9000
 ```
 
 ## Running the client
 
 ```
+cd conwayste
 cargo run --bin client
-```
-
-## Hacking
-
-### Updating the life engine crate to the latest version in github
-
-```
-cargo update -p conway
 ```
 
 ## FAQ
