@@ -2509,6 +2509,43 @@ mod universe_tests {
         assert_eq!(diff.gen0, 0);
         assert_eq!(diff.gen1, 4);
     }
+
+    #[test]
+    fn universe_diff_some_player1_sees_cells() {
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
+        let player1 = 1;
+        // glider
+        uni.toggle(16, 15, player1).unwrap();
+        uni.toggle(17, 16, player1).unwrap();
+        uni.toggle(15, 17, player1).unwrap();
+        uni.toggle(16, 17, player1).unwrap();
+        uni.toggle(17, 17, player1).unwrap();
+        let gens = 4;
+        for _ in 0..gens {
+            uni.next();
+        }
+        let diff = uni.diff(0, 4, Some(player1)).unwrap();
+        assert!(diff.pattern.0.find('B').is_some());  // should find cells from player 1
+    }
+
+    #[test]
+    fn universe_diff_some_other_player_does_not_see_cells() {
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
+        let player1 = 1;
+        let other_player = 0;
+        // glider
+        uni.toggle(16, 15, player1).unwrap();
+        uni.toggle(17, 16, player1).unwrap();
+        uni.toggle(15, 17, player1).unwrap();
+        uni.toggle(16, 17, player1).unwrap();
+        uni.toggle(17, 17, player1).unwrap();
+        let gens = 4;
+        for _ in 0..gens {
+            uni.next();
+        }
+        let diff = uni.diff(0, 4, Some(other_player)).unwrap();
+        assert!(diff.pattern.0.find('B').is_none());  // should not find cells from player 1
+    }
 }
 
 #[cfg(test)]
