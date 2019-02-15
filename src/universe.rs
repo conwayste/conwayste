@@ -1755,6 +1755,7 @@ pub mod test_helpers {
     }
 }
 
+/// The following tests are here because they use parts of Universe that are private.
 #[cfg(test)]
 mod universe_tests {
     use super::*;
