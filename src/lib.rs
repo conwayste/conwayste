@@ -21,3 +21,6 @@ extern crate env_logger;
 pub mod universe;
 pub mod grids;
 pub mod rle;
+
+#[cfg(test)]
+pub mod tests;
