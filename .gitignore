@@ -1,3 +1,4 @@
 /target/
 **/*.rs.bk
 .?.sw?
+rusty-tags.vi

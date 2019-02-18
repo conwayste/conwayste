@@ -1,7 +1,7 @@
 /*
  * Herein lies a networking library for the multiplayer game, Conwayste.
  *
- * Copyright (C) 2018,  The Conwayste Developers
+ * Copyright (C) 2018-2019 The Conwayste Developers
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -51,7 +51,7 @@ use futures::*;
 use futures::future::ok;
 use futures::sync::mpsc;
 use tokio_core::reactor::{Core, Timeout};
-use rand::Rng;
+use rand::RngCore;
 use semver::Version;
 use chrono::Local;
 use log::LevelFilter;
