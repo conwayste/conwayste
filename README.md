@@ -72,16 +72,22 @@ ln -s ../resources target    # Needed only for the Client
 ## Running the server
 
 ```
-cd netwayste
 cargo run --bin server 0.0.0.0:9000
 ```
 
-## Running the client
+## Running the GUI client
 
 ```
-cd conwayste
 cargo run --bin client
 ```
+Note: at the time of this writing, it does not have network support.
+
+## Running the CLI client
+
+```
+cargo run --bin cli-client
+```
+Note: at the time of this writing, it only has partial network support.
 
 ## FAQ
 
