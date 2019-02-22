@@ -668,11 +668,11 @@ impl EventHandler for MainState {
 // Disable until we have time to look into it
 //                while timer::check_update_time(ctx, FPS) { 
                 {
+                    self.process_running_inputs();
+
                     if self.single_step {
                         self.running = false;
                     }
-
-                    self.process_running_inputs();
 
                     if self.first_gen_was_drawn && (self.running || self.single_step) {
                         self.uni.next();     // next generation
