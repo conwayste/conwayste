@@ -21,9 +21,9 @@ use ggez::graphics;
 use ggez::graphics::{Point2, Color};
 use std::collections::{HashMap};
 
-use video;
-use utils;
-use constants::{DEFAULT_ACTIVE_COLOR, DEFAULT_INACTIVE_COLOR};
+use crate::video;
+use crate::utils;
+use crate::constants::{DEFAULT_ACTIVE_COLOR, DEFAULT_INACTIVE_COLOR};
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub enum MenuState {
