@@ -17,9 +17,9 @@
 
 use std::{char, cmp, fmt};
 
-use grids::{BitGrid, BitOperation, CharGrid};
+use crate::grids::{BitGrid, BitOperation, CharGrid};
 
-use rle::{Pattern, NO_OP_CHAR};
+use crate::rle::{Pattern, NO_OP_CHAR};
 
 type UniverseError = String;
 
@@ -668,9 +668,9 @@ impl fmt::Display for Universe {
                         s.push(' ');
                     }
                 }
-                try!(write!(f, "{}", s));
+                write!(f, "{}", s)?;
             }
-            try!(write!(f, "\n"));
+            write!(f, "\n")?;
         }
         Ok(())
     }

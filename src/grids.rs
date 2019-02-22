@@ -17,8 +17,8 @@
 
 use std::ops::{Index, IndexMut};
 use std::cmp;
-use universe::Region;
-use rle::Pattern;
+use crate::universe::Region;
+use crate::rle::Pattern;
 
 
 #[derive(Eq, PartialEq, Debug, Clone, Copy)]
