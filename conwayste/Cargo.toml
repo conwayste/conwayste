@@ -17,9 +17,5 @@ serde_derive = "1.0"
 rand = "0.4"
 
 [[bin]]
-name = "server"
-path = "src/server.rs"
-
-[[bin]]
 name = "client"
 path = "src/client.rs"
