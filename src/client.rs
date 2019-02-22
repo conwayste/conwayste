@@ -246,7 +246,9 @@ impl ClientState {
             // Resend anything remaining in TX queue if it has also expired.
             self.process_queued_rx_packets();
 
-            self.network.retransmit_expired_tx_packets(udp_tx, addr, Some(self.response_sequence));
+            let indices = self.network.tx_packets.get_retransmit_indices();
+
+            self.network.retransmit_expired_tx_packets(udp_tx, addr, Some(self.response_sequence), &indices);
         }
     }
 

@@ -162,7 +162,7 @@ function main()
     echo "....Done."
 
     echo "Wait to disable Traffic Control..."
-    sleep 10
+    sleep 60
     echo "Disabling Traffic Control..."
     DisableTrafficControl
 

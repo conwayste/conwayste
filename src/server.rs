@@ -57,7 +57,7 @@ use chrono::Local;
 use log::LevelFilter;
 
 const TICK_INTERVAL_IN_MS:    u64      = 10;
-const NETWORK_INTERVAL_IN_MS: u64      = 25;    // Arbitrarily chosen
+const NETWORK_INTERVAL_IN_MS: u64      = 100;    // Arbitrarily chosen
 const HEARTBEAT_INTERVAL_IN_MS: u64    = 1000;    // Arbitrarily chosen
 const MAX_ROOM_NAME:          usize    = 16;
 const MAX_NUM_CHAT_MESSAGES:  usize    = 128;
@@ -743,9 +743,10 @@ impl ServerState {
                         continue;
                     }
 
-                    player_net.retransmit_expired_tx_packets(udp_tx, player_addr, ack);
+                    let indices = player_net.tx_packets.get_retransmit_indices();
+                    trace!("[Sending a Expired Responses to Client from TX Buffer]: {:?} Len: {}", player_id, indices.len());
+                    player_net.retransmit_expired_tx_packets(udp_tx, player_addr, ack, &indices);
 
-                    trace!("[Sending a Response to Client from TX Buffer]: {:?}", player_id);
                 } else {
                     trace!("I haven't found a NetworkManager for Player: {}", player_id);
                     continue;
@@ -1250,7 +1251,11 @@ fn main() {
                             }
                         }
                     }
-
+/*
+                    for x in server_state.network_map.values() {
+                        trace!("\n\n\nNETWORK QUEUE CAPACITIES\n-----------------------\nTX: {}\nRX: {}\n\n\n", x.tx_packets.as_queue_type().capacity(), x.rx_packets.as_queue_type().capacity());
+                    }
+*/
                     server_state.remove_timed_out_clients();
                     server_state.tick  = 1usize.wrapping_add(server_state.tick);
                 }

@@ -38,8 +38,12 @@ pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
 pub const DEFAULT_PORT: u16 = 12345;
 const TIMEOUT_IN_SECONDS:    u64   = 5;
-const NETWORK_QUEUE_LENGTH: usize = 150;
-const RETRANSMISSION_THRESHOLD_IN_MS: Duration = Duration::from_millis(1000);
+const NETWORK_QUEUE_LENGTH: usize = 600;        // spot testing with poor network (~675 cmds) showed a max of ~512 length
+                                                // keep this for now until the performance issues are resolved
+const RETRANSMISSION_THRESHOLD_IN_MS: Duration = Duration::from_millis(400);
+const RETRY_THRESHOLD_IN_MS: usize = 2;             //
+const RETRY_AGGRESSIVE_THRESHOLD_IN_MS: usize = 5;
+const RETRANSMISSION_COUNT: usize = 32;   // Testing some ideas out:. Resend length 16x2, 16=libconway::history_size)
 
 // For unit testing, I cover duplicate sequence numbers. The search returns Ok(index) on a slice with a matching value.
 // Instead of returning that index, I return this much larger value and avoid insertion into the queues.
@@ -514,11 +518,30 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug+Clone> {
     fn as_queue_type_mut(&mut self) -> &mut ItemQueue<T>;
 }
 
+pub struct Timestamp {
+    pub time: Instant,
+    pub retries: usize,
+}
+
+impl Timestamp {
+    pub fn new() -> Self {
+        Self {
+            time: Instant::now(),
+            retries: 0,
+        }
+    }
+
+    pub fn increment_retries(&mut self) {
+        self.retries += 1;
+        self.time = Instant::now();
+    }
+}
+
 type ItemQueue<T> = VecDeque<T>;
 
 pub struct NetQueue<T> {
     pub queue: ItemQueue<T>,
-    pub timestamps: VecDeque<Instant>,
+    pub timestamps: VecDeque<Timestamp>,
     pub buffer_wrap_index: Option<usize>,
 }
 
@@ -526,8 +549,14 @@ impl NetQueue<Packet> {
     pub fn get_retransmit_indices(&self) -> Vec<usize> {
         let iter = self.timestamps.iter();
         iter.enumerate()
-            .filter(|(_,&ts)| (Instant::now() - ts) >= RETRANSMISSION_THRESHOLD_IN_MS)
+            .filter(|(_, ts)|
+                (
+                    (Instant::now() - ts.time) >= RETRANSMISSION_THRESHOLD_IN_MS)
+                    || (ts.retries >= RETRY_THRESHOLD_IN_MS)
+                    || (ts.retries >= RETRY_AGGRESSIVE_THRESHOLD_IN_MS)
+                )
             .map(|(i, _)| i)
+            .take(RETRANSMISSION_COUNT)
             .collect::<Vec<usize>>()
     }
 
@@ -539,7 +568,7 @@ impl<T> NetworkQueue<T> for NetQueue<T>
     fn new() -> Self {
         NetQueue {
             queue:          ItemQueue::<T>::with_capacity(NETWORK_QUEUE_LENGTH),
-            timestamps:     VecDeque::<Instant>::with_capacity(NETWORK_QUEUE_LENGTH),
+            timestamps:     VecDeque::<Timestamp>::with_capacity(NETWORK_QUEUE_LENGTH),
             buffer_wrap_index: None
         }
     }
@@ -581,7 +610,7 @@ impl<T> NetworkQueue<T> for NetQueue<T>
         };
         match result {
             Err(_) => {
-                warn!("Packet not present in queue!\nQueue: {:?}", self.as_queue_type());
+                warn!("Packet (Seq: {}) not present in queue! Was it removed already?", pkt.sequence_number());
                 return None;
             }
             Ok(index) => {
@@ -624,7 +653,7 @@ impl<T> NetworkQueue<T> for NetQueue<T>
         let opt_head_seq_num: Option<u64> = self.newest_seq_num();
         if opt_head_seq_num.is_none() {
             self.push_back(item);
-            self.timestamps.push_back(Instant::now());
+            self.timestamps.push_back(Timestamp::new());
             return packet_exists;
         }
         let opt_tail_seq_num: Option<u64> = self.oldest_seq_num();
@@ -636,11 +665,11 @@ impl<T> NetworkQueue<T> for NetQueue<T>
             if newest_seq_num == u64::max_value() {
                 if self.will_seq_cause_a_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
                     self.push_back(item);
-                    self.timestamps.push_back(Instant::now());
+                    self.timestamps.push_back(Timestamp::new());
                     self.buffer_wrap_index = Some(self.len() - 1);
                 } else {
                     self.push_front(item);
-                    self.timestamps.push_back(Instant::now());
+                    self.timestamps.push_back(Timestamp::new());
                 }
             } else if sequence > newest_seq_num && self.buffer_wrap_index.is_some() {
                 // When wrapped, either this is the newest sequence number so far, or
@@ -653,7 +682,7 @@ impl<T> NetworkQueue<T> for NetQueue<T>
                     }
                 } else {
                     self.push_back(item);
-                    self.timestamps.push_back(Instant::now());
+                    self.timestamps.push_back(Timestamp::new());
                 }
             } else if sequence < newest_seq_num {
                 // The new seq num appears to be older than everything,
@@ -672,7 +701,7 @@ impl<T> NetworkQueue<T> for NetQueue<T>
             } else {
                 // Smallest sequence number (in value) that we have seen thus far.
                 self.push_front(item);
-                self.timestamps.push_back(Instant::now());
+                self.timestamps.push_back(Timestamp::new());
 
                 if self.buffer_wrap_index.is_some() {
                     self.buffer_wrap_index = Some(self.buffer_wrap_index.unwrap() + 1);
@@ -767,12 +796,12 @@ impl<T> NetQueue<T> where T: Sequenced+Debug+Clone {
             if insertion_index != MATCH_FOUND_SENTINEL {
                 if cfg!(test) {
                     self.as_queue_type_mut().insert(insertion_index, item.clone());
-                    self.timestamps.push_back(Instant::now());
+                    self.timestamps.push_back(Timestamp::new());
                 }
             }
             if !(cfg!(test)) {
                 self.as_queue_type_mut().insert(insertion_index, item);
-                self.timestamps.push_back(Instant::now());
+                self.timestamps.push_back(Timestamp::new());
             }
         } else { exists = true; } // Packet is present in queue, hence None.
         return exists;
@@ -847,24 +876,46 @@ impl NetworkManager {
         info!("Tx Failures:  {}", self.statistics.tx_packets_failed);
     }
 
-    pub fn retransmit_expired_tx_packets(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, addr: SocketAddr, confirmed_ack: Option<u64>) {
+    pub fn retransmit_expired_tx_packets(&mut self,
+         udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>,
+         addr: SocketAddr,
+         confirmed_ack: Option<u64>,
+         indices: &Vec<usize>) {
+
         let mut error_occurred = false;
         let mut failed_index = 0;
-        let indices = self.tx_packets.get_retransmit_indices();
 
         // Retransmit all packets after that are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
         for index in indices.iter() {
-            if let Some(ref mut pkt) = self.tx_packets.queue.get_mut(*index) {
+
+            let mut send_counter = 1;
+
+            if let Some(ts) = self.tx_packets.timestamps.get_mut(*index) {
+                ts.increment_retries();
+                if ts.retries >= RETRY_AGGRESSIVE_THRESHOLD_IN_MS {
+                    send_counter += 1;
+                    ts.increment_retries()
+                }
+                if ts.retries >= RETRY_THRESHOLD_IN_MS {
+                    send_counter += 1;
+                    ts.increment_retries()
+                }
+            }
+
+            if let Some(pkt) = self.tx_packets.queue.get_mut(*index) {
                 // `response_sequence` may have advanced since this was last queued
                 pkt.set_response_sequence(confirmed_ack);
-                trace!("[Retransmitting] {:?}", pkt);
-                netwayste_send!(self, udp_tx, (addr, (*pkt).clone()),
+                trace!("[Retransmitting (Times={})] {:?}", send_counter, pkt);
+                for _ in 0..send_counter {
+                    netwayste_send!(self, udp_tx, (addr, (*pkt).clone()),
                                 ("Could not retransmit packet to server: {:?}", pkt));
+                }
             } else {
                 error_occurred = true;
                 failed_index = *index;
                 break;
             }
+
         }
 
         if error_occurred {
