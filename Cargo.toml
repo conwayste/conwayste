@@ -2,6 +2,7 @@
 name = "netwayste"
 version = "0.1.1"
 authors = ["Aaron Miller <aaron.miller04@gmail.com>", "manghi <manghirs@gmail.com>"]
+edition = "2018"
 
 [[bin]]
 name = "server"
