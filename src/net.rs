@@ -928,6 +928,10 @@ impl NetworkManager {
 
     #[allow(unused)]
     pub fn tx_pop_front_with_count(&mut self, mut num_to_remove: usize) {
+        if num_to_remove > self.tx_packets.len() {
+            return;
+        }
+
         while num_to_remove > 0 {
             self.tx_packets.as_queue_type_mut().pop_front();
             self.tx_packets.timestamps.pop_front();
@@ -942,6 +946,12 @@ impl NetworkManager {
 mod test {
     use super::*;
     use std::{thread, time::{Instant, Duration}};
+
+    fn fake_socket_addr() -> SocketAddr {
+        use std::net::{IpAddr, Ipv4Addr};
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 5678)
+    }
+
 /*
     #[test]
     fn test_discard_older_packets_empty_queue() {
@@ -1770,7 +1780,7 @@ mod test {
     }
 
     #[test]
-    fn test_get_contiguous_packets_iter() {
+    fn test_get_contiguous_packets_count() {
         let mut nm = NetworkManager::new();
         for index in 0..5 {
             let pkt = Packet::Request {
@@ -1816,12 +1826,118 @@ mod test {
             nm.tx_packets.buffer_item(pkt.clone());
 
             if i < 3 {
-                let timestamp = nm.tx_packets.timestamps.back_mut().unwrap();
-                *timestamp = Instant::now() - Duration::from_secs(i+1)
+                let timestamp: &mut Timestamp = nm.tx_packets.timestamps.back_mut().unwrap();
+                timestamp.time = Instant::now() - Duration::from_secs(i+1);
             }
         }
         assert_eq!(nm.tx_packets.get_retransmit_indices().len(), 3);
         thread::sleep(Duration::from_millis(2000));
         assert_eq!(nm.tx_packets.get_retransmit_indices().len(), 5);
+    }
+
+    #[test]
+    fn test_retransmit_expired_tx_packets_no_expirations() {
+        let mut nm = NetworkManager::new();
+
+        for i in 0..5 {
+            let pkt = Packet::Request {
+                sequence: i,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+
+            nm.tx_packets.buffer_item(pkt.clone());
+        }
+
+        let indices = nm.tx_packets.get_retransmit_indices();
+
+        let (udp_tx, _) = mpsc::unbounded();
+        let addr = fake_socket_addr();
+        nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
+
+        for i in 0..5 {
+            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 0);
+        }
+    }
+
+    #[test]
+    fn test_retransmit_expired_tx_packets_basic_retries() {
+        let mut nm = NetworkManager::new();
+
+        for i in 0..5 {
+            let pkt = Packet::Request {
+                sequence: i,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+
+            nm.tx_packets.buffer_item(pkt.clone());
+
+           if i < 3 {
+                let timestamp: &mut Timestamp = nm.tx_packets.timestamps.back_mut().unwrap();
+                timestamp.time = Instant::now() - Duration::from_secs(i+1);
+            }
+        }
+
+        let indices = nm.tx_packets.get_retransmit_indices();
+
+        let (udp_tx, _) = mpsc::unbounded();
+        let addr = fake_socket_addr();
+        nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
+
+        for i in 0..3 {
+            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 1);
+        }
+        for i in 3..5 {
+            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 0);
+        }
+    }
+
+    #[test]
+    fn test_retransmit_expired_tx_packets_aggressive_retries() {
+        let mut nm = NetworkManager::new();
+
+        for i in 0..5 {
+            let pkt = Packet::Request {
+                sequence: i,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+
+            nm.tx_packets.buffer_item(pkt.clone());
+
+           if i < 3 {
+                let timestamp: &mut Timestamp = nm.tx_packets.timestamps.back_mut().unwrap();
+                timestamp.time = Instant::now() - Duration::from_secs(i+1);
+            }
+        }
+
+        // After 2 attempts, aggressive mode should kick in
+        for _ in 0..5 {
+            let indices = nm.tx_packets.get_retransmit_indices();
+
+            println!("{:?}", indices);
+
+            let (udp_tx, _) = mpsc::unbounded();
+            let addr = fake_socket_addr();
+            nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
+
+            for j in 0..indices.len() {
+                let timestamp: &mut Timestamp = nm.tx_packets.timestamps.get_mut(j).unwrap();
+                timestamp.time = Instant::now() - Duration::from_secs( 1u64);
+            }
+        }
+
+        for i in 0..3 {
+            // 5 + 2 + 2 + 3
+            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 11);
+        }
+        for i in 3..5 {
+            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 0);
+        }
+
     }
 }
