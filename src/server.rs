@@ -785,7 +785,7 @@ impl ServerState {
     }
 
     /// Clear out the transmission queue of any packets the client has acknowledged
-    fn clear_transmission_queue_on_ack(&mut self, player_id: &PlayerID, response_ack: Option<u64>) {
+    fn clear_transmission_queue_on_ack(&mut self, player_id: PlayerID, response_ack: Option<u64>) {
         if let Some(response_ack) = response_ack {
             if let Some(ref mut player_network) = self.network_map.get_mut(&player_id) {
                 let mut removal_count = 0;
@@ -863,14 +863,14 @@ impl ServerState {
                             // If the client does not send new requests, the Server will never get a reply for
                             // the set of responses it may have sent. This will result in the transmission queue contents
                             // flooding the Client on retranmission.
-                            self.clear_transmission_queue_on_ack(&player_id, Some(resp_ack));
+                            self.clear_transmission_queue_on_ack(player_id, Some(resp_ack));
                             return Ok(None);
                         }
                         _ => (),
                     }
 
                     // For the non-KeepAlive case
-                    self.clear_transmission_queue_on_ack(&player_id, response_ack);
+                    self.clear_transmission_queue_on_ack(player_id, response_ack);
 
                     // Check to see if it can be processed right away, otherwise buffer it for later consumption.
                     // Not sure if I like this name but it'll do for now.
@@ -2466,5 +2466,61 @@ mod test {
         // Cannot go through player_id because the player has been removed
         let room: &Room = server.rooms.get(&room_id).unwrap();
         assert_eq!(room.player_ids.contains(&player_id), false);
+    }
+
+    #[test]
+    fn test_is_previously_processed_packet() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = Some(4);
+            player.player_id
+        };
+
+        let player_id2: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = None;
+            player.player_id
+        };
+
+        assert_eq!(server.is_previously_processed_packet(player_id2, 0), false);
+
+        assert_eq!(server.is_previously_processed_packet(player_id, 0), true);
+        assert_eq!(server.is_previously_processed_packet(player_id, 4), true);
+        assert_eq!(server.is_previously_processed_packet(player_id, 5), false);
+    }
+
+    #[test]
+    fn test_clear_transmission_queue_on_ack() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = Some(4);
+            player.player_id
+        };
+
+        for i in 0..5 {
+            let pkt = Packet::Response {
+                sequence: i,
+                request_ack: None,
+                code: ResponseCode::OK
+            };
+
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            nm.tx_packets.buffer_item(pkt.clone());
+        }
+
+        server.clear_transmission_queue_on_ack(player_id, None);
+        assert_eq!(server.network_map.get(&player_id).unwrap().tx_packets.len(), 5);
+        server.clear_transmission_queue_on_ack(player_id, Some(0));
+        assert_eq!(server.network_map.get(&player_id).unwrap().tx_packets.len(), 5);
+        server.clear_transmission_queue_on_ack(player_id, Some(1));
+        assert_eq!(server.network_map.get(&player_id).unwrap().tx_packets.len(), 4);
+        server.clear_transmission_queue_on_ack(player_id, Some(5));
+        assert_eq!(server.network_map.get(&player_id).unwrap().tx_packets.len(), 0);
     }
 }
