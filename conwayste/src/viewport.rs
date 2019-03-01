@@ -20,8 +20,8 @@ extern crate ggez;
 
 use ggez::graphics::{Point2, Rect};
 
-use utils;
-use constants::{
+use crate::utils;
+use crate::constants::{
     DEFAULT_SCREEN_HEIGHT,
     DEFAULT_SCREEN_WIDTH,
     MAX_CELL_SIZE,
