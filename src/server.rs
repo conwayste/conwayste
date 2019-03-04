@@ -2523,4 +2523,158 @@ mod test {
         server.clear_transmission_queue_on_ack(player_id, Some(5));
         assert_eq!(server.network_map.get(&player_id).unwrap().tx_packets.len(), 0);
     }
+
+    #[test]
+    fn test_resend_expired_tx_packets_empty_server() {
+        let mut server = ServerState::new();
+
+        let (udp_tx, _) = mpsc::unbounded();
+        #[cfg(not(should_panic))]
+        server.resend_expired_tx_packets(&udp_tx);
+    }
+
+    #[test]
+    fn test_resend_expired_tx_packets() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = Some(5);
+            player.player_id
+        };
+
+
+        for i in 0..5 {
+            let pkt = Packet::Response {
+                sequence: i,
+                request_ack: None,
+                code: ResponseCode::OK
+            };
+
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            nm.tx_packets.buffer_item(pkt.clone());
+
+            if i < 3 {
+                let timestamp: &mut net::Timestamp = nm.tx_packets.timestamps.back_mut().unwrap();
+                timestamp.time = Instant::now() - Duration::from_secs(i+1);
+            }
+        }
+
+        let (udp_tx, _) = mpsc::unbounded();
+        server.resend_expired_tx_packets(&udp_tx);
+
+        for i in 0..5 {
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            let packet_retries: &net::Timestamp = nm.tx_packets.timestamps.get(i).unwrap();
+
+            if i >= 3 {
+                assert_eq!(packet_retries.retries, 0);
+            } else {
+                assert_eq!(packet_retries.retries, 1);
+            }
+        }
+    }
+
+    #[test]
+    fn test_process_queued_rx_packets_first_non_connect_player_packet() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let (player_id, player_cookie): (PlayerID, String) = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = Some(1);   // Player connected and we've confirmed the first transaction
+            (player.player_id, player.cookie.clone())
+        };
+
+        {
+            let pkt = Packet::Request {
+                cookie: Some(player_cookie),
+                sequence: 2,
+                response_ack: None,
+                action: RequestAction::ListPlayers
+            };
+
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            nm.rx_packets.buffer_item(pkt.clone());
+
+            assert_eq!(nm.tx_packets.len(), 0);
+        }
+
+        server.process_queued_rx_packets(player_id);
+
+
+        {
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            assert_eq!(nm.tx_packets.len(), 1);
+        }
+
+    }
+
+    #[test]
+    fn test_process_queued_rx_packets_contiguous() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let (player_id, player_cookie): (PlayerID, String) = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = Some(1);   // Player connected and we've confirmed the first transaction
+            (player.player_id, player.cookie.clone())
+        };
+
+        for i in 2..10 {
+            let pkt = Packet::Request {
+                cookie: Some(player_cookie.clone()),
+                sequence: i,
+                response_ack: None,
+                action: RequestAction::ListPlayers
+            };
+
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            nm.rx_packets.buffer_item(pkt.clone());
+
+            assert_eq!(nm.tx_packets.len(), 0);
+        }
+
+        server.process_queued_rx_packets(player_id);
+
+        {
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            assert_eq!(nm.tx_packets.len(), 8);
+        }
+
+    }
+
+    #[test]
+    fn test_process_queued_rx_packets_swiss_cheese_queue() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let (player_id, player_cookie): (PlayerID, String) = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = Some(1);   // Player connected and we've confirmed the first transaction
+            (player.player_id, player.cookie.clone())
+        };
+
+        for i in [2, 3, 4, 6, 8, 9, 10].iter() {
+            let pkt = Packet::Request {
+                cookie: Some(player_cookie.clone()),
+                sequence: *i,
+                response_ack: None,
+                action: RequestAction::ListPlayers
+            };
+
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            nm.rx_packets.buffer_item(pkt.clone());
+
+            assert_eq!(nm.tx_packets.len(), 0);
+        }
+
+        server.process_queued_rx_packets(player_id);
+
+        {
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            assert_eq!(nm.tx_packets.len(), 3); // only 2, 3, and 4 are processed
+        }
+    }
 }
