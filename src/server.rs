@@ -627,7 +627,6 @@ impl ServerState {
             RequestAction::Connect{..} => unreachable!(),
             _ => {
                 if let Some(response) = self.handle_request_action(player_id, action.clone()) {
-
                     // Buffer all responses to the client for [re-]transmission
                     let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
                     if let Some(player_net) = network {
@@ -744,11 +743,11 @@ impl ServerState {
                     }
 
                     let indices = player_net.tx_packets.get_retransmit_indices();
-                    trace!("[Sending a Expired Responses to Client from TX Buffer]: {:?} Len: {}", player_id, indices.len());
+                    trace!("[Sending expired responses to client from TX Buffer]: {:?} Len: {}", player_id, indices.len());
                     player_net.retransmit_expired_tx_packets(udp_tx, player_addr, ack, &indices);
 
                 } else {
-                    trace!("I haven't found a NetworkManager for Player: {}", player_id);
+                    error!("I haven't found a NetworkManager for Player: {}", player_id);
                     continue;
                 }
             }
@@ -762,7 +761,6 @@ impl ServerState {
             return;
         }
 
-        // For each room, determine if each player has unread messages based on chat_msg_seq_num
         for room in self.rooms.values() {
             if room.player_ids.len() == 0 {
                 continue;
@@ -819,7 +817,7 @@ impl ServerState {
     fn decode_packet(&mut self, addr: SocketAddr, packet: Packet) -> Result<Option<Packet>, Box<Error>> {
         match packet.clone() {
             _pkt @ Packet::Response{..} | _pkt @ Packet::Update{..} => {
-                return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "invalid packet - server-only")));
+                return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "invalid packet type")));
             }
             Packet::Request{sequence, response_ack, cookie, action} => {
 
@@ -879,7 +877,7 @@ impl ServerState {
                         return self.process_player_request_action(player_id, action);
                     }
 
-                    // Packet may be resent by client but since been processed.
+                    // Packet may be resent by client but has since been processed.
                     if self.is_previously_processed_packet(player_id, sequence) {
                         trace!("\t [ALREADY PROCESSED]");
                         return Ok(None);
@@ -980,7 +978,6 @@ impl ServerState {
         }
     }
 
-    // XXX
     // Right now we'll be constructing all client Update packets for _every_ room.
     fn construct_client_updates(&mut self) -> Result<Option<Vec<(SocketAddr, Packet)>>, Box<Error>> {
         let mut client_updates: Vec<(SocketAddr, Packet)> = vec![];
@@ -1251,11 +1248,13 @@ fn main() {
                             }
                         }
                     }
-/*
+
+                    /*
                     for x in server_state.network_map.values() {
                         trace!("\n\n\nNETWORK QUEUE CAPACITIES\n-----------------------\nTX: {}\nRX: {}\n\n\n", x.tx_packets.as_queue_type().capacity(), x.rx_packets.as_queue_type().capacity());
                     }
-*/
+                    */
+
                     server_state.remove_timed_out_clients();
                     server_state.tick  = 1usize.wrapping_add(server_state.tick);
                 }

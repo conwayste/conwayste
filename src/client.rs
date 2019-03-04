@@ -28,7 +28,7 @@ extern crate chrono;
 
 mod net;
 use std::env;
-use std::io::{self, Read, ErrorKind, Write};
+use std::io::{self, Read, Write};
 use std::error::Error;
 use std::iter;
 use std::net::SocketAddr;
@@ -53,8 +53,6 @@ struct ClientState {
     sequence:         u64,          // Sequence number of requests
     response_sequence: u64,         // Value of the next expected sequence number from the server,
                                     // and indicates the sequence number of the next process-able rx packet
-    last_req_action:  Option<RequestAction>,   // Last one we sent to server TODO: this is wrong;
-                                               //   assumes network is well-behaved
     name:             Option<String>,
     room:             Option<String>,
     cookie:           Option<String>,
@@ -62,6 +60,7 @@ struct ClientState {
     tick:             usize,
     network:          NetworkManager,
     heartbeat:        Option<Instant>,
+    disconnect_initiated: bool,
 }
 
 impl ClientState {
@@ -70,7 +69,6 @@ impl ClientState {
         ClientState {
             sequence:        0,
             response_sequence: 0,
-            last_req_action: None,
             name:            None,
             room:            None,
             cookie:          None,
@@ -78,6 +76,7 @@ impl ClientState {
             tick:            0,
             network:         NetworkManager::new().with_message_buffering(),
             heartbeat:       None,
+            disconnect_initiated: false,
         }
     }
 
@@ -89,7 +88,6 @@ impl ClientState {
         let Self {
             ref mut sequence,
             ref mut response_sequence,
-            ref mut last_req_action,
             name: ref _name,
             ref mut room,
             ref mut cookie,
@@ -97,16 +95,17 @@ impl ClientState {
             ref mut tick,
             ref mut network,
             ref mut heartbeat,
+            ref mut disconnect_initiated,
         } = *self;
         *sequence         = 0;
         *response_sequence = 0;
-        *last_req_action  = None;
         *room             = None;
         *cookie           = None;
         *chat_msg_seq_num = 0;
         *tick             = 0;
         network.reset();
         *heartbeat        = None;
+        *disconnect_initiated = false;
 
         trace!("ClientState reset!");
     }
@@ -116,10 +115,7 @@ impl ClientState {
     }
 
     fn disconnecting(&self) -> bool {
-        if let Some(ref action) = self.last_req_action {
-            return action == &RequestAction::Disconnect
-        }
-        false
+        self.disconnect_initiated
     }
 
     // XXX Once netwayste integration is complete, we'll need to internally send
@@ -135,7 +131,7 @@ impl ClientState {
         }
     }
 
-    fn process_queued_rx_packets(&mut self) {
+    fn process_queued_server_responses(&mut self) {
         // If we can, start popping off the RX queue and handle contiguous packets immediately
         let mut dequeue_count = 0;
 
@@ -211,7 +207,7 @@ impl ClientState {
                             let _ = self.network.rx_packets.buffer_item(packet);
                         }
 
-                        self.process_queued_rx_packets();
+                        self.process_queued_server_responses();
                     }
                 }
             }
@@ -244,7 +240,7 @@ impl ClientState {
             // Determine what can be processed
             // Determine what needs to be resent
             // Resend anything remaining in TX queue if it has also expired.
-            self.process_queued_rx_packets();
+            self.process_queued_server_responses();
 
             let indices = self.network.tx_packets.get_retransmit_indices();
 
@@ -301,7 +297,6 @@ impl ClientState {
                 self.sequence += 1;
             }
 
-            self.last_req_action = Some(action.clone());
             let packet = Packet::Request {
                 sequence:     self.sequence,
                 response_ack: Some(self.response_sequence),
@@ -317,24 +312,17 @@ impl ClientState {
                             ("Could not send user input cmd to server"));
 
             if action == RequestAction::Disconnect {
+                self.disconnect_initiated = true;
                 netwayste_send!(exit_tx, ());
             }
         }
     }
 
     fn handle_response_ok(&mut self) -> Result<(), Box<Error>> {
-        if let Some(ref last_action) = self.last_req_action {
-            match last_action {
-                _ => {
-                    info!("OK :)");
-                }
-            }
+            info!("OK :)");
             return Ok(());
-        } else {
-            error!("OK, but we didn't make a request :/");
-            return Err(Box::new(io::Error::new(ErrorKind::Other, "Received OK without connection")));
-        }
     }
+
     fn handle_logged_in(&mut self, cookie: String, server_version: String) {
         self.cookie = Some(cookie);
 
@@ -685,35 +673,7 @@ mod test {
     fn handle_response_ok_no_request_sent() {
         let mut client_state = ClientState::new();
         let result = client_state.handle_response_ok();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn handle_response_ok_join_request_sent() {
-        let mut client_state = ClientState::new();
-        client_state.last_req_action = Some(RequestAction::JoinRoom("some room".to_owned()));
-        let result = client_state.handle_response_ok();
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), ());
-    }
-
-    #[test]
-    fn handle_response_ok_leave_request_sent() {
-        let mut client_state = ClientState::new();
-        client_state.last_req_action = Some(RequestAction::LeaveRoom);
-        let result = client_state.handle_response_ok();
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), ());
-    }
-
-    #[test]
-    fn handle_response_ok_none_request_sent() {
-        // This tests the `RequestAction::None` case
-        let mut client_state = ClientState::new();
-        client_state.last_req_action = Some(RequestAction::None);
-        let result = client_state.handle_response_ok();
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), ());
     }
 
     #[test]

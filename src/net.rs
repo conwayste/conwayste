@@ -258,6 +258,7 @@ pub enum Packet {
 }
 
 impl Packet {
+    #[allow(unused)]
     pub fn sequence_number(&self) -> u64 {
         if let Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } = self {
             *sequence
@@ -274,6 +275,8 @@ impl Packet {
             unimplemented!(); // UpdateReply is not saved
         }
     }
+
+    #[allow(unused)]
     pub fn set_response_sequence(&mut self, new_ack: Option<u64>) {
         if let Packet::Request{ sequence: _, ref mut response_ack, cookie: _, action: _ } = *self {
             *response_ack = new_ack;
@@ -524,6 +527,7 @@ pub struct Timestamp {
 }
 
 impl Timestamp {
+    #[allow(unused)]
     pub fn new() -> Self {
         Self {
             time: Instant::now(),
@@ -531,6 +535,7 @@ impl Timestamp {
         }
     }
 
+    #[allow(unused)]
     pub fn increment_retries(&mut self) {
         self.retries += 1;
         self.time = Instant::now();
@@ -546,6 +551,7 @@ pub struct NetQueue<T> {
 }
 
 impl NetQueue<Packet> {
+    #[allow(unused)]
     pub fn get_retransmit_indices(&self) -> Vec<usize> {
         let iter = self.timestamps.iter();
         iter.enumerate()
@@ -807,10 +813,11 @@ impl<T> NetQueue<T> where T: Sequenced+Debug+Clone {
         return exists;
     }
 
-    // Seq_num as a parameter specifies the starting sequence number to iterate over. Since packets can arrive
-    // out-of-order, the queue may be contiguous but not complete.
-    // Ex: Assume the next packet SN to process is 10, and the queue has buffered [10, 11, 12, 14, 16],
-    // the contiguous packet count would be 3.
+    /// `seq_num` as a parameter specifies the starting sequence number to iterate over. Since packets can arrive
+    /// out-of-order, the queue may be contiguous but not complete.
+    /// Ex: Assume the next packet SN to process is 10, and the queue has buffered [10, 11, 12, 14, 16],
+    /// the contiguous packet count would be 3.
+    #[allow(unused)]
     pub fn get_contiguous_packets_count(&self, mut seq_num: u64) -> usize {
         let iter = self.queue.iter().take_while(move |x| {
             let ready = x.sequence_number() == seq_num;
@@ -833,6 +840,7 @@ pub struct NetworkManager {
 }
 
 impl NetworkManager {
+    #[allow(unused)]
     pub fn new() -> Self {
         NetworkManager {
             statistics: NetworkStatistics::new(),
@@ -876,6 +884,7 @@ impl NetworkManager {
         info!("Tx Failures:  {}", self.statistics.tx_packets_failed);
     }
 
+    #[allow(unused)]
     pub fn retransmit_expired_tx_packets(&mut self,
          udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>,
          addr: SocketAddr,
@@ -952,8 +961,10 @@ mod test {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 5678)
     }
 
-/*
+
+    // `discord_older_packets()` tests are disabled  until after the necessity of the function is re-evaluated
     #[test]
+    #[ignore]
     fn test_discard_older_packets_empty_queue() {
         let mut nm = NetworkManager::new();
 
@@ -964,6 +975,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_discard_older_packets_under_limit_keeps_all_messages() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
@@ -989,6 +1001,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_discard_older_packets_equal_to_limit() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
@@ -1014,6 +1027,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_discard_older_packets_exceeds_limit_retains_max() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
@@ -1037,7 +1051,7 @@ mod test {
         nm.rx_packets.discard_older_items();
         assert_eq!(nm.rx_packets.len(), NETWORK_QUEUE_LENGTH);
     }
-*/
+
     #[test]
     fn test_buffer_item_queue_is_empty() {
         let mut nm = NetworkManager::new();
@@ -1124,8 +1138,10 @@ mod test {
         }
     }
 
-/*
+
+    // `buffer_item()` test with an enforced hard limit size is disabled until performance is re-examined
     #[test]
+    #[ignore]
     fn test_buffer_item_max_queue_limit_maintained() {
         let mut nm = NetworkManager::new();
         for index in 0..NETWORK_QUEUE_LENGTH+5 {
@@ -1146,7 +1162,6 @@ mod test {
             }
         }
     }
-*/
 
     #[test]
     fn test_buffer_item_basic_contiguous_ascending() {
