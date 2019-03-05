@@ -33,6 +33,11 @@ pub enum BitOperation {
 pub struct BitGrid(pub Vec<Vec<u64>>);
 
 impl BitGrid {
+    /// Creates a new zero-initialized BitGrid of given dimensions.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if `with_in_words` or `height` are zero.
     pub fn new(width_in_words: usize, height: usize) -> Self {
         assert!(width_in_words != 0);
         assert!(height != 0);
