@@ -3,6 +3,7 @@ name = "conwayste"
 version = "0.0.4"
 authors = [ "Ameen Manghi <manghirs@gmail.com>", "Aaron Miller <aaron.miller04@gmail.com>" ]
 license = "GPL-3.0+"
+edition = "2018"
 
 [dependencies]
 conway       = { path = "../libconway" }

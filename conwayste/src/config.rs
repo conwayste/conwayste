@@ -21,7 +21,7 @@ extern crate toml;
 use std::fs::OpenOptions;
 use std::io::{Write, Read};
 use std::path::Path;
-use constants::{CONFIG_FILE_PATH, DEFAULT_ZOOM_LEVEL};
+use crate::constants::{CONFIG_FILE_PATH, DEFAULT_ZOOM_LEVEL};
 
 /// User configuration descriptor which contains all of the configurable settings
 /// for this game. These *should* be modified within the game, but one can 
