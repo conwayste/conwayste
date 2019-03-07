@@ -815,7 +815,8 @@ impl Universe {
     pub fn toggle(&mut self, col: usize, row: usize, player_id: usize) -> ConwayResult<CellState> {
         use ConwayError::*;
         if !self.player_writable[player_id].contains(col as isize, row as isize) {
-            return Err(AccessDenied{reason: format!("outside writable area: col={}, row={}", col, row)});
+            return Err(AccessDenied{reason: format!("outside writable area for player {}: col={}, row={}",
+                                                    player_id, col, row)});
         }
 
         let word_col = col/64;
@@ -827,7 +828,8 @@ impl Universe {
                 return Err(AccessDenied{reason: format!("cannot write to wall cell: col={}, row={}", col, row)});
             }
             if (known[row][word_col] >> shift) & 1 == 0 {
-                return Err(AccessDenied{reason: format!("not a known cell: col={}, row={}", col, row)});
+                return Err(AccessDenied{reason: format!("not a known cell for player {}: col={}, row={}",
+                                                        player_id, col, row)});
             }
         }
         Ok(self.toggle_unchecked(col, row, Some(player_id)))
@@ -1871,7 +1873,7 @@ mod universe_tests {
         uni.gen_states[state_index].known.modify_bits_in_word(row, col, 1<<63, BitOperation::Set);
 
         assert_eq!(uni.toggle(row, col, player_one),
-                   Err(AccessDenied{reason: "outside writable area: col=0, row=0".to_owned()}));
+                   Err(AccessDenied{reason: "outside writable area for player 0: col=0, row=0".to_owned()}));
         assert_eq!(uni.toggle(row, col, player_two), Ok(CellState::Alive(Some(player_two))));
     }
 
@@ -1888,7 +1890,7 @@ mod universe_tests {
 
         // cannot test with player_one because this wall cell is outside their writable area
         assert_eq!(uni.toggle(row, col, player_two),
-                   Err(AccessDenied{reason: "not a known cell: col=0, row=0".to_owned()}));
+                   Err(AccessDenied{reason: "not a known cell for player 1: col=0, row=0".to_owned()}));
     }
 
     #[test]
