@@ -4,6 +4,7 @@ version = "0.2.0"
 authors = ["Aaron Miller <aaron.miller04@gmail.com>", "mang"]
 license = "GPL-3.0+"
 description = "library for multi-player game of life Conwayste"
+edition = "2018"
 
 [dependencies]
 env_logger = "0.3"

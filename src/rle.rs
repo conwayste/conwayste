@@ -20,8 +20,8 @@ pub const NO_OP_CHAR: char = '"';
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
-use error::{ConwayError, ConwayResult};
-use grids::{BitGrid, CharGrid};
+use crate::error::{ConwayError, ConwayResult};
+use crate::grids::{BitGrid, CharGrid};
 
 
 /// This contains just the RLE pattern string. For example: "4bobo$7b3o!"

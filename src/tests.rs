@@ -16,11 +16,11 @@
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
 mod universe_tests {
-    use universe::*;
-    use universe::test_helpers::*;
-    use grids::CharGrid;
-    use rle::Pattern;
-    use error::ConwayError::*;
+    use crate::universe::*;
+    use crate::universe::test_helpers::*;
+    use crate::grids::CharGrid;
+    use crate::rle::Pattern;
+    use crate::error::ConwayError::*;
 
 
     #[test]
@@ -398,9 +398,9 @@ mod universe_tests {
 
 
 mod genstate_tests {
-    use universe::test_helpers::*;
-    use grids::CharGrid;
-    use rle::Pattern;
+    use crate::universe::test_helpers::*;
+    use crate::grids::CharGrid;
+    use crate::rle::Pattern;
 
     #[test]
     fn gen_state_get_run_simple() {
@@ -480,7 +480,7 @@ mod genstate_tests {
 
 
 mod region_tests {
-    use universe::*;
+    use crate::universe::*;
 
     #[test]
     fn region_with_valid_dims() {
@@ -560,7 +560,7 @@ mod region_tests {
 }
 
 mod cellstate_tests {
-    use universe::*;
+    use crate::universe::*;
 
     #[test]
     fn cell_states_as_char() {
@@ -581,9 +581,9 @@ mod cellstate_tests {
 }
 
 mod grid_tests {
-    use universe::Region;
-    use rle::Pattern;
-    use grids::*;
+    use crate::universe::Region;
+    use crate::rle::Pattern;
+    use crate::grids::*;
 
     #[test]
     fn height_works() {
@@ -916,8 +916,8 @@ mod grid_tests {
 
 
 mod rle_tests {
-    use rle::*;
-    use grids::BitGrid;
+    use crate::rle::*;
+    use crate::grids::BitGrid;
     use std::str::FromStr;
 
     // Glider gun

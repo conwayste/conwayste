@@ -17,9 +17,9 @@
 
 use std::{char, cmp, fmt};
 
-use error::{ConwayError, ConwayResult};
-use grids::{BitGrid, BitOperation, CharGrid};
-use rle::{Pattern, NO_OP_CHAR};
+use crate::error::{ConwayError, ConwayResult};
+use crate::grids::{BitGrid, BitOperation, CharGrid};
+use crate::rle::{Pattern, NO_OP_CHAR};
 
 /// Builder paradigm to create `Universe` structs with default values.
 pub struct BigBang {
@@ -666,9 +666,9 @@ impl fmt::Display for Universe {
                         s.push(' ');
                     }
                 }
-                try!(write!(f, "{}", s));
+                write!(f, "{}", s)?;
             }
-            try!(write!(f, "\n"));
+            write!(f, "\n")?;
         }
         Ok(())
     }
@@ -1768,7 +1768,7 @@ pub mod test_helpers {
 mod universe_tests {
     use super::*;
     use super::test_helpers::*;
-    use error::ConwayError::*;
+    use crate::error::ConwayError::*;
 
     #[test]
     fn next_single_gen_test_data1_with_wrapping() {
