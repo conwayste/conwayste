@@ -15,24 +15,6 @@
  *  You should have received a copy of the GNU General Public License
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
-/*
-use std::string::ToString;
-use std::fmt;
-
-#[derive(Debug)]
-pub struct OptionalPoint(Option<(usize, usize)>);
-
-impl fmt::Display for OptionalPoint {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let OptionalPoint(Some((col, row))) = *self {
-            write!(f, "Point(col: {}, row: {})", col, row)
-        } else {
-            write!(f, "<unspecified grid point>")
-        }
-    }
-}
-*/
-
 custom_error! {pub ConwayError
     InvalidData {reason: String} = "ConwayError->InvalidData->{reason}",
     AccessDenied{reason: String} = "ConwayError->AccessDenied->{reason}"
