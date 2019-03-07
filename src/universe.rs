@@ -17,11 +17,9 @@
 
 use std::{char, cmp, fmt};
 
+use error::{ConwayError, ConwayResult};
 use grids::{BitGrid, BitOperation, CharGrid};
-
 use rle::{Pattern, NO_OP_CHAR};
-
-type UniverseError = String;
 
 /// Builder paradigm to create `Universe` structs with default values.
 pub struct BigBang {
@@ -131,7 +129,7 @@ impl BigBang {
     /// This is used to grant players visibility into the fog when
     /// they are competing against other players and they create
     /// cells outside of their own writiable regions.
-    pub fn fog_radius(mut self, new_radius : usize) -> BigBang {
+    pub fn fog_radius(mut self, new_radius: usize) -> BigBang {
         self.fog_radius = new_radius;
         self
     }
@@ -144,7 +142,7 @@ impl BigBang {
     /// - if `width` or `height` are not positive, or if `width` is not a multiple of 64.
     /// - if `fog_radius` is not positive.
     /// - if `history` is not positive.
-    pub fn birth(&self) -> Result<Universe, UniverseError> {
+    pub fn birth(&self) -> ConwayResult<Universe> {
         let universe = Universe::new(
             self.width,
             self.height,
@@ -814,9 +812,10 @@ impl Universe {
     /// # Errors
     /// 
     /// It is an error to toggle outside player's writable area, or to toggle a wall or an unknown cell.
-    pub fn toggle(&mut self, col: usize, row: usize, player_id: usize) -> Result<CellState, ()> {
+    pub fn toggle(&mut self, col: usize, row: usize, player_id: usize) -> ConwayResult<CellState> {
+        use ConwayError::*;
         if !self.player_writable[player_id].contains(col as isize, row as isize) {
-            return Err(());
+            return Err(AccessDenied{reason: format!("outside writable area: col={}, row={}", col, row)});
         }
 
         let word_col = col/64;
@@ -824,8 +823,11 @@ impl Universe {
         {
             let wall  = &self.gen_states[self.state_index].wall_cells;
             let known = &self.gen_states[self.state_index].known;
-            if (wall[row][word_col] >> shift) & 1 == 1 || (known[row][word_col] >> shift) & 1 == 0 {
-                return Err(());
+            if (wall[row][word_col] >> shift) & 1 == 1 {
+                return Err(AccessDenied{reason: format!("cannot write to wall cell: col={}, row={}", col, row)});
+            }
+            if (known[row][word_col] >> shift) & 1 == 0 {
+                return Err(AccessDenied{reason: format!("not a known cell: col={}, row={}", col, row)});
             }
         }
         Ok(self.toggle_unchecked(col, row, Some(player_id)))
@@ -843,24 +845,25 @@ impl Universe {
                history:         usize,
                num_players:     usize,
                player_writable: Vec<Region>,
-               fog_radius:      usize) -> Result<Universe, UniverseError> {
+               fog_radius:      usize) -> ConwayResult<Universe> {
+        use ConwayError::*;
         if height == 0 {
-            return Err("Height must be positive".to_owned());
+            return Err(InvalidData{reason:"Height must be positive".to_owned()});
         }
 
         let width_in_words = width/64;
         if width % 64 != 0 {
-            return Err("Width must be a multiple of 64".to_owned());
+            return Err(InvalidData{reason: "Width must be a multiple of 64".to_owned()});
         } else if width == 0 {
-            return Err("Width must be positive".to_owned());
+            return Err(InvalidData{reason: "Width must be positive".to_owned()});
         }
 
         if history == 0 {
-            return Err("History must be positive".to_owned());
+            return Err(InvalidData{reason: "History must be positive".to_owned()});
         }
 
         if fog_radius == 0 {
-            return Err("Fog radius must be positive".to_owned());
+            return Err(InvalidData{reason: "Fog radius must be positive".to_owned()});
         }
 
         // Initialize all generational states with the default appropriate bitgrids
@@ -1464,7 +1467,7 @@ impl Universe {
     ///     - there is already a greater generation present, or
     ///     - the base generation of this diff (that is, `diff.gen0`) could not be found.
     ///       A base generation of 0 is a special case -- it is always found.
-    /// * `Err(msg)` if the update is invalid, either because:
+    /// * `Err(InvalidData{reason: msg})` if the update is invalid, either because:
     ///     - the difference between `diff.gen0` and `diff.gen1` is too large. Since the server
     ///     knows the client's buffer size, this should not happen. In this case, no updates are
     ///     made to the `Universe`. A base generation of 0 is a special case -- the difference is
@@ -1478,14 +1481,16 @@ impl Universe {
     /// This will panic if:
     /// * `gen0` is not less than `gen1`.
     /// * `visibility` is out of range.
-    pub fn apply(&mut self, diff: &GenStateDiff, visibility: Option<usize>) -> Result<Option<usize>, String> {
+    pub fn apply(&mut self, diff: &GenStateDiff, visibility: Option<usize>) -> ConwayResult<Option<usize>> {
+        use ConwayError::*;
         assert!(diff.gen0 < diff.gen1, format!("expected gen0 < gen1, but {} >= {}",
                                                diff.gen0, diff.gen1));
         // if diff too large, return Err(...)
         let gen_state_len = self.gen_states.len();
         if diff.gen0 > 0 && diff.gen1 - diff.gen0 >= gen_state_len {
-            return Err(format!("diff is across too many generations to be applied: {} >= {}",
-                               diff.gen1 - diff.gen0, gen_state_len));
+            return Err(InvalidData {
+                          reason: format!("diff is across too many generations to be applied: {} >= {}",
+                                          diff.gen1 - diff.gen0, gen_state_len)});
         }
 
         // 1) If incremental update, find the gen0 in our gen_states; if not found, return
@@ -1561,6 +1566,7 @@ impl Universe {
         self.gen_states[gen1_idx].gen_or_none = Some(new_gen);
 
         // 6) apply the diff!
+        // TODO: wrap the error message rather than just passing it through
         diff.pattern.to_grid(&mut self.gen_states[gen1_idx], visibility)?;
 
         Ok(Some(new_gen))
@@ -1760,6 +1766,7 @@ pub mod test_helpers {
 mod universe_tests {
     use super::*;
     use super::test_helpers::*;
+    use error::ConwayError::*;
 
     #[test]
     fn next_single_gen_test_data1_with_wrapping() {
@@ -1839,7 +1846,7 @@ mod universe_tests {
     #[test]
     fn toggle_checked_players_cannot_toggle_a_wall_cell() {
         let mut uni = generate_test_universe_with_default_params(UniType::Server);
-        let player_one = 0;
+        //let player_one = 0;
         let player_two = 1;
         let row = 0;
         let col = 0;
@@ -1847,8 +1854,9 @@ mod universe_tests {
 
         uni.gen_states[state_index].wall_cells.modify_bits_in_word(row, col, 1<<63, BitOperation::Set);
 
-        assert_eq!(uni.toggle(row, col, player_one), Err(()));
-        assert_eq!(uni.toggle(row, col, player_two), Err(()));
+        // cannot test with player_one because this wall cell is outside their writable area
+        assert_eq!(uni.toggle(row, col, player_two),
+                   Err(AccessDenied{reason: "cannot write to wall cell: col=0, row=0".to_owned()}));
     }
 
     #[test]
@@ -1862,14 +1870,15 @@ mod universe_tests {
 
         uni.gen_states[state_index].known.modify_bits_in_word(row, col, 1<<63, BitOperation::Set);
 
-        assert_eq!(uni.toggle(row, col, player_one), Err(()));
+        assert_eq!(uni.toggle(row, col, player_one),
+                   Err(AccessDenied{reason: "outside writable area: col=0, row=0".to_owned()}));
         assert_eq!(uni.toggle(row, col, player_two), Ok(CellState::Alive(Some(player_two))));
     }
 
     #[test]
     fn toggle_checked_players_cannot_toggle_an_unknown_cell() {
         let mut uni = generate_test_universe_with_default_params(UniType::Server);
-        let player_one = 0;
+        //let player_one = 0;
         let player_two = 1;
         let row = 0;
         let col = 0;
@@ -1877,8 +1886,9 @@ mod universe_tests {
 
         uni.gen_states[state_index].known.modify_bits_in_word(row, col, 1<<63, BitOperation::Clear);
 
-        assert_eq!(uni.toggle(row, col, player_one), Err(()));
-        assert_eq!(uni.toggle(row, col, player_two), Err(()));
+        // cannot test with player_one because this wall cell is outside their writable area
+        assert_eq!(uni.toggle(row, col, player_two),
+                   Err(AccessDenied{reason: "not a known cell: col=0, row=0".to_owned()}));
     }
 
     #[test]

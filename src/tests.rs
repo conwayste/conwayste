@@ -20,6 +20,7 @@ mod universe_tests {
     use universe::test_helpers::*;
     use grids::CharGrid;
     use rle::Pattern;
+    use error::ConwayError::*;
 
 
     #[test]
@@ -169,7 +170,8 @@ mod universe_tests {
         let row = 0;
         let col = 0;
 
-        assert_eq!(uni.toggle(row, col, player_one), Err(()));
+        assert_eq!(uni.toggle(row, col, player_one),
+                   Err(AccessDenied{reason: "outside writable area: col=0, row=0".to_owned()}));
         assert_eq!(uni.toggle(row, col, player_two).unwrap(), CellState::Alive(Some(player_two)));
     }
 
@@ -294,7 +296,7 @@ mod universe_tests {
         let base = 3;
         let diff = GenStateDiff{gen0: base, gen1: base + GEN_BUFSIZE + 1, pattern: Pattern("!".to_owned())};
         let mut c_uni = generate_test_universe_with_default_params(UniType::Client);
-        assert_eq!(c_uni.apply(&diff, None), Err("diff is across too many generations to be applied: 17 >= 16".to_owned()));
+        assert_eq!(c_uni.apply(&diff, None), Err(InvalidData{reason: "diff is across too many generations to be applied: 17 >= 16".to_owned()}));
     }
 
     #[test]

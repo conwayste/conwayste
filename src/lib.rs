@@ -17,10 +17,14 @@
 
 #[macro_use] extern crate log;
 extern crate env_logger;
+#[macro_use] extern crate custom_error;
 
 pub mod universe;
 pub mod grids;
 pub mod rle;
+pub mod error;
+
+pub use error::{ConwayError, ConwayResult};
 
 #[cfg(test)]
 pub mod tests;

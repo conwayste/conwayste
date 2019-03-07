@@ -18,9 +18,10 @@
 const MAX_NUMBER: usize = 50000;
 pub const NO_OP_CHAR: char = '"';
 
-use grids::{BitGrid, CharGrid};
 use std::collections::BTreeMap;
 use std::str::FromStr;
+use error::{ConwayError, ConwayResult};
+use grids::{BitGrid, CharGrid};
 
 
 /// This contains just the RLE pattern string. For example: "4bobo$7b3o!"
@@ -56,20 +57,21 @@ impl PatternFile {
         self.header_line.y
     }
 
-    pub fn to_new_bit_grid(&self) -> Result<BitGrid, String> {
+    pub fn to_new_bit_grid(&self) -> ConwayResult<BitGrid> {
         self.pattern.to_new_bit_grid(self.width(), self.height())
     }
 
-    pub fn to_grid<G: CharGrid>(&self, grid: &mut G, visibility: Option<usize>) -> Result<(), String> {
+    pub fn to_grid<G: CharGrid>(&self, grid: &mut G, visibility: Option<usize>) -> ConwayResult<()> {
         self.pattern.to_grid(grid, visibility)
     }
 }
 
 impl FromStr for PatternFile {
-    type Err = String;
+    type Err = ConwayError;
 
     /// Generate a PatternFile from the contents of an RLE file.
     fn from_str(file_contents: &str) -> Result<Self, Self::Err> {
+        use ConwayError::*;
         let mut comment_lines: Vec<String> = vec![];
         let mut comments_ended = false;
         let mut opt_header_line: Option<HeaderLine> = None;
@@ -77,7 +79,7 @@ impl FromStr for PatternFile {
         for line in file_contents.lines() {
             if line.starts_with("#") {
                 if comments_ended {
-                    return Err("Found a comment line after a non-comment line".to_owned());
+                    return Err(InvalidData{reason: "Found a comment line after a non-comment line".to_owned()});
                 }
                 comment_lines.push(line.to_owned());
                 continue;
@@ -98,10 +100,10 @@ impl FromStr for PatternFile {
             };
         }
         if opt_header_line.is_none() {
-            return Err("missing header line".to_owned());
+            return Err(InvalidData{reason: "missing header line".to_owned()});
         }
         if pattern_lines.is_empty() {
-            return Err("missing pattern lines".to_owned());
+            return Err(InvalidData{reason: "missing pattern lines".to_owned()});
         }
         let mut pattern = "".to_owned();
         for line in pattern_lines {
@@ -117,9 +119,10 @@ impl FromStr for PatternFile {
 
 
 impl FromStr for HeaderLine {
-    type Err = String;
+    type Err = ConwayError;
 
     fn from_str(line: &str) -> Result<Self, Self::Err> {
+        use ConwayError::*;
         let mut map = BTreeMap::new();
         for term in line.split(",") {
             let parts = term
@@ -127,28 +130,34 @@ impl FromStr for HeaderLine {
                 .map(|part| part.trim())
                 .collect::<Vec<&str>>();
             if parts.len() != 2 {
-                return Err(format!("unexpected term in header line: {:?}", term));
+                return Err(InvalidData{reason: format!("unexpected term in header line: {:?}", term)});
             }
             map.insert(parts[0], parts[1]);
         }
         if !map.contains_key("x") || !map.contains_key("y") {
-            return Err(format!("header line missing `x` and/or `y`: {:?}", line));
+            return Err(InvalidData{reason: format!("header line missing `x` and/or `y`: {:?}", line)});
         }
-        let x = usize::from_str(map.get("x").unwrap()).map_err(|e| format!("Error while parsing x: {}", e))?;
-        let y = usize::from_str(map.get("y").unwrap()).map_err(|e| format!("Error while parsing y: {}", e))?;
+        let x = usize::from_str(map.get("x").unwrap()).map_err(|e| {
+            InvalidData{reason: format!("Error while parsing x: {}", e)}
+        })?;
+        let y = usize::from_str(map.get("y").unwrap()).map_err(|e| {
+            InvalidData{reason: format!("Error while parsing y: {}", e)}
+        })?;
         let rule =  map.get("rule").map(|s: &&str| (*s).to_owned());
         Ok(HeaderLine { x, y, rule })
     }
 }
 
 
-fn digits_to_number(digits: &Vec<char>) -> Result<usize, String> {
+fn digits_to_number(digits: &Vec<char>) -> ConwayResult<usize> {
+    use ConwayError::*;
     let mut result = 0;
     for ch in digits {
         let d = ch.to_digit(10).unwrap();
         result = result * 10 + d as usize;
         if result > MAX_NUMBER {
-            return Err(format!("Could not parse digits {:?} because larger than {}", digits, MAX_NUMBER));
+            return Err(InvalidData{reason: format!("Could not parse digits {:?} because larger than {}",
+                                                   digits, MAX_NUMBER)});
         }
     }
     Ok(result)
@@ -158,7 +167,7 @@ fn digits_to_number(digits: &Vec<char>) -> Result<usize, String> {
 impl Pattern {
     /// Creates a BitGrid out of this pattern. If there are no parse errors, the result contains
     /// the smallest BitGrid that fits a pattern `width` cells wide and `height` cells high.
-    pub fn to_new_bit_grid(&self, width: usize, height: usize) -> Result<BitGrid, String> {
+    pub fn to_new_bit_grid(&self, width: usize, height: usize) -> ConwayResult<BitGrid> {
         let word_width = (width - 1)/64 + 1;
         let mut grid = BitGrid::new(word_width, height);
         self.to_grid(&mut grid, None)?;
@@ -177,7 +186,8 @@ impl Pattern {
     ///
     /// If there is a parsing error, `grid` may be in a partially written state. If this is a
     /// problem, then back up `grid` before calling this.
-    pub fn to_grid<G: CharGrid>(&self, grid: &mut G, visibility: Option<usize>) -> Result<(), String> {
+    pub fn to_grid<G: CharGrid>(&self, grid: &mut G, visibility: Option<usize>) -> ConwayResult<()> {
+        use ConwayError::*;
         let mut col: usize = 0;
         let mut row: usize = 0;
         let mut char_indices = self.0.char_indices();
@@ -194,12 +204,13 @@ impl Pattern {
                 None => break
             };
             if digits.len() > 0 && ch == '!' {
-                return Err(format!("Cannot have {} after number at {}", ch, i));
+                return Err(InvalidData{reason: format!("Cannot have {} after number at {}", ch, i)});
             }
             match ch {
                 _ if G::is_valid(ch) => {
                     // cell
                     let number = if digits.len() > 0 {
+                        //TODO: wrap errors from digits_to_number rather than just forwarding
                         digits_to_number(&digits)?
                     } else { 1 };
                     digits.clear();
@@ -233,12 +244,12 @@ impl Pattern {
                     digits.push(ch);
                 }
                 _ => {
-                    return Err(format!("Unrecognized character {} at {}", ch, i));
+                    return Err(InvalidData{reason: format!("Unrecognized character {} at {}", ch, i)});
                 }
             }
         }
         if !complete {
-            return Err("Premature termination".to_owned());
+            return Err(InvalidData{reason: "Premature termination".to_owned()});
         }
         Ok(())
     }
