@@ -1,4 +1,4 @@
-/*  Copyright 2017-2018 the Conwayste Developers.
+/*  Copyright 2016-2019 the Conwayste Developers.
  *
  *  This file is part of libconway.
  *
@@ -17,11 +17,9 @@
 
 use std::{char, cmp, fmt};
 
+use crate::error::{ConwayError, ConwayResult};
 use crate::grids::{BitGrid, BitOperation, CharGrid};
-
 use crate::rle::{Pattern, NO_OP_CHAR};
-
-type UniverseError = String;
 
 /// Builder paradigm to create `Universe` structs with default values.
 pub struct BigBang {
@@ -131,7 +129,7 @@ impl BigBang {
     /// This is used to grant players visibility into the fog when
     /// they are competing against other players and they create
     /// cells outside of their own writiable regions.
-    pub fn fog_radius(mut self, new_radius : usize) -> BigBang {
+    pub fn fog_radius(mut self, new_radius: usize) -> BigBang {
         self.fog_radius = new_radius;
         self
     }
@@ -144,11 +142,11 @@ impl BigBang {
     /// - if `width` or `height` are not positive, or if `width` is not a multiple of 64.
     /// - if `fog_radius` is not positive.
     /// - if `history` is not positive.
-    pub fn birth(&self) -> Result<Universe, UniverseError> {
+    pub fn birth(&self) -> ConwayResult<Universe> {
         let universe = Universe::new(
             self.width,
             self.height,
-            self.is_server,
+            self.is_server,        // if false, allow receiving generation 1 as GenStateDiff
             self.history,
             self.num_players,      // number of players in the game (player numbers are 0-based)
             self.player_writable.clone(), // writable region (indexed by player_id)
@@ -186,10 +184,10 @@ pub struct GenState {
     player_states: Vec<PlayerGenState>,  // player-specific info (indexed by player_id)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GenStateDiff {
-    pub gen0:    usize,
-    pub gen1:    usize,
+    pub gen0:    usize,         // must be >= 0; zero means diff is based off of the beginning of time
+    pub gen1:    usize,         // must be >= 1
     pub pattern: Pattern,
 }
 
@@ -814,9 +812,11 @@ impl Universe {
     /// # Errors
     /// 
     /// It is an error to toggle outside player's writable area, or to toggle a wall or an unknown cell.
-    pub fn toggle(&mut self, col: usize, row: usize, player_id: usize) -> Result<CellState, ()> {
+    pub fn toggle(&mut self, col: usize, row: usize, player_id: usize) -> ConwayResult<CellState> {
+        use ConwayError::*;
         if !self.player_writable[player_id].contains(col as isize, row as isize) {
-            return Err(());
+            return Err(AccessDenied{reason: format!("outside writable area for player {}: col={}, row={}",
+                                                    player_id, col, row)});
         }
 
         let word_col = col/64;
@@ -824,8 +824,12 @@ impl Universe {
         {
             let wall  = &self.gen_states[self.state_index].wall_cells;
             let known = &self.gen_states[self.state_index].known;
-            if (wall[row][word_col] >> shift) & 1 == 1 || (known[row][word_col] >> shift) & 1 == 0 {
-                return Err(());
+            if (wall[row][word_col] >> shift) & 1 == 1 {
+                return Err(AccessDenied{reason: format!("cannot write to wall cell: col={}, row={}", col, row)});
+            }
+            if (known[row][word_col] >> shift) & 1 == 0 {
+                return Err(AccessDenied{reason: format!("not a known cell for player {}: col={}, row={}",
+                                                        player_id, col, row)});
             }
         }
         Ok(self.toggle_unchecked(col, row, Some(player_id)))
@@ -843,24 +847,25 @@ impl Universe {
                history:         usize,
                num_players:     usize,
                player_writable: Vec<Region>,
-               fog_radius:      usize) -> Result<Universe, UniverseError> {
+               fog_radius:      usize) -> ConwayResult<Universe> {
+        use ConwayError::*;
         if height == 0 {
-            return Err("Height must be positive".to_owned());
+            return Err(InvalidData{reason:"Height must be positive".to_owned()});
         }
 
         let width_in_words = width/64;
         if width % 64 != 0 {
-            return Err("Width must be a multiple of 64".to_owned());
+            return Err(InvalidData{reason: "Width must be a multiple of 64".to_owned()});
         } else if width == 0 {
-            return Err("Width must be positive".to_owned());
+            return Err(InvalidData{reason: "Width must be positive".to_owned()});
         }
 
         if history == 0 {
-            return Err("History must be positive".to_owned());
+            return Err(InvalidData{reason: "History must be positive".to_owned()});
         }
 
         if fog_radius == 0 {
-            return Err("Fog radius must be positive".to_owned());
+            return Err(InvalidData{reason: "Fog radius must be positive".to_owned()});
         }
 
         // Initialize all generational states with the default appropriate bitgrids
@@ -889,7 +894,7 @@ impl Universe {
             let mut known = BitGrid::new(width_in_words, height);
             
             if is_server && i == 0 {
-                // could use modify_region but its much cheaper this way
+                // could use modify_region but it's much cheaper this way
                 for y in 0 .. height {
                     for x in 0 .. width_in_words {
                         known[y][x] = u64::max_value();   // if server, all cells are known
@@ -898,7 +903,7 @@ impl Universe {
             }
 
             gen_states.push(GenState {
-                gen_or_none:   if i == 0 { Some(1) } else { None },
+                gen_or_none:   if i == 0 && is_server { Some(1) } else { None },
                 cells:         BitGrid::new(width_in_words, height),
                 wall_cells:    BitGrid::new(width_in_words, height),
                 known:         known,
@@ -1446,32 +1451,70 @@ impl Universe {
     }
 
 
-    // return Ok(Some(new_gen)) or Ok(None) if nothing new
-    // The "nothing new" case can happen if:
-    //      - the generation to be applied is already present
-    //      - there is already a greater generation present
-    //      - the base generation of this diff could not be found
-    // return Err("invalid - too large difference, gen0:<num> gen1:<num>") if the difference
-    // between `diff.gen0` and `diff.gen1` is too large.
-    // gen0 must be less than gen1, otherwise a panic results
-    // Note: if pattern is invalid (that is, `to_grid` would return an error), the Universe will
-    // not be restored to its original state.
-    pub fn apply(&mut self, diff: &GenStateDiff, visibility: Option<usize>) -> Result<Option<usize>, String> {
+    /// Apply `diff` to our `Universe`. Generally this is executed by the client in response to an
+    /// update from the server.
+    ///
+    /// # Arguments
+    ///
+    /// * `diff`: reference to a `GenStateDiff` containing a base generation number, a new
+    /// generation number, and a pattern showing how to make the new generation out of the base.
+    /// * `visibility`: an optional `player_id` indicating the player to apply this for. If `None`,
+    /// the pattern must not have any fog.
+    ///
+    /// # Return values
+    ///
+    /// * `Ok(Some(new_gen))` if the update was applied.
+    /// * `Ok(None)` if the update is valid but was not applied because either:
+    ///     - the generation to be applied is already present,
+    ///     - there is already a greater generation present, or
+    ///     - the base generation of this diff (that is, `diff.gen0`) could not be found.
+    ///       A base generation of 0 is a special case -- it is always found.
+    /// * `Err(InvalidData{reason: msg})` if the update is invalid, either because:
+    ///     - the difference between `diff.gen0` and `diff.gen1` is too large. Since the server
+    ///     knows the client's buffer size, this should not happen. In this case, no updates are
+    ///     made to the `Universe`. A base generation of 0 is a special case -- the difference is
+    ///     never too large.
+    ///     - the RLE pattern is invalid. NOTE: in this case, the pattern is only partially written
+    ///     and all other updates (e.g., increasing the generation count) are made as if it were
+    ///     valid.
+    ///
+    /// # Panics
+    ///
+    /// This will panic if:
+    /// * `gen0` is not less than `gen1`.
+    /// * `visibility` is out of range.
+    pub fn apply(&mut self, diff: &GenStateDiff, visibility: Option<usize>) -> ConwayResult<Option<usize>> {
+        use ConwayError::*;
         assert!(diff.gen0 < diff.gen1, format!("expected gen0 < gen1, but {} >= {}",
                                                diff.gen0, diff.gen1));
         // if diff too large, return Err(...)
         let gen_state_len = self.gen_states.len();
-        if diff.gen1 - diff.gen0 >= gen_state_len {
-            return Err(format!("diff is across too many generations to be applied: {} >= {}",
-                               diff.gen1 - diff.gen0, gen_state_len));
+        if diff.gen0 > 0 && diff.gen1 - diff.gen0 >= gen_state_len {
+            return Err(InvalidData {
+                          reason: format!("diff is across too many generations to be applied: {} >= {}",
+                                          diff.gen1 - diff.gen0, gen_state_len)});
         }
 
-        // 1) find the gen0 in our gen_states; if not found, return Ok(None)
+        // 1) If incremental update, find the gen0 in our gen_states; if not found, return
+        //    Ok(None).
         let mut opt_gen0_idx = None;
+        let mut opt_largest_gen_idx = None;
+        let mut opt_largest_gen_value = None;
         for i in 0..self.gen_states.len() {
             if let Some(gen) = self.gen_states[i].gen_or_none {
-                if gen == diff.gen0 {
-                    opt_gen0_idx = Some(i);
+                if diff.gen0 > 0 {
+                    if gen == diff.gen0 {
+                        opt_gen0_idx = Some(i);
+                    }
+                }
+                if let Some(largest_gen) = opt_largest_gen_value {
+                    if gen > largest_gen {
+                        opt_largest_gen_value = Some(gen);
+                        opt_largest_gen_idx   = Some(i);
+                    }
+                } else {
+                    opt_largest_gen_value = Some(gen);
+                    opt_largest_gen_idx   = Some(i);
                 }
                 // 2) ensure that no generation is >= gen1; if so, return Ok(None)
                 if gen >= diff.gen1 {
@@ -1479,37 +1522,44 @@ impl Universe {
                 }
             }
         }
-        if opt_gen0_idx.is_none() {
+        if diff.gen0 > 0 && opt_gen0_idx.is_none() {
             return Ok(None);
         }
-        let gen0_idx = opt_gen0_idx.unwrap();
 
         // 3) make room for the new gen_state (make room in the circular buffer)
         for i in 0..self.gen_states.len() {
             if let Some(gen) = self.gen_states[i].gen_or_none {
-                if gen <= diff.gen1 - gen_state_len {
+                if gen + gen_state_len <= diff.gen1 {
                     self.gen_states[i].gen_or_none = None; // indicate uninitialized
                 }
             }
         }
 
-        // 4a) copy from the gen_state for gen0 to what will be the gen_state for gen1
+        let gen1_idx = if let Some(largest_gen_idx) = opt_largest_gen_idx {
+            let largest_gen = opt_largest_gen_value.unwrap();
+            (largest_gen_idx + diff.gen1 - largest_gen) % gen_state_len
+        } else {
+            0
+        };
+        // 4) If incremental update, then copy from the gen_state for gen0 to what will be the
+        //    gen_state for gen1.
         // TODO: This needs some serious cleanup
-        let gen1_idx = (gen0_idx + diff.gen1 - diff.gen0) % gen_state_len;
-        let cut_idx = cmp::max(gen0_idx, gen1_idx);
-        {
-            let (lower, upper): (&mut [GenState], &mut [GenState]) = self.gen_states.split_at_mut(cut_idx);
-            if gen1_idx < cut_idx {
-                lower[gen1_idx].clear();
-                upper[gen0_idx - cut_idx].copy(&mut lower[gen1_idx]); // this is an |= operation, hence the clear before this
-            } else {
-                upper[gen1_idx - cut_idx].clear();
-                lower[gen0_idx].copy(&mut upper[gen1_idx - cut_idx]); // this is an |= operation, hence the clear before this
+        if diff.gen0 > 0 {
+            let gen0_idx = opt_gen0_idx.unwrap();
+            let cut_idx = cmp::max(gen0_idx, gen1_idx);
+            {
+                let (lower, upper): (&mut [GenState], &mut [GenState]) = self.gen_states.split_at_mut(cut_idx);
+                if gen1_idx < cut_idx {
+                    lower[gen1_idx].clear();
+                    upper[gen0_idx - cut_idx].copy(&mut lower[gen1_idx]); // this is an |= operation, hence the clear before this
+                } else {
+                    upper[gen1_idx - cut_idx].clear();
+                    lower[gen0_idx].copy(&mut upper[gen1_idx - cut_idx]); // this is an |= operation, hence the clear before this
+                }
             }
+        } else {
+            self.gen_states[gen1_idx].clear();
         }
-
-        // 4b) apply the diff!
-        diff.pattern.to_grid(&mut self.gen_states[gen1_idx], visibility)?;
 
         // 5) update self.generation, self.state_index, and self.gen_states[gen1_idx].gen_or_none
         let new_gen = diff.gen1;
@@ -1517,7 +1567,46 @@ impl Universe {
         self.state_index = gen1_idx;
         self.gen_states[gen1_idx].gen_or_none = Some(new_gen);
 
+        // 6) apply the diff!
+        // TODO: wrap the error message rather than just passing it through
+        diff.pattern.to_grid(&mut self.gen_states[gen1_idx], visibility)?;
+
         Ok(Some(new_gen))
+    }
+
+    /// If it's possible to generate a diff between the GenStates specified by `gen0` and `gen1`, do
+    /// so. Otherwise, return `None`.
+    ///
+    /// The optional `visibility` specifies the player this is viewed as.
+    ///
+    /// # Panics
+    ///
+    /// * Panics if `gen0` >= `gen1`.
+    /// * Panics if `visibility` is out of range.
+    pub fn diff(&self, gen0: usize, gen1: usize, visibility: Option<usize>) -> Option<GenStateDiff> {
+        assert!(gen0 < gen1, format!("expected gen0 < gen1, but {} >= {}", gen0, gen1));
+        let mut opt_genstate0 = None;
+        let mut opt_genstate1 = None;
+        for gen_idx in 0..self.gen_states.len() {
+            let gs = &self.gen_states[gen_idx];
+            if let Some(gen) = gs.gen_or_none {
+                if gen == gen0 {
+                    opt_genstate0 = Some(gs);
+                } else if gen == gen1 {
+                    opt_genstate1 = Some(gs);
+                }
+            }
+        }
+        if gen0 == 0 && opt_genstate1.is_some() {
+            let pattern = opt_genstate1.unwrap().to_pattern(visibility);
+            Some(GenStateDiff{gen0, gen1, pattern})
+        } else {
+            if opt_genstate0.is_none() || opt_genstate1.is_none() {
+                None
+            } else {
+                Some(opt_genstate0.unwrap().diff(opt_genstate1.unwrap(), visibility))
+            }
+        }
     }
 }
 
@@ -1632,11 +1721,18 @@ impl Region {
 
 
 #[cfg(test)]
-mod universe_tests {
+pub mod test_helpers {
     use super::*;
-    use rle::Pattern;
 
-    fn generate_test_universe_with_default_params() -> Universe {
+    #[derive(PartialEq)]
+    pub enum UniType {
+        Server,
+        Client,
+    }
+
+    pub const GEN_BUFSIZE: usize = 16;
+
+    pub fn generate_test_universe_with_default_params(uni_type: UniType) -> Universe {
         let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
         let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
         let players = vec![player0, player1];
@@ -1644,8 +1740,8 @@ mod universe_tests {
         let bigbang = BigBang::new()
             .width(256)
             .height(128)
-            .server_mode(true)
-            .history(16)
+            .server_mode(uni_type == UniType::Server)
+            .history(GEN_BUFSIZE)
             .fog_radius(9)
             .add_players(players)
             .birth();
@@ -1653,58 +1749,26 @@ mod universe_tests {
         bigbang.unwrap()
     }
 
-    #[test]
-    fn new_universe_with_valid_dims() {
-        let uni = generate_test_universe_with_default_params();
-        let universe_as_region = Region::new(0, 0, 256, 128);
-
-        assert_eq!(uni.width(), 256);
-        assert_eq!(uni.height(), 128);
-        assert_eq!(uni.region(), universe_as_region);
-    }
-
-    #[test]
-    fn new_universe_with_bad_dims() {
-
-        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
+    pub fn make_gen_state() -> GenState {
+        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));
         let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
         let players = vec![player0, player1];
 
-        let mut bigbang = BigBang::new()
-            .width(256)
-            .height(128)
-            .server_mode(true)
-            .history(16)
-            .fog_radius(9)
-            .add_players(players);
-
-        bigbang = bigbang.width(255);
-
-        let uni_result1 = bigbang.birth();
-        assert!(uni_result1.is_err());
-
-        bigbang = bigbang.width(256).height(0);
-        let uni_result2 = bigbang.birth();
-        assert!(uni_result2.is_err());
-
-        bigbang = bigbang.width(0).height(256);
-        let uni_result3 = bigbang.birth();
-        assert!(uni_result3.is_err());
+        let mut uni = BigBang::new()
+            .history(1)
+            .add_players(players)
+            .birth()
+            .unwrap();
+        uni.gen_states.pop().unwrap()
     }
+}
 
-    #[test]
-    fn new_universe_first_gen_is_one() {
-        let uni = generate_test_universe_with_default_params();
-        assert_eq!(uni.latest_gen(), 1);
-    }
-
-    #[test]
-    #[should_panic]
-    fn universe_with_no_gens_panics() {
-        let mut uni = generate_test_universe_with_default_params();
-        uni.generation = 0;
-        uni.latest_gen();
-    }
+/// The following tests are here because they use parts of Universe that are private.
+#[cfg(test)]
+mod universe_tests {
+    use super::*;
+    use super::test_helpers::*;
+    use crate::error::ConwayError::*;
 
     #[test]
     fn next_single_gen_test_data1_with_wrapping() {
@@ -1723,102 +1787,8 @@ mod universe_tests {
     }
 
     #[test]
-    fn next_test_data1() {
-        let mut uni = generate_test_universe_with_default_params();
-
-        // r-pentomino
-        let _ = uni.toggle(16, 15, 0);
-        let _ = uni.toggle(17, 15, 0);
-        let _ = uni.toggle(15, 16, 0);
-        let _ = uni.toggle(16, 16, 0);
-        let _ = uni.toggle(16, 17, 0);
-
-        let gens = 20;
-        for _ in 0..gens {
-            uni.next();
-        }
-        assert_eq!(uni.latest_gen(), gens + 1);
-    }
-
-    #[test]
-    fn set_unchecked_with_valid_rows_and_cols() {
-        let mut uni = generate_test_universe_with_default_params();
-        let max_width = uni.width()-1;
-        let max_height = uni.height()-1;
-        let mut cell_state;
-        
-        for x in 0.. max_width {
-            for y in 0..max_height {
-                cell_state = uni.get_cell_state(x,y, None);
-                assert_eq!(cell_state, CellState::Dead);
-            }
-        }
-
-        uni.set_unchecked(0, 0, CellState::Alive(None));
-        cell_state = uni.get_cell_state(0,0, None);
-        assert_eq!(cell_state, CellState::Alive(None));
-
-        uni.set_unchecked(max_width, max_height, CellState::Alive(None));
-        assert_eq!(cell_state, CellState::Alive(None));
-
-        uni.set_unchecked(55, 55, CellState::Alive(None));
-        assert_eq!(cell_state, CellState::Alive(None));
-   }
-
-    #[test]
-    #[should_panic]
-    fn set_unchecked_with_invalid_rols_and_cols_panics() {
-        let mut uni = generate_test_universe_with_default_params();
-        uni.set_unchecked(257, 129, CellState::Alive(None));
-    }
-
-    #[test]
-    fn universe_cell_states_are_dead_on_creation() {
-        let mut uni = generate_test_universe_with_default_params();
-        let max_width = uni.width()-1;
-        let max_height = uni.height()-1;
-        
-        for x in 0..max_width {
-            for y in 0..max_height {
-                let cell_state = uni.get_cell_state(x,y, None);
-                assert_eq!(cell_state, CellState::Dead);
-            }
-        }
-    }
-
-    #[test]
-    fn set_checked_verify_players_remain_within_writable_regions() {
-        let mut uni = generate_test_universe_with_default_params();
-        let max_width = uni.width()-1;
-        let max_height = uni.height()-1;
-        let player_id = 1; // writing into player 1's regions
-        let alive_player_cell = CellState::Alive(Some(player_id));
-        let mut cell_state;
-
-        // Writable region OK, Transitions to Alive
-        uni.set(0, 0, alive_player_cell, player_id);
-        cell_state = uni.get_cell_state(0,0, Some(player_id));
-        assert_eq!(cell_state, alive_player_cell);
-
-        // This should be dead as it is outside the writable region
-        uni.set(max_width, max_height, alive_player_cell, player_id);
-        cell_state = uni.get_cell_state(max_width, max_height, Some(player_id));
-        assert_eq!(cell_state, CellState::Dead);
-
-        // Writable region OK, transitions to Alive
-        uni.set(55, 55, alive_player_cell, player_id);
-        cell_state = uni.get_cell_state(55, 55, Some(player_id));
-        assert_eq!(cell_state, alive_player_cell);
-
-        // Outside of player_id's writable region which will remain unchanged
-        uni.set(81, 81, alive_player_cell, player_id);
-        cell_state = uni.get_cell_state(81, 81, Some(player_id));
-        assert_eq!(cell_state, CellState::Dead);
-    }
-
-    #[test]
     fn set_checked_cannot_set_a_fog_cell() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let player_id = 1; // writing into player 1's regions
         let alive_player_cell = CellState::Alive(Some(player_id));
         let state_index = uni.state_index;
@@ -1835,7 +1805,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_unchecked_cell_toggled_is_owned_by_player() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let state_index = uni.state_index;
         let row = 0;
         let col = 0;
@@ -1852,7 +1822,7 @@ mod universe_tests {
 
     #[test]
     fn toggle_unchecked_cell_toggled_by_both_players_repetitively() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let state_index = uni.state_index;
         let row = 0;
         let col = 0;
@@ -1876,21 +1846,9 @@ mod universe_tests {
     }
 
     #[test]
-    fn toggle_checked_outside_a_player_writable_region_fails() {
-        let mut uni = generate_test_universe_with_default_params();
-        let player_one = 0;
-        let player_two = 1;
-        let row = 0;
-        let col = 0;
-
-        assert_eq!(uni.toggle(row, col, player_one), Err(()));
-        assert_eq!(uni.toggle(row, col, player_two).unwrap(), CellState::Alive(Some(player_two)));
-    }
-
-    #[test]
     fn toggle_checked_players_cannot_toggle_a_wall_cell() {
-        let mut uni = generate_test_universe_with_default_params();
-        let player_one = 0;
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
+        //let player_one = 0;
         let player_two = 1;
         let row = 0;
         let col = 0;
@@ -1898,13 +1856,14 @@ mod universe_tests {
 
         uni.gen_states[state_index].wall_cells.modify_bits_in_word(row, col, 1<<63, BitOperation::Set);
 
-        assert_eq!(uni.toggle(row, col, player_one), Err(()));
-        assert_eq!(uni.toggle(row, col, player_two), Err(()));
+        // cannot test with player_one because this wall cell is outside their writable area
+        assert_eq!(uni.toggle(row, col, player_two),
+                   Err(AccessDenied{reason: "cannot write to wall cell: col=0, row=0".to_owned()}));
     }
 
     #[test]
     fn toggle_checked_players_can_toggle_an_known_cell_if_writable() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let player_one = 0;
         let player_two = 1;
         let row = 0;
@@ -1913,14 +1872,15 @@ mod universe_tests {
 
         uni.gen_states[state_index].known.modify_bits_in_word(row, col, 1<<63, BitOperation::Set);
 
-        assert_eq!(uni.toggle(row, col, player_one), Err(()));
+        assert_eq!(uni.toggle(row, col, player_one),
+                   Err(AccessDenied{reason: "outside writable area for player 0: col=0, row=0".to_owned()}));
         assert_eq!(uni.toggle(row, col, player_two), Ok(CellState::Alive(Some(player_two))));
     }
 
     #[test]
     fn toggle_checked_players_cannot_toggle_an_unknown_cell() {
-        let mut uni = generate_test_universe_with_default_params();
-        let player_one = 0;
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
+        //let player_one = 0;
         let player_two = 1;
         let row = 0;
         let col = 0;
@@ -1928,8 +1888,9 @@ mod universe_tests {
 
         uni.gen_states[state_index].known.modify_bits_in_word(row, col, 1<<63, BitOperation::Clear);
 
-        assert_eq!(uni.toggle(row, col, player_one), Err(()));
-        assert_eq!(uni.toggle(row, col, player_two), Err(()));
+        // cannot test with player_one because this wall cell is outside their writable area
+        assert_eq!(uni.toggle(row, col, player_two),
+                   Err(AccessDenied{reason: "not a known cell for player 1: col=0, row=0".to_owned()}));
     }
 
     #[test]
@@ -1980,7 +1941,7 @@ mod universe_tests {
 
     #[test]
     fn verify_fog_circle_bitmap_generation() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
 
         let fog_radius_of_nine = vec![
             vec![0xf007ffffffffffff],
@@ -2095,24 +2056,6 @@ mod universe_tests {
     }
 
     #[test]
-    fn generate_fog_circle_bitmap_fails_with_radius_zero() {
-        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
-        let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
-        let players = vec![player0, player1];
-
-        let uni = BigBang::new()
-            .width(256)
-            .height(128)
-            .server_mode(true)
-            .history(16)
-            .fog_radius(0)
-            .add_players(players)
-            .birth();
-
-        assert!(uni.is_err());
-    }
-
-    #[test]
     fn clear_fog_with_standard_radius() {
         let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
         let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
@@ -2157,68 +2100,11 @@ mod universe_tests {
                 assert_eq!(gen_state_next.player_states[0].fog[x][y], 0b1111111111111111111111111111111111111111111111111111111111110000);
             }
         }
-
-    }
-
-    #[test]
-    fn each_non_dead_detects_some_cells() {
-        let mut uni = generate_test_universe_with_default_params();
-        let player1 = 1;
-
-        // glider
-        uni.toggle(16, 15, player1).unwrap();
-        uni.toggle(17, 16, player1).unwrap();
-        uni.toggle(15, 17, player1).unwrap();
-        uni.toggle(16, 17, player1).unwrap();
-        uni.toggle(17, 17, player1).unwrap();
-
-        // just a wall, for no reason at all
-        for col in 10..15 {
-            uni.set_unchecked(col, 12, CellState::Wall);
-        }
-
-        let gens = 21;
-        for _ in 0..gens {
-            uni.next();
-        }
-        let mut cells_with_pos: Vec<(usize, usize, CellState)> = vec![];
-        uni.each_non_dead(Region::new(0, 0, 80, 80), Some(player1), &mut |col, row, state| {
-            cells_with_pos.push((col, row, state));
-        });
-        assert_eq!(cells_with_pos.len(), 10);
-        assert_eq!(cells_with_pos, vec![(10, 12, CellState::Wall),
-                                        (11, 12, CellState::Wall),
-                                        (12, 12, CellState::Wall),
-                                        (13, 12, CellState::Wall),
-                                        (14, 12, CellState::Wall),
-                                        (20, 21, CellState::Alive(Some(1))),
-                                        (22, 21, CellState::Alive(Some(1))),
-                                        (21, 22, CellState::Alive(Some(1))),
-                                        (22, 22, CellState::Alive(Some(1))),
-                                        (21, 23, CellState::Alive(Some(1)))]);
-
-    }
-
-    #[test]
-    fn each_non_dead_detects_fog() {
-        let mut uni = generate_test_universe_with_default_params();
-        let player0 = 0;
-        let player1 = 1;
-
-        // blinker as player 1
-        uni.toggle(16, 15, player1).unwrap();
-        uni.toggle(16, 16, player1).unwrap();
-        uni.toggle(16, 17, player1).unwrap();
-
-        // attempt to view as different player
-        uni.each_non_dead(Region::new(0, 0, 80, 80), Some(player0), &mut |col, row, state| {
-            assert_eq!(state, CellState::Fog, "expected fog at col {} row {} but found {:?}", col, row, state);
-        });
     }
 
     #[test]
     fn universe_copy_from_bit_grid_as_player() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
 
         let write_pattern_as = Some(1); // player 1
@@ -2239,7 +2125,7 @@ mod universe_tests {
 
     #[test]
     fn universe_copy_from_bit_grid_as_player_out_of_range() {
-        let mut uni = generate_test_universe_with_default_params();
+        let mut uni = generate_test_universe_with_default_params(UniType::Server);
         let grid = Pattern("64o$64o!".to_owned()).to_new_bit_grid(64, 2).unwrap();
 
         let write_pattern_as = Some(0); // player 0
@@ -2257,26 +2143,66 @@ mod universe_tests {
             assert_eq!(genstate.player_states[1].cells.to_pattern(None).0, "!".to_owned()); // no player 1 cells
         }
     }
+
+    #[test]
+    fn universe_apply_basic() {
+        let mut s_uni = generate_test_universe_with_default_params(UniType::Server);
+        let mut c_uni = generate_test_universe_with_default_params(UniType::Client); // client is missing generation 1
+        let player1 = 1;
+        // glider
+        s_uni.toggle(16, 15, player1).unwrap();
+        s_uni.toggle(17, 16, player1).unwrap();
+        s_uni.toggle(15, 17, player1).unwrap();
+        s_uni.toggle(16, 17, player1).unwrap();
+        s_uni.toggle(17, 17, player1).unwrap();
+        let gens = 4;
+        for _ in 0..gens {
+            s_uni.next();
+        }
+        let diff = s_uni.diff(0, 5, None).unwrap();
+        assert_eq!(c_uni.apply(&diff, None), Ok(Some(5)));
+        let s_idx = s_uni.state_index;
+        let c_idx = c_uni.state_index;
+        assert_eq!(s_uni.gen_states[s_idx].gen_or_none, c_uni.gen_states[c_idx].gen_or_none);
+        assert_eq!(s_uni.gen_states[s_idx].cells, c_uni.gen_states[c_idx].cells);
+    }
+
+    #[test]
+    fn universe_apply_basic_player_visibility() {
+        let mut s_uni = generate_test_universe_with_default_params(UniType::Server);
+        let mut c_uni = generate_test_universe_with_default_params(UniType::Client); // client is missing generation 1
+        let player1 = 1;
+        // glider
+        s_uni.toggle(16, 15, player1).unwrap();
+        s_uni.toggle(17, 16, player1).unwrap();
+        s_uni.toggle(15, 17, player1).unwrap();
+        s_uni.toggle(16, 17, player1).unwrap();
+        s_uni.toggle(17, 17, player1).unwrap();
+        // r-pentomino
+        s_uni.toggle(89+16, 68+15, 0).unwrap();
+        s_uni.toggle(89+17, 68+15, 0).unwrap();
+        s_uni.toggle(89+15, 68+16, 0).unwrap();
+        s_uni.toggle(89+16, 68+16, 0).unwrap();
+        s_uni.toggle(89+16, 68+17, 0).unwrap();
+        let gens = 4;
+        for _ in 0..gens {
+            s_uni.next();
+        }
+        let player_id = 0;
+        let diff = s_uni.diff(0, 5, Some(player_id)).unwrap();
+        assert_eq!(c_uni.apply(&diff, Some(player_id)), Ok(Some(5)));
+        let s_idx = s_uni.state_index;
+        let c_idx = c_uni.state_index;
+        assert_eq!(s_uni.gen_states[s_idx].gen_or_none, c_uni.gen_states[c_idx].gen_or_none);
+        assert!(s_uni.gen_states[s_idx].cells != c_uni.gen_states[c_idx].cells); // player 0 doesn't know about player 1's cells
+        assert_eq!(s_uni.gen_states[s_idx].player_states[0].cells, c_uni.gen_states[c_idx].player_states[0].cells);
+    }
 }
 
 #[cfg(test)]
 mod genstate_tests {
     use super::*;
-    use rle::Pattern;
-
-    // Utilities
-    fn make_gen_state() -> GenState {
-        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));
-        let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
-        let players = vec![player0, player1];
-
-        let mut uni = BigBang::new()
-            .history(1)
-            .add_players(players)
-            .birth()
-            .unwrap();
-        uni.gen_states.pop().unwrap()
-    }
+    use super::test_helpers::*;
 
     #[test]
     fn write_at_position_server_wall() {
@@ -2410,41 +2336,6 @@ mod genstate_tests {
     }
 
     #[test]
-    fn gen_state_get_run_simple() {
-        let mut genstate = make_gen_state();
-
-        Pattern("o!".to_owned()).to_grid(&mut genstate, None).unwrap();
-        assert_eq!(genstate.get_run(0, 0, None), (1, 'o'));
-    }
-
-    #[test]
-    fn gen_state_get_run_wall() {
-        let mut genstate = make_gen_state();
-
-        Pattern("4W!".to_owned()).to_grid(&mut genstate, None).unwrap();
-        assert_eq!(genstate.get_run(0, 0, None), (4, 'W'));
-    }
-
-    #[test]
-    fn gen_state_get_run_wall_blank_in_front() {
-        let mut genstate = make_gen_state();
-
-        Pattern("12b4W!".to_owned()).to_grid(&mut genstate, None).unwrap();
-        assert_eq!(genstate.get_run(12, 0, None), (4, 'W'));
-    }
-
-    #[test]
-    fn gen_state_get_run_alternating_owned_unowned() {
-        let mut genstate = make_gen_state();
-
-        Pattern("15o3A2B9o!".to_owned()).to_grid(&mut genstate, None).unwrap();
-        assert_eq!(genstate.get_run(0,      0, None), (15, 'o'));
-        assert_eq!(genstate.get_run(15,     0, None), (3,  'A'));
-        assert_eq!(genstate.get_run(15+3,   0, None), (2,  'B'));
-        assert_eq!(genstate.get_run(15+3+2, 0, None), (9,  'o'));
-    }
-
-    #[test]
     fn gen_state_get_run_player0_fog() {
         let mut genstate = make_gen_state();
 
@@ -2458,16 +2349,6 @@ mod genstate_tests {
         Pattern("o!".to_owned()).to_grid(&mut genstate, write_pattern_as).unwrap();
         let visibility = Some(0); // as player 0
         assert_eq!(genstate.get_run(0, 0, visibility), (genstate.width(), '?'));
-    }
-
-    #[test]
-    fn gen_state_get_run_player1_no_fog() {
-        let mut genstate = make_gen_state();
-
-        let write_pattern_as = Some(1);   // avoid clearing fog for players other than player 1
-        Pattern("o!".to_owned()).to_grid(&mut genstate, write_pattern_as).unwrap();
-        let visibility = Some(1); // as player 1
-        assert_eq!(genstate.get_run(0, 0, visibility), (1, 'o'));
     }
 
     #[test]
@@ -2527,70 +2408,6 @@ mod genstate_tests {
     }
 
     #[test]
-    fn gen_state_pair_get_run_simple2() {
-        let mut gs0 = make_gen_state();
-        Pattern("2o3b5o!".to_owned()).to_grid(&mut gs0, None).unwrap();
-        let mut gs1 = make_gen_state();
-        Pattern("2o3b5o!".to_owned()).to_grid(&mut gs1, None).unwrap();
-
-        let pair = GenStatePair {
-            gen_state0: &gs0,
-            gen_state1: &gs1,
-        };
-
-        assert_eq!(pair.get_run(0, 0, None), (gs0.width(), '"'));
-    }
-
-    #[test]
-    fn gen_state_pair_get_run_simple3() {
-        let mut gs0 = make_gen_state();
-        Pattern("4b5o!".to_owned()).to_grid(&mut gs0, None).unwrap();
-        let mut gs1 = make_gen_state();
-        Pattern("3b5o!".to_owned()).to_grid(&mut gs1, None).unwrap();
-
-        let pair = GenStatePair {
-            gen_state0: &gs0,
-            gen_state1: &gs1,
-        };
-
-        assert_eq!(pair.get_run(0,       0, None), (3, '"'));
-        assert_eq!(pair.get_run(3,       0, None), (1, 'o'));
-        assert_eq!(pair.get_run(3+1,     0, None), (4, '"'));
-        assert_eq!(pair.get_run(3+1+4,   0, None), (1, 'b'));
-        assert_eq!(pair.get_run(3+1+4+1, 0, None), (gs0.width() - (3+1+4+1), '"'));
-    }
-
-    #[test]
-    fn gen_state_diff_simple1() {
-        let gs0 = make_gen_state();
-        let mut gs1 = make_gen_state();
-        Pattern("o!".to_owned()).to_grid(&mut gs1, None).unwrap();
-
-        let gsdiff = gs0.diff(&gs1, None);
-        assert_eq!(gsdiff.pattern.0.len(), 659);
-        let mut gsdiff_pattern_iter = gsdiff.pattern.0.split('$');
-        assert_eq!(gsdiff_pattern_iter.next().unwrap(), "o255\"");
-        assert_eq!(gsdiff_pattern_iter.next().unwrap(), "256\"");
-        assert_eq!(gsdiff_pattern_iter.next().unwrap(), "256\"");
-        // if you keep doing this, you'll eventually get a string containing \r\n
-    }
-
-    #[test]
-    fn gen_state_diff_and_restore_simple1() {
-        let gs0 = make_gen_state();
-        let mut gs1 = make_gen_state();
-        let visibility = None;
-        Pattern("o!".to_owned()).to_grid(&mut gs1, visibility).unwrap();
-
-        let gsdiff = gs0.diff(&gs1, visibility);
-
-        let mut new_gs = make_gen_state();
-
-        gsdiff.pattern.to_grid(&mut new_gs, visibility).unwrap();
-        assert_eq!(new_gs, gs1);
-    }
-
-    #[test]
     fn gen_state_diff_and_restore_complex1() {
         let gs0 = make_gen_state();
         let mut gs1 = make_gen_state();
@@ -2636,108 +2453,39 @@ mod genstate_tests {
             assert_eq!(new_gs.player_states[i].fog, gs1.player_states[i].fog);
         }
     }
-}
-
-
-#[cfg(test)]
-mod region_tests {
-    use super::*;
 
     #[test]
-    fn region_with_valid_dims() {
-        let region = Region::new(1, 10, 100, 200);
+    fn gen_state_pair_get_run_simple2() {
+        let mut gs0 = make_gen_state();
+        Pattern("2o3b5o!".to_owned()).to_grid(&mut gs0, None).unwrap();
+        let mut gs1 = make_gen_state();
+        Pattern("2o3b5o!".to_owned()).to_grid(&mut gs1, None).unwrap();
 
-        assert_eq!(region.left(), 1);
-        assert_eq!(region.top(), 10);
-        assert_eq!(region.height(), 200);
-        assert_eq!(region.width(), 100);
-        assert_eq!(region.right(), 100);
-        assert_eq!(region.bottom(), 209);
-    }
-    
-    #[test]
-    fn region_with_valid_dims_negative_top_and_left() {
-        let region = Region::new(-1, -10, 100, 200);
+        let pair = GenStatePair {
+            gen_state0: &gs0,
+            gen_state1: &gs1,
+        };
 
-        assert_eq!(region.left(), -1);
-        assert_eq!(region.top(), -10);
-        assert_eq!(region.height(), 200);
-        assert_eq!(region.width(), 100);
-        assert_eq!(region.right(), 98);
-        assert_eq!(region.bottom(), 189);
+        assert_eq!(pair.get_run(0, 0, None), (gs0.width(), '"'));
     }
 
     #[test]
-    #[should_panic]
-    fn region_with_bad_dims_panics() {
-        Region::new(0, 0, 0, 0);
+    fn gen_state_pair_get_run_simple3() {
+        let mut gs0 = make_gen_state();
+        Pattern("4b5o!".to_owned()).to_grid(&mut gs0, None).unwrap();
+        let mut gs1 = make_gen_state();
+        Pattern("3b5o!".to_owned()).to_grid(&mut gs1, None).unwrap();
+
+        let pair = GenStatePair {
+            gen_state0: &gs0,
+            gen_state1: &gs1,
+        };
+
+        assert_eq!(pair.get_run(0,       0, None), (3, '"'));
+        assert_eq!(pair.get_run(3,       0, None), (1, 'o'));
+        assert_eq!(pair.get_run(3+1,     0, None), (4, '"'));
+        assert_eq!(pair.get_run(3+1+4,   0, None), (1, 'b'));
+        assert_eq!(pair.get_run(3+1+4+1, 0, None), (gs0.width() - (3+1+4+1), '"'));
     }
 
-    #[test]
-    fn region_contains_a_valid_sub_region() {
-        let region1 = Region::new(1, 10, 100, 200);
-        let region2 = Region::new(-100, -200, 100, 200);
-
-        assert!(region1.contains(50, 50));
-        assert!(region2.contains(-50, -50));
-    }
-    
-    #[test]
-    fn region_does_not_contain_sub_region() {
-        let region1 = Region::new(1, 10, 100, 200);
-        let region2 = Region::new(-100, -200, 100, 200);
-
-        assert!(!region1.contains(-50, -50));
-        assert!(!region2.contains(50, 50));
-    }
-
-    #[test]
-    fn region_no_intersection() {
-        let region1 = Region::new(1, 10, 100, 200);
-        let region2 = Region::new(-100, -200, 100, 200);
-        assert_eq!(region1.intersection(region2), None);
-        assert_eq!(region2.intersection(region1), None);
-    }
-
-    #[test]
-    fn region_intersection_with_self() {
-        let region1 = Region::new(1, 10, 100, 200);
-        assert_eq!(region1.intersection(region1), Some(region1));
-    }
-
-    #[test]
-    fn region_intersection_overlap() {
-        let region1 = Region::new( 1,  10, 100, 200);
-        let region2 = Region::new(90, 120, 100, 200);
-        assert_eq!(region1.intersection(region2), Some(Region::new(90, 120, 11, 90)));
-    }
-
-    #[test]
-    fn region_no_intersection_overlap_one_dim() {
-        let region1 = Region::new(0, 0, 2, 2);
-        let region2 = Region::new(3, 0, 2, 2);
-        assert_eq!(region1.intersection(region2), None);
-    }
-}
-
-#[cfg(test)]
-mod cellstate_tests {
-    use super::*;
-
-    #[test]
-    fn cell_states_as_char() {
-        let dead = CellState::Dead;
-        let alive = CellState::Alive(None);
-        let player1 = CellState::Alive(Some(1));
-        let player2 = CellState::Alive(Some(2));
-        let wall = CellState::Wall;
-        let fog = CellState::Fog;
-
-        assert_eq!(dead.to_char(), 'b');
-        assert_eq!(alive.to_char(), 'o');
-        assert_eq!(player1.to_char(), 'B');
-        assert_eq!(player2.to_char(), 'C');
-        assert_eq!(wall.to_char(), 'W');
-        assert_eq!(fog.to_char(), '?');
-    }
 }
