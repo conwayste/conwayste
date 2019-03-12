@@ -23,13 +23,12 @@ extern crate bincode;
 extern crate semver;
 
 use std::cmp::{PartialEq, PartialOrd, Ordering};
-use std::io;
+use std::fmt::Debug;
+use std::{io, fmt, str, result, time::{Duration, Instant}};
 use std::net::{self, SocketAddr};
-use std::str;
-use std::result;
-use std::time;
 use std::collections::VecDeque;
 
+use self::futures::sync::mpsc;
 use self::tokio_core::net::{UdpSocket, UdpCodec};
 use self::tokio_core::reactor::Handle;
 use self::bincode::{serialize, deserialize, Infinite};
@@ -39,12 +38,45 @@ pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
 pub const DEFAULT_PORT: u16 = 12345;
 const TIMEOUT_IN_SECONDS:    u64   = 5;
-const NETWORK_QUEUE_LENGTH: usize = 15;
+const NETWORK_QUEUE_LENGTH: usize = 600;        // spot testing with poor network (~675 cmds) showed a max of ~512 length
+                                                // keep this for now until the performance issues are resolved
+const RETRANSMISSION_THRESHOLD_IN_MS: Duration = Duration::from_millis(400);
+const RETRY_THRESHOLD_IN_MS: usize = 2;             //
+const RETRY_AGGRESSIVE_THRESHOLD_IN_MS: usize = 5;
+const RETRANSMISSION_COUNT: usize = 32;   // Testing some ideas out:. Resend length 16x2, 16=libconway::history_size)
 
 // For unit testing, I cover duplicate sequence numbers. The search returns Ok(index) on a slice with a matching value.
 // Instead of returning that index, I return this much larger value and avoid insertion into the queues.
 // (110 is the avg weight of an amino acid in daltons :] Much larger than our current queue size)
 const MATCH_FOUND_SENTINEL: usize = 110;
+
+//////////////// Public Macros /////////////////
+
+#[macro_export]
+macro_rules! netwayste_send {
+    // Client
+    ($_self:ident, $tx:expr, $dest:expr, ($failmsg:expr $(, $args:expr)*)) => {
+        let result = $tx.unbounded_send($dest);
+        if result.is_err() {
+            warn!($failmsg, $( $args)*);
+        } else {
+        }
+    };
+    // Server
+    ($tx:ident, $dest:expr, ($failmsg:expr $(, $args:expr)*)) => {
+        let result = $tx.unbounded_send($dest);
+        if result.is_err() {
+            warn!($failmsg, $( $args)*);
+        }
+    };
+    // Temp placeholder for client for exit()
+    ($tx:expr, ()) => {
+        let result = $tx.unbounded_send(());
+        if result.is_err() {
+            error!("Something really bad is going on... client cannot exit!");
+        }
+    };
+}
 
 //////////////// Error handling ////////////////
 #[derive(Debug)]
@@ -72,14 +104,13 @@ pub enum RequestAction {
     None,   // never actually sent
     Connect{name: String, client_version: String},      // server replies w/ OK/PleaseUpgrade; TODO: password
     Disconnect,
-    KeepAlive,
+    KeepAlive(u64),     // Send latest response ack on each heartbeat
     ListPlayers,
     ChatMessage(String),
     ListRooms,
     NewRoom(String),
     JoinRoom(String),
     LeaveRoom,
-    TestSequenceNumber(u64),
 }
 
 // server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
@@ -87,9 +118,11 @@ pub enum RequestAction {
 pub enum ResponseCode {
     // success - these are all 200 in HTTP
     OK,                              // 200 no data
-    LoggedIn(String, String),                // player is logged in -- provide cookie
-    PlayerList(Vec<String>),
-    RoomList(Vec<(String, u64, bool)>), // (room name, # players, started?)
+    LoggedIn(String, String),        // player is logged in -- provide cookie
+    JoinedRoom(String),              // player has joined the room
+    LeaveRoom,                       // player has left the room
+    PlayerList(Vec<String>),         // list of players in room or lobby
+    RoomList(Vec<(String, u64, bool)>), // (room name, # players, game has started?)
     // errors
     BadRequest(Option<String>),      // 400 unspecified error that is client's fault
     Unauthorized(Option<String>),    // 401 not logged in
@@ -98,7 +131,6 @@ pub enum ResponseCode {
     NotConnected(Option<String>),    // no equivalent in HTTP due to handling at lower (TCP) level
     PleaseUpgrade(Option<String>),   // client should give upgrade msg to user, but continue as if OK
     KeepAlive,                       // Server's heart is beating
-    OldPacket,                       // Internally used to ignore a packet, just for testing
 }
 
 // chat messages sent from server to all clients other than originating client
@@ -137,6 +169,7 @@ impl Ord for BroadcastChatMessage {
 }
 
 impl BroadcastChatMessage {
+    #[allow(unused)]
     pub fn new(sequence: u64, name: String, msg: String) -> BroadcastChatMessage {
         BroadcastChatMessage {
             chat_seq: Some(sequence),
@@ -193,12 +226,13 @@ pub enum UniUpdateType {
     NoChange,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum Packet {
     Request {
         // sent by client
         sequence:        u64,
-        response_ack:    Option<u64>,    // most recent response sequence number received
+        response_ack:    Option<u64>,    // Next expected  sequence number the Server responds with to the Client.
+                                         // Stated differently, the client has seen Server responses from 0 to response_ack-1.
         cookie:          Option<String>, // present if and only if action != connect
         action:          RequestAction,
     },
@@ -224,12 +258,14 @@ pub enum Packet {
 }
 
 impl Packet {
-    fn sequence_number(&self) -> u64 {
+    #[allow(unused)]
+    pub fn sequence_number(&self) -> u64 {
         if let Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } = self {
             *sequence
         } else if let Packet::Response{ sequence, request_ack: _, code: _ } = self {
             *sequence
         } else if let Packet::Update{ chats: _, game_updates: _, universe_update } = self {
+            // TODO revisit once mechanics are fleshed out
             match universe_update {
                 UniUpdateType::State(gs) => { gs.gen },
                 UniUpdateType::Diff(gd) => { gd.new_gen },
@@ -237,6 +273,53 @@ impl Packet {
             }
         } else {
             unimplemented!(); // UpdateReply is not saved
+        }
+    }
+
+    #[allow(unused)]
+    pub fn set_response_sequence(&mut self, new_ack: Option<u64>) {
+        if let Packet::Request{ sequence: _, ref mut response_ack, cookie: _, action: _ } = *self {
+            *response_ack = new_ack;
+        }
+        else if let Packet::Response{ sequence: _, ref mut request_ack, code: _ } = *self {
+            *request_ack = new_ack;
+        }
+        else {
+            unimplemented!();
+        }
+    }
+
+    #[allow(unused)]
+    pub fn response_sequence(&self) -> u64 {
+        if let Packet::Request{sequence: _, ref response_ack, cookie: _, action: _} = *self {
+            if let Some(response_ack) = response_ack
+            {
+                *response_ack
+            } else {
+                0
+            }
+        } else {
+            unimplemented!();
+        }
+    }
+}
+
+impl fmt::Debug for Packet {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Packet::Request{ sequence, response_ack, cookie, action } => {
+                write!(f, "[Request] cookie: {:?} sequence: {} resp_ack: {:?} event: {:?}", cookie, sequence, response_ack, action)
+            }
+            Packet::Response{ sequence, request_ack, code } => {
+                write!(f, "[Response] sequence: {} req_ack: {:?} event: {:?}", sequence, request_ack, code)
+            }
+            Packet::Update{ chats: _, game_updates, universe_update } => {
+                write!(f, "[Update] game_updates: {:?} universe_update: {:?}", game_updates, universe_update)
+            }
+            #[cfg(not(test))]
+            _ => {unimplemented!()}
+            #[cfg(test)]
+            _ => {Result::Ok(())}
         }
     }
 }
@@ -279,7 +362,7 @@ impl UdpCodec for LineCodec {
                 let local: SocketAddr = format!("{}:{}", "127.0.0.1", DEFAULT_PORT.to_string()).parse().unwrap();
                 // We only want to warn when the incoming packet is external to the host system
                 if local != *addr {
-                    println!("WARNING: error during packet deserialization: {:?}", e);
+                    warn!("WARNING: error during packet deserialization: {:?}", e);
                 }
                 Ok((*addr, None))
             }
@@ -309,17 +392,15 @@ pub fn get_version() -> result::Result<Version, SemVerError> {
     Version::parse(VERSION)
 }
 
-pub fn has_connection_timed_out(heartbeat: Option<time::Instant>) -> bool {
+pub fn has_connection_timed_out(heartbeat: Option<Instant>) -> bool {
     if let Some(heartbeat) = heartbeat {
-        (time::Instant::now() - heartbeat) > time::Duration::from_secs(TIMEOUT_IN_SECONDS)
+        (Instant::now() - heartbeat) > Duration::from_secs(TIMEOUT_IN_SECONDS)
     } else { false }
 }
 
 pub struct NetworkStatistics {
-    pub tx_packets_failed: u64,
-    pub tx_packets_success: u64,
-    pub tx_keep_alive_failed: u64,
-    pub tx_keep_alive_success: u64,
+    pub tx_packets_failed: u64,     // From the perspective of the Network OSI layer
+    pub tx_packets_success: u64,    // From the perspective of the Network OSI layer
 }
 
 impl NetworkStatistics {
@@ -327,8 +408,6 @@ impl NetworkStatistics {
         NetworkStatistics {
             tx_packets_failed: 0,
             tx_packets_success: 0,
-            tx_keep_alive_failed: 0,
-            tx_keep_alive_success: 0
         }
     }
 
@@ -337,13 +416,9 @@ impl NetworkStatistics {
         let Self {
             ref mut tx_packets_failed,
             ref mut tx_packets_success,
-            ref mut tx_keep_alive_failed,
-            ref mut tx_keep_alive_success,
         } = *self;
         *tx_packets_failed     = 0;
         *tx_packets_success    = 0;
-        *tx_keep_alive_failed  = 0;
-        *tx_keep_alive_success = 0;
     }
 }
 
@@ -364,11 +439,8 @@ impl Sequenced for BroadcastChatMessage {
     }
 }
 
-pub trait NetworkQueue<T: Ord+Sequenced> {
-    fn new(size: usize) -> ItemQueue<T>
-    {
-        ItemQueue::<T>::with_capacity(size)
-    }
+pub trait NetworkQueue<T: Ord+Sequenced+Debug+Clone> {
+    fn new() -> Self;
 
     fn head_of_queue(&self) -> Option<&T> {
         self.as_queue_type().back()
@@ -438,78 +510,74 @@ pub trait NetworkQueue<T: Ord+Sequenced> {
     }
 
     fn clear(&mut self) {
-        self.as_queue_type_mut().clear()
+        self.as_queue_type_mut().clear();
     }
 
+    fn remove(&mut self, pkt: &T) -> Option<T>;
+
     fn discard_older_items(&mut self);
-    fn buffer_item(&mut self, item: T);
+    fn buffer_item(&mut self, item: T) -> bool;
     fn as_queue_type(&self) -> &ItemQueue<T>;
     fn as_queue_type_mut(&mut self) -> &mut ItemQueue<T>;
 }
 
+pub struct Timestamp {
+    pub time: Instant,
+    pub retries: usize,
+}
+
+impl Timestamp {
+    #[allow(unused)]
+    pub fn new() -> Self {
+        Self {
+            time: Instant::now(),
+            retries: 0,
+        }
+    }
+
+    #[allow(unused)]
+    pub fn increment_retries(&mut self) {
+        self.retries += 1;
+        self.time = Instant::now();
+    }
+}
+
 type ItemQueue<T> = VecDeque<T>;
 
-pub struct TXQueue {
-    pub queue: ItemQueue<Packet>,
-}
-
-pub struct RXQueue<T> {
+pub struct NetQueue<T> {
     pub queue: ItemQueue<T>,
-    pub buffer_wrap_index: Option<usize>
+    pub timestamps: VecDeque<Timestamp>,
+    pub buffer_wrap_index: Option<usize>,
 }
 
-impl NetworkQueue<Packet> for TXQueue {
-    fn as_queue_type(&self) -> &ItemQueue<Packet> {
-        &self.queue
+impl NetQueue<Packet> {
+    #[allow(unused)]
+    pub fn get_retransmit_indices(&self) -> Vec<usize> {
+        let iter = self.timestamps.iter();
+        iter.enumerate()
+            .filter(|(_, ts)|
+                (
+                    (Instant::now() - ts.time) >= RETRANSMISSION_THRESHOLD_IN_MS)
+                    || (ts.retries >= RETRY_THRESHOLD_IN_MS)
+                    || (ts.retries >= RETRY_AGGRESSIVE_THRESHOLD_IN_MS)
+                )
+            .map(|(i, _)| i)
+            .take(RETRANSMISSION_COUNT)
+            .collect::<Vec<usize>>()
     }
 
-    fn as_queue_type_mut(&mut self) -> &mut ItemQueue<Packet> {
-        &mut self.queue
-    }
-
-    /// This will keep the specified queue under the NETWORK_QUEUE_LENGTH limit.
-    /// The TX queue needs to ensure a spot is open if we're at capacity.
-    fn discard_older_items(&mut self) {
-        let queue = self.as_queue_type_mut();
-        let queue_size = queue.len();
-        if queue_size >= NETWORK_QUEUE_LENGTH {
-            for _ in 0..(queue_size-NETWORK_QUEUE_LENGTH) {
-                queue.pop_front();
-            }
-            queue.pop_front(); // Always keep one empty for TX queues
-        }
-    }
-
-    /// As we buffer new packets, we'll want to throw away the older packets.
-    /// We must be careful to ensure that we do not throw away packets that have
-    /// not yet been acknowledged by the end-point.
-    fn buffer_item(&mut self, item: Packet) {
-        let sequence = match item {
-            Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } => sequence,
-            Packet::Response{ sequence, request_ack: _, code: _ } => sequence,
-            _ => return
-        };
-
-        let opt_head_seq_num: Option<u64> = self.newest_seq_num();
-
-        if opt_head_seq_num.is_none() {
-            self.push_back(item);
-            return;
-        }
-
-        let head_seq_num = opt_head_seq_num.unwrap(); // unwrap safe
-
-        self.discard_older_items();
-
-        // Current item is newer, and we're adding in sequential order
-        if head_seq_num < sequence && head_seq_num+1 == sequence {
-            self.push_back(item);
-        }
-    }
 }
 
-impl<T> NetworkQueue<T> for RXQueue<T>
-        where T: Sequenced {
+impl<T> NetworkQueue<T> for NetQueue<T>
+        where T: Sequenced+Debug+Clone {
+
+    fn new() -> Self {
+        NetQueue {
+            queue:          ItemQueue::<T>::with_capacity(NETWORK_QUEUE_LENGTH),
+            timestamps:     VecDeque::<Timestamp>::with_capacity(NETWORK_QUEUE_LENGTH),
+            buffer_wrap_index: None
+        }
+    }
 
     fn as_queue_type(&self) -> &ItemQueue<T> {
         &self.queue
@@ -529,7 +597,37 @@ impl<T> NetworkQueue<T> for RXQueue<T>
         }
     }
 
-    /// Upon packet receipt, we must maintain linearly increasing sequence number order of received items of type `T`.
+    fn clear(&mut self) {
+        let Self {
+            ref mut queue,
+            ref mut timestamps,
+            ref mut buffer_wrap_index,
+        } = *self;
+
+        queue.clear();
+        timestamps.clear();
+        *buffer_wrap_index = None;
+    }
+
+    fn remove(&mut self, pkt: &T) -> Option<T> {
+        let result = {
+            let search_space: Vec<&T> = self.as_queue_type_mut().iter().collect();
+            search_space.as_slice().binary_search(&pkt)
+        };
+        match result {
+            Err(_) => {
+                warn!("Packet (Seq: {}) not present in queue! Was it removed already?", pkt.sequence_number());
+                return None;
+            }
+            Ok(index) => {
+                let pkt = self.as_queue_type_mut().remove(index).unwrap();
+                self.timestamps.remove(index);
+                return Some(pkt);
+            }
+        }
+    }
+
+    /// Upon packet tx or rx, we must maintain linearly increasing sequence number order of items of type `T`.
     /// In a perfect world, all `T`'s arrive in order, but this is not the case in reality. All T's are `Sequenced and
     /// have a corresponding sequence number to delineate order.
     ///
@@ -548,17 +646,21 @@ impl<T> NetworkQueue<T> for RXQueue<T>
     ///     [253, 254, 255, 1, 2, 3, 4]
     ///                     ^ wrapping index
     ///
-    /// Because we can receive `T`'s out-of-order even when wrapped, there are checks added below to safeguard
+    /// Because we may tx or rx `T`'s out-of-order even when wrapped, there are checks added below to safeguard
     /// against this. Primarily, they cover the cases where out-of-order insertion would transition the queue into a
     /// wrapped state from a non-wrapped state.
-    fn buffer_item(&mut self, item: T) {
+    ///
+    /// boolean return value states whether or not the packet we are buffering is already present within the queue.
+    fn buffer_item(&mut self, item: T) -> bool {
+        let mut packet_exists: bool = false;
         let sequence = item.sequence_number();
 
         // Empty queue
         let opt_head_seq_num: Option<u64> = self.newest_seq_num();
         if opt_head_seq_num.is_none() {
             self.push_back(item);
-            return;
+            self.timestamps.push_back(Timestamp::new());
+            return packet_exists;
         }
         let opt_tail_seq_num: Option<u64> = self.oldest_seq_num();
         let newest_seq_num = opt_head_seq_num.unwrap();
@@ -569,9 +671,11 @@ impl<T> NetworkQueue<T> for RXQueue<T>
             if newest_seq_num == u64::max_value() {
                 if self.will_seq_cause_a_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
                     self.push_back(item);
+                    self.timestamps.push_back(Timestamp::new());
                     self.buffer_wrap_index = Some(self.len() - 1);
                 } else {
                     self.push_front(item);
+                    self.timestamps.push_back(Timestamp::new());
                 }
             } else if sequence > newest_seq_num && self.buffer_wrap_index.is_some() {
                 // When wrapped, either this is the newest sequence number so far, or
@@ -580,10 +684,11 @@ impl<T> NetworkQueue<T> for RXQueue<T>
                     if let Some(buffer_wrap_index) = self.buffer_wrap_index {
                         let insertion_index = self.find_rx_insertion_index_in_subset(0, buffer_wrap_index, &item);
                         self.buffer_wrap_index = Some(buffer_wrap_index + 1);
-                        self.insert_into_rx_queue(insertion_index, item);
+                        packet_exists = self.insert_into_rx_queue(insertion_index, item);
                     }
                 } else {
                     self.push_back(item);
+                    self.timestamps.push_back(Timestamp::new());
                 }
             } else if sequence < newest_seq_num {
                 // The new seq num appears to be older than everything,
@@ -598,10 +703,11 @@ impl<T> NetworkQueue<T> for RXQueue<T>
                     insertion_index = self.find_rx_insertion_index(&item);
                 }
 
-                self.insert_into_rx_queue(insertion_index, item);
+                packet_exists = self.insert_into_rx_queue(insertion_index, item);
             } else {
                 // Smallest sequence number (in value) that we have seen thus far.
                 self.push_front(item);
+                self.timestamps.push_back(Timestamp::new());
 
                 if self.buffer_wrap_index.is_some() {
                     self.buffer_wrap_index = Some(self.buffer_wrap_index.unwrap() + 1);
@@ -631,15 +737,15 @@ impl<T> NetworkQueue<T> for RXQueue<T>
                     }
                 }
             }
-            self.insert_into_rx_queue(insertion_index, item);
+            packet_exists = self.insert_into_rx_queue(insertion_index, item);
         }
+        packet_exists
     }
 }
 
-impl<T> RXQueue<T> where T: Sequenced {
+impl<T> NetQueue<T> where T: Sequenced+Debug+Clone {
 
-    /// Search within the RX queue, but we have no idea where to insert.
-    /// This should cover only within the RX queue and not at the edges (front or back).
+    /// Searching within the queue, but when we have no idea where to insert.
     /// We accomplish this by splitting the VecDequeue into a slice tuple and then binary searching on each slice.
     /// Small note: The splitting of VecDequeue is into its 'front' and 'back' halves, based on how 'push_front'
     /// and 'push_back' were used.
@@ -690,49 +796,71 @@ impl<T> RXQueue<T> where T: Sequenced {
     }
 
     // Checked insertion against the sentinel used during unit testing
-    fn insert_into_rx_queue(&mut self, index: Option<usize>, item: T) {
+    fn insert_into_rx_queue(&mut self, index: Option<usize>, item: T) -> bool {
+        let mut exists: bool = false;
         if let Some(insertion_index) = index {
             if insertion_index != MATCH_FOUND_SENTINEL {
-                #[cfg(test)]
-                self.as_queue_type_mut().insert(insertion_index, item);
+                if cfg!(test) {
+                    self.as_queue_type_mut().insert(insertion_index, item.clone());
+                    self.timestamps.push_back(Timestamp::new());
+                }
             }
-            #[cfg(not(test))]
-            self.as_queue_type_mut().insert(insertion_index, item);
-        }
+            if !(cfg!(test)) {
+                self.as_queue_type_mut().insert(insertion_index, item);
+                self.timestamps.push_back(Timestamp::new());
+            }
+        } else { exists = true; } // Packet is present in queue, hence None.
+        return exists;
+    }
+
+    /// `seq_num` as a parameter specifies the starting sequence number to iterate over. Since packets can arrive
+    /// out-of-order, the queue may be contiguous but not complete.
+    /// Ex: Assume the next packet SN to process is 10, and the queue has buffered [10, 11, 12, 14, 16],
+    /// the contiguous packet count would be 3.
+    #[allow(unused)]
+    pub fn get_contiguous_packets_count(&self, mut seq_num: u64) -> usize {
+        let iter = self.queue.iter().take_while(move |x| {
+            let ready = x.sequence_number() == seq_num;
+            if ready {
+                seq_num += 1;
+            }
+            ready
+        });
+        iter.count()
     }
 }
 
 pub struct NetworkManager {
     pub statistics:       NetworkStatistics,
-    pub tx_packets:       TXQueue,                               // Back = Newest, Front = Oldest
-    pub rx_packets:       RXQueue<Packet>,                       // Back = Newest, Front = Oldest
-    pub rx_chat_messages: Option<RXQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest;
+    pub tx_packets:       NetQueue<Packet>,                       // Back = Newest, Front = Oldest
+    pub rx_packets:       NetQueue<Packet>,                       // Back = Newest, Front = Oldest
+    pub rx_chat_messages: Option<NetQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest;
                                                                  //     Messages are drained into the Client;
                                                                  //     Server does not use this structure.
 }
 
 impl NetworkManager {
+    #[allow(unused)]
     pub fn new() -> Self {
         NetworkManager {
             statistics: NetworkStatistics::new(),
-            tx_packets:  TXQueue{ queue: TXQueue::new(NETWORK_QUEUE_LENGTH) },
-            rx_packets:  RXQueue{ queue: RXQueue::<Packet>::new(NETWORK_QUEUE_LENGTH), buffer_wrap_index: None },
+            tx_packets:  NetQueue::<Packet>::new(),
+            rx_packets:  NetQueue::<Packet>::new(),
             rx_chat_messages: None,
         }
     }
 
+    #[allow(unused)]
     pub fn with_message_buffering(self) -> NetworkManager {
         NetworkManager {
             statistics: self.statistics,
             tx_packets: self.tx_packets,
             rx_packets: self.rx_packets,
-            rx_chat_messages:  Some(RXQueue {
-                                        queue: RXQueue::<BroadcastChatMessage>::new(NETWORK_QUEUE_LENGTH),
-                                        buffer_wrap_index: None
-                                }),
+            rx_chat_messages:  Some(NetQueue::<BroadcastChatMessage>::new()),
         }
     }
 
+    #[allow(unused)]
     pub fn reset(&mut self) {
         #![deny(unused_variables)]
         let Self {
@@ -746,15 +874,97 @@ impl NetworkManager {
         rx_packets.clear();
         if let Some(chat_messages) = rx_chat_messages {
             chat_messages.clear();
+            chat_messages.buffer_wrap_index = None;
         }
     }
+
+    #[allow(unused)]
+    pub fn print_statistics(&self) {
+        info!("Tx Successes: {}", self.statistics.tx_packets_success);
+        info!("Tx Failures:  {}", self.statistics.tx_packets_failed);
+    }
+
+    #[allow(unused)]
+    pub fn retransmit_expired_tx_packets(&mut self,
+         udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>,
+         addr: SocketAddr,
+         confirmed_ack: Option<u64>,
+         indices: &Vec<usize>) {
+
+        let mut error_occurred = false;
+        let mut failed_index = 0;
+
+        // Retransmit all packets after that are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
+        for index in indices.iter() {
+
+            let mut send_counter = 1;
+
+            if let Some(ts) = self.tx_packets.timestamps.get_mut(*index) {
+                ts.increment_retries();
+                if ts.retries >= RETRY_AGGRESSIVE_THRESHOLD_IN_MS {
+                    send_counter += 1;
+                    ts.increment_retries()
+                }
+                if ts.retries >= RETRY_THRESHOLD_IN_MS {
+                    send_counter += 1;
+                    ts.increment_retries()
+                }
+            }
+
+            if let Some(pkt) = self.tx_packets.queue.get_mut(*index) {
+                // `response_sequence` may have advanced since this was last queued
+                pkt.set_response_sequence(confirmed_ack);
+                trace!("[Retransmitting (Times={})] {:?}", send_counter, pkt);
+                for _ in 0..send_counter {
+                    netwayste_send!(self, udp_tx, (addr, (*pkt).clone()),
+                                ("Could not retransmit packet to server: {:?}", pkt));
+                }
+            } else {
+                error_occurred = true;
+                failed_index = *index;
+                break;
+            }
+
+        }
+
+        if error_occurred {
+            // Panic during development, probably want to make this error later on
+            panic!("ERROR: Index ({}) in timestamp queue out-of-bounds in tx packets queue,
+                            or perhaps `None`?:\n\t {:?}\n{:?}\n{:?}",
+                    failed_index, indices, self.tx_packets.queue.len(), self.tx_packets.timestamps.len());
+        }
+    }
+
+    #[allow(unused)]
+    pub fn tx_pop_front_with_count(&mut self, mut num_to_remove: usize) {
+        if num_to_remove > self.tx_packets.len() {
+            return;
+        }
+
+        while num_to_remove > 0 {
+            self.tx_packets.as_queue_type_mut().pop_front();
+            self.tx_packets.timestamps.pop_front();
+            num_to_remove -= 1;
+        }
+    }
+
+
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::{thread, time::{Instant, Duration}};
 
+    fn fake_socket_addr() -> SocketAddr {
+        use std::net::{IpAddr, Ipv4Addr};
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 5678)
+    }
+
+
+    // `discord_older_packets()` tests are disabled  until after the necessity of the function is re-evaluated
     #[test]
+    #[ignore]
     fn test_discard_older_packets_empty_queue() {
         let mut nm = NetworkManager::new();
 
@@ -765,6 +975,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_discard_older_packets_under_limit_keeps_all_messages() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
@@ -790,6 +1001,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_discard_older_packets_equal_to_limit() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
@@ -815,6 +1027,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_discard_older_packets_exceeds_limit_retains_max() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
@@ -917,7 +1130,7 @@ mod test {
             action: RequestAction::LeaveRoom
         };
         nm.tx_packets.buffer_item(pkt);
-        assert_eq!(nm.tx_packets.len(), 1);
+        assert_eq!(nm.tx_packets.len(), 2);
 
         let pkt = nm.tx_packets.queue.back().unwrap();
         if let Packet::Request { sequence, response_ack: _, cookie: _, action:_ } = pkt {
@@ -925,7 +1138,10 @@ mod test {
         }
     }
 
+
+    // `buffer_item()` test with an enforced hard limit size is disabled until performance is re-examined
     #[test]
+    #[ignore]
     fn test_buffer_item_max_queue_limit_maintained() {
         let mut nm = NetworkManager::new();
         for index in 0..NETWORK_QUEUE_LENGTH+5 {
@@ -1575,6 +1791,168 @@ mod test {
         }
         assert_eq!(nm.tx_packets.len(), NETWORK_QUEUE_LENGTH);
 
-        let chat_msg = BroadcastChatMessage::new(0, "chatchat".to_owned(), "chatchat".to_owned());
+        let _chat_msg = BroadcastChatMessage::new(0, "chatchat".to_owned(), "chatchat".to_owned());
+    }
+
+    #[test]
+    fn test_get_contiguous_packets_count() {
+        let mut nm = NetworkManager::new();
+        for index in 0..5 {
+            let pkt = Packet::Request {
+                sequence: index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.rx_packets.buffer_item(pkt);
+        }
+        for index in 8..10 {
+            let pkt = Packet::Request {
+                sequence: index as u64,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+            nm.rx_packets.buffer_item(pkt);
+        }
+
+        let count = nm.rx_packets.get_contiguous_packets_count(0);
+        assert_eq!(count, 5);
+        let mut iter = nm.rx_packets.as_queue_type().iter();
+        for index in 0..5 {
+            let pkt = iter.next().unwrap();
+            assert_eq!(index, pkt.sequence_number() as usize);
+            // Verify that the packet is not dequeued
+            assert_eq!(index, nm.rx_packets.as_queue_type().get(index).unwrap().sequence_number() as usize);
+        }
+    }
+
+    #[test]
+    fn test_get_retransmit_indices() {
+        let mut nm = NetworkManager::new();
+        for i in 0..5 {
+            let pkt = Packet::Request {
+                sequence: i,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+
+            nm.tx_packets.buffer_item(pkt.clone());
+
+            if i < 3 {
+                let timestamp: &mut Timestamp = nm.tx_packets.timestamps.back_mut().unwrap();
+                timestamp.time = Instant::now() - Duration::from_secs(i+1);
+            }
+        }
+        assert_eq!(nm.tx_packets.get_retransmit_indices().len(), 3);
+        thread::sleep(Duration::from_millis(2000));
+        assert_eq!(nm.tx_packets.get_retransmit_indices().len(), 5);
+    }
+
+    #[test]
+    fn test_retransmit_expired_tx_packets_no_expirations() {
+        let mut nm = NetworkManager::new();
+
+        for i in 0..5 {
+            let pkt = Packet::Request {
+                sequence: i,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+
+            nm.tx_packets.buffer_item(pkt.clone());
+        }
+
+        let indices = nm.tx_packets.get_retransmit_indices();
+
+        let (udp_tx, _) = mpsc::unbounded();
+        let addr = fake_socket_addr();
+        nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
+
+        for i in 0..5 {
+            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 0);
+        }
+    }
+
+    #[test]
+    fn test_retransmit_expired_tx_packets_basic_retries() {
+        let mut nm = NetworkManager::new();
+
+        for i in 0..5 {
+            let pkt = Packet::Request {
+                sequence: i,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+
+            nm.tx_packets.buffer_item(pkt.clone());
+
+           if i < 3 {
+                let timestamp: &mut Timestamp = nm.tx_packets.timestamps.back_mut().unwrap();
+                timestamp.time = Instant::now() - Duration::from_secs(i+1);
+            }
+        }
+
+        let indices = nm.tx_packets.get_retransmit_indices();
+
+        let (udp_tx, _) = mpsc::unbounded();
+        let addr = fake_socket_addr();
+        nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
+
+        for i in 0..3 {
+            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 1);
+        }
+        for i in 3..5 {
+            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 0);
+        }
+    }
+
+    #[test]
+    fn test_retransmit_expired_tx_packets_aggressive_retries() {
+        let mut nm = NetworkManager::new();
+
+        for i in 0..5 {
+            let pkt = Packet::Request {
+                sequence: i,
+                response_ack: None,
+                cookie: None,
+                action: RequestAction::None
+            };
+
+            nm.tx_packets.buffer_item(pkt.clone());
+
+           if i < 3 {
+                let timestamp: &mut Timestamp = nm.tx_packets.timestamps.back_mut().unwrap();
+                timestamp.time = Instant::now() - Duration::from_secs(i+1);
+            }
+        }
+
+        // After 2 attempts, aggressive mode should kick in
+        for _ in 0..5 {
+            let indices = nm.tx_packets.get_retransmit_indices();
+
+            println!("{:?}", indices);
+
+            let (udp_tx, _) = mpsc::unbounded();
+            let addr = fake_socket_addr();
+            nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
+
+            for j in 0..indices.len() {
+                let timestamp: &mut Timestamp = nm.tx_packets.timestamps.get_mut(j).unwrap();
+                timestamp.time = Instant::now() - Duration::from_secs( 1u64);
+            }
+        }
+
+        for i in 0..3 {
+            // 5 + 2 + 2 + 3
+            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 11);
+        }
+        for i in 3..5 {
+            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 0);
+        }
+
     }
 }

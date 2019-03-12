@@ -30,13 +30,15 @@ extern crate semver;
 #[cfg(test)]
 #[macro_use]
 extern crate proptest;
+extern crate chrono;
 
+#[macro_use]
 mod net;
 
-use net::{RequestAction, ResponseCode, Packet, LineCodec, UniUpdateType, BroadcastChatMessage};
+use net::{RequestAction, ResponseCode, Packet, LineCodec, UniUpdateType, BroadcastChatMessage, NetworkManager, NetworkQueue};
 
 use std::error::Error;
-use std::io::{self, ErrorKind};
+use std::io::{self, ErrorKind, Write};
 use std::iter;
 use std::net::SocketAddr;
 use std::process::exit;
@@ -51,12 +53,16 @@ use futures::sync::mpsc;
 use tokio_core::reactor::{Core, Timeout};
 use rand::RngCore;
 use semver::Version;
+use chrono::Local;
+use log::LevelFilter;
 
-const TICK_INTERVAL:         u64   = 10; // milliseconds
-const MAX_ROOM_NAME:         usize = 16;
-const MAX_NUM_CHAT_MESSAGES: usize = 128;
-const MAX_AGE_CHAT_MESSAGES: usize = 60*5; // seconds
-const SERVER_ID:             PlayerID = PlayerID(u64::max_value()); // 0xFFFF....FFFF
+const TICK_INTERVAL_IN_MS:    u64      = 10;
+const NETWORK_INTERVAL_IN_MS: u64      = 100;    // Arbitrarily chosen
+const HEARTBEAT_INTERVAL_IN_MS: u64    = 1000;    // Arbitrarily chosen
+const MAX_ROOM_NAME:          usize    = 16;
+const MAX_NUM_CHAT_MESSAGES:  usize    = 128;
+const MAX_AGE_CHAT_MESSAGES:  usize    = 60*5; // seconds
+const SERVER_ID:              PlayerID = PlayerID(u64::max_value()); // 0xFFFF....FFFF
 
 #[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
 struct PlayerID(u64);
@@ -82,7 +88,7 @@ struct Player {
     cookie:        String,
     addr:          SocketAddr,
     name:          String,
-    request_ack:   Option<u64>,          // most recent request sequence number received
+    request_ack:   Option<u64>,          // most recent request sequence number received. This +1 is what we'd next expect.
     next_resp_seq: u64,                  // This is the sequence number for the Response packet the Server sends to the Client
     game_info:     Option<PlayerInGameInfo>,   // none means in lobby
     heartbeat:     Option<time::Instant>,
@@ -171,10 +177,10 @@ struct Room {
 struct ServerState {
     tick:           usize,
     players:        HashMap<PlayerID, Player>,
-    player_map:     HashMap<String, PlayerID>,      // map cookie to player ID
+    player_map:     HashMap<String, PlayerID>,  // map cookie to player ID
     rooms:          HashMap<RoomID, Room>,
-    room_map:       HashMap<String, RoomID>,      // map room name to room ID
-    silence_error:  bool,   // TODO move into own struct with other 'config' members
+    room_map:       HashMap<String, RoomID>,    // map room name to room ID
+    network_map:    HashMap<PlayerID, NetworkManager>,  // map Player ID to Player's network data
 }
 
 //////////////// Utilities ///////////////////////
@@ -329,6 +335,16 @@ impl ServerState {
         opt_player.unwrap()
     }
 
+    fn get_player_mut(&mut self, player_id: PlayerID) -> &mut Player {
+        let opt_player = self.players.get_mut(&player_id);
+
+        if opt_player.is_none() {
+            panic!("player_id: {} could not be found!", player_id);
+        }
+
+        opt_player.unwrap()
+    }
+
     fn get_room_id(&self, player_id: PlayerID) -> Option<RoomID> {
         let player = self.get_player(player_id);
         if player.game_info == None {
@@ -456,7 +472,7 @@ impl ServerState {
                     room_id: gs.room_id.clone(),
                     chat_msg_seq_num: None
                 });
-                return ResponseCode::OK;
+                return ResponseCode::JoinedRoom(room_name);
             }
         }
         return ResponseCode::BadRequest(Some(format!("no room named {:?}", room_name)));
@@ -481,7 +497,7 @@ impl ServerState {
         }
         player.game_info = None;
 
-        return ResponseCode::OK;
+        return ResponseCode::LeaveRoom;
     }
 
     fn remove_player(&mut self, player_id: PlayerID, player_cookie: String) {
@@ -516,8 +532,8 @@ impl ServerState {
             RequestAction::Disconnect      => {
                 return self.handle_disconnect(player_id);
             },
-            RequestAction::KeepAlive       => {
-                let player: &mut Player = self.players.get_mut(&player_id).unwrap();
+            RequestAction:: KeepAlive(_) => {
+                let player: &mut Player = self.get_player_mut(player_id);
                 player.heartbeat = Some(time::Instant::now());
                 return ResponseCode::OK;
             },
@@ -545,7 +561,6 @@ impl ServerState {
             RequestAction::None => {
                 return ResponseCode::BadRequest( Some("Invalid request".to_owned()) );
             },
-            RequestAction::TestSequenceNumber(_) => { return ResponseCode::OldPacket; },
         }
     }
 
@@ -563,6 +578,19 @@ impl ServerState {
         return true;
     }
 
+    // Request_ack contains the last processed sequence number. If one arrives older (less than)
+    // than the last processed, it must be rejected.
+    // FIXME Does not handle wrapped sequence number case yet.
+    fn is_previously_processed_packet(&mut self, player_id: PlayerID, sequence: u64) -> bool {
+        let player: &Player = self.get_player(player_id);
+        if let Some(request_ack) = player.request_ack {
+            if sequence <= request_ack {
+                return true;
+            }
+        }
+        false
+    }
+
     fn get_player_id_by_cookie(&self, cookie: &str) -> Option<PlayerID> {
         match self.player_map.get(cookie) {
             Some(player_id) => Some(*player_id),
@@ -570,27 +598,241 @@ impl ServerState {
         }
     }
 
-    // always returns either Ok(Some(Packet::Response{...})), Ok(None), or error
+    /// Returns true if the packet already exists in the queue, otherwise it will return false, and
+    /// will be added in sequence_number order.
+    fn add_packet_to_queue(&mut self, player_id: PlayerID, packet: Packet) -> bool {
+        // Unwrap should be safe since a player ID was already found.
+        let network: &mut NetworkManager = self.network_map.get_mut(&player_id).unwrap();
+        let already_exists = network.rx_packets.buffer_item(packet);
+        already_exists
+    }
+
+    /// Checks to see if the incoming packet is immediately processable
+    fn can_process_packet(&mut self, player_id: PlayerID, sequence_number: u64) -> bool {
+        let player: &mut Player = self.get_player_mut(player_id);
+        if let Some(ack) = player.request_ack {
+            trace!("[CAN PROCESS?] Ack: {} Sqn: {}", ack, sequence_number);
+            ack+1 == sequence_number
+        } else {
+            // request_ack has not been set yet, likely first packet
+            player.request_ack = Some(0);
+            true
+        }
+    }
+
+    /// Processes a player's request action for all non Connect requests. If necessary, a response is buffered
+    /// for later transmission
+    fn process_player_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Result<Option<Packet>, Box<Error>> {
+        match action {
+            RequestAction::Connect{..} => unreachable!(),
+            _ => {
+                if let Some(response) = self.handle_request_action(player_id, action.clone()) {
+                    // Buffer all responses to the client for [re-]transmission
+                    let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
+                    if let Some(player_net) = network {
+                        trace!("[A Response to Client Request added to TX Buffer]{:?}", response);
+                        player_net.tx_packets.buffer_item(response.clone());
+                    }
+                    Ok(Some(response))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    /// Determine how many contiguous packets are processable and process their requests for the given player.
+    fn process_queued_rx_packets(&mut self, player_id: PlayerID) {
+        // If we can, start popping off the RX queue and handle contiguous packets immediately
+        let mut dequeue_count = 0;
+
+        // Get the last packet we've sent to this player
+        let player_processed_seq_num = self.get_player(player_id).request_ack;
+        let mut latest_processed_seq_num;
+
+        if let Some(seq_num) = player_processed_seq_num {
+            latest_processed_seq_num = seq_num;
+        } else {
+            // if request_ack is None, we shouldn't have processed anything yet
+            latest_processed_seq_num = 0;
+        }
+
+        // Collect the next batch of received packets we can process.
+        let rx_queue_count;
+        let mut processable_packets: Vec<Packet> = vec![];
+        {
+            let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
+            if let Some(player_net) = network {
+                rx_queue_count = player_net.rx_packets.get_contiguous_packets_count(latest_processed_seq_num+1);
+                // ameen: can I use take().filter().collect()?
+                while dequeue_count < rx_queue_count {
+                    let packet = player_net.rx_packets.as_queue_type_mut().pop_front().unwrap();
+
+                    // It is possible that a previously buffered packet (due to out-of-order) was resent by the client,
+                    // and processed immediately upon receipt. We need to skip these.
+                    if packet.sequence_number() > latest_processed_seq_num
+                    {
+                        processable_packets.push(packet);
+                    }
+
+                    dequeue_count += 1;
+                }
+            }
+        }
+
+        for packet in processable_packets {
+            trace!("[Processing Client Request from RX Buffer]: {:?}", packet);
+            match packet {
+                Packet::Request{sequence, response_ack: _, cookie: _, action} => {
+                    latest_processed_seq_num += 1;
+                    assert!(sequence == latest_processed_seq_num);
+                    let _response_packet = self.process_player_request_action(player_id, action);
+                }
+                _ => panic!("Development bug: Non-response packet found in client buffered RX queue")
+            }
+        }
+    }
+
+    fn process_player_buffered_packets(&mut self, players_to_update: &Vec<PlayerID>) {
+        for player_id in players_to_update {
+            self.process_queued_rx_packets(*player_id);
+        }
+    }
+
+    fn process_buffered_packets_in_lobby(&mut self){
+        let mut players_to_update: Vec<PlayerID> = vec![];
+
+        if self.players.len() == 0 {
+            return;
+        }
+
+        // Skip players if they're in a game
+        for player in self.players.values() {
+            if player.game_info.is_some() {
+                continue;
+            }
+            players_to_update.push(player.player_id);
+        }
+
+        if players_to_update.len() != 0 {
+            self.process_player_buffered_packets(&players_to_update);
+        }
+    }
+
+    fn resend_expired_tx_packets(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>) {
+        let mut players_to_update: Vec<PlayerID> = vec![];
+
+        if self.players.len() == 0 {
+            return;
+        }
+
+        for player in self.players.values() {
+            players_to_update.push(player.player_id);
+        }
+
+        if players_to_update.len() != 0 {
+            for player_id in players_to_update {
+                // If any processed packets result in responses, prepare them below for transmission
+                let player_addr: SocketAddr = self.get_player_mut(player_id).addr;
+                let ack = self.get_player_mut(player_id).request_ack;
+
+                let player_network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
+                if let Some(player_net) = player_network {
+                    if player_net.tx_packets.len() == 0 {
+                        continue;
+                    }
+
+                    let indices = player_net.tx_packets.get_retransmit_indices();
+                    trace!("[Sending expired responses to client from TX Buffer]: {:?} Len: {}", player_id, indices.len());
+                    player_net.retransmit_expired_tx_packets(udp_tx, player_addr, ack, &indices);
+
+                } else {
+                    error!("I haven't found a NetworkManager for Player: {}", player_id);
+                    continue;
+                }
+            }
+        }
+    }
+
+    fn process_buffered_packets_in_rooms(&mut self) {
+        let mut players_to_update: Vec<PlayerID> = vec![];
+
+        if self.rooms.len() == 0 {
+            return;
+        }
+
+        for room in self.rooms.values() {
+            if room.player_ids.len() == 0 {
+                continue;
+            }
+
+            for player_id in &room.player_ids {
+                let opt_player: Option<&Player> = self.players.get(&player_id);
+                if opt_player.is_none() { continue; }
+
+                let player: &Player = opt_player.unwrap();
+                if player.game_info.is_none() { continue; }
+
+                players_to_update.push(*player_id);
+            }
+        }
+
+        if players_to_update.len() != 0 {
+            self.process_player_buffered_packets(&players_to_update);
+        }
+    }
+
+    /// Clear out the transmission queue of any packets the client has acknowledged
+    fn clear_transmission_queue_on_ack(&mut self, player_id: PlayerID, response_ack: Option<u64>) {
+        if let Some(response_ack) = response_ack {
+            if let Some(ref mut player_network) = self.network_map.get_mut(&player_id) {
+                let mut removal_count = 0;
+                for resp_pkt in player_network.tx_packets.as_queue_type_mut().iter() {
+                    if response_ack > 0 && (resp_pkt.sequence_number() <= response_ack-1)
+                    {
+                        removal_count += 1;
+                    } else {
+                        break;
+                    }
+                    // else {
+                        // TODO handle wrapped case & unit tests
+                    // }
+                }
+
+                if removal_count != 0 {
+                    player_network.tx_pop_front_with_count(removal_count);
+                }
+            }
+        }
+    }
+
+    /// Inspect the packet's contents for acceptance, or reject it.
+    /// `Response`/`Update` packets are invalid in this context
+    /// Acceptance criteria for `Request`
+    ///  1. Cookie must be present and valid
+    ///  2. Ignore KeepAlive
+    ///  3. Client should notified if version requires updating
+    ///  4. Ignore if already received or processed
+    /// Always returns either Ok(Some(Packet::Response{...})), Ok(None), or error.
     fn decode_packet(&mut self, addr: SocketAddr, packet: Packet) -> Result<Option<Packet>, Box<Error>> {
-        match packet {
+        match packet.clone() {
             _pkt @ Packet::Response{..} | _pkt @ Packet::Update{..} => {
-                return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "invalid packet - server-only")));
+                return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "invalid packet type")));
             }
             Packet::Request{sequence, response_ack, cookie, action} => {
 
-                if action.clone() != RequestAction::KeepAlive {
-                    println!("Packet_RX {:?}/{:?}: Sequence: {:?} Response_Ack: {:?} RequestAction: {:?}", addr, cookie, sequence, response_ack, action);
-                }
-
                 match action {
                     RequestAction::Connect{..} => (),
+                    RequestAction::KeepAlive(_) => (),
                     _ => {
                         if cookie == None {
                             return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "no cookie")));
+                        } else {
+                            trace!("[Request] cookie: {:?} sequence: {} resp_ack: {:?} event: {:?}", cookie, sequence,
+                                                                                                 response_ack, action);
                         }
                     }
                 }
-
                 // handle connect (create user, and save cookie)
                 if let RequestAction::Connect{name, client_version} = action {
                     if validate_client_version(client_version) {
@@ -614,28 +856,42 @@ impl ServerState {
                         }
                     };
 
-/*                    {
-                        let player_next_sequence_num: u64 = self.get_player(player_id).next_resp_seq;
-                        println!("{} <= {}", sequence, player_next_sequence_num - 1);
-                        if sequence <= (player_next_sequence_num - 1) && action != RequestAction::KeepAlive {
-                            self.silence_error = true;
-                            return Err(Box::new(io::Error::new(ErrorKind::AlreadyExists, "")));
+                    match action.clone() {
+                        RequestAction::KeepAlive(resp_ack) => {
+                            // If the client does not send new requests, the Server will never get a reply for
+                            // the set of responses it may have sent. This will result in the transmission queue contents
+                            // flooding the Client on retranmission.
+                            self.clear_transmission_queue_on_ack(player_id, Some(resp_ack));
+                            return Ok(None);
                         }
+                        _ => (),
                     }
-*/
-                    match action {
-                        RequestAction::Connect{..} => unreachable!(),
-                        _ => {
-                            let response = self.handle_request_action(player_id, action.clone());
 
-                            if action != RequestAction::KeepAlive {
-                                Ok(Some(response))
-                            } else {
-                                self.silence_error = true;
-                                Err(Box::new(io::Error::new(ErrorKind::AlreadyExists, "")))
-                            }
-                        }
+                    // For the non-KeepAlive case
+                    self.clear_transmission_queue_on_ack(player_id, response_ack);
+
+                    // Check to see if it can be processed right away, otherwise buffer it for later consumption.
+                    // Not sure if I like this name but it'll do for now.
+                    if self.can_process_packet(player_id, sequence) {
+                        trace!("[PROCESS IMMEDIATE]");
+                        return self.process_player_request_action(player_id, action);
                     }
+
+                    // Packet may be resent by client but has since been processed.
+                    if self.is_previously_processed_packet(player_id, sequence) {
+                        trace!("\t [ALREADY PROCESSED]");
+                        return Ok(None);
+                    }
+
+                    // Returns true if the packet already exists in the queue
+                    if self.add_packet_to_queue(player_id, packet) {
+                        trace!("\t [ALREADY QUEUED]");
+                        return Ok(None);
+                    }
+
+                    // In the event we buffered it, we do not send a response
+                    trace!("\t [BUFFERED]");
+                    Ok(None)
                 }
             }
             Packet::UpdateReply{cookie, last_chat_seq, last_game_update_seq: _, last_gen: _} => {
@@ -663,25 +919,40 @@ impl ServerState {
         }
     }
 
-    fn handle_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Packet {
+    fn handle_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Option<Packet> {
         let response_code = self.process_request_action(player_id, action.clone());
 
-        let sequence = if action != RequestAction::KeepAlive {
-            let opt_player: Option<&mut Player> = self.players.get_mut(&player_id);
+        let (sequence, request_ack);//= (0, None);
 
-            let sequence = match opt_player {
-                Some(player) => player.increment_response_seq_num(),
-                None => 0
-            };
+        match action {
+            RequestAction::KeepAlive(_) => unreachable!(), // Filtered away at the decoding packet layer
+            _ => {
+                let opt_player: Option<&mut Player> = self.players.get_mut(&player_id);
 
-            sequence
-        } else { 0 }; // Does not matter since KeepAlive is not responded to.
-
-        Packet::Response{
-            sequence:    sequence,
-            request_ack: None,
-            code:        response_code,
+                match opt_player {
+                    Some(player) => {
+                        sequence = player.increment_response_seq_num();
+                        if let Some(ack) = player.request_ack {
+                            player.request_ack = Some(ack+1);
+                            request_ack = player.request_ack;
+                        } else {
+                            panic!("Player's request ack has never been set. It should have been set after the first packet!");
+                        }
+                    }
+                    None => {
+                        // This happens with Disconnect packets -- player was deleted at top of this
+                        // function.
+                        return None;
+                    }
+                }
+            }
         }
+
+        Some(Packet::Response{
+            sequence:    sequence,
+            request_ack: request_ack,
+            code:        response_code,
+        })
     }
 
     fn handle_new_connection(&mut self, name: String, addr: SocketAddr) -> Packet {
@@ -692,7 +963,7 @@ impl ServerState {
             // Sequence is assumed to start at 0 for all new connections
             let response = Packet::Response{
                 sequence:    0,
-                request_ack: None,
+                request_ack: Some(0), // Should start at seq_num 0 unless client's network state was not properly reset
                 code:        ResponseCode::LoggedIn(cookie, net::VERSION.to_owned()),
             };
             return response;
@@ -707,7 +978,6 @@ impl ServerState {
         }
     }
 
-    // XXX
     // Right now we'll be constructing all client Update packets for _every_ room.
     fn construct_client_updates(&mut self) -> Result<Option<Vec<(SocketAddr, Packet)>>, Box<Error>> {
         let mut client_updates: Vec<(SocketAddr, Packet)> = vec![];
@@ -775,7 +1045,7 @@ impl ServerState {
                     // Player is caught up
                     return None;
                 } else if chat_msg_seq_num > newest_msg.seq_num {
-                    println!("ERROR: misbehaving client {:?};\nClient says it has more messages than we sent!", player);
+                    error!("Misbehaving client {:?};\nClient says it has more messages than we sent!", player);
                     return None;
                 } else {
                     let amount_to_consume = room.get_message_skip_count(chat_msg_seq_num);
@@ -829,8 +1099,9 @@ impl ServerState {
         // save player into players hash map, and save player ID into hash map using cookie
         self.player_map.insert(cookie, player_id);
         self.players.insert(player_id, player);
+        self.network_map.insert(player_id, NetworkManager::new());
 
-        let player = self.players.get_mut(&player_id).unwrap();
+        let player = self.get_player_mut(player_id);
 
         // We expect that the Server proceed with `1` after the connection has been established
         player.increment_response_seq_num();
@@ -842,7 +1113,7 @@ impl ServerState {
 
         for (p_id, p) in self.players.iter() {
             if net::has_connection_timed_out(p.heartbeat) {
-                println!("Player({}) has timed out", p.cookie);
+                info!("Player({}) has timed out", p.cookie);
                 timed_out_players.push(*p_id);
             }
         }
@@ -860,7 +1131,7 @@ impl ServerState {
             rooms:      HashMap::<RoomID, Room>::new(),
             player_map: HashMap::<String, PlayerID>::new(),
             room_map:   HashMap::<String, RoomID>::new(),
-            silence_error: false,
+            network_map: HashMap::<PlayerID, NetworkManager>::new(),
         }
     }
 }
@@ -869,12 +1140,26 @@ impl ServerState {
 enum Event {
     TickEvent,
     Request((SocketAddr, Option<Packet>)),
+    NetworkEvent,
+    HeartBeat,
 //    Notify((SocketAddr, Option<Packet>)),
 }
 
 //////////////////// Main /////////////////////
 fn main() {
-    drop(env_logger::init());
+    env_logger::Builder::new()
+    .format(|buf, record| {
+        writeln!(buf,
+            "{} [{:5}] - {}",
+            Local::now().format("%a %Y-%m-%d %H:%M:%S%.6f"),
+            record.level(),
+            record.args(),
+        )
+    })
+    .filter(None, LevelFilter::Trace)
+    .filter(Some("futures"), LevelFilter::Off)
+    .filter(Some("tokio_core"), LevelFilter::Off)
+    .init();
 
     let mut core = Core::new().unwrap();
     let handle = core.handle();
@@ -893,7 +1178,7 @@ fn main() {
 
     let iter_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () ));
     let tick_stream = iter_stream.and_then(|_| {
-        let timeout = Timeout::new(Duration::from_millis(TICK_INTERVAL), &handle).unwrap();
+        let timeout = Timeout::new(Duration::from_millis(TICK_INTERVAL_IN_MS), &handle).unwrap();
         timeout.and_then(move |_| {
             ok(Event::TickEvent)
         })
@@ -908,8 +1193,26 @@ fn main() {
         })
         .map_err(|_| ());
 
+    let network_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () ));
+    let network_stream = network_stream.and_then(|_| {
+        let timeout = Timeout::new(Duration::from_millis(NETWORK_INTERVAL_IN_MS), &handle).unwrap();
+        timeout.and_then(move |_| {
+            ok(Event::NetworkEvent)
+        })
+    }).map_err(|_| ());
+
+    let heartbeat_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () ));
+    let heartbeat_stream = heartbeat_stream.and_then(|_| {
+        let timeout = Timeout::new(Duration::from_millis(HEARTBEAT_INTERVAL_IN_MS), &handle).unwrap();
+        timeout.and_then(move |_| {
+            ok(Event::HeartBeat)
+        })
+    }).map_err(|_| ());
+
     let server_fut = tick_stream
         .select(packet_stream)
+        .select(network_stream)
+        .select(heartbeat_stream)
         .fold(initial_server_state, move |mut server_state: ServerState, event: Event | {
             match event {
                 Event::Request(packet_tuple) => {
@@ -924,14 +1227,11 @@ fn main() {
 
                             if let Some(response_packet) = opt_response_packet {
                                 let response = (addr.clone(), response_packet);
-                                tx.unbounded_send(response).unwrap();
+                                netwayste_send!(tx, response, ("[EVENT::REQUEST] Immediate response failed."));
                             }
                         } else {
                             let err = decode_result.unwrap_err();
-                            if !server_state.silence_error {
-                                println!("ERROR decoding packet from {:?}: {:?}", addr, err);
-                            }
-                            server_state.silence_error = false;
+                            error!("Decoding packet failed, from {:?}: {:?}", addr, err);
                         }
                     }
                 }
@@ -944,27 +1244,40 @@ fn main() {
 
                         if let Some(update_packets) = opt_update_packets {
                             for update in update_packets {
-                                tx.unbounded_send(update).unwrap();
+                                netwayste_send!(tx, update, ("[EVENT::TICK] Could not send client update."));
                             }
                         }
                     }
 
-                    server_state.remove_timed_out_clients();
-
-                    // Send a KeepAlive every second
-                    if (server_state.tick % 100) == 0 {
-                        for player in server_state.players.values() {
-                            let keep_alive = Packet::Response {
-                                sequence: player.next_resp_seq-1,
-                                request_ack: player.request_ack,
-                                code: ResponseCode::KeepAlive
-                            };
-
-                            tx.unbounded_send( (player.addr, keep_alive) ).unwrap();
-                        }
+                    /*
+                    for x in server_state.network_map.values() {
+                        trace!("\n\n\nNETWORK QUEUE CAPACITIES\n-----------------------\nTX: {}\nRX: {}\n\n\n", x.tx_packets.as_queue_type().capacity(), x.rx_packets.as_queue_type().capacity());
                     }
+                    */
 
+                    server_state.remove_timed_out_clients();
                     server_state.tick  = 1usize.wrapping_add(server_state.tick);
+                }
+
+                Event::NetworkEvent => {
+                    // Process players in rooms
+                    server_state.process_buffered_packets_in_rooms();
+
+                    // Process players in lobby
+                    server_state.process_buffered_packets_in_lobby();
+
+                    server_state.resend_expired_tx_packets(&tx);
+                }
+
+                Event::HeartBeat => {
+                    for player in server_state.players.values() {
+                        let keep_alive = Packet::Response {
+                            sequence: 0,
+                            request_ack: None,
+                            code: ResponseCode::KeepAlive
+                        };
+                        netwayste_send!(tx, (player.addr, keep_alive), ("[EVENT::HEARTBEAT] Could not send to Player: {:?}", player));
+                    }
                 }
             }
 
@@ -994,17 +1307,6 @@ mod test {
     fn fake_socket_addr() -> SocketAddr {
         use std::net::{IpAddr, Ipv4Addr};
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 5678)
-    }
-
-    fn serverstate_get_player_by_id(server: &mut ServerState, player_id: PlayerID) -> &mut Player {
-        let opt_player = server.players.get_mut(&player_id);
-
-        if opt_player.is_none() {
-            panic!("Player not found");
-        }
-
-        let player: &mut Player = opt_player.unwrap();
-        player
     }
 
     #[test]
@@ -1068,7 +1370,7 @@ mod test {
             server.join_room(player_id, String::from(room_name));
         }
 
-        // A chatless player now has something to to say
+        // A chat-less player now has something to to say
         server.decode_packet(fake_socket_addr(), Packet::UpdateReply {
             cookie: player_cookie.clone(),
             last_chat_seq: Some(1),
@@ -1142,7 +1444,8 @@ mod test {
         }
 
         {
-            let player = serverstate_get_player_by_id(&mut server, player_id);
+            //let player = server.get_player_mut(player_id);
+            let player = server.get_player_mut(player_id);
             // player has not acknowledged any yet
             #[should_panic]
             assert_eq!(player.get_confirmed_chat_seq_num(), None);
@@ -1150,7 +1453,7 @@ mod test {
 
         // player acknowledged four of the six
         let acked_message_count = {
-            let player = serverstate_get_player_by_id(&mut server, player_id);
+            let player = server.get_player_mut(player_id);
             player.update_chat_seq_num(Some(4));
 
             player.get_confirmed_chat_seq_num().unwrap()
@@ -1162,7 +1465,7 @@ mod test {
 
         // player acknowledged all six
         let acked_message_count = {
-            let player = serverstate_get_player_by_id(&mut server, player_id);
+            let player = server.get_player_mut(player_id);
             player.update_chat_seq_num(Some(6));
 
             player.get_confirmed_chat_seq_num().unwrap()
@@ -1205,7 +1508,7 @@ mod test {
 
         let acked_message_count = {
             // Ack up until 0xFFFFFFFFFFFFFFFD
-            let player = serverstate_get_player_by_id(&mut server, player_id);
+            let player = server.get_player_mut(player_id);
             player.update_chat_seq_num(Some(start_seq_num + 4));
 
             player.get_confirmed_chat_seq_num().unwrap()
@@ -1258,7 +1561,7 @@ mod test {
         }
 
         {
-            let player = serverstate_get_player_by_id(&mut server, player_id);
+            let player = server.get_player_mut(player_id);
             player.update_chat_seq_num(Some(1));
         }
         {
@@ -1304,7 +1607,7 @@ mod test {
             assert_eq!(messages.unwrap().len(), 1);
         }
         {
-            let player = serverstate_get_player_by_id(&mut server, player_id);
+            let player = server.get_player_mut(player_id);
             player.update_chat_seq_num(Some(1));
         }
 
@@ -1462,7 +1765,7 @@ mod test {
 
             p.player_id
         };
-        assert_eq!(server.join_room(player_id, room_name.to_owned()), ResponseCode::OK);
+        assert_eq!(server.join_room(player_id, room_name.to_owned()), ResponseCode::JoinedRoom("some room".to_owned()));
     }
 
     #[test]
@@ -1478,7 +1781,7 @@ mod test {
 
             p.player_id
         };
-        assert_eq!(server.join_room(player_id, room_name.clone()), ResponseCode::OK);
+        assert_eq!(server.join_room(player_id, room_name.clone()), ResponseCode::JoinedRoom("some room".to_owned()));
         assert_eq!( server.join_room(player_id, room_name), ResponseCode::BadRequest(Some("cannot join game because in-game".to_owned())) );
     }
 
@@ -1513,7 +1816,7 @@ mod test {
             server.join_room(player_id, room_name.to_owned());
         }
 
-        assert_eq!( server.leave_room(player_id), ResponseCode::OK );
+        assert_eq!( server.leave_room(player_id), ResponseCode::LeaveRoom );
 
     }
 
@@ -1859,14 +2162,15 @@ mod test {
         let mut server = ServerState::new();
         let player_id: PlayerID = {
             let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
+            player.request_ack = Some(1);
             player.player_id
         };
-        let pkt: Packet = server.handle_request_action(player_id, RequestAction::ListRooms);
+        let pkt: Packet = server.handle_request_action(player_id, RequestAction::ListRooms).unwrap();
         match pkt {
             Packet::Response{code, sequence, request_ack} => {
                 assert_eq!(code, ResponseCode::RoomList(vec![]));
                 assert_eq!(sequence, 1);
-                assert_eq!(request_ack, None);
+                assert_eq!(request_ack, Some(2));
             }
             _ => panic!("Unexpected Packet type on Response path: {:?}", pkt)
         }
@@ -2017,7 +2321,7 @@ mod test {
 
         // Assume that the client has acknowledged two chats
         {
-            let player: &mut Player = server.players.get_mut(&player_id).unwrap();
+            let player: &mut Player = server.get_player_mut(player_id);
             player.update_chat_seq_num(Some(2));
         }
 
@@ -2161,5 +2465,215 @@ mod test {
         // Cannot go through player_id because the player has been removed
         let room: &Room = server.rooms.get(&room_id).unwrap();
         assert_eq!(room.player_ids.contains(&player_id), false);
+    }
+
+    #[test]
+    fn test_is_previously_processed_packet() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = Some(4);
+            player.player_id
+        };
+
+        let player_id2: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = None;
+            player.player_id
+        };
+
+        assert_eq!(server.is_previously_processed_packet(player_id2, 0), false);
+
+        assert_eq!(server.is_previously_processed_packet(player_id, 0), true);
+        assert_eq!(server.is_previously_processed_packet(player_id, 4), true);
+        assert_eq!(server.is_previously_processed_packet(player_id, 5), false);
+    }
+
+    #[test]
+    fn test_clear_transmission_queue_on_ack() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = Some(4);
+            player.player_id
+        };
+
+        for i in 0..5 {
+            let pkt = Packet::Response {
+                sequence: i,
+                request_ack: None,
+                code: ResponseCode::OK
+            };
+
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            nm.tx_packets.buffer_item(pkt.clone());
+        }
+
+        server.clear_transmission_queue_on_ack(player_id, None);
+        assert_eq!(server.network_map.get(&player_id).unwrap().tx_packets.len(), 5);
+        server.clear_transmission_queue_on_ack(player_id, Some(0));
+        assert_eq!(server.network_map.get(&player_id).unwrap().tx_packets.len(), 5);
+        server.clear_transmission_queue_on_ack(player_id, Some(1));
+        assert_eq!(server.network_map.get(&player_id).unwrap().tx_packets.len(), 4);
+        server.clear_transmission_queue_on_ack(player_id, Some(5));
+        assert_eq!(server.network_map.get(&player_id).unwrap().tx_packets.len(), 0);
+    }
+
+    #[test]
+    fn test_resend_expired_tx_packets_empty_server() {
+        let mut server = ServerState::new();
+
+        let (udp_tx, _) = mpsc::unbounded();
+        #[cfg(not(should_panic))]
+        server.resend_expired_tx_packets(&udp_tx);
+    }
+
+    #[test]
+    fn test_resend_expired_tx_packets() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let player_id: PlayerID = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = Some(5);
+            player.player_id
+        };
+
+
+        for i in 0..5 {
+            let pkt = Packet::Response {
+                sequence: i,
+                request_ack: None,
+                code: ResponseCode::OK
+            };
+
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            nm.tx_packets.buffer_item(pkt.clone());
+
+            if i < 3 {
+                let timestamp: &mut net::Timestamp = nm.tx_packets.timestamps.back_mut().unwrap();
+                timestamp.time = Instant::now() - Duration::from_secs(i+1);
+            }
+        }
+
+        let (udp_tx, _) = mpsc::unbounded();
+        server.resend_expired_tx_packets(&udp_tx);
+
+        for i in 0..5 {
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            let packet_retries: &net::Timestamp = nm.tx_packets.timestamps.get(i).unwrap();
+
+            if i >= 3 {
+                assert_eq!(packet_retries.retries, 0);
+            } else {
+                assert_eq!(packet_retries.retries, 1);
+            }
+        }
+    }
+
+    #[test]
+    fn test_process_queued_rx_packets_first_non_connect_player_packet() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let (player_id, player_cookie): (PlayerID, String) = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = Some(1);   // Player connected and we've confirmed the first transaction
+            (player.player_id, player.cookie.clone())
+        };
+
+        {
+            let pkt = Packet::Request {
+                cookie: Some(player_cookie),
+                sequence: 2,
+                response_ack: None,
+                action: RequestAction::ListPlayers
+            };
+
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            nm.rx_packets.buffer_item(pkt.clone());
+
+            assert_eq!(nm.tx_packets.len(), 0);
+        }
+
+        server.process_queued_rx_packets(player_id);
+
+
+        {
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            assert_eq!(nm.tx_packets.len(), 1);
+        }
+
+    }
+
+    #[test]
+    fn test_process_queued_rx_packets_contiguous() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let (player_id, player_cookie): (PlayerID, String) = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = Some(1);   // Player connected and we've confirmed the first transaction
+            (player.player_id, player.cookie.clone())
+        };
+
+        for i in 2..10 {
+            let pkt = Packet::Request {
+                cookie: Some(player_cookie.clone()),
+                sequence: i,
+                response_ack: None,
+                action: RequestAction::ListPlayers
+            };
+
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            nm.rx_packets.buffer_item(pkt.clone());
+
+            assert_eq!(nm.tx_packets.len(), 0);
+        }
+
+        server.process_queued_rx_packets(player_id);
+
+        {
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            assert_eq!(nm.tx_packets.len(), 8);
+        }
+
+    }
+
+    #[test]
+    fn test_process_queued_rx_packets_swiss_cheese_queue() {
+        let mut server = ServerState::new();
+        let player_name = "some player".to_owned();
+
+        let (player_id, player_cookie): (PlayerID, String) = {
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
+            player.request_ack = Some(1);   // Player connected and we've confirmed the first transaction
+            (player.player_id, player.cookie.clone())
+        };
+
+        for i in [2, 3, 4, 6, 8, 9, 10].iter() {
+            let pkt = Packet::Request {
+                cookie: Some(player_cookie.clone()),
+                sequence: *i,
+                response_ack: None,
+                action: RequestAction::ListPlayers
+            };
+
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            nm.rx_packets.buffer_item(pkt.clone());
+
+            assert_eq!(nm.tx_packets.len(), 0);
+        }
+
+        server.process_queued_rx_packets(player_id);
+
+        {
+            let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
+            assert_eq!(nm.tx_packets.len(), 3); // only 2, 3, and 4 are processed
+        }
     }
 }
