@@ -36,11 +36,12 @@ use std::process::exit;
 use std::str::FromStr;
 use std::thread;
 use std::time::{Duration, Instant};
-use net::{RequestAction, ResponseCode, Packet, LineCodec, BroadcastChatMessage, NetworkManager, NetworkQueue};
+use net::{
+    RequestAction, ResponseCode, Packet, LineCodec,
+    BroadcastChatMessage, NetworkManager, NetworkQueue,
+};
 use tokio_core::reactor::{Core, Timeout};
-use futures::{Future, Sink, Stream, stream};
-use futures::future::ok;
-use futures::sync::mpsc;
+use futures::{Future, Sink, Stream, stream, future::ok, sync::mpsc};
 use log::LevelFilter;
 use chrono::Local;
 
@@ -112,10 +113,6 @@ impl ClientState {
 
     fn in_game(&self) -> bool {
         self.room.is_some()
-    }
-
-    fn disconnecting(&self) -> bool {
-        self.disconnect_initiated
     }
 
     // XXX Once netwayste integration is complete, we'll need to internally send
@@ -204,7 +201,7 @@ impl ClientState {
                         // None means the packet was not found so we've probably already removed it.
                         if let Some(_) = self.network.tx_packets.remove(&packet)
                         {
-                            let _ = self.network.rx_packets.buffer_item(packet);
+                            self.network.rx_packets.buffer_item(packet);
                         }
 
                         self.process_queued_server_responses();
@@ -223,7 +220,7 @@ impl ClientState {
                     last_gen:             None,
                 };
 
-                netwayste_send!(self, udp_tx, (addr.clone(), packet),
+                netwayste_send!(udp_tx, (addr.clone(), packet),
                          ("Could not send UpdateReply{{ {} }} to server", self.chat_msg_seq_num));
             }
             Packet::Request{..} => {
@@ -260,16 +257,16 @@ impl ClientState {
             };
             let timed_out = net::has_connection_timed_out(self.heartbeat);
 
-            if timed_out || self.disconnecting() {
+            if timed_out || self.disconnect_initiated {
                 if timed_out {
                     trace!("Server is non-responsive, disconnecting.");
                 }
-                if self.disconnecting() {
+                if self.disconnect_initiated {
                     trace!("Disconnected from the server.")
                 }
                 self.reset();
             } else {
-                netwayste_send!(self, udp_tx, (addr, keep_alive), ("Could not send KeepAlive packets"));
+                netwayste_send!(udp_tx, (addr, keep_alive), ("Could not send KeepAlive packets"));
             }
         }
 
@@ -306,9 +303,9 @@ impl ClientState {
 
             trace!("{:?}", packet);
 
-            let _ = self.network.tx_packets.buffer_item(packet.clone());
+            self.network.tx_packets.buffer_item(packet.clone());
 
-            netwayste_send!(self, udp_tx, (addr.clone(), packet),
+            netwayste_send!(udp_tx, (addr.clone(), packet),
                             ("Could not send user input cmd to server"));
 
             if action == RequestAction::Disconnect {
@@ -374,8 +371,8 @@ impl ClientState {
                 let chat_seq = chat_message.chat_seq.unwrap();
                 self.chat_msg_seq_num = std::cmp::max(chat_seq, self.chat_msg_seq_num);
 
-                let mut queue = self.network.rx_chat_messages.as_mut().unwrap();
-                let _ = queue.buffer_item(chat_message.clone());
+                let queue = self.network.rx_chat_messages.as_mut().unwrap();
+                queue.buffer_item(chat_message.clone());
 
                 if let Some(ref client_name) = self.name.as_ref() {
                     if *client_name != &chat_message.player_name {
@@ -501,6 +498,7 @@ fn main() {
     .filter(None, LevelFilter::Trace)
     .filter(Some("futures"), LevelFilter::Off)
     .filter(Some("tokio_core"), LevelFilter::Off)
+    .filter(Some("tokio_reactor"), LevelFilter::Off)
     .init();
 
     let addr = env::args().nth(1).unwrap_or("127.0.0.1:12345".to_owned());

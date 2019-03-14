@@ -54,22 +54,13 @@ const MATCH_FOUND_SENTINEL: usize = 110;
 
 #[macro_export]
 macro_rules! netwayste_send {
-    // Client
-    ($_self:ident, $tx:expr, $dest:expr, ($failmsg:expr $(, $args:expr)*)) => {
-        let result = $tx.unbounded_send($dest);
-        if result.is_err() {
-            warn!($failmsg, $( $args)*);
-        } else {
-        }
-    };
-    // Server
     ($tx:ident, $dest:expr, ($failmsg:expr $(, $args:expr)*)) => {
         let result = $tx.unbounded_send($dest);
         if result.is_err() {
             warn!($failmsg, $( $args)*);
         }
     };
-    // Temp placeholder for client for exit()
+    // for client for exit()
     ($tx:expr, ()) => {
         let result = $tx.unbounded_send(());
         if result.is_err() {
@@ -521,12 +512,12 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug+Clone> {
     fn as_queue_type_mut(&mut self) -> &mut ItemQueue<T>;
 }
 
-pub struct Timestamp {
+pub struct NetAttempt {
     pub time: Instant,
     pub retries: usize,
 }
 
-impl Timestamp {
+impl NetAttempt {
     #[allow(unused)]
     pub fn new() -> Self {
         Self {
@@ -546,14 +537,14 @@ type ItemQueue<T> = VecDeque<T>;
 
 pub struct NetQueue<T> {
     pub queue: ItemQueue<T>,
-    pub timestamps: VecDeque<Timestamp>,
+    pub attempts: VecDeque<NetAttempt>,
     pub buffer_wrap_index: Option<usize>,
 }
 
 impl NetQueue<Packet> {
     #[allow(unused)]
     pub fn get_retransmit_indices(&self) -> Vec<usize> {
-        let iter = self.timestamps.iter();
+        let iter = self.attempts.iter();
         iter.enumerate()
             .filter(|(_, ts)|
                 (
@@ -574,7 +565,7 @@ impl<T> NetworkQueue<T> for NetQueue<T>
     fn new() -> Self {
         NetQueue {
             queue:          ItemQueue::<T>::with_capacity(NETWORK_QUEUE_LENGTH),
-            timestamps:     VecDeque::<Timestamp>::with_capacity(NETWORK_QUEUE_LENGTH),
+            attempts:     VecDeque::<NetAttempt>::with_capacity(NETWORK_QUEUE_LENGTH),
             buffer_wrap_index: None
         }
     }
@@ -600,12 +591,12 @@ impl<T> NetworkQueue<T> for NetQueue<T>
     fn clear(&mut self) {
         let Self {
             ref mut queue,
-            ref mut timestamps,
+            ref mut attempts,
             ref mut buffer_wrap_index,
         } = *self;
 
         queue.clear();
-        timestamps.clear();
+        attempts.clear();
         *buffer_wrap_index = None;
     }
 
@@ -621,7 +612,7 @@ impl<T> NetworkQueue<T> for NetQueue<T>
             }
             Ok(index) => {
                 let pkt = self.as_queue_type_mut().remove(index).unwrap();
-                self.timestamps.remove(index);
+                self.attempts.remove(index);
                 return Some(pkt);
             }
         }
@@ -659,7 +650,7 @@ impl<T> NetworkQueue<T> for NetQueue<T>
         let opt_head_seq_num: Option<u64> = self.newest_seq_num();
         if opt_head_seq_num.is_none() {
             self.push_back(item);
-            self.timestamps.push_back(Timestamp::new());
+            self.attempts.push_back(NetAttempt::new());
             return packet_exists;
         }
         let opt_tail_seq_num: Option<u64> = self.oldest_seq_num();
@@ -671,11 +662,11 @@ impl<T> NetworkQueue<T> for NetQueue<T>
             if newest_seq_num == u64::max_value() {
                 if self.will_seq_cause_a_wrap(self.buffer_wrap_index, sequence, oldest_seq_num, newest_seq_num) {
                     self.push_back(item);
-                    self.timestamps.push_back(Timestamp::new());
+                    self.attempts.push_back(NetAttempt::new());
                     self.buffer_wrap_index = Some(self.len() - 1);
                 } else {
                     self.push_front(item);
-                    self.timestamps.push_back(Timestamp::new());
+                    self.attempts.push_back(NetAttempt::new());
                 }
             } else if sequence > newest_seq_num && self.buffer_wrap_index.is_some() {
                 // When wrapped, either this is the newest sequence number so far, or
@@ -688,7 +679,7 @@ impl<T> NetworkQueue<T> for NetQueue<T>
                     }
                 } else {
                     self.push_back(item);
-                    self.timestamps.push_back(Timestamp::new());
+                    self.attempts.push_back(NetAttempt::new());
                 }
             } else if sequence < newest_seq_num {
                 // The new seq num appears to be older than everything,
@@ -707,7 +698,7 @@ impl<T> NetworkQueue<T> for NetQueue<T>
             } else {
                 // Smallest sequence number (in value) that we have seen thus far.
                 self.push_front(item);
-                self.timestamps.push_back(Timestamp::new());
+                self.attempts.push_back(NetAttempt::new());
 
                 if self.buffer_wrap_index.is_some() {
                     self.buffer_wrap_index = Some(self.buffer_wrap_index.unwrap() + 1);
@@ -802,12 +793,12 @@ impl<T> NetQueue<T> where T: Sequenced+Debug+Clone {
             if insertion_index != MATCH_FOUND_SENTINEL {
                 if cfg!(test) {
                     self.as_queue_type_mut().insert(insertion_index, item.clone());
-                    self.timestamps.push_back(Timestamp::new());
+                    self.attempts.push_back(NetAttempt::new());
                 }
             }
             if !(cfg!(test)) {
                 self.as_queue_type_mut().insert(insertion_index, item);
-                self.timestamps.push_back(Timestamp::new());
+                self.attempts.push_back(NetAttempt::new());
             }
         } else { exists = true; } // Packet is present in queue, hence None.
         return exists;
@@ -895,11 +886,11 @@ impl NetworkManager {
         let mut failed_index = 0;
 
         // Retransmit all packets after that are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
-        for index in indices.iter() {
+        for &index in indices.iter() {
 
             let mut send_counter = 1;
 
-            if let Some(ts) = self.tx_packets.timestamps.get_mut(*index) {
+            if let Some(ts) = self.tx_packets.attempts.get_mut(index) {
                 ts.increment_retries();
                 if ts.retries >= RETRY_AGGRESSIVE_THRESHOLD_IN_MS {
                     send_counter += 1;
@@ -911,17 +902,17 @@ impl NetworkManager {
                 }
             }
 
-            if let Some(pkt) = self.tx_packets.queue.get_mut(*index) {
+            if let Some(pkt) = self.tx_packets.queue.get_mut(index) {
                 // `response_sequence` may have advanced since this was last queued
                 pkt.set_response_sequence(confirmed_ack);
                 trace!("[Retransmitting (Times={})] {:?}", send_counter, pkt);
                 for _ in 0..send_counter {
-                    netwayste_send!(self, udp_tx, (addr, (*pkt).clone()),
+                    netwayste_send!(udp_tx, (addr, (*pkt).clone()),
                                 ("Could not retransmit packet to server: {:?}", pkt));
                 }
             } else {
                 error_occurred = true;
-                failed_index = *index;
+                failed_index = index;
                 break;
             }
 
@@ -929,9 +920,9 @@ impl NetworkManager {
 
         if error_occurred {
             // Panic during development, probably want to make this error later on
-            panic!("ERROR: Index ({}) in timestamp queue out-of-bounds in tx packets queue,
+            panic!("ERROR: Index ({}) in attempt queue out-of-bounds in tx packets queue,
                             or perhaps `None`?:\n\t {:?}\n{:?}\n{:?}",
-                    failed_index, indices, self.tx_packets.queue.len(), self.tx_packets.timestamps.len());
+                    failed_index, indices, self.tx_packets.queue.len(), self.tx_packets.attempts.len());
         }
     }
 
@@ -943,7 +934,7 @@ impl NetworkManager {
 
         while num_to_remove > 0 {
             self.tx_packets.as_queue_type_mut().pop_front();
-            self.tx_packets.timestamps.pop_front();
+            self.tx_packets.attempts.pop_front();
             num_to_remove -= 1;
         }
     }
@@ -1218,9 +1209,9 @@ mod test {
         }
 
         let mut iter = nm.rx_packets.queue.iter();
-        for index in [0,2,4,6,8,10].iter() {
+        for &index in [0,2,4,6,8,10].iter() {
             let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number() as usize);
+            assert_eq!(index, pkt.sequence_number() as usize);
         }
     }
 
@@ -1841,8 +1832,8 @@ mod test {
             nm.tx_packets.buffer_item(pkt.clone());
 
             if i < 3 {
-                let timestamp: &mut Timestamp = nm.tx_packets.timestamps.back_mut().unwrap();
-                timestamp.time = Instant::now() - Duration::from_secs(i+1);
+                let attempt: &mut NetAttempt = nm.tx_packets.attempts.back_mut().unwrap();
+                attempt.time = Instant::now() - Duration::from_secs(i+1);
             }
         }
         assert_eq!(nm.tx_packets.get_retransmit_indices().len(), 3);
@@ -1872,7 +1863,7 @@ mod test {
         nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
 
         for i in 0..5 {
-            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 0);
+            assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 0);
         }
     }
 
@@ -1891,8 +1882,8 @@ mod test {
             nm.tx_packets.buffer_item(pkt.clone());
 
            if i < 3 {
-                let timestamp: &mut Timestamp = nm.tx_packets.timestamps.back_mut().unwrap();
-                timestamp.time = Instant::now() - Duration::from_secs(i+1);
+                let attempt: &mut NetAttempt = nm.tx_packets.attempts.back_mut().unwrap();
+                attempt.time = Instant::now() - Duration::from_secs(i+1);
             }
         }
 
@@ -1903,10 +1894,10 @@ mod test {
         nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
 
         for i in 0..3 {
-            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 1);
+            assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 1);
         }
         for i in 3..5 {
-            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 0);
+            assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 0);
         }
     }
 
@@ -1925,8 +1916,8 @@ mod test {
             nm.tx_packets.buffer_item(pkt.clone());
 
            if i < 3 {
-                let timestamp: &mut Timestamp = nm.tx_packets.timestamps.back_mut().unwrap();
-                timestamp.time = Instant::now() - Duration::from_secs(i+1);
+                let attempt: &mut NetAttempt = nm.tx_packets.attempts.back_mut().unwrap();
+                attempt.time = Instant::now() - Duration::from_secs(i+1);
             }
         }
 
@@ -1941,17 +1932,17 @@ mod test {
             nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
 
             for j in 0..indices.len() {
-                let timestamp: &mut Timestamp = nm.tx_packets.timestamps.get_mut(j).unwrap();
-                timestamp.time = Instant::now() - Duration::from_secs( 1u64);
+                let attempt: &mut NetAttempt = nm.tx_packets.attempts.get_mut(j).unwrap();
+                attempt.time = Instant::now() - Duration::from_secs( 1u64);
             }
         }
 
         for i in 0..3 {
             // 5 + 2 + 2 + 3
-            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 11);
+            assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 11);
         }
         for i in 3..5 {
-            assert_eq!(nm.tx_packets.timestamps.get(i).unwrap().retries, 0);
+            assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 0);
         }
 
     }
