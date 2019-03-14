@@ -628,7 +628,7 @@ impl ServerState {
         match action {
             RequestAction::Connect{..} => unreachable!(),
             _ => {
-                if let Some(response) = self.handle_request_action(player_id, action.clone()) {
+                if let Some(response) = self.prepare_response(player_id, action.clone()) {
                     // Buffer all responses to the client for [re-]transmission
                     let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
                     if let Some(player_net) = network {
@@ -921,7 +921,7 @@ impl ServerState {
         }
     }
 
-    fn handle_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Option<Packet> {
+    fn prepare_response(&mut self, player_id: PlayerID, action: RequestAction) -> Option<Packet> {
         let response_code = self.process_request_action(player_id, action.clone());
 
         let (sequence, request_ack);//= (0, None);
@@ -2161,14 +2161,14 @@ mod test {
     }
 
     #[test]
-    fn handle_request_action_spot_check_response_packet() {
+    fn prepare_response_spot_check_response_packet() {
         let mut server = ServerState::new();
         let player_id: PlayerID = {
             let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
             player.request_ack = Some(1);
             player.player_id
         };
-        let pkt: Packet = server.handle_request_action(player_id, RequestAction::ListRooms).unwrap();
+        let pkt: Packet = server.prepare_response(player_id, RequestAction::ListRooms).unwrap();
         match pkt {
             Packet::Response{code, sequence, request_ack} => {
                 assert_eq!(code, ResponseCode::RoomList(vec![]));
