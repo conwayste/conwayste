@@ -35,7 +35,11 @@ extern crate chrono;
 #[macro_use]
 mod net;
 
-use net::{RequestAction, ResponseCode, Packet, LineCodec, UniUpdateType, BroadcastChatMessage, NetworkManager, NetworkQueue};
+use crate::net::{
+    RequestAction, ResponseCode, Packet, LineCodec,
+    UniUpdateType, BroadcastChatMessage, NetworkManager,
+    NetworkQueue,
+};
 
 use std::error::Error;
 use std::io::{self, ErrorKind, Write};
@@ -47,9 +51,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::time;
 use std::collections::VecDeque;
-use futures::*;
-use futures::future::ok;
-use futures::sync::mpsc;
+use futures::{Future, Sink, Stream, stream, future::ok, sync::mpsc};
 use tokio_core::reactor::{Core, Timeout};
 use rand::RngCore;
 use semver::Version;
@@ -88,7 +90,7 @@ struct Player {
     cookie:        String,
     addr:          SocketAddr,
     name:          String,
-    request_ack:   Option<u64>,          // most recent request sequence number received. This +1 is what we'd next expect.
+    request_ack:   Option<u64>,          // The next number we expect is request_ack + 1
     next_resp_seq: u64,                  // This is the sequence number for the Response packet the Server sends to the Client
     game_info:     Option<PlayerInGameInfo>,   // none means in lobby
     heartbeat:     Option<time::Instant>,
@@ -626,7 +628,7 @@ impl ServerState {
         match action {
             RequestAction::Connect{..} => unreachable!(),
             _ => {
-                if let Some(response) = self.handle_request_action(player_id, action.clone()) {
+                if let Some(response) = self.prepare_response(player_id, action.clone()) {
                     // Buffer all responses to the client for [re-]transmission
                     let network: Option<&mut NetworkManager> = self.network_map.get_mut(&player_id);
                     if let Some(player_net) = network {
@@ -766,14 +768,14 @@ impl ServerState {
                 continue;
             }
 
-            for player_id in &room.player_ids {
+            for &player_id in &room.player_ids {
                 let opt_player: Option<&Player> = self.players.get(&player_id);
                 if opt_player.is_none() { continue; }
 
                 let player: &Player = opt_player.unwrap();
                 if player.game_info.is_none() { continue; }
 
-                players_to_update.push(*player_id);
+                players_to_update.push(player_id);
             }
         }
 
@@ -919,7 +921,7 @@ impl ServerState {
         }
     }
 
-    fn handle_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Option<Packet> {
+    fn prepare_response(&mut self, player_id: PlayerID, action: RequestAction) -> Option<Packet> {
         let response_code = self.process_request_action(player_id, action.clone());
 
         let (sequence, request_ack);//= (0, None);
@@ -994,7 +996,7 @@ impl ServerState {
                 continue;
             }
 
-            for player_id in &room.player_ids {
+            for &player_id in &room.player_ids {
                 let opt_player = self.players.get(&player_id);
                 if opt_player.is_none() { continue; }
 
@@ -1159,6 +1161,7 @@ fn main() {
     .filter(None, LevelFilter::Trace)
     .filter(Some("futures"), LevelFilter::Off)
     .filter(Some("tokio_core"), LevelFilter::Off)
+    .filter(Some("tokio_reactor"), LevelFilter::Off)
     .init();
 
     let mut core = Core::new().unwrap();
@@ -2158,14 +2161,14 @@ mod test {
     }
 
     #[test]
-    fn handle_request_action_spot_check_response_packet() {
+    fn prepare_response_spot_check_response_packet() {
         let mut server = ServerState::new();
         let player_id: PlayerID = {
             let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
             player.request_ack = Some(1);
             player.player_id
         };
-        let pkt: Packet = server.handle_request_action(player_id, RequestAction::ListRooms).unwrap();
+        let pkt: Packet = server.prepare_response(player_id, RequestAction::ListRooms).unwrap();
         match pkt {
             Packet::Response{code, sequence, request_ack} => {
                 assert_eq!(code, ResponseCode::RoomList(vec![]));
@@ -2555,8 +2558,8 @@ mod test {
             nm.tx_packets.buffer_item(pkt.clone());
 
             if i < 3 {
-                let timestamp: &mut net::Timestamp = nm.tx_packets.timestamps.back_mut().unwrap();
-                timestamp.time = Instant::now() - Duration::from_secs(i+1);
+                let attempt: &mut net::NetAttempt = nm.tx_packets.attempts.back_mut().unwrap();
+                attempt.time = Instant::now() - Duration::from_secs(i+1);
             }
         }
 
@@ -2565,7 +2568,7 @@ mod test {
 
         for i in 0..5 {
             let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
-            let packet_retries: &net::Timestamp = nm.tx_packets.timestamps.get(i).unwrap();
+            let packet_retries: &net::NetAttempt = nm.tx_packets.attempts.get(i).unwrap();
 
             if i >= 3 {
                 assert_eq!(packet_retries.retries, 0);
