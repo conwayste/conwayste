@@ -35,7 +35,7 @@ extern crate chrono;
 #[macro_use]
 mod net;
 
-use net::{
+use crate::net::{
     RequestAction, ResponseCode, Packet, LineCodec,
     UniUpdateType, BroadcastChatMessage, NetworkManager,
     NetworkQueue,

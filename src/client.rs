@@ -36,7 +36,7 @@ use std::process::exit;
 use std::str::FromStr;
 use std::thread;
 use std::time::{Duration, Instant};
-use net::{
+use crate::net::{
     RequestAction, ResponseCode, Packet, LineCodec,
     BroadcastChatMessage, NetworkManager, NetworkQueue,
 };
