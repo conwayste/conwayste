@@ -36,7 +36,7 @@ use self::semver::{Version, SemVerError};
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
-pub const DEFAULT_PORT: u16 = 12345;
+pub const DEFAULT_PORT: u16 = 2016;
 const TIMEOUT_IN_SECONDS:    u64   = 5;
 const NETWORK_QUEUE_LENGTH: usize = 600;        // spot testing with poor network (~675 cmds) showed a max of ~512 length
                                                 // keep this for now until the performance issues are resolved
@@ -350,6 +350,8 @@ impl UdpCodec for LineCodec {
         match deserialize(buf) {
             Ok(decoded) => Ok((*addr, Some(decoded))),
             Err(e) => {
+                // TODO: do not create this SocketAddr every time a packet arrives!
+                // TODO: DEFAULT_PORT could be wrong. We need to know the real port
                 let local: SocketAddr = format!("{}:{}", "127.0.0.1", DEFAULT_PORT.to_string()).parse().unwrap();
                 // We only want to warn when the incoming packet is external to the host system
                 if local != *addr {

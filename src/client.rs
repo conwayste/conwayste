@@ -23,8 +23,10 @@ extern crate serde_derive;
 extern crate log;
 extern crate env_logger;
 extern crate tokio_core;
+extern crate tokio_dns;
 extern crate futures;
 extern crate chrono;
+extern crate regex;
 
 mod net;
 use std::env;
@@ -39,11 +41,13 @@ use std::time::{Duration, Instant};
 use crate::net::{
     RequestAction, ResponseCode, Packet, LineCodec,
     BroadcastChatMessage, NetworkManager, NetworkQueue,
+    DEFAULT_PORT,
 };
 use tokio_core::reactor::{Core, Timeout};
 use futures::{Future, Sink, Stream, stream, future::ok, sync::mpsc};
 use log::LevelFilter;
 use chrono::Local;
+use regex::Regex;
 
 const TICK_INTERVAL_IN_MS:          u64    = 1000;
 const NETWORK_INTERVAL_IN_MS:       u64    = 1000;
@@ -501,10 +505,17 @@ fn main() {
     .filter(Some("tokio_reactor"), LevelFilter::Off)
     .init();
 
-    let addr = env::args().nth(1).unwrap_or("127.0.0.1:12345".to_owned());
-    let addr = addr.parse::<SocketAddr>()
+    let has_port_re = Regex::new(r":\d{1,5}$").unwrap();
+    let mut server_str = env::args().nth(1).unwrap_or("127.0.0.1".to_owned());
+    // if no port, add the default port
+    if !has_port_re.is_match(&server_str) {
+        debug!("appending default port to {:?}", server_str);
+        server_str = format!("{}:{}", server_str, DEFAULT_PORT);
+    }
+    //XXX addr from DNS
+    let addr = server_str.parse::<SocketAddr>()
        .unwrap_or_else(|e| {
-                    error!("failed to parse address {:?}: {:?}", addr, e);
+                    error!("failed to parse address {:?}: {:?}", server_str, e);
                     exit(1);
                 });
     trace!("Connecting to {:?}", addr);

@@ -96,10 +96,11 @@ function EnableTrafficControl()
 
     #sudo tc qdisc add dev eth0 root netem delay 200ms 40ms 25% loss 15.3% 25% duplicate 1% corrupt 0.1% reorder 5% 50%
 
+    DEFAULT_PORT=2016
     sudo tc qdisc add dev lo root handle 1: prio
     sudo tc qdisc add dev lo parent 1:3 handle 30: netem delay 200ms 40ms 25% loss 15.3% 25% duplicate 1% corrupt 0.1% reorder 5% 50%
-    sudo tc filter add dev lo parent 1:0 protocol ip u32 match ip dport 12345 0xffff flowid 1:3
-    sudo tc filter add dev lo parent 1:0 protocol ip u32 match ip sport 12345 0xffff flowid 1:3
+    sudo tc filter add dev lo parent 1:0 protocol ip u32 match ip dport $DEFAULT_PORT 0xffff flowid 1:3
+    sudo tc filter add dev lo parent 1:0 protocol ip u32 match ip sport $DEFAULT_PORT 0xffff flowid 1:3
     sudo tc qdisc show
 }
 
@@ -116,8 +117,8 @@ function main()
 
     tmux new-session -d -s server "export RUST_BACKTRACE=1; export RUST_LOG=server; ./target/debug/server; read"
     for i in ${CLIENTLIST[@]}; do
-        printf "Starting client $i"
-        tmux new-session -d -s $i "export RUST_BACKTRACE=1; export RUST_LOG=client; ./target/debug/client; read"
+        printf "Starting cli-client $i"
+        tmux new-session -d -s $i "export RUST_BACKTRACE=1; export RUST_LOG=client; ./target/debug/cli-client; read"
     done
 
     echo "Listing sessions..."
