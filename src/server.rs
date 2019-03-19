@@ -1175,6 +1175,8 @@ fn main() {
             exit(1);
         });
 
+    trace!("Listening for connections on {:?}...", udp.local_addr().unwrap());
+
     let (udp_sink, udp_stream) = udp.framed(LineCodec).split();
 
     let initial_server_state = ServerState::new();
