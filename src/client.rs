@@ -505,19 +505,31 @@ fn main() {
     .filter(Some("tokio_reactor"), LevelFilter::Off)
     .init();
 
-    let has_port_re = Regex::new(r":\d{1,5}$").unwrap();
-    let mut server_str = env::args().nth(1).unwrap_or("127.0.0.1".to_owned());
+    let has_port_re = Regex::new(r":\d{1,5}$").unwrap(); // match a colon followed by number up to 5 digits (16-bit port)
+    let mut server_str = env::args().nth(1).unwrap_or("localhost".to_owned());
     // if no port, add the default port
     if !has_port_re.is_match(&server_str) {
-        debug!("appending default port to {:?}", server_str);
+        debug!("Appending default port to {:?}", server_str);
         server_str = format!("{}:{}", server_str, DEFAULT_PORT);
     }
-    //XXX addr from DNS
-    let addr = server_str.parse::<SocketAddr>()
-       .unwrap_or_else(|e| {
-                    error!("failed to parse address {:?}: {:?}", server_str, e);
-                    exit(1);
-                });
+
+    // synchronously resolve DNS because... why not?
+    trace!("Resolving {:?}...", server_str);
+    let addr_vec = tokio_dns::resolve_sock_addr(&server_str[..]).wait()      // wait() is synchronous!!!
+                    .unwrap_or_else(|e| {
+                            error!("failed to resolve: {:?}", e);
+                            exit(1);
+                        });
+    if addr_vec.len() == 0 {
+        error!("resolution found 0 addresses");
+        exit(1);
+    }
+    if addr_vec.len() > 1 {
+        // This is probably not the best option -- could pick based on ping time, random choice,
+        // and could also try other ones on connection failure.
+        warn!("Multiple ({:?}) addresses returned; arbitrarily picking the first one.", addr_vec.len());
+    }
+    let addr = addr_vec[0];
     trace!("Connecting to {:?}", addr);
 
     let mut core = Core::new().unwrap();
@@ -536,7 +548,8 @@ fn main() {
     let (udp_tx, udp_rx) = mpsc::unbounded();    // create a channel because we can't pass the sink around everywhere
     let (exit_tx, exit_rx) = mpsc::unbounded();  // send () to exit_tx channel to quit the client
 
-    trace!("Accepting commands to remote {:?} from local {:?}.", addr, local_addr);
+    trace!("Locally bound to {:?}.", local_addr);
+    trace!("Will connect to remote {:?}.", addr);
     trace!("Type /help for more info...");
 
     // initialize state
