@@ -15,9 +15,24 @@
  *  You should have received a copy of the GNU General Public License
  *  along with netwayste.  If not, see <http://www.gnu.org/licenses/>. */
 
- pub mod net;
- pub mod server;
- pub mod client;
+extern crate base64;
+extern crate bincode;
+extern crate chrono;
+extern crate env_logger;
+extern crate futures;
+#[macro_use]
+extern crate log;
+extern crate rand;
+extern crate semver;
+extern crate serde_derive;
+extern crate tokio_core;
 
- #[cfg(tests)]
- pub mod tests;
+#[cfg(test)]
+extern crate proptest;
+
+pub mod net;
+/*  pub mod server;
+ pub mod client; */
+
+#[cfg(test)]
+pub mod tests;
