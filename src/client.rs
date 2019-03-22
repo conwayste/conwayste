@@ -562,7 +562,10 @@ fn main() {
         timeout.and_then(move |_| {
             ok(Event::TickEvent)
         })
-    }).map_err(|_| ());
+    }).map_err(|e| {
+        error!("Got error from tick stream: {:?}", e);
+        exit(1);
+    });
 
     let packet_stream = udp_stream
         .filter(|&(_, ref opt_packet)| {
@@ -571,7 +574,10 @@ fn main() {
         .map(|packet_tuple| {
             Event::Incoming(packet_tuple)
         })
-        .map_err(|_| ());
+        .map_err(|e| {
+            error!("Got error from packet_stream {:?}", e);
+            exit(1);
+        });
 
     let stdin_stream = stdin_rx
         .map(|buf| {
@@ -598,7 +604,10 @@ fn main() {
         timeout.and_then(move |_| {
             ok(Event::NetworkEvent)
         })
-    }).map_err(|_| ());
+    }).map_err(|e| {
+        error!("Got error from network_stream {:?}", e);
+        exit(1);
+    });
 
     let main_loop_fut = tick_stream
         .select(packet_stream)
@@ -628,10 +637,19 @@ fn main() {
 
     // listen on the channel created above and send it to the UDP sink
     let sink_fut = udp_rx.fold(udp_sink, |udp_sink, outgoing_item| {
-        udp_sink.send(outgoing_item).map_err(|_| ())    // this method flushes (if too slow, use send_all)
+        udp_sink.send(outgoing_item).map_err(|e| {
+                error!("Got error while attempting to send UDP packet: {:?}", e);
+                exit(1);
+            })
     }).map(|_| ()).map_err(|_| ());
 
-    let exit_fut = exit_rx.into_future().map(|_| ()).map_err(|_| ());
+    let exit_fut = exit_rx
+                    .into_future()
+                    .map(|_| ())
+                    .map_err(|e| {
+                                error!("Got error from exit_fut: {:?}", e);
+                                exit(1);
+                            });
 
     let combined_fut = exit_fut
                         .select(main_loop_fut).map(|_| ()).map_err(|_| ())
