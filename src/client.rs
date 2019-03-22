@@ -438,7 +438,7 @@ impl ClientState {
                     }
                 } else { debug!("Command failed: Expected room name only (no spaces allowed)"); }
             }
-            "leave" => {
+            "part" | "leave" => {
                 if args.len() == 0 {
                     if self.in_game() {
                         action = RequestAction::LeaveRoom;
@@ -524,12 +524,18 @@ fn main() {
         error!("resolution found 0 addresses");
         exit(1);
     }
-    if addr_vec.len() > 1 {
+    // TODO: support IPv6
+    let addr_vec_len = addr_vec.len();
+    let v4_addr_vec: Vec<_> = addr_vec.into_iter().filter(|addr| addr.is_ipv4()).collect(); // filter out IPv6
+    if v4_addr_vec.len() < addr_vec_len {
+        warn!("Filtered out {} IPv6 addresses -- IPv6 is not implemented.", addr_vec_len - v4_addr_vec.len() );
+    }
+    if v4_addr_vec.len() > 1 {
         // This is probably not the best option -- could pick based on ping time, random choice,
         // and could also try other ones on connection failure.
-        warn!("Multiple ({:?}) addresses returned; arbitrarily picking the first one.", addr_vec.len());
+        warn!("Multiple ({:?}) addresses returned; arbitrarily picking the first one.", v4_addr_vec.len());
     }
-    let addr = addr_vec[0];
+    let addr = v4_addr_vec[0];
     trace!("Connecting to {:?}", addr);
 
     let mut core = Core::new().unwrap();

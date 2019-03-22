@@ -349,7 +349,8 @@ impl UdpCodec for LineCodec {
     fn decode(&mut self, addr: &SocketAddr, buf: &[u8]) -> io::Result<Self::In> {
         match deserialize(buf) {
             Ok(decoded) => Ok((*addr, Some(decoded))),
-            Err(e) => {
+            Err(_) => {
+                /*
                 // TODO: do not create this SocketAddr every time a packet arrives!
                 // TODO: DEFAULT_PORT could be wrong. We need to know the real port
                 let local: SocketAddr = format!("{}:{}", "127.0.0.1", DEFAULT_PORT.to_string()).parse().unwrap();
@@ -357,6 +358,7 @@ impl UdpCodec for LineCodec {
                 if local != *addr {
                     warn!("WARNING: error during packet deserialization: {:?}", e);
                 }
+                */
                 Ok((*addr, None))
             }
         }
