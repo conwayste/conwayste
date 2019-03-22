@@ -1025,9 +1025,6 @@ mod netwayste_net_tests {
 
 }
 
-mod netwayste_client_tests {
-
-}
 
 mod netwayste_server_tests {
     use super::*;
@@ -2405,6 +2402,438 @@ mod netwayste_server_tests {
             let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
             assert_eq!(nm.tx_packets.len(), 3); // only 2, 3, and 4 are processed
         }
+    }
+}
+
+mod netwayste_client_tests {
+    use super::*;
+    use crate::client::*;
+
+    fn fake_socket_addr() -> SocketAddr {
+        use std::net::{IpAddr, Ipv4Addr};
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 5678)
+    }
+
+    #[test]
+    fn handle_response_ok_no_request_sent() {
+        let mut client_state = ClientState::new();
+        let result = client_state.handle_response_ok();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn handle_logged_in_verify_connection_cookie() {
+        let mut client_state = ClientState::new();
+        client_state.name = Some("Dr. Cookie Monster, Esquire".to_owned());
+        assert_eq!(client_state.cookie, None);
+        client_state.handle_logged_in("cookie monster".to_owned(), CLIENT_VERSION.to_owned());
+        assert_eq!(client_state.cookie, Some("cookie monster".to_owned()));
+    }
+
+    #[test]
+    fn handle_incoming_chats_no_new_chat_messages() {
+        let mut client_state = ClientState::new();
+        assert_eq!(client_state.chat_msg_seq_num, 0);
+
+        client_state.handle_incoming_chats(None);
+        assert_eq!(client_state.chat_msg_seq_num, 0);
+    }
+
+    #[test]
+    fn handle_incoming_chats_new_messages_are_older() {
+        let mut client_state = ClientState::new();
+        client_state.chat_msg_seq_num = 10;
+
+        let mut incoming_messages = vec![];
+        for x in 0..10 {
+            let new_msg =  BroadcastChatMessage::new(x as u64, "a player".to_owned(), format!("message {}", x));
+            incoming_messages.push(new_msg);
+        }
+
+        client_state.handle_incoming_chats(Some(incoming_messages));
+        assert_eq!(client_state.chat_msg_seq_num, 10);
+    }
+
+    #[test]
+    fn handle_incoming_chats_client_is_up_to_date() {
+        let mut client_state = ClientState::new();
+        client_state.chat_msg_seq_num = 10;
+
+        let incoming_messages = vec![ BroadcastChatMessage::new(10u64, "a player".to_owned(), format!("message {}", 10))];
+
+        client_state.handle_incoming_chats(Some(incoming_messages));
+        assert_eq!(client_state.chat_msg_seq_num, 10);
+    }
+
+    #[test]
+    #[should_panic]
+    fn handle_incoming_chats_new_messages_player_name_not_set_panics() {
+        let mut client_state = ClientState::new();
+        client_state.chat_msg_seq_num = 10;
+
+        let incoming_messages = vec![ BroadcastChatMessage::new(11u64, "a player".to_owned(), format!("message {}", 11))];
+
+        client_state.handle_incoming_chats(Some(incoming_messages));
+    }
+
+    #[test]
+    fn handle_incoming_chats_new_messages_are_old_and_new() {
+        let mut client_state = ClientState::new();
+        let starting_chat_seq_num = 10;
+        client_state.name = Some("client name".to_owned());
+        client_state.chat_msg_seq_num = starting_chat_seq_num;
+
+        let mut incoming_messages = vec![];
+        for x in 0..20 {
+            let new_msg =  BroadcastChatMessage::new(x as u64, "a player".to_owned(), format!("message {}", x));
+            incoming_messages.push(new_msg);
+        }
+
+        client_state.handle_incoming_chats(Some(incoming_messages));
+        assert_eq!(client_state.chat_msg_seq_num, 19);
+
+        let mut seq_num = starting_chat_seq_num+1;
+        let chat_queue = &client_state.network.rx_chat_messages.as_ref().unwrap().queue;
+        for msg in chat_queue {
+            assert_eq!(msg.chat_seq.unwrap(), seq_num);
+            seq_num+=1;
+        }
+    }
+
+    #[test]
+    fn parse_stdin_input_has_no_leading_forward_slash() {
+        let chat = parse_stdin("some text".to_owned());
+        assert_eq!(chat, UserInput::Chat("some text".to_owned()));
+    }
+
+    #[test]
+    fn parse_stdin_input_no_arguments() {
+        let cmd = parse_stdin("/helpusobi".to_owned());
+        assert_eq!(cmd, UserInput::Command{ cmd: "helpusobi".to_owned(), args: vec![]});
+
+    }
+
+    #[test]
+    fn parse_stdin_input_multiple_arguments() {
+        let cmd = parse_stdin("/helpusobi 1".to_owned());
+        assert_eq!(cmd, UserInput::Command{ cmd: "helpusobi".to_owned(), args: vec!["1".to_owned()]});
+
+        let cmd = parse_stdin("/helpusobi 1 you".to_owned());
+        assert_eq!(cmd, UserInput::Command{ cmd: "helpusobi".to_owned(), args: vec!["1".to_owned(), "you".to_owned()]});
+
+        let cmd = parse_stdin("/helpusobi 1 you are our only hope".to_owned());
+        assert_eq!(cmd, UserInput::Command{ cmd: "helpusobi".to_owned(), args: vec!["1".to_owned(),
+                                                                         "you".to_owned(),
+                                                                         "are".to_owned(),
+                                                                         "our".to_owned(),
+                                                                         "only".to_owned(),
+                                                                         "hope".to_owned()
+                                                                         ]});
+    }
+
+    #[test]
+    fn build_command_request_action_unknown_command() {
+        let command = UserInput::Command{ cmd: "helpusobi".to_owned(), args: vec!["1".to_owned()]};
+
+        let mut client_state = ClientState::new();
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_help_returns_no_action() {
+        let command = UserInput::Command{ cmd: "help".to_owned(), args: vec![]};
+
+        let mut client_state = ClientState::new();
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_disconnect() {
+        let command = UserInput::Command{ cmd: "disconnect".to_owned(), args: vec![]};
+
+        let mut client_state = ClientState::new();
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::Disconnect);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_disconnect_with_args_returns_no_action() {
+        let command = UserInput::Command{ cmd: "disconnect".to_owned(), args: vec!["1".to_owned()]};
+
+        let mut client_state = ClientState::new();
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_list_in_lobby() {
+        let command = UserInput::Command{ cmd: "list".to_owned(), args: vec![]};
+
+        let mut client_state = ClientState::new();
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::ListRooms);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_list_in_game() {
+        let command = UserInput::Command{ cmd: "list".to_owned(), args: vec![]};
+
+        let mut client_state = ClientState::new();
+        client_state.room = Some("some room".to_owned());
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::ListPlayers);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_leave_cases() {
+        let command = UserInput::Command{ cmd: "leave".to_owned(), args: vec![]};
+
+        let mut client_state = ClientState::new();
+        // Not in a room
+        match command.clone() {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+
+        // Happy to leave
+        client_state.room = Some("some room".to_owned());
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::LeaveRoom);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+
+        // Even though we're in a room, you cannot specify anything else
+        let command = UserInput::Command{ cmd: "leave".to_owned(), args: vec!["some room".to_owned()]};
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn build_command_request_action_join_cases() {
+        let command = UserInput::Command{ cmd: "join".to_owned(), args: vec![]};
+
+        let mut client_state = ClientState::new();
+        // no room specified
+        match command.clone() {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+
+        // Already in game
+        client_state.room = Some("some room".to_owned());
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::None);
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+
+        // Happily join one
+        client_state.room = None;
+        let command = UserInput::Command{ cmd: "join".to_owned(), args: vec!["some room".to_owned()]};
+        match command {
+            UserInput::Command{cmd, args} => {
+                let action = client_state.build_command_request_action(cmd, args);
+                assert_eq!(action, RequestAction::JoinRoom("some room".to_owned()));
+            },
+            UserInput::Chat(_) => {unreachable!()},
+        }
+    }
+
+    #[test]
+    fn handle_user_input_event_increment_sequence_number() {
+        // There is a lot that _could_ be tested here but most of it is handled in the above test cases.
+        let mut client_state = ClientState::new();
+        let (udp_tx, _) = mpsc::unbounded();
+        let (exit_tx, _) = mpsc::unbounded();
+        let user_input = UserInput::Chat("memes".to_owned());
+        let addr = fake_socket_addr();
+
+        client_state.cookie = Some("ThisDoesNotReallyMatterAsLongAsItExists".to_owned());
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, user_input, addr.clone());
+        assert_eq!(client_state.sequence, 1);
+
+        let user_input = UserInput::Chat("and another one".to_owned());
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, user_input, addr);
+        assert_eq!(client_state.sequence, 2);
+    }
+
+    #[test]
+    fn handle_incoming_event_basic_tx_rx_queueing() {
+        let mut client_state = ClientState::new();
+        let (udp_tx, _) = mpsc::unbounded();
+        let (exit_tx, _) = mpsc::unbounded();
+        let addr = fake_socket_addr();
+        let connect_cmd = UserInput::Command{cmd: "connect".to_owned(), args: vec!["name".to_owned()]};
+        let new_room_cmd = UserInput::Command{cmd: "new".to_owned(), args: vec!["room_name".to_owned()]};
+        let join_room_cmd = UserInput::Command{cmd: "join".to_owned(), args: vec!["room_name".to_owned()]};
+        let leave_room_cmd = UserInput::Command{cmd: "leave".to_owned(), args: vec![]};
+
+        client_state.sequence = 0;
+        client_state.response_sequence = 1;
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, connect_cmd, addr);         // Seq 0
+        client_state.cookie = Some("ThisDoesNotReallyMatterAsLongAsItExists".to_owned());
+        // dequeue connect since we don't actually want to process it later
+        client_state.network.tx_packets.clear();
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, new_room_cmd, addr);        // Seq 1
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, join_room_cmd, addr);       // Seq 2
+        client_state.room = Some("room_name".to_owned());
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, leave_room_cmd, addr);      // Seq 3
+        assert_eq!(client_state.sequence, 3);
+        assert_eq!(client_state.response_sequence, 1);
+        assert_eq!(client_state.network.tx_packets.len(), 3);
+        assert_eq!(client_state.network.rx_packets.len(), 0);
+
+        let room_response = Packet::Response{sequence: 1, request_ack: Some(1), code: ResponseCode::OK};
+        let join_response = Packet::Response{sequence: 2, request_ack: Some(2), code: ResponseCode::OK};
+        let leave_response = Packet::Response{sequence:3, request_ack: Some(3), code: ResponseCode::OK};
+
+        client_state.handle_incoming_event(&udp_tx, addr, Some(leave_response));    // 3 arrives
+        assert_eq!(client_state.network.tx_packets.len(), 2);
+        assert_eq!(client_state.network.rx_packets.len(), 1);
+        client_state.handle_incoming_event(&udp_tx, addr, Some(join_response));     // 2 arrives
+        assert_eq!(client_state.network.tx_packets.len(), 1);
+        assert_eq!(client_state.network.rx_packets.len(), 2);
+        client_state.handle_incoming_event(&udp_tx, addr, Some(room_response));     // 1 arrives
+        assert_eq!(client_state.network.tx_packets.len(), 0);
+        // RX should be cleared out because upon processing packet sequence '1', RX queue will be contiguous
+        assert_eq!(client_state.network.rx_packets.len(), 0);
+    }
+
+    #[test]
+    fn handle_incoming_event_basic_tx_rx_queueing_cannot_process_all_responses() {
+        let mut client_state = ClientState::new();
+        let (udp_tx, _) = mpsc::unbounded();
+        let (exit_tx, _) = mpsc::unbounded();
+        let addr = fake_socket_addr();
+        let connect_cmd = UserInput::Command{cmd: "connect".to_owned(), args: vec!["name".to_owned()]};
+        let new_room_cmd = UserInput::Command{cmd: "new".to_owned(), args: vec!["room_name".to_owned()]};
+        let join_room_cmd = UserInput::Command{cmd: "join".to_owned(), args: vec!["room_name".to_owned()]};
+        let leave_room_cmd = UserInput::Command{cmd: "leave".to_owned(), args: vec![]};
+
+        client_state.sequence = 0;
+        client_state.response_sequence = 1;
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, connect_cmd, addr);         // Seq 0
+        client_state.cookie = Some("ThisDoesNotReallyMatterAsLongAsItExists".to_owned());
+        // dequeue connect since we don't actually want to process it later
+        client_state.network.tx_packets.clear();
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, new_room_cmd, addr);          // Seq 1
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, join_room_cmd.clone(), addr); // Seq 2
+        client_state.room = Some("room_name".to_owned());
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, leave_room_cmd, addr);        // Seq 3
+        client_state.room = None; // Temporarily set to None so we can process the next join
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, join_room_cmd, addr);         // Seq 4
+        client_state.room = Some("room_name".to_owned());
+        assert_eq!(client_state.sequence, 4);
+        assert_eq!(client_state.response_sequence, 1);
+        assert_eq!(client_state.network.tx_packets.len(), 4);
+        assert_eq!(client_state.network.rx_packets.len(), 0);
+
+        let room_response = Packet::Response{sequence: 1, request_ack: Some(1), code: ResponseCode::OK};
+        let join_response = Packet::Response{sequence: 2, request_ack: Some(2), code: ResponseCode::OK};
+        let _leave_response = Packet::Response{sequence: 3, request_ack: Some(3), code: ResponseCode::OK};
+        let join2_response = Packet::Response{sequence: 4, request_ack: Some(4), code: ResponseCode::OK};
+
+        // The intent is that 3 never arrives
+        client_state.handle_incoming_event(&udp_tx, addr, Some(join2_response));    // 4 arrives
+        assert_eq!(client_state.network.tx_packets.len(), 3);
+        assert_eq!(client_state.network.rx_packets.len(), 1);
+        client_state.handle_incoming_event(&udp_tx, addr, Some(join_response));     // 2 arrives
+        assert_eq!(client_state.network.tx_packets.len(), 2);
+        assert_eq!(client_state.network.rx_packets.len(), 2);
+        client_state.handle_incoming_event(&udp_tx, addr, Some(room_response));     // 1 arrives
+        assert_eq!(client_state.network.tx_packets.len(), 1);
+        assert_eq!(client_state.network.rx_packets.len(), 1);
+    }
+
+    #[test]
+    fn handle_incoming_event_basic_tx_rx_queueing_arrives_at_server_out_of_order() {
+        let mut client_state = ClientState::new();
+        let (udp_tx, _) = mpsc::unbounded();
+        let (exit_tx, _) = mpsc::unbounded();
+        let addr = fake_socket_addr();
+        let connect_cmd = UserInput::Command{cmd: "connect".to_owned(), args: vec!["name".to_owned()]};
+        let new_room_cmd = UserInput::Command{cmd: "new".to_owned(), args: vec!["room_name".to_owned()]};
+        let join_room_cmd = UserInput::Command{cmd: "join".to_owned(), args: vec!["room_name".to_owned()]};
+        let leave_room_cmd = UserInput::Command{cmd: "leave".to_owned(), args: vec![]};
+
+        client_state.sequence = 0;
+        client_state.response_sequence = 1;
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, connect_cmd, addr);         // Seq 0
+        client_state.cookie = Some("ThisDoesNotReallyMatterAsLongAsItExists".to_owned());
+        // dequeue connect since we don't actually want to process it later
+        client_state.network.tx_packets.clear();
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, new_room_cmd, addr);        // Seq 1
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, join_room_cmd, addr);       // Seq 2
+        client_state.room = Some("room_name".to_owned());
+        client_state.handle_user_input_event(&udp_tx, &exit_tx, leave_room_cmd, addr);      // Seq 3
+        assert_eq!(client_state.sequence, 3);
+        assert_eq!(client_state.response_sequence, 1);
+        assert_eq!(client_state.network.tx_packets.len(), 3);
+        assert_eq!(client_state.network.rx_packets.len(), 0);
+
+        // An out-of-order arrival at the server means the response packet's sequence number will not be 1:1 mapping
+        // as in the first basic tested above. End result should be the same in both cases.
+        let room_response = Packet::Response{sequence: 2, request_ack: Some(1), code: ResponseCode::OK};
+        let join_response = Packet::Response{sequence: 3, request_ack: Some(2), code: ResponseCode::OK};
+        let leave_response = Packet::Response{sequence:1, request_ack: Some(3), code: ResponseCode::OK};
+
+        client_state.handle_incoming_event(&udp_tx, addr, Some(leave_response));    // client 3 arrives, can process
+        assert_eq!(client_state.network.tx_packets.len(), 2);
+        assert_eq!(client_state.network.rx_packets.len(), 0);
+        client_state.handle_incoming_event(&udp_tx, addr, Some(join_response));     // client 2 arrives, cannot process
+        assert_eq!(client_state.network.tx_packets.len(), 1);
+        assert_eq!(client_state.network.rx_packets.len(), 1);
+        client_state.handle_incoming_event(&udp_tx, addr, Some(room_response));     // client 1 arrives, can process all
+        assert_eq!(client_state.network.tx_packets.len(), 0);
+        assert_eq!(client_state.network.rx_packets.len(), 0);
     }
 
 }

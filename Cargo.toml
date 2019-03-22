@@ -4,10 +4,6 @@ version = "0.1.1"
 authors = ["Aaron Miller <aaron.miller04@gmail.com>", "manghi <manghirs@gmail.com>"]
 edition = "2018"
 
-#[[bin]]
-#name = "cli-client"
-#path = "src/cli-client.rs"
-
 [dependencies]
 futures      = "0.1.17"
 tokio-core   = "0.1.9"

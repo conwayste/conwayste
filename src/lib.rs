@@ -34,7 +34,7 @@ extern crate proptest;
 #[macro_use]
 pub mod net;
 pub mod server;
-// pub mod client;
+pub mod client;
 
 #[cfg(test)]
 pub mod tests;
