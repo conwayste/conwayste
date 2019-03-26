@@ -26,6 +26,7 @@ extern crate rand;
 extern crate semver;
 extern crate serde_derive;
 extern crate tokio_core;
+extern crate clap;
 
 #[cfg(test)]
 #[macro_use]
