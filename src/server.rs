@@ -31,6 +31,7 @@ extern crate semver;
 #[macro_use]
 extern crate proptest;
 extern crate chrono;
+extern crate clap;
 
 #[macro_use]
 mod net;
@@ -38,7 +39,7 @@ mod net;
 use crate::net::{
     RequestAction, ResponseCode, Packet, LineCodec,
     UniUpdateType, BroadcastChatMessage, NetworkManager,
-    NetworkQueue,
+    NetworkQueue, DEFAULT_HOST, DEFAULT_PORT,
 };
 
 use std::error::Error;
@@ -57,6 +58,7 @@ use rand::RngCore;
 use semver::Version;
 use chrono::Local;
 use log::LevelFilter;
+use clap::{App, Arg};
 
 const TICK_INTERVAL_IN_MS:    u64      = 10;
 const NETWORK_INTERVAL_IN_MS: u64      = 100;    // Arbitrarily chosen
@@ -1164,16 +1166,40 @@ fn main() {
     .filter(Some("tokio_reactor"), LevelFilter::Off)
     .init();
 
+    let matches = App::new("server")
+        .about("game server for Conwayste")
+        .arg(Arg::with_name("address")
+             .short("l")
+             .long("listen")
+             .help(&format!("address to listen for connections on [default {}]", DEFAULT_HOST))
+             .takes_value(true))
+        .arg(Arg::with_name("port")
+             .short("p")
+             .long("port")
+             .help(&format!("port to listen for connections on [default {}]", DEFAULT_PORT))
+             .takes_value(true))
+        .get_matches();
+
     let mut core = Core::new().unwrap();
     let handle = core.handle();
 
     let (tx, rx) = mpsc::unbounded();
 
-    let udp = net::bind(&handle, None, None)
+    let opt_port = matches.value_of("port").map(|p_str| {
+        p_str.parse::<u16>().unwrap_or_else(|e| {
+            error!("Error while attempting to parse {:?} as port number: {:?}", p_str, e);
+            exit(1);
+        })
+    });
+    let udp = net::bind(&handle,
+                        matches.value_of("address"),
+                        opt_port)
         .unwrap_or_else(|e| {
             error!("Error while trying to bind UDP socket: {:?}", e);
             exit(1);
         });
+
+    trace!("Listening for connections on {:?}...", udp.local_addr().unwrap());
 
     let (udp_sink, udp_stream) = udp.framed(LineCodec).split();
 

@@ -23,8 +23,10 @@ extern crate serde_derive;
 extern crate log;
 extern crate env_logger;
 extern crate tokio_core;
+extern crate tokio_dns;
 extern crate futures;
 extern crate chrono;
+extern crate regex;
 
 mod net;
 use std::env;
@@ -39,11 +41,13 @@ use std::time::{Duration, Instant};
 use crate::net::{
     RequestAction, ResponseCode, Packet, LineCodec,
     BroadcastChatMessage, NetworkManager, NetworkQueue,
+    DEFAULT_PORT,
 };
 use tokio_core::reactor::{Core, Timeout};
 use futures::{Future, Sink, Stream, stream, future::ok, sync::mpsc};
 use log::LevelFilter;
 use chrono::Local;
+use regex::Regex;
 
 const TICK_INTERVAL_IN_MS:          u64    = 1000;
 const NETWORK_INTERVAL_IN_MS:       u64    = 1000;
@@ -434,7 +438,7 @@ impl ClientState {
                     }
                 } else { debug!("Command failed: Expected room name only (no spaces allowed)"); }
             }
-            "leave" => {
+            "part" | "leave" => {
                 if args.len() == 0 {
                     if self.in_game() {
                         action = RequestAction::LeaveRoom;
@@ -501,12 +505,37 @@ fn main() {
     .filter(Some("tokio_reactor"), LevelFilter::Off)
     .init();
 
-    let addr = env::args().nth(1).unwrap_or("127.0.0.1:12345".to_owned());
-    let addr = addr.parse::<SocketAddr>()
-       .unwrap_or_else(|e| {
-                    error!("failed to parse address {:?}: {:?}", addr, e);
-                    exit(1);
-                });
+    let has_port_re = Regex::new(r":\d{1,5}$").unwrap(); // match a colon followed by number up to 5 digits (16-bit port)
+    let mut server_str = env::args().nth(1).unwrap_or("localhost".to_owned());
+    // if no port, add the default port
+    if !has_port_re.is_match(&server_str) {
+        debug!("Appending default port to {:?}", server_str);
+        server_str = format!("{}:{}", server_str, DEFAULT_PORT);
+    }
+
+    // synchronously resolve DNS because... why not?
+    trace!("Resolving {:?}...", server_str);
+    let addr_vec = tokio_dns::resolve_sock_addr(&server_str[..]).wait()      // wait() is synchronous!!!
+                    .unwrap_or_else(|e| {
+                            error!("failed to resolve: {:?}", e);
+                            exit(1);
+                        });
+    if addr_vec.len() == 0 {
+        error!("resolution found 0 addresses");
+        exit(1);
+    }
+    // TODO: support IPv6
+    let addr_vec_len = addr_vec.len();
+    let v4_addr_vec: Vec<_> = addr_vec.into_iter().filter(|addr| addr.is_ipv4()).collect(); // filter out IPv6
+    if v4_addr_vec.len() < addr_vec_len {
+        warn!("Filtered out {} IPv6 addresses -- IPv6 is not implemented.", addr_vec_len - v4_addr_vec.len() );
+    }
+    if v4_addr_vec.len() > 1 {
+        // This is probably not the best option -- could pick based on ping time, random choice,
+        // and could also try other ones on connection failure.
+        warn!("Multiple ({:?}) addresses returned; arbitrarily picking the first one.", v4_addr_vec.len());
+    }
+    let addr = v4_addr_vec[0];
     trace!("Connecting to {:?}", addr);
 
     let mut core = Core::new().unwrap();
@@ -525,7 +554,8 @@ fn main() {
     let (udp_tx, udp_rx) = mpsc::unbounded();    // create a channel because we can't pass the sink around everywhere
     let (exit_tx, exit_rx) = mpsc::unbounded();  // send () to exit_tx channel to quit the client
 
-    trace!("Accepting commands to remote {:?} from local {:?}.", addr, local_addr);
+    trace!("Locally bound to {:?}.", local_addr);
+    trace!("Will connect to remote {:?}.", addr);
     trace!("Type /help for more info...");
 
     // initialize state
@@ -538,7 +568,10 @@ fn main() {
         timeout.and_then(move |_| {
             ok(Event::TickEvent)
         })
-    }).map_err(|_| ());
+    }).map_err(|e| {
+        error!("Got error from tick stream: {:?}", e);
+        exit(1);
+    });
 
     let packet_stream = udp_stream
         .filter(|&(_, ref opt_packet)| {
@@ -547,7 +580,10 @@ fn main() {
         .map(|packet_tuple| {
             Event::Incoming(packet_tuple)
         })
-        .map_err(|_| ());
+        .map_err(|e| {
+            error!("Got error from packet_stream {:?}", e);
+            exit(1);
+        });
 
     let stdin_stream = stdin_rx
         .map(|buf| {
@@ -574,7 +610,10 @@ fn main() {
         timeout.and_then(move |_| {
             ok(Event::NetworkEvent)
         })
-    }).map_err(|_| ());
+    }).map_err(|e| {
+        error!("Got error from network_stream {:?}", e);
+        exit(1);
+    });
 
     let main_loop_fut = tick_stream
         .select(packet_stream)
@@ -604,10 +643,19 @@ fn main() {
 
     // listen on the channel created above and send it to the UDP sink
     let sink_fut = udp_rx.fold(udp_sink, |udp_sink, outgoing_item| {
-        udp_sink.send(outgoing_item).map_err(|_| ())    // this method flushes (if too slow, use send_all)
+        udp_sink.send(outgoing_item).map_err(|e| {
+                error!("Got error while attempting to send UDP packet: {:?}", e);
+                exit(1);
+            })
     }).map(|_| ()).map_err(|_| ());
 
-    let exit_fut = exit_rx.into_future().map(|_| ()).map_err(|_| ());
+    let exit_fut = exit_rx
+                    .into_future()
+                    .map(|_| ())
+                    .map_err(|e| {
+                                error!("Got error from exit_fut: {:?}", e);
+                                exit(1);
+                            });
 
     let combined_fut = exit_fut
                         .select(main_loop_fut).map(|_| ()).map_err(|_| ())
