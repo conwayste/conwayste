@@ -31,7 +31,6 @@ use crate::futures::sync::mpsc;
 
 pub const CLIENT_VERSION: &str = "0.0.1";
 
-
 pub struct ClientState {
     pub sequence:         u64,          // Sequence number of requests
     pub response_sequence: u64,         // Value of the next expected sequence number from the server,
@@ -429,7 +428,7 @@ impl ClientState {
                     }
                 } else { debug!("Command failed: Expected room name only (no spaces allowed)"); }
             }
-            "leave" => {
+            "part" | "leave" => {
                 if args.len() == 0 {
                     if self.in_game() {
                         action = RequestAction::LeaveRoom;
@@ -448,7 +447,6 @@ impl ClientState {
         }
         return action;
     }
-
 }
 
 // At this point we should only have command or chat message to work with

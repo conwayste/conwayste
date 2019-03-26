@@ -9,9 +9,10 @@ extern crate semver;
 extern crate chrono;
 #[macro_use]
 extern crate netwayste;
+extern crate clap;
 
 use netwayste::net::{
-    ResponseCode, Packet, LineCodec, bind
+    ResponseCode, Packet, LineCodec, bind, DEFAULT_HOST, DEFAULT_PORT
 };
 
 use netwayste::server::{
@@ -27,6 +28,7 @@ use futures::{Future, Sink, Stream, stream, future::ok, sync::mpsc};
 use tokio_core::reactor::{Core, Timeout};
 use chrono::Local;
 use log::LevelFilter;
+use clap::{App, Arg};
 
 //////////////// Event Handling /////////////////
 #[allow(unused)]
@@ -54,16 +56,40 @@ pub fn main() {
     .filter(Some("tokio_reactor"), LevelFilter::Off)
     .init();
 
+    let matches = App::new("server")
+        .about("game server for Conwayste")
+        .arg(Arg::with_name("address")
+             .short("l")
+             .long("listen")
+             .help(&format!("address to listen for connections on [default {}]", DEFAULT_HOST))
+             .takes_value(true))
+        .arg(Arg::with_name("port")
+             .short("p")
+             .long("port")
+             .help(&format!("port to listen for connections on [default {}]", DEFAULT_PORT))
+             .takes_value(true))
+        .get_matches();
+
     let mut core = Core::new().unwrap();
     let handle = core.handle();
 
     let (tx, rx) = mpsc::unbounded();
 
-    let udp = bind(&handle, None, None)
+    let opt_port = matches.value_of("port").map(|p_str| {
+        p_str.parse::<u16>().unwrap_or_else(|e| {
+            error!("Error while attempting to parse {:?} as port number: {:?}", p_str, e);
+            exit(1);
+        })
+    });
+    let udp = bind(&handle,
+                        matches.value_of("address"),
+                        opt_port)
         .unwrap_or_else(|e| {
             error!("Error while trying to bind UDP socket: {:?}", e);
             exit(1);
         });
+
+     trace!("Listening for connections on {:?}...", udp.local_addr().unwrap());
 
     let (udp_sink, udp_stream) = udp.framed(LineCodec).split();
 
