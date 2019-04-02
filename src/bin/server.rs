@@ -16,8 +16,20 @@
  * You should have received a copy of the GNU General Public License along with
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#[macro_use]
+extern crate netwayste;
+extern crate env_logger;
+extern crate futures;
+extern crate tokio_core;
+extern crate base64;
+extern crate rand;
+extern crate semver;
+extern crate chrono;
+extern crate clap;
+#[macro_use]
+extern crate log;
 
-use crate::net::{
+use netwayste::net::{
     RequestAction, ResponseCode, Packet, LineCodec, bind,
     UniUpdateType, BroadcastChatMessage, NetworkManager,
     NetworkQueue, get_version, VERSION, has_connection_timed_out,
@@ -1184,7 +1196,7 @@ pub fn main() {
             exit(1);
         });
 
-     trace!("Listening for connections on {:?}...", udp.local_addr().unwrap());
+    trace!("Listening for connections on {:?}...", udp.local_addr().unwrap());
 
     let (udp_sink, udp_stream) = udp.framed(LineCodec).split();
 
