@@ -1451,6 +1451,31 @@ impl Universe {
     }
 
 
+    /// Utility function to mutably borrow two separate GenStates from self.gen_states, specified
+    /// by `idx0` and `idx1`.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing mutable references to the `GenState`s referenced by `idx0` and `idx1`,
+    /// respectively.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the indices are equal.
+    fn borrow_two_gen_state_mut(&mut self, idx0: usize, idx1: usize) -> (&mut GenState, &mut GenState) {
+        assert_ne!(idx0, idx1, "indices into self.gen_states must not be the same");
+        let cut_idx = cmp::max(idx0, idx1);
+        {
+            let (lower, upper): (&mut [GenState], &mut [GenState]) = self.gen_states.split_at_mut(cut_idx);
+            if idx1 < cut_idx {
+                (&mut upper[idx0 - cut_idx], &mut lower[idx1])
+            } else {
+                (&mut lower[idx0], &mut upper[idx1 - cut_idx])
+            }
+        }
+    }
+
+
     /// Apply `diff` to our `Universe`. Generally this is executed by the client in response to an
     /// update from the server.
     ///
@@ -1543,19 +1568,12 @@ impl Universe {
         };
         // 4) If incremental update, then copy from the gen_state for gen0 to what will be the
         //    gen_state for gen1.
-        // TODO: This needs some serious cleanup
         if diff.gen0 > 0 {
             let gen0_idx = opt_gen0_idx.unwrap();
-            let cut_idx = cmp::max(gen0_idx, gen1_idx);
             {
-                let (lower, upper): (&mut [GenState], &mut [GenState]) = self.gen_states.split_at_mut(cut_idx);
-                if gen1_idx < cut_idx {
-                    lower[gen1_idx].clear();
-                    upper[gen0_idx - cut_idx].copy(&mut lower[gen1_idx]); // this is an |= operation, hence the clear before this
-                } else {
-                    upper[gen1_idx - cut_idx].clear();
-                    lower[gen0_idx].copy(&mut upper[gen1_idx - cut_idx]); // this is an |= operation, hence the clear before this
-                }
+                let (gen0, gen1): (&mut GenState, &mut GenState) = self.borrow_two_gen_state_mut(gen0_idx, gen1_idx);
+                gen1.clear();
+                gen0.copy(gen1); // this is an |= operation, hence the clear before this
             }
         } else {
             self.gen_states[gen1_idx].clear();
