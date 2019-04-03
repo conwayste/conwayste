@@ -250,6 +250,30 @@ mod universe_tests {
     }
 
     #[test]
+    fn universe_apply_basic2() {
+        // we do Server to Server so that the fog doesn't interfere with pattern comparison
+        let mut src_uni = generate_test_universe_with_default_params(UniType::Server);
+        let mut dst_uni = generate_test_universe_with_default_params(UniType::Server);
+        let player1 = 1;
+        // glider
+        src_uni.next(); // just ensure we're at generation 2
+        src_uni.toggle(16, 15, player1).unwrap();
+        src_uni.toggle(17, 16, player1).unwrap();
+        src_uni.toggle(15, 17, player1).unwrap();
+        src_uni.toggle(16, 17, player1).unwrap();
+        src_uni.toggle(17, 17, player1).unwrap();
+        let gens = 4;
+        let diff1 = src_uni.diff(1, 2, None).unwrap();
+        assert_eq!(dst_uni.apply(&diff1, None), Ok(Some(2)));
+        for _ in 0..gens {
+            src_uni.next();
+        }
+        let diff2 = src_uni.diff(2, 6, None).unwrap();
+        assert_eq!(dst_uni.apply(&diff2, None), Ok(Some(6)));
+        assert_eq!(src_uni.to_pattern(None), dst_uni.to_pattern(None));
+    }
+
+    #[test]
     fn universe_apply_but_already_applied() {
         let mut s_uni = generate_test_universe_with_default_params(UniType::Server);  // server
         let mut c_uni = generate_test_universe_with_default_params(UniType::Client); // client is missing generation 1

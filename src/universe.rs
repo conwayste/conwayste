@@ -1570,11 +1570,9 @@ impl Universe {
         //    gen_state for gen1.
         if diff.gen0 > 0 {
             let gen0_idx = opt_gen0_idx.unwrap();
-            {
-                let (gen0, gen1): (&mut GenState, &mut GenState) = self.borrow_two_gen_state_mut(gen0_idx, gen1_idx);
-                gen1.clear();
-                gen0.copy(gen1); // this is an |= operation, hence the clear before this
-            }
+            let (gen0, gen1) = self.borrow_two_gen_state_mut(gen0_idx, gen1_idx);
+            gen1.clear();
+            gen0.copy(gen1); // this is an |= operation, hence the clear before this
         } else {
             self.gen_states[gen1_idx].clear();
         }
