@@ -58,10 +58,11 @@ enum Event {
     UserInputEvent(UserInput),
     Incoming((SocketAddr, Option<Packet>)),
     NetworkEvent,
+    ConwaysteEvent(RequestAction)
 //    NotifyAck((SocketAddr, Option<Packet>)),
 }
 
-pub struct ClientState {
+pub struct ClientNetState {
     pub sequence:         u64,          // Sequence number of requests
     pub response_sequence: u64,         // Value of the next expected sequence number from the server,
                                         // and indicates the sequence number of the next process-able rx packet
@@ -74,12 +75,13 @@ pub struct ClientState {
     pub heartbeat:        Option<Instant>,
     pub disconnect_initiated: bool,
     pub server_address:   Option<SocketAddr>,
+    pub conwayste_tx:     mpsc::Sender<ResponseCode>,
 }
 
-impl ClientState {
+impl ClientNetState {
 
-    pub fn new() -> Self {
-        ClientState {
+    pub fn new(channel_to_conwayste: mpsc::Sender<ResponseCode>) -> Self {
+        ClientNetState {
             sequence:        0,
             response_sequence: 0,
             name:            None,
@@ -91,12 +93,13 @@ impl ClientState {
             heartbeat:       None,
             disconnect_initiated: false,
             server_address:  None,
+            conwayste_tx:    channel_to_conwayste,
         }
     }
 
     pub fn reset(&mut self) {
         // Design pattern taken from https://blog.getseq.net/rust-at-datalust-how-we-organize-a-complex-rust-codebase/
-        // The intention is that new fields added to ClientState will cause compiler errors unless
+        // The intention is that new fields added to ClientNetState will cause compiler errors unless
         // we add them here.
         #![deny(unused_variables)]
         let Self {
@@ -111,6 +114,7 @@ impl ClientState {
             ref mut heartbeat,
             ref mut disconnect_initiated,
             ref mut server_address,
+            conwayste_tx: ref _conwayste_tx,          // Don't clear the channel to conwayste
         } = *self;
         *sequence         = 0;
         *response_sequence = 0;
@@ -118,12 +122,12 @@ impl ClientState {
         *cookie           = None;
         *chat_msg_seq_num = 0;
         *tick             = 0;
-        network.reset();
         *heartbeat        = None;
         *disconnect_initiated = false;
         *server_address   = None;
+        network.reset();
 
-        trace!("ClientState reset!");
+        trace!("ClientNetState reset!");
     }
 
     fn print_help() {
@@ -176,6 +180,13 @@ impl ClientState {
     }
 
     fn process_event_code(&mut self, code: ResponseCode) {
+        let conwayste_code = code.clone();
+        if code != ResponseCode::OK && code != ResponseCode::KeepAlive {
+            match self.conwayste_tx.try_send(conwayste_code) {
+                Err(_) => error!("Could not send {:?} to conwayste", code.clone()),
+                Ok(_) => ()
+            }
+        }
         match code {
             ResponseCode::OK => {
                 match self.handle_response_ok() {
@@ -394,7 +405,7 @@ impl ClientState {
         // keep these in sync with print_help function
         match cmd.as_str() {
             "help" => {
-                ClientState::print_help();
+                ClientNetState::print_help();
             }
             "stats" => {
                 self.network.print_statistics();
@@ -489,7 +500,8 @@ impl ClientState {
         }
     }
 
-    pub fn start_network() {
+    pub fn start_network(channel_to_conwayste: mpsc::Sender<ResponseCode>,
+                         channel_from_conwayste: mpsc::Receiver<RequestAction>) {
         env_logger::Builder::new()
             .format(|buf, record| {
                 writeln!(buf,
@@ -561,7 +573,7 @@ impl ClientState {
         trace!("Type /help for more info...");
 
         // initialize state
-        let mut initial_client_state = ClientState::new();
+        let mut initial_client_state = ClientNetState::new(channel_to_conwayste);
         initial_client_state.server_address = Some(addr);
 
         let iter_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () )); // just a Stream that emits () forever
@@ -618,11 +630,25 @@ impl ClientState {
             exit(1);
         });
 
+        let conwayste_rx = channel_from_conwayste.map_err(|_| panic!());
+        let conwayste_stream = conwayste_rx.filter(|req| {
+            *req != RequestAction::None
+        })
+        .map(|req| {
+            Event::ConwaysteEvent(req)
+        })
+        .map_err(|e| {
+            error!("Got error from conwayste event channel {:?}", e);
+            exit(1);
+        });
+
+
         let main_loop_fut = tick_stream
             .select(packet_stream)
             .select(stdin_stream)
             .select(network_stream)
-            .fold(initial_client_state, move |mut client_state: ClientState, event| {
+            .select(conwayste_stream)
+            .fold(initial_client_state, move |mut client_state: ClientNetState, event| {
                 match event {
                     Event::Incoming((_addr, opt_packet)) => {
                         client_state.handle_incoming_event(&udp_tx, opt_packet);
@@ -635,6 +661,9 @@ impl ClientState {
                     }
                     Event::NetworkEvent => {
                         client_state.handle_network_event(&udp_tx);
+                    }
+                    Event::ConwaysteEvent(request_action) => {
+                        client_state.enqueue(&udp_tx, &exit_tx, request_action);
                     }
                 }
 

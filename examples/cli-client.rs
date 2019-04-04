@@ -18,14 +18,23 @@
  */
 
 extern crate netwayste;
+extern crate futures;
+extern crate tokio_core;
 
 use std::thread;
-use netwayste::client::ClientState;
+use netwayste::{net, client::ClientNetState};
+use futures::sync::mpsc;
+use tokio_core::reactor::Core;
 
 //////////////////// Main /////////////////////
 fn main() {
+    let mut core = Core::new().unwrap();
+    let remote = core.remote();
+
+    let (_, b) = mpsc::channel::<net::RequestAction>(1);
+    let (c, d) = mpsc::channel::<net::ResponseCode>(1);
     thread::spawn(move || {
-        ClientState::start_network()
+        ClientNetState::start_network(c, b);
     });
 
     loop {}

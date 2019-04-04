@@ -2416,14 +2416,14 @@ mod netwayste_client_tests {
 
     #[test]
     fn handle_response_ok_no_request_sent() {
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         let result = client_state.handle_response_ok();
         assert!(result.is_ok());
     }
 
     #[test]
     fn handle_logged_in_verify_connection_cookie() {
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         client_state.name = Some("Dr. Cookie Monster, Esquire".to_owned());
         assert_eq!(client_state.cookie, None);
         client_state.handle_logged_in("cookie monster".to_owned(), CLIENT_VERSION.to_owned());
@@ -2432,7 +2432,7 @@ mod netwayste_client_tests {
 
     #[test]
     fn handle_incoming_chats_no_new_chat_messages() {
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         assert_eq!(client_state.chat_msg_seq_num, 0);
 
         client_state.handle_incoming_chats(None);
@@ -2441,7 +2441,7 @@ mod netwayste_client_tests {
 
     #[test]
     fn handle_incoming_chats_new_messages_are_older() {
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         client_state.chat_msg_seq_num = 10;
 
         let mut incoming_messages = vec![];
@@ -2456,7 +2456,7 @@ mod netwayste_client_tests {
 
     #[test]
     fn handle_incoming_chats_client_is_up_to_date() {
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         client_state.chat_msg_seq_num = 10;
 
         let incoming_messages = vec![ BroadcastChatMessage::new(10u64, "a player".to_owned(), format!("message {}", 10))];
@@ -2468,7 +2468,7 @@ mod netwayste_client_tests {
     #[test]
     #[should_panic]
     fn handle_incoming_chats_new_messages_player_name_not_set_panics() {
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         client_state.chat_msg_seq_num = 10;
 
         let incoming_messages = vec![ BroadcastChatMessage::new(11u64, "a player".to_owned(), format!("message {}", 11))];
@@ -2478,7 +2478,7 @@ mod netwayste_client_tests {
 
     #[test]
     fn handle_incoming_chats_new_messages_are_old_and_new() {
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         let starting_chat_seq_num = 10;
         client_state.name = Some("client name".to_owned());
         client_state.chat_msg_seq_num = starting_chat_seq_num;
@@ -2535,7 +2535,7 @@ mod netwayste_client_tests {
     fn build_command_request_action_unknown_command() {
         let command = UserInput::Command{ cmd: "helpusobi".to_owned(), args: vec!["1".to_owned()]};
 
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         match command {
             UserInput::Command{cmd, args} => {
                 let action = client_state.build_command_request_action(cmd, args);
@@ -2549,7 +2549,7 @@ mod netwayste_client_tests {
     fn build_command_request_action_help_returns_no_action() {
         let command = UserInput::Command{ cmd: "help".to_owned(), args: vec![]};
 
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         match command {
             UserInput::Command{cmd, args} => {
                 let action = client_state.build_command_request_action(cmd, args);
@@ -2563,7 +2563,7 @@ mod netwayste_client_tests {
     fn build_command_request_action_disconnect() {
         let command = UserInput::Command{ cmd: "disconnect".to_owned(), args: vec![]};
 
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         match command {
             UserInput::Command{cmd, args} => {
                 let action = client_state.build_command_request_action(cmd, args);
@@ -2577,7 +2577,7 @@ mod netwayste_client_tests {
     fn build_command_request_action_disconnect_with_args_returns_no_action() {
         let command = UserInput::Command{ cmd: "disconnect".to_owned(), args: vec!["1".to_owned()]};
 
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         match command {
             UserInput::Command{cmd, args} => {
                 let action = client_state.build_command_request_action(cmd, args);
@@ -2591,7 +2591,7 @@ mod netwayste_client_tests {
     fn build_command_request_action_list_in_lobby() {
         let command = UserInput::Command{ cmd: "list".to_owned(), args: vec![]};
 
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         match command {
             UserInput::Command{cmd, args} => {
                 let action = client_state.build_command_request_action(cmd, args);
@@ -2605,7 +2605,7 @@ mod netwayste_client_tests {
     fn build_command_request_action_list_in_game() {
         let command = UserInput::Command{ cmd: "list".to_owned(), args: vec![]};
 
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         client_state.room = Some("some room".to_owned());
         match command {
             UserInput::Command{cmd, args} => {
@@ -2620,7 +2620,7 @@ mod netwayste_client_tests {
     fn build_command_request_action_leave_cases() {
         let command = UserInput::Command{ cmd: "leave".to_owned(), args: vec![]};
 
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         // Not in a room
         match command.clone() {
             UserInput::Command{cmd, args} => {
@@ -2655,7 +2655,7 @@ mod netwayste_client_tests {
     fn build_command_request_action_join_cases() {
         let command = UserInput::Command{ cmd: "join".to_owned(), args: vec![]};
 
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         // no room specified
         match command.clone() {
             UserInput::Command{cmd, args} => {
@@ -2690,7 +2690,7 @@ mod netwayste_client_tests {
     #[test]
     fn handle_user_input_event_increment_sequence_number() {
         // There is a lot that _could_ be tested here but most of it is handled in the above test cases.
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         let (udp_tx, _) = mpsc::unbounded();
         let (exit_tx, _) = mpsc::unbounded();
         let user_input = UserInput::Chat("memes".to_owned());
@@ -2707,7 +2707,7 @@ mod netwayste_client_tests {
 
     #[test]
     fn handle_incoming_event_basic_tx_rx_queueing() {
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         let (udp_tx, _) = mpsc::unbounded();
         let (exit_tx, _) = mpsc::unbounded();
         let addr = fake_socket_addr();
@@ -2749,7 +2749,7 @@ mod netwayste_client_tests {
 
     #[test]
     fn handle_incoming_event_basic_tx_rx_queueing_cannot_process_all_responses() {
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         let (udp_tx, _) = mpsc::unbounded();
         let (exit_tx, _) = mpsc::unbounded();
         let addr = fake_socket_addr();
@@ -2795,7 +2795,7 @@ mod netwayste_client_tests {
 
     #[test]
     fn handle_incoming_event_basic_tx_rx_queueing_arrives_at_server_out_of_order() {
-        let mut client_state = ClientState::new();
+        let mut client_state = ClientNetState::new();
         let (udp_tx, _) = mpsc::unbounded();
         let (exit_tx, _) = mpsc::unbounded();
         let addr = fake_socket_addr();
