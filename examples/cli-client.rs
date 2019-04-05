@@ -22,20 +22,47 @@ extern crate futures;
 extern crate tokio_core;
 
 use std::thread;
+use std::sync::mpsc::channel as std_channel;
+use std::sync::mpsc::TryRecvError;
+use std::process;
+use std::time::Duration;
 use netwayste::{net, client::ClientNetState};
 use futures::sync::mpsc;
-use tokio_core::reactor::Core;
+use futures::Sink;
+use futures::Future;
+use futures::{Async, Stream};
+//use tokio_core::reactor::Core;
 
 //////////////////// Main /////////////////////
 fn main() {
-    let mut core = Core::new().unwrap();
-    let remote = core.remote();
+    //let mut core = Core::new().unwrap();
+    //let remote = core.remote();
 
-    let (_, b) = mpsc::channel::<net::RequestAction>(1);
-    let (c, d) = mpsc::channel::<net::ResponseCode>(1);
+    let (ggez_client_request, nw_client_request) = mpsc::channel::<net::RequestAction>(1);
+    let (nw_server_response, mut ggez_server_response) = std_channel::<net::ResponseCode>();
     thread::spawn(move || {
-        ClientNetState::start_network(c, b);
+        ClientNetState::start_network(nw_server_response, nw_client_request);
     });
 
-    loop {}
+    ggez_client_request.send(net::RequestAction::Connect{name: "blah3".to_owned(), client_version: "0.0.1".to_owned()})
+        .wait().unwrap();
+    loop {
+        ggez_client_request.send(net::RequestAction::ListRooms)
+            .wait().unwrap();
+        loop {
+            match ggez_server_response.try_recv() {
+                Ok(response_code) => {
+                    println!("sweet! we got a netwayste ResponseCode! {:?}", response_code);
+                }
+                Err(TryRecvError::Empty) => {
+                    break;
+                }
+                Err(e) => {
+                    println!("got error from ResponseCode stream from netwayste thread: {:?}", e);
+                    process::exit(1);
+                }
+            }
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
 }

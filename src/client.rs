@@ -75,12 +75,12 @@ pub struct ClientNetState {
     pub heartbeat:        Option<Instant>,
     pub disconnect_initiated: bool,
     pub server_address:   Option<SocketAddr>,
-    pub conwayste_tx:     mpsc::Sender<ResponseCode>,
+    pub conwayste_tx:     std::sync::mpsc::Sender<ResponseCode>,
 }
 
 impl ClientNetState {
 
-    pub fn new(channel_to_conwayste: mpsc::Sender<ResponseCode>) -> Self {
+    pub fn new(channel_to_conwayste: std::sync::mpsc::Sender<ResponseCode>) -> Self {
         ClientNetState {
             sequence:        0,
             response_sequence: 0,
@@ -182,7 +182,7 @@ impl ClientNetState {
     fn process_event_code(&mut self, code: ResponseCode) {
         let conwayste_code = code.clone();
         if code != ResponseCode::OK && code != ResponseCode::KeepAlive {
-            match self.conwayste_tx.try_send(conwayste_code) {
+            match self.conwayste_tx.send(conwayste_code) {
                 Err(_) => error!("Could not send {:?} to conwayste", code.clone()),
                 Ok(_) => ()
             }
@@ -338,6 +338,7 @@ impl ClientNetState {
     fn handle_logged_in(&mut self, cookie: String, server_version: String) {
         self.cookie = Some(cookie);
 
+        self.name = Some("blah3".to_owned()); //XXX HACK
         info!("Set client name to {:?}", self.name.clone().unwrap());
         self.check_for_upgrade(&server_version);
     }
@@ -500,7 +501,7 @@ impl ClientNetState {
         }
     }
 
-    pub fn start_network(channel_to_conwayste: mpsc::Sender<ResponseCode>,
+    pub fn start_network(channel_to_conwayste: std::sync::mpsc::Sender<ResponseCode>,
                          channel_from_conwayste: mpsc::Receiver<RequestAction>) {
         env_logger::Builder::new()
             .format(|buf, record| {
