@@ -502,7 +502,7 @@ impl ClientNetState {
     }
 
     pub fn start_network(channel_to_conwayste: std::sync::mpsc::Sender<ResponseCode>,
-                         channel_from_conwayste: mpsc::Receiver<RequestAction>) {
+                         channel_from_conwayste: mpsc::UnboundedReceiver<RequestAction>) {
         env_logger::Builder::new()
             .format(|buf, record| {
                 writeln!(buf,

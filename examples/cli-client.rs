@@ -38,17 +38,17 @@ fn main() {
     //let mut core = Core::new().unwrap();
     //let remote = core.remote();
 
-    let (ggez_client_request, nw_client_request) = mpsc::channel::<net::RequestAction>(1);
-    let (nw_server_response, mut ggez_server_response) = std_channel::<net::ResponseCode>();
+    let (ggez_client_request, nw_client_request) = mpsc::unbounded::<net::RequestAction>();
+    let (nw_server_response, ggez_server_response) = std_channel::<net::ResponseCode>();
     thread::spawn(move || {
         ClientNetState::start_network(nw_server_response, nw_client_request);
     });
 
-    ggez_client_request.send(net::RequestAction::Connect{name: "blah3".to_owned(), client_version: "0.0.1".to_owned()})
-        .wait().unwrap();
+    ggez_client_request.unbounded_send(net::RequestAction::Connect{name: "blah3".to_owned(), client_version: "0.0.1".to_owned()})
+        .unwrap();
     loop {
-        ggez_client_request.send(net::RequestAction::ListRooms)
-            .wait().unwrap();
+        ggez_client_request.unbounded_send(net::RequestAction::ListRooms)
+            .unwrap();
         loop {
             match ggez_server_response.try_recv() {
                 Ok(response_code) => {
