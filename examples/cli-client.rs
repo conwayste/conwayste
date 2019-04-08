@@ -28,16 +28,9 @@ use std::process;
 use std::time::Duration;
 use netwayste::{net, client::ClientNetState};
 use futures::sync::mpsc;
-use futures::Sink;
-use futures::Future;
-use futures::{Async, Stream};
-//use tokio_core::reactor::Core;
 
 //////////////////// Main /////////////////////
 fn main() {
-    //let mut core = Core::new().unwrap();
-    //let remote = core.remote();
-
     let (ggez_client_request, nw_client_request) = mpsc::unbounded::<net::RequestAction>();
     let (nw_server_response, ggez_server_response) = std_channel::<net::ResponseCode>();
     thread::spawn(move || {
