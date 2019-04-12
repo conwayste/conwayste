@@ -81,7 +81,7 @@ struct MainState {
     running:             bool,
     menu_sys:            menu::MenuSystem,
     video_settings:      video::VideoSettings,
-    config:              config::ConfigFile,
+    config:              config::Config,
     viewport:            viewport::Viewport,
     input_manager:       input::InputManager,
 
@@ -402,7 +402,8 @@ impl MainState {
         let universe_width_in_cells  = 256;
         let universe_height_in_cells = 120;
 
-        let config = config::ConfigFile::new();
+        let config = config::Config::new();
+        config.initialize();
 
         let mut vs = video::VideoSettings::new();
         vs.gather_display_modes(ctx)?;
@@ -432,7 +433,7 @@ impl MainState {
         vs.is_fullscreen = config.is_fullscreen() == true;
 */
 
-        let viewport = viewport::Viewport::new(config.get_zoom_level(), universe_width_in_cells, universe_height_in_cells);
+        let viewport = viewport::Viewport::new(config.zoom_level(), universe_width_in_cells, universe_height_in_cells);
 
         let mut color_settings = ColorSettings {
             cell_colors: BTreeMap::new(),

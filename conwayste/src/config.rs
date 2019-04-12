@@ -18,150 +18,161 @@
 
 extern crate toml;
 
-use std::fs::OpenOptions;
-use std::io::{Write, Read};
-use std::path::Path;
 use crate::constants::{CONFIG_FILE_PATH, DEFAULT_ZOOM_LEVEL};
+use std::fs::OpenOptions;
+use std::io::{Read, Write};
+use std::path::Path;
 
-/// User configuration descriptor which contains all of the configurable settings
-/// for this game. These *should* be modified within the game, but one can 
-/// always edit this file directly. The game will fail to load if there are
-/// any errors parsing the `conwayste.toml` file.
+/// Settings contains all of the user's configurable settings for this game. These *should* be
+/// modified within the game, but one can always edit this file directly. The game will fail to
+/// load if there are any errors parsing the `conwayste.toml` file.
 // Top-level view of config toml file
-#[derive(Debug, Deserialize, Serialize, Clone)]
-struct Config {
-    user:   UserConfig,
-    gameplay: GameplayConfig,
-    video:  VideoConfig,
-    audio:  AudioConfig,
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+struct Settings {
+    user: UserNetSettings,
+    gameplay: GamePlaySettings,
+    video: VideoSettings,
+    audio: AudioSettings,
 }
 
-/// This will decode from the [user] section and contains user-specific settings.
+/// This will decode from the [user] section and contains settings for this user relevant to
+/// network (multiplayer) game play.
 #[derive(Debug, Deserialize, Serialize, Clone)]
-struct UserConfig {
+struct UserNetSettings {
     name: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+impl Default for UserNetSettings {
+    fn default() -> Self {
+        UserNetSettings {
+            name: "JohnConway".to_owned(),
+        }
+    }
+}
+
 /// Graphics-related settings like resolution, fullscreen, and more!
-struct VideoConfig {
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+struct VideoSettings {
     resolution_x: i32,
     resolution_y: i32,
     fullscreen: bool,
-
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
 /// Audio-related settings like sound and music levels.
-struct AudioConfig {
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct AudioSettings {
     master: u8,
     music: u8,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+impl Default for AudioSettings {
+    fn default() -> Self {
+        AudioSettings {
+            master: 100,
+            music: 100,
+        }
+    }
+}
+
 /// Gameplay-related settings. Pretty empty for now.
-struct GameplayConfig {
+#[derive(Debug, Deserialize, Serialize, Clone)]
+struct GamePlaySettings {
     zoom: f32,
 }
 
-impl Config {
+impl Default for GamePlaySettings {
+    fn default() -> Self {
+        GamePlaySettings {
+            zoom: DEFAULT_ZOOM_LEVEL,
+        }
+    }
+}
+
+impl Settings {
     /// Writes the default `conwayste.toml` configuration file.
-    pub fn write_default_config(&self) {
+    pub fn write_default_config(&self, path: &str) {
         let toml = toml::to_string(&self).unwrap();
-        let mut foptions  = OpenOptions::new();
-        let mut f = foptions
-                    .write(true)
-                    .create_new(true)
-                    .open(CONFIG_FILE_PATH).unwrap();
+        let mut foptions = OpenOptions::new();
+        let mut f = foptions.write(true).create_new(true).open(path).unwrap();
         let _ = f.write(toml.as_bytes());
     }
-    
+
     /// Writes the in-memory config to the `conwayste.toml` configuration file.
     pub fn write_config(&self) {
-        let mut foptions  = OpenOptions::new();
-        let mut f = foptions
-                    .write(true)
-                    .open(CONFIG_FILE_PATH).unwrap();
+        let mut foptions = OpenOptions::new();
+        let mut f = foptions.write(true).open(CONFIG_FILE_PATH).unwrap();
         let toml = toml::to_string(&self).unwrap();
         let _ = f.write(toml.as_bytes());
     }
 
     /// Creates the default configuration with mostly invalid settings.
     pub fn new() -> Self {
-        Config {
-            user: UserConfig {
-                name: String::from("JohnConway"),
-            },
-            gameplay: GameplayConfig {
-                zoom: DEFAULT_ZOOM_LEVEL,
-            },
-            video: VideoConfig {
-                fullscreen: false,
-                resolution_x: 0i32,
-                resolution_y: 0i32,
-            },
-            audio: AudioConfig {
-                master: 100,
-                music: 100,
-            },
-        }
-    }
-    
-    /// Helper to simply copy the local file copy to memory.
-    fn update_config(&mut self, new_config: Config) {
-        self.user.name          = new_config.user.name;
-        self.gameplay.zoom      = new_config.gameplay.zoom;
-        self.video.fullscreen   = new_config.video.fullscreen;
-        self.video.resolution_x = new_config.video.resolution_x;
-        self.video.resolution_y = new_config.video.resolution_y;
-        self.audio.master       = new_config.audio.master;
-        self.audio.music        = new_config.audio.music;
+        let mut settings: Settings = Default::default();
+        // TODO: randomized settings.user.name
+        settings
     }
 
-    /// Initializes the in-memory configuration settings from an 
-    /// already existing `conwayste.toml` file or or with the 
+    /// Helper to simply copy the local file copy to memory.
+    fn update_settings(&mut self, new_config: Settings) {
+        self.user.name = new_config.user.name;
+        self.gameplay.zoom = new_config.gameplay.zoom;
+        self.video.fullscreen = new_config.video.fullscreen;
+        self.video.resolution_x = new_config.video.resolution_x;
+        self.video.resolution_y = new_config.video.resolution_y;
+        self.audio.master = new_config.audio.master;
+        self.audio.music = new_config.audio.music;
+    }
+
+    /// Initializes the in-memory configuration settings from an
+    /// already existing `conwayste.toml` file or or with the
     /// default settings. This will fail if the toml file cannot
     /// be parsed correctly.
-    pub fn initialize(&mut self) {
-        if Path::exists(Path::new(CONFIG_FILE_PATH))
-        {
+    pub fn initialize(&mut self, path: &str) {
+        if Path::exists(Path::new(path)) {
             let mut toml = String::new();
             {
-                let mut foptions  = OpenOptions::new();
-                let mut f = foptions
-                        .read(true)
-                        .open(CONFIG_FILE_PATH).unwrap();
+                let mut foptions = OpenOptions::new();
+                let mut f = foptions.read(true).open(path).unwrap();
                 f.read_to_string(&mut toml).unwrap();
             }
 
             let toml_str = &toml.as_str();
-            let config : Config = toml::from_str(toml_str).unwrap();
+            let config: Settings = toml::from_str(toml_str).unwrap();
 
-            self.update_config(config);
+            self.update_settings(config);
         } else {
-            self.write_default_config();
+            self.write_default_config(path);
         };
     }
 }
 
-/// Pretty straightfoward. If the file is `dirty`, then all of the configuration settings
+/// Pretty straightforward. If the file is `dirty`, then all of the configuration settings
 /// will be flushed down to the local file.
-pub struct ConfigFile {
-    settings: Config,
-    dirty:    bool,
+pub struct Config {
+    path: Option<String>,
+    settings: Settings,
+    dirty: bool,
 }
 
-impl ConfigFile {
-
+impl Config {
     /// Creates a new manager to handle the conwayste configuration settings.
-    pub fn new() -> ConfigFile {
-        let mut config = Config::new();
-        config.initialize();
-        
-        ConfigFile {
+    pub fn new() -> Config {
+        let mut config = Settings::new();
+
+        Config {
+            path: Some(String::from(CONFIG_FILE_PATH)),
             settings: config,
             dirty: false,
         }
+    }
+
+    pub fn set_path(&mut self, path: String) -> &mut Self {
+        self.path = Some(path);
+        self.set_dirty()
+    }
+
+    pub fn path(&self) -> Option<&str> {
+        self.path.map(|p| p.as_str())
     }
 
     /// Prints the configuration via `:?` for sanity checking.
@@ -170,36 +181,42 @@ impl ConfigFile {
     }
 
     /// Sets the configuration file as dirty.
-    fn set_dirty(&mut self) {
+    fn set_dirty(&mut self) -> &mut Self {
         self.dirty = true;
+        self
     }
 
     /// Marks the configuration file as flushed to the disk.
-    fn set_clean(&mut self) {
+    fn set_clean(&mut self) -> &mut Self {
         self.dirty = false;
+        self
     }
 
     /// Queries to see if the configuration file is dirty or not.
     pub fn is_dirty(&self) -> bool {
-        self.dirty == true
+        self.dirty
     }
 
     /// Writes the configuration file to the local filesystem.
-    pub fn write(&mut self) {
+    pub fn write(&mut self) -> &mut Self {
+        println!("AARON: config write"); //XXX
         self.settings.write_config();
-        self.set_clean();
+        self.set_clean()
     }
 
     /// Gets the configuration files copy of what the resolution is as a tuple.
-    pub fn get_resolution(&self) -> (i32, i32) {
-        (self.settings.video.resolution_x, self.settings.video.resolution_y)
+    pub fn resolution(&self) -> (i32, i32) {
+        (
+            self.settings.video.resolution_x,
+            self.settings.video.resolution_y,
+        )
     }
 
     /// Updates the resolution within the configuration file.
-    pub fn set_resolution(&mut self, width: i32, height: i32) {
+    pub fn set_resolution(&mut self, width: i32, height: i32) -> &mut Self {
         self.settings.video.resolution_x = width;
         self.settings.video.resolution_y = height;
-        self.set_dirty();
+        self.set_dirty()
     }
 
     /// Checks to see if the game was listed as fullscreen within the toml settings.
@@ -208,25 +225,25 @@ impl ConfigFile {
     }
 
     /// Sets the fullscreen setting with the providied boolean.
-    pub fn set_fullscreen(&mut self, is_fullscreen: bool) {
+    pub fn set_fullscreen(&mut self, is_fullscreen: bool) -> &mut Self {
         self.settings.video.fullscreen = is_fullscreen;
-        self.set_dirty();
+        self.set_dirty()
     }
 
     /*
      *
     /// Sets the master sound level to the specified value.
     /// Value range is 0 to 100.
-    pub fn set_master_sound_level(&mut self, level: u8) {
+    pub fn set_master_sound_level(&mut self, level: u8) -> &mut Self {
         self.settings.audio.master = level;
-        self.set_dirty();
+        self.set_dirty()
     }
 
     /// Sets the music level to the specified value.
     /// Value range is 0 to 100.
-    pub fn set_music_level(&mut self, level: u8) {
+    pub fn set_music_level(&mut self, level: u8) -> &mut Self {
         self.settings.audio.music = level;
-        self.set_dirty();
+        self.set_dirty()
     }
 
      *
@@ -234,39 +251,39 @@ impl ConfigFile {
      *
 
     /// Gets the master sound level.
-    pub fn get_master_sound_level(&self) -> u8 {
+    pub fn master_sound_level(&self) -> u8 {
         self.settings.audio.master
     }
 
-    /// Gets the master sound level to the specified value.
-    pub fn get_music_level(&mut self) -> u8 {
+    /// Sets the master sound level to the specified value.
+    pub fn music_level(&self) -> u8 {
         self.settings.audio.music
     }
     */
 
     /// Sets the zoom level within the configuration file.
-    pub fn set_zoom_level(&mut self, level: f32) {
+    pub fn set_zoom_level(&mut self, level: f32) -> &mut Self {
         self.settings.gameplay.zoom = level;
-        self.set_dirty();
+        self.set_dirty()
     }
 
     /// Gets the zoom level file specified in the toml file.
-    pub fn get_zoom_level(&self) -> f32 {
+    pub fn zoom_level(&self) -> f32 {
         self.settings.gameplay.zoom
     }
 
-/*
-    /// Gets the player name specified within the configuration file.
-    pub fn get_player_name(&self) -> String {
-        self.settings.user.name.clone()
-    }
+    /*
+        /// Gets the player name specified within the configuration file.
+        pub fn player_name(&self) -> &str {
+            &self.settings.user.name
+        }
 
-    /// Sets the player name within the configuration file.
-    pub fn set_player_name(&mut self, name: String) {
-        self.settings.user.name = name;
-        self.set_dirty();
-    }
-*/
+        /// Sets the player name within the configuration file.
+        pub fn set_player_name(&mut self, name: String) -> &mut Self {
+            self.settings.user.name = name;
+            self.set_dirty()
+        }
+    */
 }
 
 #[cfg(test)]
@@ -274,117 +291,117 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_init_default_config() {
-        let config = Config::new();
+    fn test_init_default_settings() {
+        let settings = Settings::new();
 
-        assert_eq!(config.audio.master, 100);
-        assert_eq!(config.audio.music, 100);
-        assert_eq!(config.video.fullscreen, false);
-        assert_eq!(config.video.resolution_x, 0);
-        assert_eq!(config.video.resolution_y, 0);
-        assert_eq!(config.gameplay.zoom, DEFAULT_ZOOM_LEVEL);
-        assert_eq!(config.user.name, "JohnConway");
+        assert_eq!(settings.audio.master, 100);
+        assert_eq!(settings.audio.music, 100);
+        assert_eq!(settings.video.fullscreen, false);
+        assert_eq!(settings.video.resolution_x, 0);
+        assert_eq!(settings.video.resolution_y, 0);
+        assert_eq!(settings.gameplay.zoom, DEFAULT_ZOOM_LEVEL);
+        assert_eq!(settings.user.name, "JohnConway");
     }
 
     #[test]
-    fn test_update_config() {
+    fn test_update_settings() {
+        let mut settings = Settings::new();
+        let mut secondary_settings = Settings::new();
+
+        secondary_settings.user.name = String::from("TestUser");
+        secondary_settings.audio.master = 50;
+        secondary_settings.audio.music = 50;
+        secondary_settings.video.fullscreen = true;
+        secondary_settings.gameplay.zoom = 1000.0;
+
+        settings.update_settings(secondary_settings);
+        assert_eq!(settings.audio.master, 50);
+        assert_eq!(settings.audio.music, 50);
+        assert_eq!(settings.video.fullscreen, true);
+        assert_eq!(settings.video.resolution_x, 0);
+        assert_eq!(settings.video.resolution_y, 0);
+        assert_eq!(settings.gameplay.zoom, 1000.0);
+        assert_eq!(settings.user.name, "TestUser");
+    }
+
+    #[test]
+    fn test_config_cleanliness() {
         let mut config = Config::new();
-        let mut secondary_config = Config::new();
 
-        secondary_config.user.name = String::from("TestUser");
-        secondary_config.audio.master = 50;
-        secondary_config.audio.music = 50;
-        secondary_config.video.fullscreen = true;
-        secondary_config.gameplay.zoom = 1000.0;
+        assert_eq!(config.is_dirty(), false);
 
-        config.update_config(secondary_config);
-        assert_eq!(config.audio.master, 50);
-        assert_eq!(config.audio.music, 50);
-        assert_eq!(config.video.fullscreen, true);
-        assert_eq!(config.video.resolution_x, 0);
-        assert_eq!(config.video.resolution_y, 0);
-        assert_eq!(config.gameplay.zoom, 1000.0);
-        assert_eq!(config.user.name, "TestUser");
-    }
+        config.set_dirty();
+        assert_eq!(config.is_dirty(), true);
 
-    #[test]
-    fn test_config_file_cleanliness() {
-        let mut configfile = ConfigFile::new();
-
-        assert_eq!(configfile.is_dirty(), false);
-
-        configfile.set_dirty();
-        assert_eq!(configfile.is_dirty(), true);
-
-        configfile.write();
-        assert_eq!(configfile.is_dirty(), false);
+        config.write();
+        assert_eq!(config.is_dirty(), false);
     }
 
     #[test]
     fn test_modify_default_config_and_write() {
-        let mut configfile = ConfigFile::new();
+        let mut config = Config::new();
 
-        assert_eq!(configfile.is_dirty(), false);
+        assert_eq!(config.is_dirty(), false);
 
-        configfile.set_zoom_level(10.0);
-        assert_eq!(configfile.get_zoom_level(), 10.0);
-        assert_eq!(configfile.is_dirty(), true);
+        config.set_zoom_level(10.0);
+        assert_eq!(config.get_zoom_level(), 11.0);
+        assert_eq!(config.is_dirty(), true);
 
-        configfile.write();
-        assert_eq!(configfile.is_dirty(), false);
+        config.write();
+        assert_eq!(config.is_dirty(), false);
     }
 
     #[test]
     fn test_zoom_level() {
-        let mut configfile = ConfigFile::new();
-        assert_eq!(configfile.is_dirty(), false);
+        let mut config = Config::new();
+        assert_eq!(config.is_dirty(), false);
 
-        configfile.set_zoom_level(10.0);
-        assert_eq!(configfile.get_zoom_level(), 10.0);
-        assert_eq!(configfile.is_dirty(), true);
+        config.set_zoom_level(10.0);
+        assert_eq!(config.get_zoom_level(), 10.0);
+        assert_eq!(config.is_dirty(), true);
 
-        configfile.set_zoom_level(0.0);
-        assert_eq!(configfile.get_zoom_level(), 0.0);
+        config.set_zoom_level(0.0);
+        assert_eq!(config.get_zoom_level(), 0.0);
 
-        configfile.set_zoom_level(21.0);
-        assert_eq!(configfile.get_zoom_level(), 21.0);
+        config.set_zoom_level(21.0);
+        assert_eq!(config.get_zoom_level(), 21.0);
 
-        configfile.write();
-        assert_eq!(configfile.is_dirty(), false);
+        config.write();
+        assert_eq!(config.is_dirty(), false);
     }
 
     #[test]
     fn test_resolution() {
-        let mut configfile = ConfigFile::new();
-        assert_eq!(configfile.is_dirty(), false);
+        let mut config = Config::new();
+        assert_eq!(config.is_dirty(), false);
 
-        configfile.set_resolution(1920, 1080);
-        assert_eq!(configfile.get_resolution(), (1920, 1080));
-        assert_eq!(configfile.is_dirty(), true);
+        config.set_resolution(1920, 1080);
+        assert_eq!(config.get_resolution(), (1920, 1080));
+        assert_eq!(config.is_dirty(), true);
 
-        configfile.set_resolution(800, 600);
-        assert_eq!(configfile.get_resolution(), (800, 600));
-        assert_eq!(configfile.is_dirty(), true);
+        config.set_resolution(800, 600);
+        assert_eq!(config.get_resolution(), (800, 600));
+        assert_eq!(config.is_dirty(), true);
 
-        configfile.write();
-        assert_eq!(configfile.is_dirty(), false);
+        config.write();
+        assert_eq!(config.is_dirty(), false);
     }
 
     #[test]
     fn test_fullscreen() {
-        let mut configfile = ConfigFile::new();
+        let mut config = Config::new();
 
-        assert_eq!(configfile.is_dirty(), false);
+        assert_eq!(config.is_dirty(), false);
 
-        configfile.set_fullscreen(true);
-        assert_eq!(configfile.is_fullscreen(), true);
-        assert_eq!(configfile.is_dirty(), true);
+        config.set_fullscreen(true);
+        assert_eq!(config.is_fullscreen(), true);
+        assert_eq!(config.is_dirty(), true);
 
-        configfile.set_fullscreen(false);
-        assert_eq!(configfile.is_fullscreen(), false);
-        assert_eq!(configfile.is_dirty(), true);
+        config.set_fullscreen(false);
+        assert_eq!(config.is_fullscreen(), false);
+        assert_eq!(config.is_dirty(), true);
 
-        configfile.write();
-        assert_eq!(configfile.is_dirty(), false);
+        config.write();
+        assert_eq!(config.is_dirty(), false);
     }
 }
