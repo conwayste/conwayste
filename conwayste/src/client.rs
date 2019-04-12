@@ -29,6 +29,7 @@ mod config;
 mod constants;
 mod input;
 mod menu;
+mod network;
 mod utils;
 mod video;
 mod viewport;
@@ -84,6 +85,7 @@ struct MainState {
     config:              config::ConfigFile,
     viewport:            viewport::Viewport,
     input_manager:       input::InputManager,
+    network_manager:     network::NetworkManager,
 
     // Input state
     single_step:         bool,
@@ -454,7 +456,10 @@ impl MainState {
         let small_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
         let menu_font  = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
 
-        let bigbang = 
+        /*
+         * Game Universe Initialization
+         */
+        let bigbang =
         {
             // we're going to have to tear this all out when this becomes a real game
             let player0_writable = Region::new(100, 70, 34, 16);
@@ -475,7 +480,10 @@ impl MainState {
             .birth()
         };
 
-        let intro_universe = 
+        /*
+         * Introduction Universe Initialization
+         */
+        let intro_universe =
         {
             let player = PlayerBuilder::new(Region::new(0, 0, 256, 256));
             BigBang::new()
@@ -485,6 +493,10 @@ impl MainState {
                 .add_players(vec![player])
                 .birth()
         };
+
+        /*
+         * Network Initialization
+         */
 
         let mut s = MainState {
             small_font:          small_font,
@@ -499,6 +511,7 @@ impl MainState {
             config:              config,
             viewport:            viewport,
             input_manager:       input::InputManager::new(input::InputDeviceType::PRIMARY),
+            network_manager:     network::NetworkManager::new(),
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -507,6 +520,8 @@ impl MainState {
             escape_key_pressed:  false,
             toggle_paused_game:  false,
         };
+
+        s.network_manager.connect("NetwaysteIntegration".to_owned());
 
         init_patterns(&mut s).unwrap();
         init_title_screen(&mut s).unwrap();
@@ -525,7 +540,7 @@ impl EventHandler for MainState {
                 remaining -= duration;
                 if remaining > INTRO_DURATION - INTRO_PAUSE_DURATION {
                     self.screen = Screen::Intro(remaining);
-                } 
+                }
                 else {
                     if remaining > 0.0 && remaining <= INTRO_DURATION - INTRO_PAUSE_DURATION {
                         self.intro_uni.next();
@@ -553,7 +568,7 @@ impl EventHandler for MainState {
                     // move selection accordingly
                     let (_,y) = self.arrow_input;
                     {
-                        let container = self.menu_sys.get_menu_container_mut(); 
+                        let container = self.menu_sys.get_menu_container_mut();
                         let mainmenu_md = container.get_metadata();
                         mainmenu_md.adjust_index(y);
                     }
@@ -673,7 +688,7 @@ impl EventHandler for MainState {
             Screen::Run => {
 // TODO while this works at limiting the FPS, its a bit glitchy for input events
 // Disable until we have time to look into it
-//                while timer::check_update_time(ctx, FPS) { 
+//                while timer::check_update_time(ctx, FPS) {
                 {
                     self.process_running_inputs();
 
@@ -834,7 +849,7 @@ struct GameOfLifeDrawParams {
 
 impl MainState {
 
-    fn draw_game_of_life(&self, 
+    fn draw_game_of_life(&self,
                          ctx: &mut Context,
                          universe: &Universe,
                          draw_params: &GameOfLifeDrawParams
@@ -1020,7 +1035,7 @@ impl MainState {
                                 self.config.print_to_screen();
                             }
                             Keycode::LGui => {
-                            
+
                             }
                             Keycode::D => {
                                 // TODO: do something with this debug code
@@ -1161,7 +1176,10 @@ pub fn main() {
         println!("Not building from cargo? Okie dokie.");
     }
 
-    let ctx = &mut cb.build().unwrap();
+    let ctx = &mut cb.build().unwrap_or_else(|e| {
+        error!("ContextBuilter failed: {:?}", e);
+        std::process::exit(1);
+    });
 
     match MainState::new(ctx) {
         Err(e) => {
