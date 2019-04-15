@@ -34,6 +34,9 @@ mod utils;
 mod video;
 mod viewport;
 
+use chrono::Local;
+use log::LevelFilter;
+
 use conway::universe::{BigBang, Universe, CellState, Region, PlayerBuilder};
 use conway::grids::CharGrid;
 use conway::rle::Pattern;
@@ -47,6 +50,7 @@ use ggez::graphics::{Point2, Color};
 use ggez::timer;
 
 use std::env;
+use std::io::Write; // For env logger
 use std::path;
 use std::collections::BTreeMap;
 
@@ -1153,7 +1157,23 @@ impl MainState {
 // do the work of creating our MainState and running our game,
 // * then just call `game.run()` which runs the `Game` mainloop.
 pub fn main() {
-    env_logger::init().unwrap();
+        env_logger::Builder::new()
+            .format(|buf, record| {
+                writeln!(buf,
+                    "{} [{:5}] - {}",
+                    Local::now().format("%a %Y-%m-%d %H:%M:%S%.6f"),
+                    record.level(),
+                    record.args(),
+                )
+            })
+            .filter(None, LevelFilter::Trace)
+            .filter(Some("futures"), LevelFilter::Off)
+            .filter(Some("tokio_core"), LevelFilter::Off)
+            .filter(Some("tokio_reactor"), LevelFilter::Off)
+            .filter(Some("conway"), LevelFilter::Off)
+            .filter(Some("ggez"), LevelFilter::Off)
+            .filter(Some("gfx_device_gl"), LevelFilter::Off)
+            .init();
 
     let mut cb = ContextBuilder::new("conwayste", "Aaronm04|Manghi")
         .window_setup(conf::WindowSetup::default()
