@@ -18,7 +18,7 @@
  */
 
 use std::env;
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::iter;
 use std::str::FromStr;
 use std::error::Error;
@@ -28,9 +28,7 @@ use std::time::Instant;
 use std::thread;
 use std::time::Duration;
 
-use chrono::Local;
 use futures::{Future, Sink, Stream, stream, future::ok, sync::mpsc};
-use log::LevelFilter;
 use regex::Regex;
 use tokio_core::reactor::{Core, Timeout};
 
@@ -503,20 +501,6 @@ impl ClientNetState {
 
     pub fn start_network(channel_to_conwayste: std::sync::mpsc::Sender<ResponseCode>,
                          channel_from_conwayste: mpsc::UnboundedReceiver<RequestAction>) {
-        env_logger::Builder::new()
-            .format(|buf, record| {
-                writeln!(buf,
-                    "{} [{:5}] - {}",
-                    Local::now().format("%a %Y-%m-%d %H:%M:%S%.6f"),
-                    record.level(),
-                    record.args(),
-                )
-            })
-            .filter(None, LevelFilter::Trace)
-            .filter(Some("futures"), LevelFilter::Off)
-            .filter(Some("tokio_core"), LevelFilter::Off)
-            .filter(Some("tokio_reactor"), LevelFilter::Off)
-            .init();
 
         let has_port_re = Regex::new(r":\d{1,5}$").unwrap(); // match a colon followed by number up to 5 digits (16-bit port)
         let mut server_str = env::args().nth(1).unwrap_or("localhost".to_owned());
