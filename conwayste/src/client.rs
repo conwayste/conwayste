@@ -701,7 +701,7 @@ impl EventHandler for MainState {
             }
         }
 
-        let _ = self.post_update();
+        self.post_update()?;
 
         Ok(())
     }
@@ -820,6 +820,11 @@ impl EventHandler for MainState {
                 do_not_quit = false;
             }
             _ => {}
+        }
+
+        if !do_not_quit {
+            // we're not not quitting :P
+            self.cleanup();
         }
 
         do_not_quit
@@ -1129,7 +1134,21 @@ impl MainState {
         self.arrow_input = (0, 0);
         self.input_manager.expunge();
 
+        // Flush config
+        self.config.flush().map_err(|e| {
+            GameError::UnknownError(format!("Error while flushing config: {:?}", e))
+        })?;
+
         Ok(())
+    }
+
+    // Clean up before we quit
+    fn cleanup(&mut self) {
+        if self.config.is_dirty() {
+            self.config.force_flush().unwrap_or_else(|e| {
+                error!("Failed to flush config on exit: {:?}", e);
+            });
+        }
     }
 }
 

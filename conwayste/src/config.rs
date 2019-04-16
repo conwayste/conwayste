@@ -155,7 +155,7 @@ impl Config {
         self.dirty
     }
 
-    fn load(&mut self) -> Result<(), Box<Error>> {
+    fn load(&mut self) -> Result<(), Box<dyn Error>> {
         let mut toml_str = String::new();
         #[cfg(not(test))]
         {
@@ -176,7 +176,7 @@ impl Config {
     /// Check if file at `self.path` exists. If it exists, settings are read from that path.
     /// Otherwise, the current settings are written to that path. Note: `Config::new()` returns
     /// a `Config` with default settings.
-    pub fn load_or_create_default(&mut self) -> Result<(), Box<Error>> {
+    pub fn load_or_create_default(&mut self) -> Result<(), Box<dyn Error>> {
         let path_exists;
         #[cfg(not(test))]
         {
@@ -197,7 +197,7 @@ impl Config {
     }
 
     /// Save to file unconditionally.
-    pub fn force_flush(&mut self) -> Result<(), Box<Error>> {
+    pub fn force_flush(&mut self) -> Result<(), Box<dyn Error>> {
         let toml_str = toml::to_string(&self.settings)?;
 
         #[cfg(not(test))]
@@ -228,7 +228,7 @@ impl Config {
     /// * `Ok(false)` if not flushed because not dirty or because not enough
     /// time has passed.
     /// * `Err(...)` if a flush was attempted but there was an error.
-    pub fn flush(&mut self) -> Result<bool, Box<Error>> {
+    pub fn flush(&mut self) -> Result<bool, Box<dyn Error>> {
         if self.is_dirty()
             && (self.flush_time.is_none()
                 || Instant::now() - self.flush_time.unwrap() > MIN_CONFIG_FLUSH_TIME)
@@ -310,7 +310,7 @@ mod test {
         config.modify(|settings| {
             settings.gameplay.zoom = 10.0;
         });
-        assert_eq!(config.get().gameplay.zoom, 11.0);
+        assert_eq!(config.get().gameplay.zoom, 10.0);
         assert_eq!(config.is_dirty(), true);
 
         config.force_flush().unwrap();
