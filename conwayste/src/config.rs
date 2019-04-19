@@ -29,6 +29,9 @@ use std::io::{Read, Write};
 #[cfg(not(test))]
 use std::path::Path;
 
+type TomlMap = toml::map::Map<String, toml::Value>;
+use toml::Value;
+
 /// Settings contains all of the user's configurable settings for this game. These *should* be
 /// modified within the game, but one can always edit this file directly. The game will fail to
 /// load if there are any errors parsing the `conwayste.toml` file.
@@ -169,7 +172,37 @@ impl Config {
             toml_str = self.dummy_file_data.as_ref().unwrap().clone();
         }
 
-        self.settings = toml::from_str(toml_str.as_str())?;
+        let default_settings: Settings = Default::default();
+        let default_string: String = toml::to_string(&self.settings)?;
+        let mut result_map: TomlMap = toml::from_str(default_string.as_str())?; // set the result to default
+        println!("BEFORE: result_map is {:#?}", result_map);
+        let map_from_file: TomlMap = toml::from_str(toml_str.as_str())?;
+        println!("map_from_file is {:?}", map_from_file);
+        for (ref section_name, ref table_val) in map_from_file.iter() {
+            println!("section_name is {:?} and table_val is {:?}", section_name, table_val);
+            match table_val {
+                Value::Table(table) => {
+                    for (ref field, ref value) in table.iter() {
+                        println!("field is {:?} and value is {:?}", field, value);
+                        let table_ref: &mut Value = result_map.get_mut(*section_name).unwrap();
+                        match table_ref {
+                            Value::Table(ref mut result_table) => {
+                                println!("yay we did it");
+                                let value_ref: &mut Value = result_table.get_mut(*field).unwrap();
+                                *value_ref = (*value).clone();
+                            }
+                            _ => panic!("expected a i dunno")
+                        }
+
+                    }
+                }
+                _ => panic!("expected a table")
+            }
+        }
+        println!("AFTER: result_map is {:#?}", result_map);
+        let mut result_string = toml::to_string(&result_map)?;
+        self.settings = toml::from_str(result_string.as_str())?;
+        println!("self.settings.video.fullscreen is {:?}", self.settings.video.fullscreen);
         Ok(())
     }
 
