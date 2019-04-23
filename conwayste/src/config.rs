@@ -21,7 +21,8 @@ extern crate toml;
 use crate::constants::{CONFIG_FILE_PATH, DEFAULT_ZOOM_LEVEL, MIN_CONFIG_FLUSH_TIME};
 use std::error::Error;
 use std::fmt;
-use std::time::Instant;
+use std::ops::{AddAssign, SubAssign};
+use std::time::{Duration, Instant};
 
 use std::fs::OpenOptions;
 use std::io::Read;
@@ -49,6 +50,14 @@ impl Error for ConfigError {}
 
 fn new_config_error(msg: String) -> Box<dyn Error> {
     Box::new(ConfigError { msg })
+}
+
+lazy_static! {
+    static ref DEFAULT_STRING: String = {
+        let default_settings: Settings = Default::default();
+        toml::to_string(&default_settings).unwrap()
+    };
+    static ref DEFAULT_MAP: TomlMap = toml::from_str(DEFAULT_STRING.as_str()).unwrap();
 }
 
 /// Settings contains all of the user's configurable settings for this game. These *should* be
@@ -137,13 +146,12 @@ impl Settings {
 
 /// Config manages how Settings are loaded and stored to the filesystem.
 pub struct Config {
-    settings: Settings, // the actual settings
-    path: String,
-    // TODO: following two items in a RefCell
-    dirty: bool, // config needs to be flushed?
-    flush_time: Option<Instant>,
+    settings: Settings,          // The actual settings
+    path: String,                // Path to config file. `conwayste.toml` by default.
+    dirty: bool,                 // Config needs to be flushed to disk?
+    flush_time: Option<Instant>, // Last time (if any) that we flushed to disk.
     #[cfg(test)]
-    pub dummy_file_data: Option<String>,
+    pub dummy_file_data: Option<String>, // for mocking file reads and writes
 }
 
 impl Config {
@@ -200,9 +208,7 @@ impl Config {
             f.read_to_string(&mut toml_str)?;
         }
 
-        let default_settings: Settings = Default::default();
-        let default_string: String = toml::to_string(&default_settings)?;
-        let mut result_map: TomlMap = toml::from_str(default_string.as_str())?; // set the result to default
+        let mut result_map: TomlMap = DEFAULT_MAP.clone();
         let map_from_file: TomlMap = toml::from_str(toml_str.as_str())?;
         for (section_name, ref table_val) in map_from_file.iter() {
             match table_val {
@@ -231,7 +237,9 @@ impl Config {
                                 }
                                 *value_ref = (*value).clone();
                             }
-                            _ => unimplemented!("We have a top-level field in our config but encountered a section") // we don't have any yet
+                            _ => unimplemented!(
+                                "We have a top-level field in our config but encountered a section"
+                            ), // we don't have any yet
                         }
                     }
                 }
@@ -280,7 +288,7 @@ impl Config {
         #[cfg(not(test))]
         {
             let mut foptions = OpenOptions::new();
-            let mut f = foptions.write(true).create_new(true).open(&self.path)?;
+            let mut f = foptions.write(true).create(true).open(&self.path)?;
             f.write(toml_str.as_bytes())?;
         }
 
@@ -312,6 +320,10 @@ impl Config {
         }
     }
 
+    pub fn flush_time(&self) -> Option<Instant> {
+        self.flush_time
+    }
+
     pub fn get(&self) -> &Settings {
         &self.settings
     }
@@ -340,6 +352,18 @@ impl Config {
             settings.video.resolution_x = w;
             settings.video.resolution_y = h;
         });
+    }
+
+    #[cfg(test)]
+    pub fn adjust_flush_time(&mut self, adjustment: Duration, sign: isize) {
+        if sign == 0 {
+            panic!("unexpected sign value");
+        }
+        if sign > 0 {
+            self.flush_time.as_mut().unwrap().add_assign(adjustment);
+        } else {
+            self.flush_time.as_mut().unwrap().sub_assign(adjustment);
+        }
     }
 }
 
@@ -490,5 +514,71 @@ mod test {
 
         let new_filedata = config.dummy_file_data.take().unwrap();
         assert_eq!(existing_filedata, new_filedata); // since file was already there, should not be changed
+    }
+
+    #[test]
+    fn test_flush_should_not_happen_with_fresh_config() {
+        let mut config = Config::new();
+        assert_eq!(config.flush().unwrap(), false);
+    }
+
+    #[test]
+    fn test_flush_should_happen_after_change() {
+        let mut config = Config::new();
+        config.modify(|settings: &mut Settings| {
+            settings.video.fullscreen = true;
+        });
+        assert_eq!(config.flush().unwrap(), true);
+    }
+
+    #[test]
+    fn test_flush_second_time_immediately_should_not_happen() {
+        let mut config = Config::new();
+        config.modify(|settings: &mut Settings| {
+            settings.video.fullscreen = true;
+        });
+        assert_eq!(config.flush().unwrap(), true);
+        config.modify(|settings: &mut Settings| {
+            settings.video.resolution_x = 123;
+        });
+        assert_eq!(config.flush().unwrap(), false);
+    }
+
+    #[test]
+    fn test_flush_eventually_happens() {
+        let mut config = Config::new();
+        config.modify(|settings: &mut Settings| {
+            settings.video.fullscreen = true;
+        });
+        assert_eq!(config.flush().unwrap(), true);
+        config.modify(|settings: &mut Settings| {
+            settings.video.resolution_x = 123;
+        });
+        assert_eq!(config.is_dirty(), true);
+        config.adjust_flush_time(
+            Duration::from_millis(MIN_CONFIG_FLUSH_TIME.as_millis() as u64 + 1),
+            -1,
+        );
+
+        assert_eq!(config.flush().unwrap(), true);
+    }
+
+    #[test]
+    fn test_force_flush_should_show_only_changed_value() {
+        color_backtrace::install(); //XXX XXX XXX
+
+        let mut config = Config::new();
+        // this assumes the default for fullscreen is false, which is unlikely to change
+        config.modify(|settings: &mut Settings| {
+            settings.video.fullscreen = true;
+        });
+        assert!(config.force_flush().is_ok());
+        let filedata = config.dummy_file_data.take().unwrap();
+        let filedata_lines: Vec<&str> = filedata.as_str().split("\n").collect();
+        assert_eq!(
+            &filedata_lines[0..2],
+            &["[video]", "fullscreen = true", "",]
+        );
+        //XXX also test commented lines after this
     }
 }

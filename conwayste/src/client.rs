@@ -25,6 +25,7 @@ extern crate sdl2;
 #[macro_use] extern crate version;
 extern crate rand;
 extern crate color_backtrace;
+#[macro_use] extern crate lazy_static;
 
 mod config;
 mod constants;
