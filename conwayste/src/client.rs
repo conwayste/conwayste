@@ -24,6 +24,7 @@ extern crate sdl2;
 #[macro_use] extern crate serde_derive;
 #[macro_use] extern crate version;
 extern crate rand;
+extern crate color_backtrace;
 
 mod config;
 mod constants;
@@ -1164,6 +1165,8 @@ impl MainState {
 // * then just call `game.run()` which runs the `Game` mainloop.
 pub fn main() {
     env_logger::init().unwrap();
+
+    color_backtrace::install();
 
     let mut cb = ContextBuilder::new("conwayste", "Aaronm04|Manghi")
         .window_setup(conf::WindowSetup::default()
