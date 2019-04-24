@@ -53,11 +53,25 @@ fn new_config_error(msg: String) -> Box<dyn Error> {
 }
 
 lazy_static! {
+    /// The default configuration, in TOML format.
     static ref DEFAULT_STRING: String = {
         let default_settings: Settings = Default::default();
         toml::to_string(&default_settings).unwrap()
     };
+
+    /// A TomlMap for the `DEFAULT_STRING`.
     static ref DEFAULT_MAP: TomlMap = toml::from_str(DEFAULT_STRING.as_str()).unwrap();
+
+    /// Same as `DEFAULT_STRING` but as a TOML comment and with version string at top.
+    static ref COMMENTED_DEFAULT_STRING: String = {
+        let mut s = String::new();
+        //XXX version string
+        s.push_str(&format!("############ Default config for Conwayste v{} ##########\n", version!()));
+        for default_line in DEFAULT_STRING.split("\n") {
+            s.push_str(&format!("# {}\n", default_line));
+        }
+        s
+    };
 }
 
 /// Settings contains all of the user's configurable settings for this game. These *should* be
@@ -169,11 +183,13 @@ impl Config {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set_path(&mut self, path: String) -> &mut Self {
         self.path = path;
         self.set_dirty()
     }
 
+    #[allow(dead_code)]
     pub fn path(&self) -> &str {
         self.path.as_str()
     }
@@ -278,7 +294,40 @@ impl Config {
 
     /// Save to file unconditionally.
     pub fn force_flush(&mut self) -> Result<(), Box<dyn Error>> {
-        let toml_str = toml::to_string(&self.settings)?;
+        let full_toml_str = toml::to_string(&self.settings)?;
+        let settings_map: TomlMap = toml::from_str(full_toml_str.as_str())?;
+        let mut result_map = TomlMap::new();
+        // compare each thing in DEFAULT_MAP vs settings_map; if different, add the latter to
+        // result_map
+        for (section_name, default_table_val) in DEFAULT_MAP.iter() {
+            let default_table = default_table_val.as_table().unwrap();
+            let settings_table_val = settings_map.get(section_name).unwrap();
+            let settings_table = settings_table_val.as_table().unwrap();
+            for (field_name, default_val) in default_table.iter() {
+                let settings_val = settings_table.get(field_name).unwrap();
+                assert_eq!(
+                    default_val.type_str(),
+                    settings_val.type_str(),
+                    "types do not match"
+                );
+                if default_val != settings_val {
+                    if !result_map.contains_key(section_name) {
+                        result_map.insert(section_name.clone(), Value::Table(TomlMap::new()));
+                    }
+                    let result_table = result_map
+                        .get_mut(section_name)
+                        .unwrap()
+                        .as_table_mut()
+                        .unwrap();
+
+                    // put in result_map
+                    result_table.insert(field_name.clone(), settings_val.clone());
+                }
+            }
+        }
+        let mut toml_str = toml::to_string(&result_map)?;
+        toml_str.push_str("\n");
+        toml_str.push_str(&COMMENTED_DEFAULT_STRING);
 
         #[cfg(test)]
         {
@@ -418,29 +467,22 @@ mod test {
         let mut config = Config::new();
         config.load_or_create_default().unwrap();
         let filedata = config.dummy_file_data.unwrap(); // this is the default config
-        let filedata_lines: Vec<&str> = filedata.as_str().split("\n").collect();
-        //TODO: we will change this to the new format; avoid testing the commented defaults;
-        //      instead just verify initial line and '#' at start of each line
-        assert_eq!(
-            filedata_lines,
-            vec![
-                "[user]",
-                "name = \"JohnConway\"",
-                "",
-                "[gameplay]",
-                "zoom = 5.0",
-                "",
-                "[video]",
-                "resolution_x = 1024",
-                "resolution_y = 768",
-                "fullscreen = false",
-                "",
-                "[audio]",
-                "master = 100",
-                "music = 100",
-                "",
-            ]
-        )
+        let mut filedata_lines = filedata.as_str().split("\n");
+        // Just verify initial line and '#' at start of each line
+
+        // Since this is the default config, there are no (un-commented) config lines.
+        assert_eq!(filedata_lines.next(), Some(""));
+        let mut blank_lines = 0;
+        for line in filedata_lines {
+            // a line should be either blank or be a comment
+            let opt_first_char = line.chars().next();
+            if opt_first_char.is_none() {
+                blank_lines += 1;
+                continue;
+            }
+            assert_eq!(opt_first_char, Some('#'));
+        }
+        assert_eq!(blank_lines, 1);
     }
 
     #[test]
@@ -565,8 +607,6 @@ mod test {
 
     #[test]
     fn test_force_flush_should_show_only_changed_value() {
-        color_backtrace::install(); //XXX XXX XXX
-
         let mut config = Config::new();
         // this assumes the default for fullscreen is false, which is unlikely to change
         config.modify(|settings: &mut Settings| {
@@ -575,10 +615,10 @@ mod test {
         assert!(config.force_flush().is_ok());
         let filedata = config.dummy_file_data.take().unwrap();
         let filedata_lines: Vec<&str> = filedata.as_str().split("\n").collect();
-        assert_eq!(
-            &filedata_lines[0..2],
-            &["[video]", "fullscreen = true", "",]
-        );
-        //XXX also test commented lines after this
+        assert_eq!(&filedata_lines[0..2], &["[video]", "fullscreen = true",]);
+
+        // also test commented lines after this
+        let commented_default_lines: Vec<&str> = COMMENTED_DEFAULT_STRING.split("\n").collect();
+        assert_eq!(&filedata_lines[3..], &commented_default_lines[..]);
     }
 }
