@@ -481,7 +481,8 @@ impl MainState {
             BigBang::new()
             .width(universe_width_in_cells)
             .height(universe_height_in_cells)
-            .server_mode(false)
+            // TODO (libconway#11) setting to false will crash because the `Known` BitGrid is not set up
+            .server_mode(true)
             .history(HISTORY_SIZE)
             .fog_radius(FOG_RADIUS)
             .add_players(players)
