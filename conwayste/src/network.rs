@@ -24,25 +24,22 @@ extern crate ggez;
 
 use futures::sync::mpsc as futures_channel;
 
-use ggez::{event::EventHandler, Context, GameResult, GameError};
-
-use netwayste::net;
+use netwayste::net::NetwaysteEvent;
 use netwayste::client::{ClientNetState, CLIENT_VERSION};
 
 use std::thread;
 use std::sync::mpsc as std_channel;
-use std::sync::mpsc::TryRecvError;
-use std::process;
+
 
 pub struct NetworkManager {
-    sender: futures_channel::UnboundedSender<net::RequestAction>,
-    receiver: std_channel::Receiver<net::ResponseCode>,
+    sender: futures_channel::UnboundedSender<NetwaysteEvent>,
+    receiver: std_channel::Receiver<NetwaysteEvent>,
 }
 
 impl NetworkManager {
     pub fn new() -> Self {
-        let (netwayste_request_sender, netwayste_request_receiver) = futures_channel::unbounded::<net::RequestAction>();
-        let (netwayste_response_sender, netwayste_response_receiver) = std_channel::channel::<net::ResponseCode>();
+        let (netwayste_request_sender, netwayste_request_receiver) = futures_channel::unbounded::<NetwaysteEvent>();
+        let (netwayste_response_sender, netwayste_response_receiver) = std_channel::channel::<NetwaysteEvent>();
         thread::spawn(move || {
             ClientNetState::start_network(netwayste_response_sender, netwayste_request_receiver);
         });
@@ -55,19 +52,36 @@ impl NetworkManager {
 
     pub fn connect(&mut self, name: String) {
         self.sender
-            .unbounded_send(net::RequestAction::Connect{name: name, client_version: CLIENT_VERSION.to_owned()})
+            .unbounded_send(NetwaysteEvent::Connect(name, CLIENT_VERSION.to_owned()))
             .unwrap();
     }
-}
 
-impl EventHandler for NetworkManager {
-    fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
-        // Get connection status
-        Ok(())
+    pub fn try_send(&mut self, nw_event: NetwaysteEvent) {
+        match self.sender.unbounded_send(nw_event) {
+            Ok(_) => { },
+            Err(e) => error!("Error occurred during send to the netwayste receiver: {:?}", e)
+        }
     }
 
-    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        // Update connection status on screen if not ok
-        Ok(())
+    /// Update handler call from Conwayste's main event hander.
+    /// Manages all received network packets and sets them up to be handled as needed.AsMut
+    ///
+    /// Must not block or delay in any way as this will hold up the main event update loop!
+    pub fn try_receive(&mut self) -> Option<Box<Vec<NetwaysteEvent>>> {
+        let mut new_events = Box::new(vec![]);
+        loop {
+            match self.receiver.try_recv() {
+                Ok(response) => {
+                    new_events.push(response);
+                },
+                Err(_e) => {
+                    // Exit loop as the receiver is likely empty
+                    break;
+                },
+            }
+        }
+
+        if new_events.len() != 0 { Some(new_events) } else { None }
     }
+
 }

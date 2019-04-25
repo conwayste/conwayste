@@ -42,6 +42,8 @@ use conway::grids::CharGrid;
 use conway::rle::Pattern;
 use conway::ConwayResult;
 
+use netwayste::net::NetwaysteEvent;
+
 use ggez::conf;
 use ggez::event::*;
 use ggez::{GameResult, Context, ContextBuilder};
@@ -71,6 +73,8 @@ use constants::{
 enum Screen {
     Intro(f64),   // seconds
     Menu,
+    ServerList,
+    InRoom,
     Run,          // TODO: break it out more to indicate whether waiting for game or playing game
     Exit,         // We're getting ready to quit the game, WRAP IT UP SON
 }
@@ -473,11 +477,11 @@ impl MainState {
             let player1 = PlayerBuilder::new(player1_writable);
             let players = vec![player0, player1];
 
+            // TODO we should probably get these settings from the server's universe
             BigBang::new()
             .width(universe_width_in_cells)
             .height(universe_height_in_cells)
-            .server_mode(true) // TODO will change to false once we get server support up
-                               // Currently 'client' is technically both client and server
+            .server_mode(false)
             .history(HISTORY_SIZE)
             .fog_radius(FOG_RADIUS)
             .add_players(players)
@@ -538,6 +542,8 @@ impl EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
         let duration = timer::duration_to_f64(timer::get_delta(ctx)); // seconds
 
+        self.receive_net_updates();
+
         match self.screen {
             Screen::Intro(mut remaining) => {
 
@@ -556,162 +562,36 @@ impl EventHandler for MainState {
                 }
             }
             Screen::Menu => {
-                if self.config.is_dirty() {
-                    self.config.write();
-                }
-
-                self.process_menu_inputs();
-
-                let is_direction_key_pressed = {
-                    self.menu_sys.get_controls().is_menu_key_pressed()
-                };
-
-                //// Directional Key / Menu movement
-                ////////////////////////////////////////
-                if self.arrow_input != (0,0) && !is_direction_key_pressed {
-                    // move selection accordingly
-                    let (_,y) = self.arrow_input;
-                    {
-                        let container = self.menu_sys.get_menu_container_mut();
-                        let mainmenu_md = container.get_metadata();
-                        mainmenu_md.adjust_index(y);
-                    }
-                    self.menu_sys.get_controls().set_menu_key_pressed(true);
-                }
-                else {
-                    /////////////////////////
-                    //// Non-Arrow key was pressed
-                    //////////////////////////
-
-                    if self.return_key_pressed || self.escape_key_pressed {
-
-                        let mut id = {
-                            let container = self.menu_sys.get_menu_container();
-                            let index = container.get_menu_item_index();
-                            let menu_item_list = container.get_menu_item_list();
-                            let menu_item = menu_item_list.get(index).unwrap();
-                            menu_item.id
-                        };
-
-                        if self.escape_key_pressed {
-                            id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
-                        }
-
-                        match self.menu_sys.menu_state {
-                            menu::MenuState::MainMenu => {
-                                if !self.escape_key_pressed {
-                                    match id {
-                                        menu::MenuItemIdentifier::StartGame => {
-                                            self.pause_or_resume_game();
-                                        }
-                                        menu::MenuItemIdentifier::ExitGame => {
-                                            self.screen = Screen::Exit;
-                                        }
-                                        menu::MenuItemIdentifier::Options => {
-                                            self.menu_sys.menu_state = menu::MenuState::Options;
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                            menu::MenuState::Options => {
-                                match id {
-                                    menu::MenuItemIdentifier::VideoSettings => {
-                                        if !self.escape_key_pressed {
-                                            self.menu_sys.menu_state = menu::MenuState::Video;
-                                        }
-                                    }
-                                    menu::MenuItemIdentifier::AudioSettings => {
-                                        if !self.escape_key_pressed {
-                                            self.menu_sys.menu_state = menu::MenuState::Audio;
-                                        }
-                                    }
-                                    menu::MenuItemIdentifier::GameplaySettings => {
-                                        if !self.escape_key_pressed {
-                                            self.menu_sys.menu_state = menu::MenuState::Gameplay;
-                                        }
-                                    }
-                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                            self.menu_sys.menu_state = menu::MenuState::MainMenu;
-                                    }
-                                   _ => {}
-                                }
-                            }
-                            menu::MenuState::Audio => {
-                                match id {
-                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                        self.menu_sys.menu_state = menu::MenuState::Options;
-                                    }
-                                    _ => {
-                                        if !self.escape_key_pressed { }
-                                    }
-                                }
-                            }
-                            menu::MenuState::Gameplay => {
-                                match id {
-                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                        self.menu_sys.menu_state = menu::MenuState::Options;
-                                    }
-                                    _ => {
-                                        if !self.escape_key_pressed { }
-                                    }
-                                }
-                            }
-                            menu::MenuState::Video => {
-                                match id {
-                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                        self.menu_sys.menu_state = menu::MenuState::Options;
-                                    }
-                                    menu::MenuItemIdentifier::Fullscreen => {
-                                        if !self.escape_key_pressed {
-                                            self.video_settings.toggle_fullscreen(ctx);
-                                            self.config.set_fullscreen(self.video_settings.is_fullscreen());
-                                        }
-                                    }
-                                    menu::MenuItemIdentifier::Resolution => {
-                                        if !self.escape_key_pressed {
-                                            self.video_settings.advance_to_next_resolution(ctx);
-
-                                            // Update the configuration file and resize the viewing
-                                            // screen
-                                            let (w,h) = self.video_settings.get_active_resolution();
-                                            self.config.set_resolution(w as i32, h as i32);
-                                            self.viewport.set_dimensions(w, h);
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-                }
-
-                self.return_key_pressed = false;
-                self.escape_key_pressed = false;
+                self.update_current_screen(ctx); // TODO rewrite for ui changes
             }
             Screen::Run => {
-// TODO while this works at limiting the FPS, its a bit glitchy for input events
-// Disable until we have time to look into it
-//                while timer::check_update_time(ctx, FPS) {
-                {
-                    self.process_running_inputs();
+                // while this works at limiting the FPS, its a bit glitchy for input events... that probably should be
+                // rewritten as it was hacked together originally
+               // while timer::check_update_time(ctx, FPS)
 
-                    if self.single_step {
-                        self.running = false;
-                    }
+                self.process_running_inputs();
 
-                    if self.first_gen_was_drawn && (self.running || self.single_step) {
-                        self.uni.next();     // next generation
-                        self.single_step = false;
-                    }
-
-                    if self.toggle_paused_game {
-                        self.pause_or_resume_game();
-                    }
-
-                    self.viewport.update(self.arrow_input);
+                if self.single_step {
+                    self.running = false;
                 }
+
+                if self.first_gen_was_drawn && (self.running || self.single_step) {
+                    self.uni.next();     // next generation
+                    self.single_step = false;
+                }
+
+                if self.toggle_paused_game {
+                    self.pause_or_resume_game();
+                }
+
+                self.viewport.update(self.arrow_input);
             }
+            Screen::InRoom => {
+                // TODO implement
+            }
+            Screen::ServerList => {
+                // TODO implement
+             },
             Screen::Exit => {
                let _ = ctx.quit();
             }
@@ -736,6 +616,12 @@ impl EventHandler for MainState {
             Screen::Run => {
                 self.draw_universe(ctx)?;
             }
+            Screen::InRoom => {
+                // TODO
+            }
+            Screen::ServerList => {
+                // TODO
+             },
             Screen::Exit => {}
         }
 
@@ -773,6 +659,12 @@ impl EventHandler for MainState {
                     self.input_manager.add(input::InputAction::MouseMovement(x, y));
                 }
             }
+            Screen::InRoom => {
+                // TODO implement
+            }
+            Screen::ServerList => {
+                // TODO implement
+             },
             Screen::Exit => { unreachable!() }
         }
     }
@@ -799,7 +691,7 @@ impl EventHandler for MainState {
                 self.screen = Screen::Run; // TODO lets just go to the game for now...
                 self.menu_sys.reset();
             }
-            Screen::Menu | Screen::Run => {
+            Screen::Menu | Screen::Run | Screen::InRoom | Screen::ServerList => {
                 // TODO for now just quit the game
                 if keycode == Keycode::Escape {
                     self.quit_event(ctx);
@@ -828,7 +720,7 @@ impl EventHandler for MainState {
             Screen::Run => {
                 self.pause_or_resume_game();
             }
-            Screen::Menu => {
+            Screen::Menu | Screen::InRoom | Screen::ServerList => {
                 // This is currently handled in the return_key_pressed path as well
                 self.escape_key_pressed = true;
             }
@@ -907,7 +799,7 @@ impl MainState {
         if draw_params.draw_counter {
             let gen_counter_str = universe.latest_gen().to_string();
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
-            utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None);
+            utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
         }
 
         ////////////////////// END
@@ -1111,6 +1003,186 @@ impl MainState {
             }
         }
 
+    }
+
+    fn update_current_screen(&mut self, ctx: &mut Context) {
+        if self.config.is_dirty() {
+            self.config.write();
+        }
+
+        self.process_menu_inputs();
+
+        let is_direction_key_pressed = {
+            self.menu_sys.get_controls().is_menu_key_pressed()
+        };
+
+        //// Directional Key / Menu movement
+        ////////////////////////////////////////
+        if self.arrow_input != (0,0) && !is_direction_key_pressed {
+            // move selection accordingly
+            let (_,y) = self.arrow_input;
+            {
+                let container = self.menu_sys.get_menu_container_mut();
+                let mainmenu_md = container.get_metadata();
+                mainmenu_md.adjust_index(y);
+            }
+            self.menu_sys.get_controls().set_menu_key_pressed(true);
+        }
+        else {
+            /////////////////////////
+            //// Non-Arrow key was pressed
+            //////////////////////////
+
+            if self.return_key_pressed || self.escape_key_pressed {
+
+                let mut id = {
+                    let container = self.menu_sys.get_menu_container();
+                    let index = container.get_menu_item_index();
+                    let menu_item_list = container.get_menu_item_list();
+                    let menu_item = menu_item_list.get(index).unwrap();
+                    menu_item.id
+                };
+
+                if self.escape_key_pressed {
+                    id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
+                }
+
+                match self.menu_sys.menu_state {
+                    menu::MenuState::MainMenu => {
+                        if !self.escape_key_pressed {
+                            match id {
+                                menu::MenuItemIdentifier::StartGame => {
+                                    self.pause_or_resume_game();
+                                }
+                                menu::MenuItemIdentifier::ExitGame => {
+                                    self.screen = Screen::Exit;
+                                }
+                                menu::MenuItemIdentifier::Options => {
+                                    self.menu_sys.menu_state = menu::MenuState::Options;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    menu::MenuState::Options => {
+                        match id {
+                            menu::MenuItemIdentifier::VideoSettings => {
+                                if !self.escape_key_pressed {
+                                    self.menu_sys.menu_state = menu::MenuState::Video;
+                                }
+                            }
+                            menu::MenuItemIdentifier::AudioSettings => {
+                                if !self.escape_key_pressed {
+                                    self.menu_sys.menu_state = menu::MenuState::Audio;
+                                }
+                            }
+                            menu::MenuItemIdentifier::GameplaySettings => {
+                                if !self.escape_key_pressed {
+                                    self.menu_sys.menu_state = menu::MenuState::Gameplay;
+                                }
+                            }
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                            }
+                            _ => {}
+                        }
+                    }
+                    menu::MenuState::Audio => {
+                        match id {
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                self.menu_sys.menu_state = menu::MenuState::Options;
+                            }
+                            _ => {
+                                if !self.escape_key_pressed { }
+                            }
+                        }
+                    }
+                    menu::MenuState::Gameplay => {
+                        match id {
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                self.menu_sys.menu_state = menu::MenuState::Options;
+                            }
+                            _ => {
+                                if !self.escape_key_pressed { }
+                            }
+                        }
+                    }
+                    menu::MenuState::Video => {
+                        match id {
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                self.menu_sys.menu_state = menu::MenuState::Options;
+                            }
+                            menu::MenuItemIdentifier::Fullscreen => {
+                                if !self.escape_key_pressed {
+                                    self.video_settings.toggle_fullscreen(ctx);
+                                    self.config.set_fullscreen(self.video_settings.is_fullscreen());
+                                }
+                            }
+                            menu::MenuItemIdentifier::Resolution => {
+                                if !self.escape_key_pressed {
+                                    self.video_settings.advance_to_next_resolution(ctx);
+
+                                    // Update the configuration file and resize the viewing
+                                    // screen
+                                    let (w,h) = self.video_settings.get_active_resolution();
+                                    self.config.set_resolution(w as i32, h as i32);
+                                    self.viewport.set_dimensions(w, h);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+
+        self.return_key_pressed = false;
+        self.escape_key_pressed = false;
+    }
+
+    fn receive_net_updates(&mut self){
+        if let Some(events) = self.network_manager.try_receive() {
+            for e in events.into_iter() {
+                match e {
+                    NetwaysteEvent::LoggedIn(server_version) => {
+                        println!("Logged in! Server version: v{:?}", server_version);
+                        self.screen = Screen::ServerList;
+                        // do other stuff
+                        self.network_manager.try_send(NetwaysteEvent::ListRooms);
+                    }
+                    NetwaysteEvent::JoinedRoom(room_name) => {
+                        println!("Joined Room: {}", room_name);
+                        self.screen = Screen::InRoom;
+                    }
+                    NetwaysteEvent::PlayerList(list) => {
+                        println!("PlayerList: {:?}",list);
+                    }
+                    NetwaysteEvent::RoomList(list) => {
+                        println!("RoomList: {:?}",list);
+                    }
+                    NetwaysteEvent::UniverseUpdate => {
+                        println!("Universe update");
+                    }
+                    NetwaysteEvent::ChatMessages(msgs) => {
+                        for m in msgs {
+                            println!("{:?}", m);
+                        }
+                    }
+                    NetwaysteEvent::LeftRoom => {
+                        println!("Left Room");
+                    }
+                    NetwaysteEvent::BadRequest(error) => {
+                        println!("Server responded with Bad Request: {:?}", error);
+                    }
+                    NetwaysteEvent::ServerError(error) => {
+                        println!("Server encountered an error: {:?}", error);
+                    }
+                    _ => {
+                        panic!("Development panic: Unexpected NetwaysteEvent during netwayste receive update: {:?}", e);
+                    }
+                }
+            }
+        }
     }
 
     fn post_update(&mut self) -> GameResult<()> {
