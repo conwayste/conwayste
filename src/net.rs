@@ -89,7 +89,7 @@ impl From<io::Error> for NetError {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum RequestAction {
     None,   // never actually sent
-    Connect{name: String, client_version: String},      // server replies w/ OK/PleaseUpgrade; TODO: password
+    Connect{name: String, client_version: String},
     Disconnect,
     KeepAlive(u64),     // Send latest response ack on each heartbeat
     ListPlayers,
@@ -105,18 +105,18 @@ pub enum RequestAction {
 pub enum ResponseCode {
     // success - these are all 200 in HTTP
     OK,                              // 200 no data
-    LoggedIn(String, String),        // player is logged in -- provide cookie
+    LoggedIn(String, String),        // player is logged in -- (cookie, server version)
     JoinedRoom(String),              // player has joined the room
     LeaveRoom,                       // player has left the room
     PlayerList(Vec<String>),         // list of players in room or lobby
-    RoomList(Vec<(String, u64, bool)>), // (room name, # players, game has started?)
+    RoomList(Vec<(String, u64, bool)>), // (room name, # players, game has started?
+
     // errors
     BadRequest(Option<String>),      // 400 unspecified error that is client's fault
     Unauthorized(Option<String>),    // 401 not logged in
     TooManyRequests(Option<String>), // 429
     ServerError(Option<String>),     // 500
     NotConnected(Option<String>),    // no equivalent in HTTP due to handling at lower (TCP) level
-    PleaseUpgrade(Option<String>),   // client should give upgrade msg to user, but continue as if OK
     KeepAlive,                       // Server's heart is beating
 }
 
@@ -939,5 +939,104 @@ impl NetworkManager {
         }
     }
 
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum NetwaysteEvent {
+    None,
+
+    // Requests
+    Connect(String, String),            // Player name, version
+    Disconnect,
+    ListPlayers,
+    ListRooms,
+    ChatMessage(String),                // chat message
+    NewRoom(String),                    // room name
+    JoinRoom(String),                   // room name
+    LeaveRoom,
+
+    // Responses
+    LoggedIn(String),                   // player is logged in -- (version)
+    JoinedRoom(String),                 // player has joined the room
+    PlayerList(Vec<String>),     // list of players in room or lobby with ping (ms)
+    RoomList(Vec<(String, u64, bool)>), // (room name, # players, game has started?)
+    LeftRoom,
+    BadRequest(Option<String>),
+    ServerError(Option<String>),
+
+    // Updates
+    ChatMessages(Vec<(String, String)>), // (player name, message)
+    UniverseUpdate,                       // TODO add libconway stuff for current universe gen
+
+}
+
+impl NetwaysteEvent {
+
+    pub fn build_request_action_from_netwayste_event(nw_event: NetwaysteEvent) -> RequestAction {
+        match nw_event {
+            NetwaysteEvent::None => {
+                RequestAction::None
+            }
+            NetwaysteEvent::Connect(name, version) => {
+                RequestAction::Connect{name: name, client_version: version}
+            }
+            NetwaysteEvent::Disconnect => {
+                RequestAction::Disconnect
+            }
+            NetwaysteEvent::ListPlayers => {
+                RequestAction::ListPlayers
+            }
+            NetwaysteEvent::ListRooms => {
+                RequestAction::ListRooms
+            }
+            NetwaysteEvent::ChatMessage(msg) => {
+                RequestAction::ChatMessage(msg)
+            }
+            NetwaysteEvent::NewRoom(name) => {
+                RequestAction::NewRoom(name)
+            }
+            NetwaysteEvent::JoinRoom(name) => {
+                RequestAction::JoinRoom(name)
+            }
+            NetwaysteEvent::LeaveRoom => {
+                RequestAction::LeaveRoom
+            }
+            _ => {
+                panic!("Unexpected netwayste event during request action construction! {:?}", nw_event);
+            }
+        }
+    }
+
+    pub fn build_netwayste_event_from_response_code(code: ResponseCode) -> NetwaysteEvent {
+        match code {
+            ResponseCode::LoggedIn(_cookie, server_version) => {
+                NetwaysteEvent::LoggedIn(server_version)
+            }
+            ResponseCode::JoinedRoom(name) => {
+                NetwaysteEvent::JoinedRoom(name)
+            }
+            ResponseCode::PlayerList(list) => {
+                NetwaysteEvent::PlayerList(list)
+            }
+            ResponseCode::RoomList(list) => {
+                NetwaysteEvent::RoomList(list)
+            }
+            ResponseCode::LeaveRoom => {
+                NetwaysteEvent::LeftRoom
+            }
+            ResponseCode::BadRequest(opt_error) => {
+                NetwaysteEvent::BadRequest(opt_error)
+            }
+            ResponseCode::ServerError( opt_error) => {
+                NetwaysteEvent::ServerError(opt_error)
+            }
+            ResponseCode::Unauthorized(opt_error) => {
+                NetwaysteEvent::BadRequest(opt_error)
+            }
+            _ => {
+                panic!("Unexpected response code during netwayste event construction: {:?}", code);
+            }
+        }
+    }
 
 }

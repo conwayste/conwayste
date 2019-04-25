@@ -36,7 +36,7 @@ use crate::net::{
     RequestAction, ResponseCode, Packet,
     BroadcastChatMessage, NetworkManager, NetworkQueue,
     VERSION, has_connection_timed_out, bind, DEFAULT_PORT,
-    LineCodec
+    LineCodec, NetwaysteEvent
 };
 
 const TICK_INTERVAL_IN_MS:          u64    = 1000;
@@ -56,7 +56,7 @@ enum Event {
     UserInputEvent(UserInput),
     Incoming((SocketAddr, Option<Packet>)),
     NetworkEvent,
-    ConwaysteEvent(RequestAction)
+    ConwaysteEvent(NetwaysteEvent)
 //    NotifyAck((SocketAddr, Option<Packet>)),
 }
 
@@ -73,12 +73,12 @@ pub struct ClientNetState {
     pub heartbeat:        Option<Instant>,
     pub disconnect_initiated: bool,
     pub server_address:   Option<SocketAddr>,
-    pub conwayste_tx:     std::sync::mpsc::Sender<ResponseCode>,
+    pub channel_to_conwayste:     std::sync::mpsc::Sender<NetwaysteEvent>,
 }
 
 impl ClientNetState {
 
-    pub fn new(channel_to_conwayste: std::sync::mpsc::Sender<ResponseCode>) -> Self {
+    pub fn new(channel_to_conwayste: std::sync::mpsc::Sender<NetwaysteEvent>) -> Self {
         ClientNetState {
             sequence:        0,
             response_sequence: 0,
@@ -91,7 +91,7 @@ impl ClientNetState {
             heartbeat:       None,
             disconnect_initiated: false,
             server_address:  None,
-            conwayste_tx:    channel_to_conwayste,
+            channel_to_conwayste: channel_to_conwayste,
         }
     }
 
@@ -112,7 +112,7 @@ impl ClientNetState {
             ref mut heartbeat,
             ref mut disconnect_initiated,
             ref mut server_address,
-            conwayste_tx: ref _conwayste_tx,          // Don't clear the channel to conwayste
+            channel_to_conwayste: ref _channel_to_conwayste,          // Don't clear the channel to conwayste
         } = *self;
         *sequence         = 0;
         *response_sequence = 0;
@@ -178,14 +178,7 @@ impl ClientNetState {
     }
 
     fn process_event_code(&mut self, code: ResponseCode) {
-        let conwayste_code = code.clone();
-        if code != ResponseCode::OK && code != ResponseCode::KeepAlive {
-            match self.conwayste_tx.send(conwayste_code) {
-                Err(_) => error!("Could not send {:?} to conwayste", code.clone()),
-                Ok(_) => ()
-            }
-        }
-        match code {
+        match code.clone() {
             ResponseCode::OK => {
                 match self.handle_response_ok() {
                     Ok(_) => {},
@@ -211,8 +204,19 @@ impl ClientNetState {
                 self.heartbeat = Some(Instant::now());
             },
             // errors
+            ResponseCode::Unauthorized(opt_error) => {
+                info!("Unauthorized action attempted by client: {:?}", opt_error);
+            }
             _ => {
                 error!("unknown response from server: {:?}", code);
+            }
+        }
+
+        if code != ResponseCode::OK && code != ResponseCode::KeepAlive {
+            let nw_response: NetwaysteEvent = NetwaysteEvent::build_netwayste_event_from_response_code(code);
+            match self.channel_to_conwayste.send(nw_response) {
+                Err(e) => error!("Could not send a netwayste response via channel_to_conwayste: {:?}", e),
+                Ok(_) => ()
             }
         }
     }
@@ -325,7 +329,7 @@ impl ClientNetState {
             }
         }
 
-        self.enqueue(udp_tx, exit_tx, action);
+        self.try_server_send(udp_tx, exit_tx, action);
     }
 
     fn handle_response_ok(&mut self) -> Result<(), Box<Error>> {
@@ -468,7 +472,8 @@ impl ClientNetState {
         return action;
     }
 
-    pub fn enqueue(&mut self,
+    /// Send a request action to the connected server
+    fn try_server_send(&mut self,
             udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>,
             exit_tx: &mpsc::UnboundedSender<()>,
             action: RequestAction) {
@@ -478,11 +483,16 @@ impl ClientNetState {
                 self.sequence += 1;
             }
 
+            if action == RequestAction::Disconnect {
+                self.disconnect_initiated = true;
+                netwayste_send!(exit_tx, ());
+            }
+
             let packet = Packet::Request {
                 sequence:     self.sequence,
                 response_ack: Some(self.response_sequence),
                 cookie:       self.cookie.clone(),
-                action:       action.clone(),
+                action:       action,
             };
 
             trace!("{:?}", packet);
@@ -492,15 +502,13 @@ impl ClientNetState {
             netwayste_send!(udp_tx, (self.server_address.unwrap().clone(), packet),
                             ("Could not send user input cmd to server"));
 
-            if action == RequestAction::Disconnect {
-                self.disconnect_initiated = true;
-                netwayste_send!(exit_tx, ());
-            }
         }
     }
 
-    pub fn start_network(channel_to_conwayste: std::sync::mpsc::Sender<ResponseCode>,
-                         channel_from_conwayste: mpsc::UnboundedReceiver<RequestAction>) {
+    /// Main executor for the client-side network layer for conwayste and should be run from a thread.
+    /// Its two arguments are halves of a channel used for communication to send and receive Netwayste events.
+    pub fn start_network(channel_to_conwayste: std::sync::mpsc::Sender<NetwaysteEvent>,
+                         channel_from_conwayste: mpsc::UnboundedReceiver<NetwaysteEvent>) {
 
         let has_port_re = Regex::new(r":\d{1,5}$").unwrap(); // match a colon followed by number up to 5 digits (16-bit port)
         let mut server_str = env::args().nth(1).unwrap_or("localhost".to_owned());
@@ -616,11 +624,11 @@ impl ClientNetState {
         });
 
         let conwayste_rx = channel_from_conwayste.map_err(|_| panic!());
-        let conwayste_stream = conwayste_rx.filter(|req| {
-            *req != RequestAction::None
+        let conwayste_stream = conwayste_rx.filter(|event| {
+            *event != NetwaysteEvent::None
         })
-        .map(|req| {
-            Event::ConwaysteEvent(req)
+        .map(|event| {
+            Event::ConwaysteEvent(event)
         })
         .map_err(|e| {
             error!("Got error from conwayste event channel {:?}", e);
@@ -647,8 +655,9 @@ impl ClientNetState {
                     Event::NetworkEvent => {
                         client_state.handle_network_event(&udp_tx);
                     }
-                    Event::ConwaysteEvent(request_action) => {
-                        client_state.enqueue(&udp_tx, &exit_tx, request_action);
+                    Event::ConwaysteEvent(netwayste_request) => {
+                        let action: RequestAction = NetwaysteEvent::build_request_action_from_netwayste_event(netwayste_request);
+                        client_state.try_server_send(&udp_tx, &exit_tx, action);
                     }
                 }
 
