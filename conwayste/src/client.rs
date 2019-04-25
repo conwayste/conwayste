@@ -70,7 +70,7 @@ use constants::{
 };
 
 #[derive(PartialEq, Clone, Copy)]
-enum Screen {
+enum Stage {
     Intro(f64),   // seconds
     Menu,
     ServerList,
@@ -82,7 +82,7 @@ enum Screen {
 // All game state
 struct MainState {
     small_font:          graphics::Font,
-    screen:              Screen,            // Where are we in the game (Intro/Menu Main/Running..)
+    stage:              Stage,            // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     intro_uni:           Universe,
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
@@ -508,7 +508,7 @@ impl MainState {
 
         let mut s = MainState {
             small_font:          small_font,
-            screen:              Screen::Intro(INTRO_DURATION),
+            stage:              Stage::Intro(INTRO_DURATION),
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
@@ -544,27 +544,27 @@ impl EventHandler for MainState {
 
         self.receive_net_updates();
 
-        match self.screen {
-            Screen::Intro(mut remaining) => {
+        match self.stage {
+            Stage::Intro(mut remaining) => {
 
                 remaining -= duration;
                 if remaining > INTRO_DURATION - INTRO_PAUSE_DURATION {
-                    self.screen = Screen::Intro(remaining);
+                    self.stage = Stage::Intro(remaining);
                 }
                 else {
                     if remaining > 0.0 && remaining <= INTRO_DURATION - INTRO_PAUSE_DURATION {
                         self.intro_uni.next();
-                        self.screen = Screen::Intro(remaining);
+                        self.stage = Stage::Intro(remaining);
                     }
                     else {
-                        self.screen = Screen::Run; // XXX Menu Screen is disabled for the time being
+                        self.stage = Stage::Run; // XXX Menu Stage is disabled for the time being
                     }
                 }
             }
-            Screen::Menu => {
+            Stage::Menu => {
                 self.update_current_screen(ctx); // TODO rewrite for ui changes
             }
-            Screen::Run => {
+            Stage::Run => {
                 // while this works at limiting the FPS, its a bit glitchy for input events... that probably should be
                 // rewritten as it was hacked together originally
                // while timer::check_update_time(ctx, FPS)
@@ -586,13 +586,13 @@ impl EventHandler for MainState {
 
                 self.viewport.update(self.arrow_input);
             }
-            Screen::InRoom => {
+            Stage::InRoom => {
                 // TODO implement
             }
-            Screen::ServerList => {
+            Stage::ServerList => {
                 // TODO implement
              },
-            Screen::Exit => {
+            Stage::Exit => {
                let _ = ctx.quit();
             }
         }
@@ -606,23 +606,23 @@ impl EventHandler for MainState {
         graphics::clear(ctx);
         graphics::set_background_color(ctx, (0, 0, 0, 1).into());
 
-        match self.screen {
-            Screen::Intro(_) => {
+        match self.stage {
+            Stage::Intro(_) => {
                 self.draw_intro(ctx)?;
             }
-            Screen::Menu => {
+            Stage::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn);
             }
-            Screen::Run => {
+            Stage::Run => {
                 self.draw_universe(ctx)?;
             }
-            Screen::InRoom => {
+            Stage::InRoom => {
                 // TODO
             }
-            Screen::ServerList => {
+            Stage::ServerList => {
                 // TODO
              },
-            Screen::Exit => {}
+            Stage::Exit => {}
         }
 
         graphics::present(ctx);
@@ -650,22 +650,22 @@ impl EventHandler for MainState {
                           _xrel: i32,
                           _yrel: i32
                           ) {
-        match self.screen {
-            Screen::Intro(_) => {}
-            Screen::Menu | Screen::Run => {
+        match self.stage {
+            Stage::Intro(_) => {}
+            Stage::Menu | Stage::Run => {
                 if state.left() && self.drag_draw != None {
                     self.input_manager.add(input::InputAction::MouseDrag(MouseButton::Left, x, y));
                 } else {
                     self.input_manager.add(input::InputAction::MouseMovement(x, y));
                 }
             }
-            Screen::InRoom => {
+            Stage::InRoom => {
                 // TODO implement
             }
-            Screen::ServerList => {
+            Stage::ServerList => {
                 // TODO implement
              },
-            Screen::Exit => { unreachable!() }
+            Stage::Exit => { unreachable!() }
         }
     }
 
@@ -686,12 +686,12 @@ impl EventHandler for MainState {
                       repeat: bool
                       ) {
 
-        match self.screen {
-            Screen::Intro(_) => {
-                self.screen = Screen::Run; // TODO lets just go to the game for now...
+        match self.stage {
+            Stage::Intro(_) => {
+                self.stage = Stage::Run; // TODO lets just go to the game for now...
                 self.menu_sys.reset();
             }
-            Screen::Menu | Screen::Run | Screen::InRoom | Screen::ServerList => {
+            Stage::Menu | Stage::Run | Stage::InRoom | Stage::ServerList => {
                 // TODO for now just quit the game
                 if keycode == Keycode::Escape {
                     self.quit_event(ctx);
@@ -699,7 +699,7 @@ impl EventHandler for MainState {
 
                 self.input_manager.add(input::InputAction::KeyPress(keycode, repeat));
             }
-            Screen::Exit => {}
+            Stage::Exit => {}
         }
     }
 
@@ -716,15 +716,15 @@ impl EventHandler for MainState {
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
         let mut do_not_quit = true;
 
-        match self.screen {
-            Screen::Run => {
+        match self.stage {
+            Stage::Run => {
                 self.pause_or_resume_game();
             }
-            Screen::Menu | Screen::InRoom | Screen::ServerList => {
+            Stage::Menu | Stage::InRoom | Stage::ServerList => {
                 // This is currently handled in the return_key_pressed path as well
                 self.escape_key_pressed = true;
             }
-            Screen::Exit => {
+            Stage::Exit => {
                 do_not_quit = false;
             }
             _ => {}
@@ -835,17 +835,17 @@ impl MainState {
 
     fn pause_or_resume_game(&mut self) {
         let cur_menu_state = self.menu_sys.menu_state;
-        let cur_stage = self.screen;
+        let cur_stage = self.stage;
 
         match cur_stage {
-            Screen::Menu => {
+            Stage::Menu => {
                 if cur_menu_state == menu::MenuState::MainMenu {
-                    self.screen = Screen::Run;
+                    self.stage = Stage::Run;
                     self.running = true;
                 }
             }
-            Screen::Run => {
-                self.screen = Screen::Menu;
+            Stage::Run => {
+                self.stage = Stage::Menu;
                 self.menu_sys.menu_state = menu::MenuState::MainMenu;
                 self.running = false;
             }
@@ -1055,7 +1055,7 @@ impl MainState {
                                     self.pause_or_resume_game();
                                 }
                                 menu::MenuItemIdentifier::ExitGame => {
-                                    self.screen = Screen::Exit;
+                                    self.stage = Stage::Exit;
                                 }
                                 menu::MenuItemIdentifier::Options => {
                                     self.menu_sys.menu_state = menu::MenuState::Options;
@@ -1146,13 +1146,13 @@ impl MainState {
                 match e {
                     NetwaysteEvent::LoggedIn(server_version) => {
                         println!("Logged in! Server version: v{:?}", server_version);
-                        self.screen = Screen::ServerList;
+                        self.stage = Stage::ServerList;
                         // do other stuff
                         self.network_manager.try_send(NetwaysteEvent::ListRooms);
                     }
                     NetwaysteEvent::JoinedRoom(room_name) => {
                         println!("Joined Room: {}", room_name);
-                        self.screen = Screen::InRoom;
+                        self.stage = Stage::InRoom;
                     }
                     NetwaysteEvent::PlayerList(list) => {
                         println!("PlayerList: {:?}",list);
