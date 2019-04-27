@@ -86,7 +86,6 @@ impl DisplayModeManager {
 
 #[derive(Debug, Clone)]
 pub struct VideoSettings {
-    //XXX WTF
     pub resolution    : (f32, f32),
     pub is_fullscreen :       bool,
     res_manager       : DisplayModeManager,
