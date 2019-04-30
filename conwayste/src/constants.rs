@@ -17,6 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::graphics::{self, Color};
+use std::time::Duration;
 
 
 // game play
@@ -40,6 +41,7 @@ pub const PIXELS_SCROLLED_PER_FRAME : f32   = 50.0; // pixels
 
 // persistent configuration
 pub const CONFIG_FILE_PATH          : &str  = "conwayste.toml";
+pub const MIN_CONFIG_FLUSH_TIME     : Duration = Duration::from_millis(5000);
 
 
 //////////////////////////////////////////////////////////////////////

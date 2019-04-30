@@ -12,10 +12,12 @@ env_logger   = "0.3"
 log          = "0.3"
 sdl2         = "0.31.0"
 version      = "2.0.1"
-toml         = "0.4.5"
+toml         = "0.5"
 serde        = "1.0"
 serde_derive = "1.0"
 rand         = "0.4"
+color-backtrace = "0.1"
+lazy_static  = "1.2"
 
 [[bin]]
 name = "client"
