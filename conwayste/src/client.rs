@@ -808,7 +808,7 @@ impl EventHandler for MainState {
     }
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
-        let mut do_not_quit = true;
+        let mut quit = false;
 
         match self.screen {
             Screen::Run => {
@@ -819,17 +819,16 @@ impl EventHandler for MainState {
                 self.escape_key_pressed = true;
             }
             Screen::Exit => {
-                do_not_quit = false;
+                quit = true;
             }
             _ => {}
         }
 
-        if !do_not_quit {
-            // we're not not quitting :P
+        if quit {
             self.cleanup();
         }
 
-        do_not_quit
+        !quit
     }
 
 }

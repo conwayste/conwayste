@@ -65,7 +65,6 @@ lazy_static! {
     /// Same as `DEFAULT_STRING` but as a TOML comment and with version string at top.
     static ref COMMENTED_DEFAULT_STRING: String = {
         let mut s = String::new();
-        //XXX version string
         s.push_str(&format!("############ Default config for Conwayste v{} ##########\n", version!()));
         for default_line in DEFAULT_STRING.split("\n") {
             s.push_str(&format!("# {}\n", default_line));
