@@ -24,6 +24,8 @@ extern crate sdl2;
 #[macro_use] extern crate serde_derive;
 #[macro_use] extern crate version;
 extern crate rand;
+extern crate color_backtrace;
+#[macro_use] extern crate lazy_static;
 
 mod config;
 mod constants;
@@ -46,7 +48,7 @@ use netwayste::net::NetwaysteEvent;
 
 use ggez::conf;
 use ggez::event::*;
-use ggez::{GameResult, Context, ContextBuilder};
+use ggez::{GameError, GameResult, Context, ContextBuilder};
 use ggez::graphics;
 use ggez::graphics::{Point2, Color};
 use ggez::timer;
@@ -90,7 +92,7 @@ struct MainState {
     running:             bool,
     menu_sys:            menu::MenuSystem,
     video_settings:      video::VideoSettings,
-    config:              config::ConfigFile,
+    config:              config::Config,
     viewport:            viewport::Viewport,
     input_manager:       input::InputManager,
     network_manager:     network::NetworkManager,
@@ -412,17 +414,21 @@ impl MainState {
         let universe_width_in_cells  = 256;
         let universe_height_in_cells = 120;
 
-        let config = config::ConfigFile::new();
+        let mut config = config::Config::new();
+        config.load_or_create_default().map_err(|e| {
+            let msg = format!("Error while loading config: {:?}", e);
+            GameError::from(msg)
+        })?;
 
         let mut vs = video::VideoSettings::new();
         vs.gather_display_modes(ctx)?;
 
         vs.print_resolutions();
 
-/*
- *  FIXME Disabling video module temporarily as we can now leverage ggez 0.4
- */
-/*
+        /*
+         *  FIXME Disabling video module temporarily as we can now leverage ggez 0.4
+         */
+        /*
         // On first-run, use default supported resolution
         let (w, h) = config.get_resolution();
         if (w,h) != (0,0) {
@@ -440,9 +446,9 @@ impl MainState {
 
         graphics::set_fullscreen(ctx, config.is_fullscreen() == true);
         vs.is_fullscreen = config.is_fullscreen() == true;
-*/
+        */
 
-        let viewport = viewport::Viewport::new(config.get_zoom_level(), universe_width_in_cells, universe_height_in_cells);
+        let viewport = viewport::Viewport::new(config.get().gameplay.zoom, universe_width_in_cells, universe_height_in_cells);
 
         let mut color_settings = ColorSettings {
             cell_colors: BTreeMap::new(),
@@ -583,6 +589,188 @@ impl EventHandler for MainState {
 
                 if self.toggle_paused_game {
                     self.pause_or_resume_game();
+                    /*
+||||||| merged common ancestors
+                        match self.menu_sys.menu_state {
+                            menu::MenuState::MainMenu => {
+                                if !self.escape_key_pressed {
+                                    match id {
+                                        menu::MenuItemIdentifier::StartGame => {
+                                            self.pause_or_resume_game();
+                                        }
+                                        menu::MenuItemIdentifier::ExitGame => {
+                                            self.screen = Screen::Exit;
+                                        }
+                                        menu::MenuItemIdentifier::Options => {
+                                            self.menu_sys.menu_state = menu::MenuState::Options;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            menu::MenuState::Options => {
+                                match id {
+                                    menu::MenuItemIdentifier::VideoSettings => {
+                                        if !self.escape_key_pressed {
+                                            self.menu_sys.menu_state = menu::MenuState::Video;
+                                        }
+                                    }
+                                    menu::MenuItemIdentifier::AudioSettings => {
+                                        if !self.escape_key_pressed {
+                                            self.menu_sys.menu_state = menu::MenuState::Audio;
+                                        }
+                                    }
+                                    menu::MenuItemIdentifier::GameplaySettings => {
+                                        if !self.escape_key_pressed {
+                                            self.menu_sys.menu_state = menu::MenuState::Gameplay;
+                                        }
+                                    }
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                            self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                                    }
+                                   _ => {}
+                                }
+                            }
+                            menu::MenuState::Audio => {
+                                match id {
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                    }
+                                    _ => {
+                                        if !self.escape_key_pressed { }
+                                    }
+                                }
+                            }
+                            menu::MenuState::Gameplay => {
+                                match id {
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                    }
+                                    _ => {
+                                        if !self.escape_key_pressed { }
+                                    }
+                                }
+                            }
+                            menu::MenuState::Video => {
+                                match id {
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                    }
+                                    menu::MenuItemIdentifier::Fullscreen => {
+                                        if !self.escape_key_pressed {
+                                            self.video_settings.toggle_fullscreen(ctx);
+                                            self.config.set_fullscreen(self.video_settings.is_fullscreen());
+                                        }
+                                    }
+                                    menu::MenuItemIdentifier::Resolution => {
+                                        if !self.escape_key_pressed {
+                                            self.video_settings.advance_to_next_resolution(ctx);
+
+                                            // Update the configuration file and resize the viewing
+                                            // screen
+                                            let (w,h) = self.video_settings.get_active_resolution();
+                                            self.config.set_resolution(w as i32, h as i32);
+                                            self.viewport.set_dimensions(w, h);
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+=======
+                        match self.menu_sys.menu_state {
+                            menu::MenuState::MainMenu => {
+                                if !self.escape_key_pressed {
+                                    match id {
+                                        menu::MenuItemIdentifier::StartGame => {
+                                            self.pause_or_resume_game();
+                                        }
+                                        menu::MenuItemIdentifier::ExitGame => {
+                                            self.screen = Screen::Exit;
+                                        }
+                                        menu::MenuItemIdentifier::Options => {
+                                            self.menu_sys.menu_state = menu::MenuState::Options;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            menu::MenuState::Options => {
+                                match id {
+                                    menu::MenuItemIdentifier::VideoSettings => {
+                                        if !self.escape_key_pressed {
+                                            self.menu_sys.menu_state = menu::MenuState::Video;
+                                        }
+                                    }
+                                    menu::MenuItemIdentifier::AudioSettings => {
+                                        if !self.escape_key_pressed {
+                                            self.menu_sys.menu_state = menu::MenuState::Audio;
+                                        }
+                                    }
+                                    menu::MenuItemIdentifier::GameplaySettings => {
+                                        if !self.escape_key_pressed {
+                                            self.menu_sys.menu_state = menu::MenuState::Gameplay;
+                                        }
+                                    }
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                            self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                                    }
+                                   _ => {}
+                                }
+                            }
+                            menu::MenuState::Audio => {
+                                match id {
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                    }
+                                    _ => {
+                                        if !self.escape_key_pressed { }
+                                    }
+                                }
+                            }
+                            menu::MenuState::Gameplay => {
+                                match id {
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                    }
+                                    _ => {
+                                        if !self.escape_key_pressed { }
+                                    }
+                                }
+                            }
+                            menu::MenuState::Video => {
+                                match id {
+                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                        self.menu_sys.menu_state = menu::MenuState::Options;
+                                    }
+                                    menu::MenuItemIdentifier::Fullscreen => {
+                                        if !self.escape_key_pressed {
+                                            self.video_settings.toggle_fullscreen(ctx);
+                                            let is_fullscreen = self.video_settings.is_fullscreen();
+                                            self.config.modify(|settings| {
+                                                settings.video.fullscreen = is_fullscreen;
+                                            });
+                                        }
+                                    }
+                                    menu::MenuItemIdentifier::Resolution => {
+                                        if !self.escape_key_pressed {
+                                            self.video_settings.advance_to_next_resolution(ctx);
+
+                                            // Update the configuration file and resize the viewing
+                                            // screen
+                                            let (w,h) = self.video_settings.get_active_resolution();
+                                            self.config.set_resolution(w as i32, h as i32);
+                                            self.viewport.set_dimensions(w, h);
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+>>>>>>> origin/master
+    */
                 }
 
                 self.viewport.update(self.arrow_input);
@@ -598,7 +786,7 @@ impl EventHandler for MainState {
             }
         }
 
-        let _ = self.post_update();
+        self.post_update()?;
 
         Ok(())
     }
@@ -715,7 +903,7 @@ impl EventHandler for MainState {
     }
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
-        let mut do_not_quit = true;
+        let mut quit = false;
 
         match self.stage {
             Stage::Run => {
@@ -726,12 +914,16 @@ impl EventHandler for MainState {
                 self.escape_key_pressed = true;
             }
             Stage::Exit => {
-                do_not_quit = false;
+                quit = true;
             }
             _ => {}
         }
 
-        do_not_quit
+        if quit {
+            self.cleanup();
+        }
+
+        !quit
     }
 
 }
@@ -913,11 +1105,17 @@ impl MainState {
                             }
                             Keycode::Plus | Keycode::Equals => {
                                 self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
-                                self.config.set_zoom_level(self.viewport.get_cell_size());
+                                let cell_size = self.viewport.get_cell_size();
+                                self.config.modify(|settings| {
+                                    settings.gameplay.zoom = cell_size;
+                                });
                             }
                             Keycode::Minus | Keycode::Underscore => {
                                 self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
-                                self.config.set_zoom_level(self.viewport.get_cell_size());
+                                let cell_size = self.viewport.get_cell_size();
+                                self.config.modify(|settings| {
+                                    settings.gameplay.zoom = cell_size;
+                                });
                             }
                             Keycode::Num1 => {
                                 self.win_resize = 1;
@@ -927,9 +1125,6 @@ impl MainState {
                             }
                             Keycode::Num3 => {
                                 self.win_resize = 3;
-                            }
-                            Keycode::P => {
-                                self.config.print_to_screen();
                             }
                             Keycode::LGui => {
 
@@ -1007,10 +1202,6 @@ impl MainState {
     }
 
     fn update_current_screen(&mut self, ctx: &mut Context) {
-        if self.config.is_dirty() {
-            self.config.write();
-        }
-
         self.process_menu_inputs();
 
         let is_direction_key_pressed = {
@@ -1116,7 +1307,10 @@ impl MainState {
                             menu::MenuItemIdentifier::Fullscreen => {
                                 if !self.escape_key_pressed {
                                     self.video_settings.toggle_fullscreen(ctx);
-                                    self.config.set_fullscreen(self.video_settings.is_fullscreen());
+                                    let is_fullscreen = self.video_settings.is_fullscreen();
+                                    self.config.modify(|settings| {
+                                        settings.video.fullscreen = is_fullscreen;
+                                    });
                                 }
                             }
                             menu::MenuItemIdentifier::Resolution => {
@@ -1215,7 +1409,21 @@ impl MainState {
         self.arrow_input = (0, 0);
         self.input_manager.expunge();
 
+        // Flush config
+        self.config.flush().map_err(|e| {
+            GameError::UnknownError(format!("Error while flushing config: {:?}", e))
+        })?;
+
         Ok(())
+    }
+
+    // Clean up before we quit
+    fn cleanup(&mut self) {
+        if self.config.is_dirty() {
+            self.config.force_flush().unwrap_or_else(|e| {
+                error!("Failed to flush config on exit: {:?}", e);
+            });
+        }
     }
 }
 
@@ -1247,6 +1455,8 @@ pub fn main() {
             .filter(Some("ggez"), LevelFilter::Off)
             .filter(Some("gfx_device_gl"), LevelFilter::Off)
             .init();
+
+    color_backtrace::install();
 
     let mut cb = ContextBuilder::new("conwayste", "Aaronm04|Manghi")
         .window_setup(conf::WindowSetup::default()
