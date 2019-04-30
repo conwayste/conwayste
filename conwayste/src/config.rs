@@ -337,6 +337,7 @@ impl Config {
         {
             let mut foptions = OpenOptions::new();
             let mut f = foptions.write(true).create(true).open(&self.path)?;
+            f.set_len(0)?;
             f.write(toml_str.as_bytes())?;
         }
 
