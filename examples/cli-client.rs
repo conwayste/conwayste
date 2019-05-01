@@ -31,16 +31,16 @@ use futures::sync::mpsc;
 
 //////////////////// Main /////////////////////
 fn main() {
-    let (ggez_client_request, nw_client_request) = mpsc::unbounded::<net::RequestAction>();
-    let (nw_server_response, ggez_server_response) = std_channel::<net::ResponseCode>();
+    let (ggez_client_request, nw_client_request) = mpsc::unbounded::<net::NetwaysteEvent>();
+    let (nw_server_response, ggez_server_response) = std_channel::<net::NetwaysteEvent>();
     thread::spawn(move || {
         ClientNetState::start_network(nw_server_response, nw_client_request);
     });
 
-    ggez_client_request.unbounded_send(net::RequestAction::Connect{name: "blah3".to_owned(), client_version: "0.0.1".to_owned()})
+    ggez_client_request.unbounded_send(net::NetwaysteEvent::Connect( "blah3".to_owned(), "0.0.1".to_owned() ))
         .unwrap();
     loop {
-        ggez_client_request.unbounded_send(net::RequestAction::ListRooms)
+        ggez_client_request.unbounded_send(net::NetwaysteEvent::ListRooms)
             .unwrap();
         loop {
             match ggez_server_response.try_recv() {
