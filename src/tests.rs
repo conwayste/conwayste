@@ -2412,7 +2412,9 @@ mod netwayste_client_tests {
 
     fn create_client_net_state() -> ClientNetState {
         let (nw_server_response, _ggez_server_response) = std_channel::<NetwaysteEvent>();
-        ClientNetState::new(nw_server_response)
+        let mut cns = ClientNetState::new(nw_server_response);
+        cns.server_address = Some(fake_socket_addr());
+        cns
     }
 
     fn fake_socket_addr() -> SocketAddr {
@@ -2700,7 +2702,6 @@ mod netwayste_client_tests {
         let (udp_tx, _) = mpsc::unbounded();
         let (exit_tx, _) = mpsc::unbounded();
         let user_input = UserInput::Chat("memes".to_owned());
-        let addr = fake_socket_addr();
 
         client_state.cookie = Some("ThisDoesNotReallyMatterAsLongAsItExists".to_owned());
         client_state.handle_user_input_event(&udp_tx, &exit_tx, user_input);
@@ -2716,7 +2717,6 @@ mod netwayste_client_tests {
         let mut client_state = create_client_net_state();
         let (udp_tx, _) = mpsc::unbounded();
         let (exit_tx, _) = mpsc::unbounded();
-        let addr = fake_socket_addr();
         let connect_cmd = UserInput::Command{cmd: "connect".to_owned(), args: vec!["name".to_owned()]};
         let new_room_cmd = UserInput::Command{cmd: "new".to_owned(), args: vec!["room_name".to_owned()]};
         let join_room_cmd = UserInput::Command{cmd: "join".to_owned(), args: vec!["room_name".to_owned()]};
@@ -2758,7 +2758,6 @@ mod netwayste_client_tests {
         let mut client_state = create_client_net_state();
         let (udp_tx, _) = mpsc::unbounded();
         let (exit_tx, _) = mpsc::unbounded();
-        let addr = fake_socket_addr();
         let connect_cmd = UserInput::Command{cmd: "connect".to_owned(), args: vec!["name".to_owned()]};
         let new_room_cmd = UserInput::Command{cmd: "new".to_owned(), args: vec!["room_name".to_owned()]};
         let join_room_cmd = UserInput::Command{cmd: "join".to_owned(), args: vec!["room_name".to_owned()]};
@@ -2804,7 +2803,6 @@ mod netwayste_client_tests {
         let mut client_state = create_client_net_state();
         let (udp_tx, _) = mpsc::unbounded();
         let (exit_tx, _) = mpsc::unbounded();
-        let addr = fake_socket_addr();
         let connect_cmd = UserInput::Command{cmd: "connect".to_owned(), args: vec!["name".to_owned()]};
         let new_room_cmd = UserInput::Command{cmd: "new".to_owned(), args: vec!["room_name".to_owned()]};
         let join_room_cmd = UserInput::Command{cmd: "join".to_owned(), args: vec!["room_name".to_owned()]};

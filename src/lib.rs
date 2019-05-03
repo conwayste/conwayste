@@ -28,10 +28,6 @@ extern crate serde;
 extern crate tokio_core;
 extern crate clap;
 
-#[cfg(test)]
-#[macro_use]
-extern crate proptest;
-
 #[macro_use]
 pub mod net;
 pub mod client;
