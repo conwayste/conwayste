@@ -23,12 +23,12 @@ use std::{io, fmt, str, result, time::{Duration, Instant}};
 use std::net::{self, SocketAddr};
 use std::collections::VecDeque;
 
-use crate::futures::sync::mpsc;
-use crate::tokio_core::net::{UdpSocket, UdpCodec};
-use crate::tokio_core::reactor::Handle;
-use crate::bincode::{serialize, deserialize, Infinite};
-use crate::semver::{Version, SemVerError};
-use crate::serde_derive::{Serialize, Deserialize};
+use futures::sync::mpsc;
+use tokio_core::net::{UdpSocket, UdpCodec};
+use tokio_core::reactor::Handle;
+use bincode::{serialize, deserialize, Infinite};
+use semver::{Version, SemVerError};
+use serde::{Serialize, Deserialize};
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
@@ -337,6 +337,7 @@ impl Ord for Packet {
 }
 
 //////////////// Packet (de)serialization ////////////////
+#[allow(dead_code)]
 pub struct LineCodec;
 impl UdpCodec for LineCodec {
     type In = (SocketAddr, Option<Packet>);   // if 2nd element is None, it means deserialization failure
@@ -383,6 +384,7 @@ pub fn get_version() -> result::Result<Version, SemVerError> {
     Version::parse(VERSION)
 }
 
+#[allow(dead_code)]
 pub fn has_connection_timed_out(heartbeat: Option<Instant>) -> bool {
     if let Some(heartbeat) = heartbeat {
         (Instant::now() - heartbeat) > Duration::from_secs(TIMEOUT_IN_SECONDS)
@@ -942,6 +944,7 @@ impl NetworkManager {
 }
 
 #[derive(PartialEq, Debug, Clone)]
+#[allow(dead_code)]
 pub enum NetwaysteEvent {
     None,
 
@@ -972,6 +975,7 @@ pub enum NetwaysteEvent {
 
 impl NetwaysteEvent {
 
+    #[allow(dead_code)]
     pub fn build_request_action_from_netwayste_event(nw_event: NetwaysteEvent) -> RequestAction {
         match nw_event {
             NetwaysteEvent::None => {
@@ -1007,6 +1011,7 @@ impl NetwaysteEvent {
         }
     }
 
+    #[allow(dead_code)]
     pub fn build_netwayste_event_from_response_code(code: ResponseCode) -> NetwaysteEvent {
         match code {
             ResponseCode::LoggedIn(_cookie, server_version) => {

@@ -16,18 +16,9 @@
  * You should have received a copy of the GNU General Public License along with
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#[macro_use]
-extern crate netwayste;
-extern crate env_logger;
-extern crate futures;
-extern crate tokio_core;
-extern crate base64;
-extern crate rand;
-extern crate semver;
-extern crate chrono;
-extern crate clap;
-#[macro_use]
-extern crate log;
+
+#[macro_use] extern crate log;
+#[macro_use] mod net;
 
 use netwayste::net::{
     RequestAction, ResponseCode, Packet, LineCodec, bind,
@@ -47,14 +38,13 @@ use std::fmt;
 use std::time;
 use std::collections::VecDeque;
 
-
-use crate::tokio_core::reactor::{Core, Timeout};
-use crate::chrono::Local;
-use crate::log::LevelFilter;
-use crate::futures::{Future, Sink, Stream, stream, future::ok, sync::mpsc};
-use crate::rand::RngCore;
-use crate::semver::Version;
-use crate::clap::{App, Arg};
+use tokio_core::reactor::{Core, Timeout};
+use chrono::Local;
+use log::LevelFilter;
+use futures::{Future, Sink, Stream, stream, future::ok, sync::mpsc};
+use rand::RngCore;
+use semver::Version;
+use clap::{App, Arg};
 
 pub const TICK_INTERVAL_IN_MS:    u64      = 10;
 pub const NETWORK_INTERVAL_IN_MS: u64      = 100;    // Arbitrarily chosen

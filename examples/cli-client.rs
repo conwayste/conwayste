@@ -17,7 +17,7 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-extern crate netwayste;
+extern crate netwayste as netwayste;
 extern crate futures;
 extern crate tokio_core;
 
