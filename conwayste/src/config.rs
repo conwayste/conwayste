@@ -21,8 +21,7 @@ extern crate toml;
 use crate::constants::{CONFIG_FILE_PATH, DEFAULT_ZOOM_LEVEL, MIN_CONFIG_FLUSH_TIME};
 use std::error::Error;
 use std::fmt;
-use std::ops::{AddAssign, SubAssign};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use std::fs::OpenOptions;
 use std::io::Read;
@@ -369,6 +368,7 @@ impl Config {
         }
     }
 
+    #[allow(dead_code)]
     pub fn flush_time(&self) -> Option<Instant> {
         self.flush_time
     }
@@ -403,23 +403,24 @@ impl Config {
         });
     }
 
-    #[cfg(test)]
-    pub fn adjust_flush_time(&mut self, adjustment: Duration, sign: isize) {
-        if sign == 0 {
-            panic!("unexpected sign value");
-        }
-        if sign > 0 {
-            self.flush_time.as_mut().unwrap().add_assign(adjustment);
-        } else {
-            self.flush_time.as_mut().unwrap().sub_assign(adjustment);
-        }
-    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::ops::{AddAssign, SubAssign};
+    use std::time::Duration;
 
+    fn adjust_flush_time(settings: &mut Config, adjustment: Duration, sign: isize) {
+        if sign == 0 {
+            panic!("unexpected sign value");
+        }
+        if sign > 0 {
+            settings.flush_time.as_mut().unwrap().add_assign(adjustment);
+        } else {
+            settings.flush_time.as_mut().unwrap().sub_assign(adjustment);
+        }
+    }
     #[test]
     fn test_init_default_settings() {
         let settings = Settings::new();
@@ -597,7 +598,7 @@ mod test {
             settings.video.resolution_x = 123;
         });
         assert_eq!(config.is_dirty(), true);
-        config.adjust_flush_time(
+        adjust_flush_time(&mut config,
             Duration::from_millis(MIN_CONFIG_FLUSH_TIME.as_millis() as u64 + 1),
             -1,
         );

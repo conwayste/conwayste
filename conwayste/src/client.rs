@@ -21,7 +21,7 @@ extern crate env_logger;
 extern crate ggez;
 #[macro_use] extern crate log;
 extern crate sdl2;
-#[macro_use] extern crate serde_derive;
+#[macro_use] extern crate serde;
 #[macro_use] extern crate version;
 extern crate rand;
 extern crate color_backtrace;
@@ -139,7 +139,7 @@ impl ColorSettings {
 
 
 fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
-    let pat = Pattern("10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW$10bW$10bW$10b16W48$100b2A5b2A$100b2A5b2A2$104b2A$104b2A5$122b2Ab2A$121bA5bA$121bA6bA2b2A$121b3A3bA3b2A$126bA!".to_owned());
+    let _pat = Pattern("10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW$10bW$10bW$10b16W48$100b2A5b2A$100b2A5b2A2$104b2A$104b2A5$122b2Ab2A$121bA5bA$121bA6bA2b2A$121b3A3bA3b2A$126bA!".to_owned());
     //XXX apply to universe, then return Ok
     //XXX return Ok(());
     // TODO: remove the following
