@@ -221,7 +221,7 @@ impl ClientNetState {
         }
     }
 
-    fn handle_incoming_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, opt_packet: Option<Packet>) {
+    pub fn handle_incoming_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>, opt_packet: Option<Packet>) {
         // All `None` packets should get filtered out up the hierarchy
         let packet = opt_packet.unwrap();
         match packet.clone() {
@@ -273,7 +273,7 @@ impl ClientNetState {
         }
     }
 
-    fn handle_network_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>) {
+    pub fn handle_network_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>) {
         if self.cookie.is_some() {
             // Determine what can be processed
             // Determine what needs to be resent
@@ -314,7 +314,7 @@ impl ClientNetState {
         self.tick = 1usize.wrapping_add(self.tick);
     }
 
-    fn handle_user_input_event(&mut self,
+    pub fn handle_user_input_event(&mut self,
             udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>,
             exit_tx: &mpsc::UnboundedSender<()>,
             user_input: UserInput) {
@@ -332,12 +332,12 @@ impl ClientNetState {
         self.try_server_send(udp_tx, exit_tx, action);
     }
 
-    fn handle_response_ok(&mut self) -> Result<(), Box<Error>> {
+    pub fn handle_response_ok(&mut self) -> Result<(), Box<Error>> {
             info!("OK :)");
             return Ok(());
     }
 
-    fn handle_logged_in(&mut self, cookie: String, server_version: String) {
+    pub fn handle_logged_in(&mut self, cookie: String, server_version: String) {
         self.cookie = Some(cookie);
 
         self.name = Some("blah3".to_owned()); //XXX HACK
@@ -345,12 +345,12 @@ impl ClientNetState {
         self.check_for_upgrade(&server_version);
     }
 
-    fn handle_joined_room(&mut self, room_name: &String) {
+    pub fn handle_joined_room(&mut self, room_name: &String) {
             self.room = Some(room_name.clone());
             info!("Joined room: {}", room_name);
     }
 
-    fn handle_left_room(&mut self) {
+    pub fn handle_left_room(&mut self) {
         if self.in_game() {
             info!("Left room {}.", self.room.clone().unwrap());
         }
@@ -358,7 +358,7 @@ impl ClientNetState {
         self.chat_msg_seq_num = 0;
     }
 
-    fn handle_player_list(&mut self, player_names: Vec<String>) {
+    pub fn handle_player_list(&mut self, player_names: Vec<String>) {
         info!("---BEGIN PLAYER LIST---");
         for (i, player_name) in player_names.iter().enumerate() {
             info!("{}\tname: {}", i, player_name);
@@ -366,7 +366,7 @@ impl ClientNetState {
         info!("---END PLAYER LIST---");
     }
 
-    fn handle_room_list(&mut self, rooms: Vec<(String, u64, bool)>) {
+    pub fn handle_room_list(&mut self, rooms: Vec<(String, u64, bool)>) {
         info!("---BEGIN GAME ROOM LIST---");
         for (game_name, num_players, game_running) in rooms {
             info!("#players: {},\trunning? {:?},\tname: {:?}",
@@ -377,7 +377,7 @@ impl ClientNetState {
         info!("---END GAME ROOM LIST---");
     }
 
-    fn handle_incoming_chats(&mut self, chats: Option<Vec<BroadcastChatMessage>> ) {
+    pub fn handle_incoming_chats(&mut self, chats: Option<Vec<BroadcastChatMessage>> ) {
         if let Some(mut chat_messages) = chats {
             chat_messages.retain(|ref chat_message| {
                 self.chat_msg_seq_num < chat_message.chat_seq.unwrap()
@@ -403,7 +403,7 @@ impl ClientNetState {
         }
     }
 
-    fn build_command_request_action(&mut self, cmd: String, args: Vec<String>) -> RequestAction {
+    pub fn build_command_request_action(&mut self, cmd: String, args: Vec<String>) -> RequestAction {
         let mut action: RequestAction = RequestAction::None;
         // keep these in sync with print_help function
         match cmd.as_str() {
