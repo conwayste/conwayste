@@ -95,7 +95,7 @@ struct MainState {
     config:              config::Config,
     viewport:            viewport::Viewport,
     input_manager:       input::InputManager,
-    network_manager:     network::NetworkManager,
+    net_worker:     network::ConwaysteNetWorker,
 
     // Input state
     single_step:         bool,
@@ -526,7 +526,7 @@ impl MainState {
             config:              config,
             viewport:            viewport,
             input_manager:       input::InputManager::new(input::InputDeviceType::PRIMARY),
-            network_manager:     network::NetworkManager::new(),
+            net_worker:     network::ConwaysteNetWorker::new(),
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -536,7 +536,7 @@ impl MainState {
             toggle_paused_game:  false,
         };
 
-        s.network_manager.connect("NetwaysteIntegration".to_owned());
+        s.net_worker.connect("NetwaysteIntegration".to_owned());
 
         init_patterns(&mut s).unwrap();
         init_title_screen(&mut s).unwrap();
@@ -1154,45 +1154,43 @@ impl MainState {
     }
 
     fn receive_net_updates(&mut self){
-        if let Some(events) = self.network_manager.try_receive() {
-            for e in events.into_iter() {
-                match e {
-                    NetwaysteEvent::LoggedIn(server_version) => {
-                        println!("Logged in! Server version: v{:?}", server_version);
-                        self.stage = Stage::ServerList;
-                        // do other stuff
-                        self.network_manager.try_send(NetwaysteEvent::ListRooms);
+        for e in self.net_worker.try_receive().into_iter() {
+            match e {
+                NetwaysteEvent::LoggedIn(server_version) => {
+                    println!("Logged in! Server version: v{:?}", server_version);
+                    self.stage = Stage::ServerList;
+                    // do other stuff
+                    self.net_worker.try_send(NetwaysteEvent::List);
+                }
+                NetwaysteEvent::JoinedRoom(room_name) => {
+                    println!("Joined Room: {}", room_name);
+                    self.stage = Stage::InRoom;
+                }
+                NetwaysteEvent::PlayerList(list) => {
+                    println!("PlayerList: {:?}",list);
+                }
+                NetwaysteEvent::RoomList(list) => {
+                    println!("RoomList: {:?}",list);
+                }
+                NetwaysteEvent::UniverseUpdate => {
+                    println!("Universe update");
+                }
+                NetwaysteEvent::ChatMessages(msgs) => {
+                    for m in msgs {
+                        println!("{:?}", m);
                     }
-                    NetwaysteEvent::JoinedRoom(room_name) => {
-                        println!("Joined Room: {}", room_name);
-                        self.stage = Stage::InRoom;
-                    }
-                    NetwaysteEvent::PlayerList(list) => {
-                        println!("PlayerList: {:?}",list);
-                    }
-                    NetwaysteEvent::RoomList(list) => {
-                        println!("RoomList: {:?}",list);
-                    }
-                    NetwaysteEvent::UniverseUpdate => {
-                        println!("Universe update");
-                    }
-                    NetwaysteEvent::ChatMessages(msgs) => {
-                        for m in msgs {
-                            println!("{:?}", m);
-                        }
-                    }
-                    NetwaysteEvent::LeftRoom => {
-                        println!("Left Room");
-                    }
-                    NetwaysteEvent::BadRequest(error) => {
-                        println!("Server responded with Bad Request: {:?}", error);
-                    }
-                    NetwaysteEvent::ServerError(error) => {
-                        println!("Server encountered an error: {:?}", error);
-                    }
-                    _ => {
-                        panic!("Development panic: Unexpected NetwaysteEvent during netwayste receive update: {:?}", e);
-                    }
+                }
+                NetwaysteEvent::LeftRoom => {
+                    println!("Left Room");
+                }
+                NetwaysteEvent::BadRequest(error) => {
+                    println!("Server responded with Bad Request: {:?}", error);
+                }
+                NetwaysteEvent::ServerError(error) => {
+                    println!("Server encountered an error: {:?}", error);
+                }
+                _ => {
+                    panic!("Development panic: Unexpected NetwaysteEvent during netwayste receive update: {:?}", e);
                 }
             }
         }
@@ -1256,23 +1254,23 @@ impl MainState {
 // do the work of creating our MainState and running our game,
 // * then just call `game.run()` which runs the `Game` mainloop.
 pub fn main() {
-        env_logger::Builder::new()
-            .format(|buf, record| {
-                writeln!(buf,
-                    "{} [{:5}] - {}",
-                    Local::now().format("%a %Y-%m-%d %H:%M:%S%.6f"),
-                    record.level(),
-                    record.args(),
-                )
-            })
-            .filter(None, LevelFilter::Trace)
-            .filter(Some("futures"), LevelFilter::Off)
-            .filter(Some("tokio_core"), LevelFilter::Off)
-            .filter(Some("tokio_reactor"), LevelFilter::Off)
-            .filter(Some("conway"), LevelFilter::Off)
-            .filter(Some("ggez"), LevelFilter::Off)
-            .filter(Some("gfx_device_gl"), LevelFilter::Off)
-            .init();
+    env_logger::Builder::new()
+        .format(|buf, record| {
+            writeln!(buf,
+                "{} [{:5}] - {}",
+                Local::now().format("%a %Y-%m-%d %H:%M:%S%.6f"),
+                record.level(),
+                record.args(),
+            )
+        })
+        .filter(None, LevelFilter::Trace)
+        .filter(Some("futures"), LevelFilter::Off)
+        .filter(Some("tokio_core"), LevelFilter::Off)
+        .filter(Some("tokio_reactor"), LevelFilter::Off)
+        .filter(Some("conway"), LevelFilter::Off)
+        .filter(Some("ggez"), LevelFilter::Off)
+        .filter(Some("gfx_device_gl"), LevelFilter::Off)
+        .init();
 
     color_backtrace::install();
 

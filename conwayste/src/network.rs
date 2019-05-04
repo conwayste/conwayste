@@ -27,16 +27,18 @@ use futures::sync::mpsc as futures_channel;
 use netwayste::net::NetwaysteEvent;
 use netwayste::client::{ClientNetState, CLIENT_VERSION};
 
+use std::process;
 use std::thread;
 use std::sync::mpsc as std_channel;
+use std_channel::TryRecvError;
 
 
-pub struct NetworkManager {
+pub struct ConwaysteNetWorker {
     sender: futures_channel::UnboundedSender<NetwaysteEvent>,
     receiver: std_channel::Receiver<NetwaysteEvent>,
 }
 
-impl NetworkManager {
+impl ConwaysteNetWorker {
     pub fn new() -> Self {
         let (netwayste_request_sender, netwayste_request_receiver) = futures_channel::unbounded::<NetwaysteEvent>();
         let (netwayste_response_sender, netwayste_response_receiver) = std_channel::channel::<NetwaysteEvent>();
@@ -44,7 +46,7 @@ impl NetworkManager {
             ClientNetState::start_network(netwayste_response_sender, netwayste_request_receiver);
         });
 
-        NetworkManager {
+        ConwaysteNetWorker {
             sender: netwayste_request_sender,
             receiver: netwayste_response_receiver
         }
@@ -67,21 +69,24 @@ impl NetworkManager {
     /// Manages all received network packets and sets them up to be handled as needed.AsMut
     ///
     /// Must not block or delay in any way as this will hold up the main event update loop!
-    pub fn try_receive(&mut self) -> Option<Box<Vec<NetwaysteEvent>>> {
-        let mut new_events = Box::new(vec![]);
+    pub fn try_receive(&mut self) -> Vec<NetwaysteEvent> {
+        let mut new_events = vec![];
         loop {
             match self.receiver.try_recv() {
                 Ok(response) => {
                     new_events.push(response);
                 },
-                Err(_e) => {
-                    // Exit loop as the receiver is likely empty
+                Err(TryRecvError::Empty) => {
+                    // Nothing to do in the empty case
                     break;
-                },
+                }
+                Err(TryRecvError::Disconnected) => {
+                    println!("Communications channel link with netwayste disconnected unexpectedly. Shutting down...");
+                    process::exit(1);
+                }
             }
         }
-
-        if new_events.len() != 0 { Some(new_events) } else { None }
+        new_events
     }
 
 }
