@@ -199,8 +199,8 @@ fn main() {
             Err(TryRecvError::Empty) => {
                 // Nothing to do in the empty case
             }
-            Err(e) => {
-                println!("Got error from ResponseCode stream from netwayste thread: {:?}", e);
+            Err(TryRecvError::Disconnected) => {
+                println!("Communications channel link with netwayste disconnected unexpectedly. Shutting down...");
                 process::exit(1);
             }
         }
