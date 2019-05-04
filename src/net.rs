@@ -951,8 +951,7 @@ pub enum NetwaysteEvent {
     // Requests
     Connect(String, String),            // Player name, version
     Disconnect,
-    ListPlayers,
-    ListRooms,
+    List,
     ChatMessage(String),                // chat message
     NewRoom(String),                    // room name
     JoinRoom(String),                   // room name
@@ -976,7 +975,7 @@ pub enum NetwaysteEvent {
 impl NetwaysteEvent {
 
     #[allow(dead_code)]
-    pub fn build_request_action_from_netwayste_event(nw_event: NetwaysteEvent) -> RequestAction {
+    pub fn build_request_action_from_netwayste_event(nw_event: NetwaysteEvent, is_in_game: bool) -> RequestAction {
         match nw_event {
             NetwaysteEvent::None => {
                 RequestAction::None
@@ -987,23 +986,41 @@ impl NetwaysteEvent {
             NetwaysteEvent::Disconnect => {
                 RequestAction::Disconnect
             }
-            NetwaysteEvent::ListPlayers => {
-                RequestAction::ListPlayers
-            }
-            NetwaysteEvent::ListRooms => {
-                RequestAction::ListRooms
+            NetwaysteEvent::List => {
+                // players or rooms
+                if is_in_game {
+                    RequestAction::ListPlayers
+                } else {
+                    // lobby
+                    RequestAction::ListRooms
+                }
             }
             NetwaysteEvent::ChatMessage(msg) => {
                 RequestAction::ChatMessage(msg)
             }
             NetwaysteEvent::NewRoom(name) => {
-                RequestAction::NewRoom(name)
+                if !is_in_game {
+                    RequestAction::NewRoom(name)
+                } else {
+                    debug!("Command failed: You are in a game");
+                    RequestAction::None
+                }
             }
             NetwaysteEvent::JoinRoom(name) => {
-                RequestAction::JoinRoom(name)
+                if !is_in_game {
+                    RequestAction::JoinRoom(name)
+                } else {
+                    debug!("Command failed: You are already in a game");
+                    RequestAction::None
+                }
             }
             NetwaysteEvent::LeaveRoom => {
-                RequestAction::LeaveRoom
+                if is_in_game {
+                    RequestAction::LeaveRoom
+                } else {
+                    debug!("Command failed: You are already in the lobby");
+                    RequestAction::None
+                }
             }
             _ => {
                 panic!("Unexpected netwayste event during request action construction! {:?}", nw_event);

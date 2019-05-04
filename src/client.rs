@@ -18,14 +18,12 @@
  */
 
 use std::env;
-use std::io::{self, Read};
+use std::io;
 use std::iter;
-use std::str::FromStr;
 use std::error::Error;
 use std::net::SocketAddr;
 use std::process::exit;
 use std::time::Instant;
-use std::thread;
 use std::time::Duration;
 
 use futures::{Future, Sink, Stream, stream, future::ok, sync::mpsc};
@@ -45,19 +43,11 @@ const NETWORK_INTERVAL_IN_MS:       u64    = 1000;
 pub const CLIENT_VERSION: &str = "0.0.1";
 
 //////////////// Event Handling /////////////////
-#[derive(PartialEq, Debug, Clone)]
-pub enum UserInput {
-    Command{cmd: String, args: Vec<String>},
-    Chat(String),
-}
-
 enum Event {
     TickEvent,
-    UserInputEvent(UserInput),
     Incoming((SocketAddr, Option<Packet>)),
     NetworkEvent,
     ConwaysteEvent(NetwaysteEvent)
-//    NotifyAck((SocketAddr, Option<Packet>)),
 }
 
 pub struct ClientNetState {
@@ -128,25 +118,10 @@ impl ClientNetState {
         trace!("ClientNetState reset!");
     }
 
-    fn print_help() {
-        println!("");
-        println!("/help                  - print this text");
-        println!("/connect <player_name> - connect to server");
-        println!("/disconnect            - disconnect from server");
-        println!("/list                  - list rooms when in lobby, or players when in game");
-        println!("/new <room_name>       - create a new room (when not in game)");
-        println!("/join <room_name>      - join a room (when not in game)");
-        println!("/leave                 - leave a room (when in game)");
-        println!("/quit                  - exit the program");
-        println!("...or just type text to chat!");
-    }
 
     pub fn in_game(&self) -> bool {
         self.room.is_some()
     }
-
-    // XXX Once netwayste integration is complete, we'll need to internally send
-    // the result of most of these handlers so we can notify a player via UI event.
 
     fn check_for_upgrade(&self, server_version: &String) {
         let client_version = &VERSION.to_owned();
@@ -300,10 +275,10 @@ impl ClientNetState {
 
             if timed_out || self.disconnect_initiated {
                 if timed_out {
-                    trace!("Server is non-responsive, disconnecting.");
+                    info!("Server is non-responsive, disconnecting.");
                 }
                 if self.disconnect_initiated {
-                    trace!("Disconnected from the server.")
+                    info!("Disconnected from the server.")
                 }
                 self.reset();
             } else {
@@ -314,23 +289,6 @@ impl ClientNetState {
         self.tick = 1usize.wrapping_add(self.tick);
     }
 
-    pub fn handle_user_input_event(&mut self,
-            udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>,
-            exit_tx: &mpsc::UnboundedSender<()>,
-            user_input: UserInput) {
-
-        let action;
-        match user_input {
-            UserInput::Chat(string) => {
-                action = RequestAction::ChatMessage(string);
-            }
-            UserInput::Command{cmd, args} => {
-                action = self.build_command_request_action(cmd, args);
-            }
-        }
-
-        self.try_server_send(udp_tx, exit_tx, action);
-    }
 
     pub fn handle_response_ok(&mut self) -> Result<(), Box<Error>> {
             info!("OK :)");
@@ -401,75 +359,6 @@ impl ClientNetState {
                 }
             }
         }
-    }
-
-    pub fn build_command_request_action(&mut self, cmd: String, args: Vec<String>) -> RequestAction {
-        let mut action: RequestAction = RequestAction::None;
-        // keep these in sync with print_help function
-        match cmd.as_str() {
-            "help" => {
-                ClientNetState::print_help();
-            }
-            "stats" => {
-                self.network.print_statistics();
-            }
-            "connect" => {
-                if args.len() == 1 {
-                    self.name = Some(args[0].clone());
-                    action = RequestAction::Connect{
-                        name:           args[0].clone(),
-                        client_version: CLIENT_VERSION.to_owned(),
-                    };
-                } else { error!("Expected client name as the sole argument (no spaces allowed)."); }
-            }
-            "disconnect" => {
-                if args.len() == 0 {
-                    action = RequestAction::Disconnect;
-                } else { debug!("Command failed: Expected no arguments to disconnect"); }
-            }
-            "list" => {
-                if args.len() == 0 {
-                    // players or rooms
-                    if self.in_game() {
-                        action = RequestAction::ListPlayers;
-                    } else {
-                        // lobby
-                        action = RequestAction::ListRooms;
-                    }
-                } else { debug!("Command failed: Expected no arguments to list"); }
-            }
-            "new" => {
-                if args.len() == 1 {
-                    action = RequestAction::NewRoom(args[0].clone());
-                } else { debug!("Command failed: Expected name of room (no spaces allowed)"); }
-            }
-            "join" => {
-                if args.len() == 1 {
-                    if !self.in_game() {
-                        action = RequestAction::JoinRoom(args[0].clone());
-                    } else {
-                        debug!("Command failed: You are already in a game");
-                    }
-                } else { debug!("Command failed: Expected room name only (no spaces allowed)"); }
-            }
-            "part" | "leave" => {
-                if args.len() == 0 {
-                    if self.in_game() {
-                        action = RequestAction::LeaveRoom;
-                    } else {
-                        debug!("Command failed: You are already in the lobby");
-                    }
-                } else { debug!("Command failed: Expected no arguments to leave"); }
-            }
-            "quit" => {
-                trace!("Peace out!");
-                action = RequestAction::Disconnect;
-            }
-            _ => {
-                debug!("Command not recognized: {}", cmd);
-            }
-        }
-        return action;
     }
 
     /// Send a request action to the connected server
@@ -548,10 +437,6 @@ impl ClientNetState {
         let mut core = Core::new().unwrap();
         let handle = core.handle();
 
-        // Have separate thread read from stdin
-        let (stdin_tx, stdin_rx) = mpsc::unbounded::<Vec<u8>>();
-        let stdin_rx = stdin_rx.map_err(|_| panic!()); // errors not possible on rx
-
         // Unwrap ok because bind will abort if unsuccessful
         let udp = bind(&handle, Some("0.0.0.0"), Some(0)).unwrap();
         let local_addr = udp.local_addr().unwrap();
@@ -563,7 +448,6 @@ impl ClientNetState {
 
         trace!("Locally bound to {:?}.", local_addr);
         trace!("Will connect to remote {:?}.", addr);
-        trace!("Type /help for more info...");
 
         // initialize state
         let mut initial_client_state = ClientNetState::new(channel_to_conwayste);
@@ -593,25 +477,6 @@ impl ClientNetState {
                 exit(1);
             });
 
-        let stdin_stream = stdin_rx
-            .map(|buf| {
-                let string = String::from_utf8(buf).unwrap();
-                let string = String::from_str(string.trim()).unwrap();
-                if !string.is_empty() && string != "" {
-                    Some(string)
-                } else {
-                    None        // empty line; will be filtered out in next step
-                }
-            })
-            .filter(|opt_string| {
-                *opt_string != None
-            })
-            .map(|opt_string| {
-                let string = opt_string.unwrap();
-                let user_input = parse_stdin(string);
-                Event::UserInputEvent(user_input)
-            }).map_err(|_| ());
-
         let network_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () ));
         let network_stream = network_stream.and_then(|_| {
             let timeout = Timeout::new(Duration::from_millis(NETWORK_INTERVAL_IN_MS), &handle).unwrap();
@@ -635,10 +500,8 @@ impl ClientNetState {
             exit(1);
         });
 
-
         let main_loop_fut = tick_stream
             .select(packet_stream)
-            .select(stdin_stream)
             .select(network_stream)
             .select(conwayste_stream)
             .fold(initial_client_state, move |mut client_state: ClientNetState, event| {
@@ -649,14 +512,11 @@ impl ClientNetState {
                     Event::TickEvent => {
                         client_state.handle_tick_event(&udp_tx);
                     }
-                    Event::UserInputEvent(user_input) => {
-                        client_state.handle_user_input_event(&udp_tx, &exit_tx, user_input);
-                    }
                     Event::NetworkEvent => {
                         client_state.handle_network_event(&udp_tx);
                     }
                     Event::ConwaysteEvent(netwayste_request) => {
-                        let action: RequestAction = NetwaysteEvent::build_request_action_from_netwayste_event(netwayste_request);
+                        let action: RequestAction = NetwaysteEvent::build_request_action_from_netwayste_event(netwayste_request, client_state.in_game());
                         client_state.try_server_send(&udp_tx, &exit_tx, action);
                     }
                 }
@@ -687,49 +547,7 @@ impl ClientNetState {
                             .select(main_loop_fut).map(|_| ()).map_err(|_| ())
                             .select(sink_fut).map_err(|_| ());
 
-        thread::spawn(move || {
-            read_stdin(stdin_tx);
-        });
         drop(core.run(combined_fut).unwrap());
-    }
-}
-
-// At this point we should only have command or chat message to work with
-pub fn parse_stdin(mut input: String) -> UserInput {
-    if input.get(0..1) == Some("/") {
-        // this is a command
-        input.remove(0);  // remove initial slash
-
-        let mut words: Vec<String> = input.split_whitespace().map(|w| w.to_owned()).collect();
-
-        let command = if words.len() > 0 {
-                        words.remove(0).to_lowercase()
-                    } else {
-                        "".to_owned()
-                    };
-
-        UserInput::Command{cmd: command, args: words}
-    } else {
-            UserInput::Chat(input)
-    }
-}
-
-// Our helper method which will read data from stdin and send it along the
-// sender provided. This is blocking so should be on separate thread.
-fn read_stdin(mut tx: mpsc::UnboundedSender<Vec<u8>>) {
-    let mut stdin = io::stdin();
-    loop {
-        let mut buf = vec![0; 1024];
-        let n = match stdin.read(&mut buf) {
-            Err(_) |
-            Ok(0) => break,
-            Ok(n) => n,
-        };
-        buf.truncate(n);
-        tx = match tx.send(buf).wait() {
-            Ok(tx) => tx,
-            Err(_) => break,
-        };
     }
 }
 
