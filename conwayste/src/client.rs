@@ -95,7 +95,7 @@ struct MainState {
     config:              config::Config,
     viewport:            viewport::Viewport,
     input_manager:       input::InputManager,
-    net_worker:     network::ConwaysteNetWorker,
+    net_worker:     Option<network::ConwaysteNetWorker>,
 
     // Input state
     single_step:         bool,
@@ -526,7 +526,8 @@ impl MainState {
             config:              config,
             viewport:            viewport,
             input_manager:       input::InputManager::new(input::InputDeviceType::PRIMARY),
-            net_worker:     network::ConwaysteNetWorker::new(),
+            net_worker: None,
+            //XXX net_worker:     Some(network::ConwaysteNetWorker::new()),
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -536,7 +537,7 @@ impl MainState {
             toggle_paused_game:  false,
         };
 
-        s.net_worker.connect("NetwaysteIntegration".to_owned());
+        //XXX s.net_worker.connect("NetwaysteIntegration".to_owned());
 
         init_patterns(&mut s).unwrap();
         init_title_screen(&mut s).unwrap();
@@ -1019,6 +1020,7 @@ impl MainState {
 
     }
 
+    // update
     fn update_current_screen(&mut self, ctx: &mut Context) {
         self.process_menu_inputs();
 
@@ -1153,14 +1155,19 @@ impl MainState {
         self.escape_key_pressed = false;
     }
 
-    fn receive_net_updates(&mut self){
-        for e in self.net_worker.try_receive().into_iter() {
+    // update
+    fn receive_net_updates(&mut self) {
+        if self.net_worker.is_none() {
+            return;
+        }
+        let net_worker = self.net_worker.as_mut().unwrap();
+        for e in net_worker.try_receive().into_iter() {
             match e {
                 NetwaysteEvent::LoggedIn(server_version) => {
                     println!("Logged in! Server version: v{:?}", server_version);
                     self.stage = Stage::ServerList;
                     // do other stuff
-                    self.net_worker.try_send(NetwaysteEvent::List);
+                    net_worker.try_send(NetwaysteEvent::List);
                 }
                 NetwaysteEvent::JoinedRoom(room_name) => {
                     println!("Joined Room: {}", room_name);

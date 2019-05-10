@@ -39,6 +39,7 @@ pub struct ConwaysteNetWorker {
 }
 
 impl ConwaysteNetWorker {
+    // TODO: do not connect in new!
     pub fn new() -> Self {
         let (netwayste_request_sender, netwayste_request_receiver) = futures_channel::unbounded::<NetwaysteEvent>();
         let (netwayste_response_sender, netwayste_response_receiver) = std_channel::channel::<NetwaysteEvent>();
