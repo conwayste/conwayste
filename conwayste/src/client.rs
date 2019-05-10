@@ -526,8 +526,7 @@ impl MainState {
             config:              config,
             viewport:            viewport,
             input_manager:       input::InputManager::new(input::InputDeviceType::PRIMARY),
-            net_worker: None,
-            //XXX net_worker:     Some(network::ConwaysteNetWorker::new()),
+            net_worker:          None,
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -536,8 +535,6 @@ impl MainState {
             escape_key_pressed:  false,
             toggle_paused_game:  false,
         };
-
-        //XXX s.net_worker.connect("NetwaysteIntegration".to_owned());
 
         init_patterns(&mut s).unwrap();
         init_title_screen(&mut s).unwrap();
@@ -1063,6 +1060,16 @@ impl MainState {
                     menu::MenuState::MainMenu => {
                         if !self.escape_key_pressed {
                             match id {
+                                menu::MenuItemIdentifier::Connect => {
+                                    if self.net_worker.is_some() {
+                                        info!("already connected! Reconnecting...");
+                                    }
+                                    let mut net_worker = network::ConwaysteNetWorker::new();
+                                    net_worker.connect(self.config.get().user.name.clone());
+                                    info!("Connected.");
+                                    self.net_worker = Some(net_worker);
+
+                                }
                                 menu::MenuItemIdentifier::StartGame => {
                                     self.pause_or_resume_game();
                                 }
@@ -1164,8 +1171,8 @@ impl MainState {
         for e in net_worker.try_receive().into_iter() {
             match e {
                 NetwaysteEvent::LoggedIn(server_version) => {
-                    println!("Logged in! Server version: v{:?}", server_version);
-                    self.stage = Stage::ServerList;
+                    info!("Logged in! Server version: v{}", server_version);
+                    self.stage = Stage::ServerList; //XXX
                     // do other stuff
                     net_worker.try_send(NetwaysteEvent::List);
                 }
