@@ -247,6 +247,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "chromatica"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "chrono"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -326,6 +331,7 @@ dependencies = [
 name = "conwayste"
 version = "0.1.0"
 dependencies = [
+ "chromatica 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "color-backtrace 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "conway 0.3.0",
  "env_logger 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2175,6 +2181,7 @@ dependencies = [
 "checksum cexpr 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "42aac45e9567d97474a834efdee3081b3c942b2205be932092f53354ce503d6c"
 "checksum cfg-if 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "082bb9b28e00d3c9d39cc03e64ce4cea0f1bb9b3fde493f0cbc008472d22bdf4"
 "checksum cgmath 0.14.1 (registry+https://github.com/rust-lang/crates.io-index)" = "87f025a17ad3f30d49015c787903976d5f9cd6115ece1eb7f4d6ffe06b8c4080"
+"checksum chromatica 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)" = "27e4b207ee69ba560075b41aceafaf2fd29d1668b47efd8b877e084e8df90582"
 "checksum chrono 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)" = "45912881121cb26fad7c38c17ba7daa18764771836b34fab7d3fbd93ed633878"
 "checksum clang-sys 0.21.2 (registry+https://github.com/rust-lang/crates.io-index)" = "e414af9726e1d11660801e73ccc7fb81803fb5f49e5903a25b348b2b3b480d2e"
 "checksum clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b957d88f4b6a63b9d70d5f454ac8011819c6efa7727858f458ab71c756ce2d3e"

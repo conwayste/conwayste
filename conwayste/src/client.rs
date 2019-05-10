@@ -31,6 +31,7 @@ mod config;
 mod constants;
 mod input;
 mod menu;
+mod ui;
 mod utils;
 mod video;
 mod viewport;
@@ -64,6 +65,8 @@ use constants::{
     INTRO_PAUSE_DURATION,
 };
 
+use ui::{Button, Widget};
+
 #[derive(PartialEq, Clone, Copy)]
 enum Screen {
     Intro(f64),   // seconds
@@ -95,6 +98,8 @@ struct MainState {
     return_key_pressed:  bool,
     escape_key_pressed:  bool,
     toggle_paused_game:  bool,
+    button: Button::<Screen>,
+    mouse_position: Point2,
 }
 
 
@@ -460,7 +465,7 @@ impl MainState {
         let small_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
         let menu_font  = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
 
-        let bigbang = 
+        let bigbang =
         {
             // we're going to have to tear this all out when this becomes a real game
             let player0_writable = Region::new(100, 70, 34, 16);
@@ -481,7 +486,7 @@ impl MainState {
             .birth()
         };
 
-        let intro_universe = 
+        let intro_universe =
         {
             let player = PlayerBuilder::new(Region::new(0, 0, 256, 256));
             BigBang::new()
@@ -491,6 +496,11 @@ impl MainState {
                 .add_players(vec![player])
                 .birth()
         };
+
+        let button = Button::<Screen>::new(&small_font, "Test Button", Box::new(|stage: &mut Screen| {
+            println!("The test button has been clicked!");
+            (*stage) = Screen::Run;
+        }));
 
         let mut s = MainState {
             small_font:          small_font,
@@ -512,6 +522,8 @@ impl MainState {
             return_key_pressed:  false,
             escape_key_pressed:  false,
             toggle_paused_game:  false,
+            button: button,
+            mouse_position:      Point2::new(0.0,0.0)
         };
 
         init_patterns(&mut s).unwrap();
@@ -531,7 +543,7 @@ impl EventHandler for MainState {
                 remaining -= duration;
                 if remaining > INTRO_DURATION - INTRO_PAUSE_DURATION {
                     self.screen = Screen::Intro(remaining);
-                } 
+                }
                 else {
                     if remaining > 0.0 && remaining <= INTRO_DURATION - INTRO_PAUSE_DURATION {
                         self.intro_uni.next();
@@ -549,13 +561,19 @@ impl EventHandler for MainState {
                     self.menu_sys.get_controls().is_menu_key_pressed()
                 };
 
+                self.button.on_hover(&self.mouse_position);
+                let mouse_position = self.mouse_position.clone();
+                if false {
+                    self.button.on_click(&mouse_position, &mut self.screen);
+                }
+
                 //// Directional Key / Menu movement
                 ////////////////////////////////////////
                 if self.arrow_input != (0,0) && !is_direction_key_pressed {
                     // move selection accordingly
                     let (_,y) = self.arrow_input;
                     {
-                        let container = self.menu_sys.get_menu_container_mut(); 
+                        let container = self.menu_sys.get_menu_container_mut();
                         let mainmenu_md = container.get_metadata();
                         mainmenu_md.adjust_index(y);
                     }
@@ -678,7 +696,7 @@ impl EventHandler for MainState {
             Screen::Run => {
 // TODO while this works at limiting the FPS, its a bit glitchy for input events
 // Disable until we have time to look into it
-//                while timer::check_update_time(ctx, FPS) { 
+//                while timer::check_update_time(ctx, FPS) {
                 {
                     self.process_running_inputs();
 
@@ -718,6 +736,8 @@ impl EventHandler for MainState {
             }
             Screen::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn);
+
+                self.button.draw(ctx, &self.small_font)?;
             }
             Screen::Run => {
                 self.draw_universe(ctx)?;
@@ -761,6 +781,7 @@ impl EventHandler for MainState {
             }
             Screen::Exit => { unreachable!() }
         }
+        self.mouse_position = Point2::new(x as f32, y as f32);
     }
 
     fn mouse_button_up_event(&mut self,
@@ -843,7 +864,7 @@ struct GameOfLifeDrawParams {
 
 impl MainState {
 
-    fn draw_game_of_life(&self, 
+    fn draw_game_of_life(&self,
                          ctx: &mut Context,
                          universe: &Universe,
                          draw_params: &GameOfLifeDrawParams
@@ -1032,7 +1053,7 @@ impl MainState {
                                 self.win_resize = 3;
                             }
                             Keycode::LGui => {
-                            
+
                             }
                             Keycode::D => {
                                 // TODO: do something with this debug code
