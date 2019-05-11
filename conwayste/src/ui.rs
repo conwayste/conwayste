@@ -31,35 +31,59 @@ pub trait Widget<T> {
     fn draw(&self, ctx: &mut Context, font: &Font) -> GameResult<()>;
 }
 
+pub struct Label {
+    text: &'static str,
+    color: Color,
+}
+
+impl Label {
+    pub fn new(text: &'static str, color: Color) -> Self {
+        Label {
+            text: text,
+            color: color,
+        }
+    }
+
+    pub fn set_color(mut self, color: Color) -> Self {
+        self.color = color;
+        self
+    }
+
+    pub fn set_text(mut self, text: &'static str) -> Self {
+        self.text = text;
+        self
+    }
+}
+
 pub struct Button<T> {
-    label: &'static str,
-    label_color: Color,
+    label: Label,
     button_color: Color,
     draw_mode: DrawMode,
     pub dimensions: Rect,
     hover: bool,
+    borderless: bool,
     click: Box<dyn FnMut(&mut T)>
 }
 
 impl<T> Button<T> {
-    pub fn new(font: &Font, label: &'static str, action: Box<dyn FnMut(&mut T)>) -> Self {
+    pub fn new(font: &Font, button_text: &'static str, action: Box<dyn FnMut(&mut T)>) -> Self {
         let offset = Point2::new(8.0, 4.0);
-        let width = font.get_width(label) as f32 + offset.x*2.0;
+        let width = font.get_width(button_text) as f32 + offset.x*2.0;
         let height = font.get_height() as f32 + offset.y*2.0;
 
         Button {
-            label: label,
-            label_color: Color::from(css::WHITE),
+            label: Label::new(button_text, Color::from(css::WHITE)),
             button_color: Color::from(css::DARKCYAN),
             draw_mode: DrawMode::Fill,
             dimensions: Rect::new(30.0, 20.0, width, height),
             hover: false,
+            borderless: false,
             click: action,
         }
     }
 
     pub fn label_color(mut self, color: Color) -> Self {
-        self.label_color = color;
+        self.label = self.label.set_color(color);
         self
     }
 
@@ -78,7 +102,7 @@ impl<T> Widget<T> for Button<T> {
     fn on_click(&mut self, point: &Point2, t: &mut T)
     {
         if within_widget(point, &self.dimensions) {
-            println!("Clicked Button, \"{}\"", self.label);
+            println!("Clicked Button, \"{}\"", self.label.text);
             (self.click)(t)
         }
     }
@@ -86,13 +110,15 @@ impl<T> Widget<T> for Button<T> {
     fn draw(&self, ctx: &mut Context, font: &Font) -> GameResult<()> {
         let offset = Point2::new(8.0, 4.0);
         graphics::set_color(ctx, self.button_color)?;
+
         let draw_mode = if self.hover {
             DrawMode::Fill
         } else {
             DrawMode::Line(2.0)
         };
+
         graphics::rectangle(ctx, draw_mode, self.dimensions)?;
-        utils::Graphics::draw_text(ctx, font, self.label_color, &self.label, &self.dimensions.point(), Some(&offset))
+        utils::Graphics::draw_text(ctx, font, self.label.color, &self.label.text, &self.dimensions.point(), Some(&offset))
     }
 }
 
