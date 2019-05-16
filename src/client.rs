@@ -175,9 +175,7 @@ impl ClientNetState {
             ResponseCode::RoomList(ref rooms) => {
                 self.handle_room_list(rooms.to_vec());
             }
-            ResponseCode::KeepAlive => {
-                self.heartbeat = Some(Instant::now());
-            },
+            ResponseCode::KeepAlive => {},
             // errors
             ResponseCode::Unauthorized(opt_error) => {
                 info!("Unauthorized action attempted by client: {:?}", opt_error);
@@ -201,7 +199,7 @@ impl ClientNetState {
         let packet = opt_packet.unwrap();
         match packet.clone() {
             Packet::Response{sequence, request_ack: _, code} => {
-                self.process_event_code(ResponseCode::KeepAlive); // On any incoming event update the heartbeat.
+                self.heartbeat = Some(Instant::now());
                 let code = code.clone();
                 if code != ResponseCode::KeepAlive {
                     // When a packet is acked, we can remove it from the TX buffer and buffer the response for
@@ -298,8 +296,11 @@ impl ClientNetState {
     pub fn handle_logged_in(&mut self, cookie: String, server_version: String) {
         self.cookie = Some(cookie);
 
-        self.name = Some("blah3".to_owned()); //XXX HACK
-        info!("Set client name to {:?}", self.name.clone().unwrap());
+        if let Some(name) = self.name.as_ref() {
+            info!("Logged in with client name {:?}", name);
+        } else {
+            warn!("Logged in, but no name set!");
+        }
         self.check_for_upgrade(&server_version);
     }
 
@@ -350,8 +351,8 @@ impl ClientNetState {
                 let queue = self.network.rx_chat_messages.as_mut().unwrap();
                 queue.buffer_item(chat_message.clone());
 
-                if let Some(ref client_name) = self.name.as_ref() {
-                    if *client_name != &chat_message.player_name {
+                if let Some(client_name) = self.name.as_ref() {
+                    if client_name != &chat_message.player_name {
                         info!("{}: {}", chat_message.player_name, chat_message.message);
                     }
                 } else {
