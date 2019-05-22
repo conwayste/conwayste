@@ -503,25 +503,33 @@ impl EventHandler for MainState {
     // Note about coordinates: x and y are "screen coordinates", with the origin at the top left of
     // the screen. x becomes more positive going from left to right, and y becomes more positive
     // going top to bottom.
+    // Currently only allow one mouse button event at a time (e.g. left+right click not valid)
     fn mouse_button_down_event(&mut self, _ctx: &mut Context, button: MouseButton, x: i32, y: i32) {
-        if self.mouse_info.current_button != button {
-            self.mouse_info.reset_time();
+        if self.mouse_info.current_button == MouseButton::Unknown {
             self.mouse_info.current_button = button;
             self.mouse_info.down_timestamp = Some(Instant::now());
             self.mouse_info.action = Some(MouseAction::Held);
-            println!("Down");
+            self.mouse_info.drag_position = (x, y);
+
+            if self.mouse_info.debug_print {
+                println!("{:?} Down", button);
+            }
         }
-        self.mouse_info.down_position = (x, y);
     }
 
     fn mouse_motion_event(&mut self, _ctx: &mut Context, state: MouseState, x: i32, y: i32, _xrel: i32, _yrel: i32) {
         self.mouse_info.position = (x, y);
 
-        if self.mouse_info.action == Some(MouseAction::Held) {
-            // Might we be holding the same button?
-            if let Some(timestamp) = self.mouse_info.down_timestamp {
-                self.mouse_info.held_duration = timestamp.elapsed();
-                println!("Holding!");
+        if self.mouse_info.current_button != MouseButton::Unknown
+            && (self.mouse_info.action == Some(MouseAction::Held) || self.mouse_info.action == Some(MouseAction::Drag)) {
+            self.mouse_info.action = Some(MouseAction::Drag);
+            self.mouse_info.drag_position = (x, y);
+
+            if self.mouse_info.debug_print {
+                println!("Dragging {:?}, Current Position {:?}, Time Held: {:?}",
+                    self.mouse_info.current_button,
+                    self.mouse_info.drag_position,
+                    self.mouse_info.down_timestamp.unwrap().elapsed());
             }
         }
 
@@ -543,14 +551,36 @@ impl EventHandler for MainState {
     }
 
     fn mouse_button_up_event(&mut self, _ctx: &mut Context, button: MouseButton, x: i32, y: i32) {
-        let (down_x, down_y) = self.mouse_info.down_position;
-        if self.mouse_info.current_button == button && (down_x - x).abs() < 3 && (down_y - y).abs() < 3 {
+        // Register as a click if we ended near where we started
+        if self.mouse_info.current_button == button {
             self.mouse_info.action = Some(MouseAction::Click);
-            println!("Click");
+            self.mouse_info.position = (x, y);
+
+            if self.mouse_info.debug_print {
+                println!("Clicked {:?}, Current Position {:?}, Time Held: {:?}",
+                    button,
+                    (x, y),
+                    self.mouse_info.down_timestamp.unwrap().elapsed());
+            }
         }
-        self.mouse_info.position = (x, y);
 
         self.drag_draw = None;   // probably unnecessary because of state.left() check in mouse_motion_event
+    }
+
+    /// Vertical scroll:   (y, positive away from and negative toward the user)
+    /// Horizontal scroll: (x, positive to the right and negative to the left)
+    fn mouse_wheel_event(&mut self, _ctx: &mut Context, x: i32, y: i32) {
+        self.mouse_info.scroll_event = if y > 0 {
+                Some(ScrollEvent::ScrollUp)
+            } else if y < 0 {
+                Some(ScrollEvent::ScrollDown)
+            } else {
+                None
+            };
+
+        if self.mouse_info.debug_print {
+            println!("Wheel Event {:?}", self.mouse_info.scroll_event);
+        }
     }
 
     fn key_down_event(&mut self, ctx: &mut Context, keycode: Keycode, _keymod: Mod, repeat: bool ) {
@@ -890,12 +920,18 @@ impl MainState {
 
     fn post_update(&mut self) -> GameResult<()> {
         if let Some(action) = self.mouse_info.action {
-            if action == MouseAction::Click {
-                self.mouse_info.reset_time();
-                self.mouse_info.down_position = (0, 0);
-                self.mouse_info.action = None;
+            match action {
+                MouseAction::Click => {
+                    self.mouse_info.down_timestamp = None;
+                    self.mouse_info.action = None;
+                    self.mouse_info.drag_position = (0, 0);
+                    self.mouse_info.current_button = MouseButton::Unknown;
+                }
+                MouseAction::Drag | MouseAction::Held => {}
             }
         }
+        self.mouse_info.scroll_event = None;
+
         self.arrow_input = (0, 0);
         self.input_manager.expunge();
 
@@ -917,17 +953,17 @@ impl MainState {
     }
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 enum ScrollEvent {
     ScrollUp, // Away from the user
     ScrollDown, // Towards the user
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 enum MouseAction {
     Held,
+    Drag,
     Click,
-    DoubleClick
 }
 
 struct MouseInfo {
@@ -935,9 +971,9 @@ struct MouseInfo {
     action: Option<MouseAction>,
     scroll_event: Option<ScrollEvent>,
     down_timestamp: Option<Instant>,
-    held_duration: Duration,
-    down_position: (i32, i32),
+    drag_position: (i32, i32),
     position: (i32, i32),
+    debug_print: bool
 }
 
 impl MouseInfo {
@@ -947,15 +983,22 @@ impl MouseInfo {
             action: None,
             scroll_event: None,
             down_timestamp: None,
-            held_duration: Duration::new(0, 0),
-            down_position: (0, 0),
+            drag_position: (0, 0),
             position: (0, 0),
+            debug_print: false,
         }
     }
 
-    fn reset_time(&mut self) {
-        self.down_timestamp = None;
-        self.held_duration = Duration::new(0,0);
+    #[allow(dead_code)]
+    fn print_mouse_state(&mut self) {
+        if self.debug_print {
+            println!("Button: {:?}", self.current_button);
+            println!("Action: {:?}", self.action);
+            println!("Scroll: {:?}", self.scroll_event);
+            println!("Down TS: {:?}", self.down_timestamp);
+            println!("Drag Pos: {:?}", self.drag_position);
+            println!("Position: {:?}", self.position);
+        }
     }
 }
 
