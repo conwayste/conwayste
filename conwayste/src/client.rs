@@ -65,7 +65,7 @@ use constants::{
     INTRO_DURATION,
     INTRO_PAUSE_DURATION,
 };
-
+use viewport::Cell;
 use ui::{Button, Widget};
 
 #[derive(PartialEq, Clone, Copy)]
@@ -439,11 +439,43 @@ impl EventHandler for MainState {
                 self.escape_key_pressed = false;
             }
             Screen::Run => {
-// TODO while this works at limiting the FPS, its a bit glitchy for input events
-// Disable until we have time to look into it
-//                while timer::check_update_time(ctx, FPS) {
+                // TODO while this works at limiting the FPS, its a bit glitchy for input events
+                // Disable until we have time to look into it
+                // while timer::check_update_time(ctx, FPS) {
                 {
                     self.process_running_inputs();
+                    if self.mouse_info.current_button == MouseButton::Left {
+                        let (x,y) = self.mouse_info.position;
+                        let mouse_pos = Point2::new(x as f32, y as f32);
+
+                        fn flip_cell(ms: &mut MainState, cell: Cell) {
+                            // Make dead cells alive or alive cells dead
+                            let result = ms.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID);
+                            ms.drag_draw = match result {
+                                Ok(state) => Some(state),
+                                Err(_)    => None,
+                            };
+                        }
+
+                        match self.mouse_info.action {
+                            Some(MouseAction::Click) => {
+                                if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                                    flip_cell(self, cell)
+                                }
+                            }
+                            Some(MouseAction::Drag) => {
+                                if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                                    // Only make dead cells alive
+                                    if let Some(cell_state) = self.drag_draw {
+                                        self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
+                                    } else {
+                                        flip_cell(self, cell)
+                                    }
+                                }
+                            }
+                            Some(MouseAction::Held) | None => {} // do nothing
+                        }
+                    }
 
                     if self.single_step {
                         self.running = false;
@@ -509,7 +541,7 @@ impl EventHandler for MainState {
             self.mouse_info.current_button = button;
             self.mouse_info.down_timestamp = Some(Instant::now());
             self.mouse_info.action = Some(MouseAction::Held);
-            self.mouse_info.drag_position = (x, y);
+            self.mouse_info.position = (x,y);
 
             if self.mouse_info.debug_print {
                 println!("{:?} Down", button);
@@ -517,36 +549,19 @@ impl EventHandler for MainState {
         }
     }
 
-    fn mouse_motion_event(&mut self, _ctx: &mut Context, state: MouseState, x: i32, y: i32, _xrel: i32, _yrel: i32) {
+    fn mouse_motion_event(&mut self, _ctx: &mut Context, _state: MouseState, x: i32, y: i32, _xrel: i32, _yrel: i32) {
         self.mouse_info.position = (x, y);
 
         if self.mouse_info.current_button != MouseButton::Unknown
             && (self.mouse_info.action == Some(MouseAction::Held) || self.mouse_info.action == Some(MouseAction::Drag)) {
             self.mouse_info.action = Some(MouseAction::Drag);
-            self.mouse_info.drag_position = (x, y);
 
             if self.mouse_info.debug_print {
                 println!("Dragging {:?}, Current Position {:?}, Time Held: {:?}",
                     self.mouse_info.current_button,
-                    self.mouse_info.drag_position,
+                    self.mouse_info.position,
                     self.mouse_info.down_timestamp.unwrap().elapsed());
             }
-        }
-
-        let current_screen = match self.screen_stack.last() {
-            Some(screen) => screen,
-            None => panic!("Error in mouse_motion_event! Screen_stack is empty!"),
-        };
-        match current_screen {
-            Screen::Intro(_) => {}
-            Screen::Menu | Screen::Run => {
-                if state.left() && self.drag_draw != None {
-                    self.input_manager.add(input::InputAction::MouseDrag(MouseButton::Left, x, y));
-                } else {
-                    self.input_manager.add(input::InputAction::MouseMovement(x, y));
-                }
-            }
-            Screen::Exit => { unreachable!() }
         }
     }
 
@@ -706,7 +721,7 @@ impl MainState {
         if draw_params.draw_counter {
             let gen_counter_str = universe.latest_gen().to_string();
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
-            utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None);
+            utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
         }
 
         ////////////////////// END
@@ -750,7 +765,12 @@ impl MainState {
         match current_screen {
             Screen::Menu => {
                 if cur_menu_state == menu::MenuState::MainMenu {
-                    self.screen_stack.pop();
+                    // If at 1, then we haven't started the game yet
+                    if self.screen_stack.len() == 1 {
+                        self.screen_stack.push(Screen::Run);
+                    } else {
+                        self.screen_stack.pop();
+                    }
                     self.running = true;
                 }
             }
@@ -765,37 +785,11 @@ impl MainState {
         self.toggle_paused_game = false;
     }
 
-    // TODO
-    // Just had an idea... transform the user inputs events into game events
-    // That way differnt user inputs (gamepad, keyboard/mouse) resolve to a single game event
-    // This logic would be agnostic from how the user is interacting with the game
     fn process_running_inputs(&mut self) {
 
         while self.input_manager.has_more() {
             if let Some(input) = self.input_manager.remove() {
                 match input {
-
-                    // MOUSE EVENTS
-                    input::InputAction::MouseClick(MouseButton::Left, x, y) => {
-                        // Need to go through UI manager to determine what we are interacting with, TODO
-                        // Could be UI element (drawpad) or playing field
-                        if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
-                            let result = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID);
-                            self.drag_draw = match result {
-                                Ok(state) => Some(state),
-                                Err(_)    => None,
-                            };
-                        }
-                    }
-                    input::InputAction::MouseClick(MouseButton::Right, _x, _y) => { }
-                    input::InputAction::MouseMovement(_x, _y) => { }
-                    input::InputAction::MouseDrag(MouseButton::Left, x, y) => {
-                        if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
-                            if let Some(cell_state) = self.drag_draw {
-                                self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
-                            }
-                        }
-                    }
 
                     // KEYBOARD EVENTS
                     input::InputAction::KeyPress(keycode, repeat) => {
@@ -868,12 +862,6 @@ impl MainState {
         while self.input_manager.has_more() {
             if let Some(input) = self.input_manager.remove() {
                 match input {
-                    input::InputAction::MouseClick(MouseButton::Left, _x, _y) => {}
-                    input::InputAction::MouseClick(MouseButton::Right, _x, _y) => {}
-                    input::InputAction::MouseMovement(_x, _y) => {}
-                    input::InputAction::MouseDrag(MouseButton::Left, _x, _y) => {}
-                    input::InputAction::MouseRelease(_) => {}
-
                     input::InputAction::KeyPress(keycode, repeat) => {
                         if !self.menu_sys.get_controls().is_menu_key_pressed() {
                             match keycode {
@@ -924,7 +912,6 @@ impl MainState {
                 MouseAction::Click => {
                     self.mouse_info.down_timestamp = None;
                     self.mouse_info.action = None;
-                    self.mouse_info.drag_position = (0, 0);
                     self.mouse_info.current_button = MouseButton::Unknown;
                 }
                 MouseAction::Drag | MouseAction::Held => {}
@@ -971,7 +958,6 @@ struct MouseInfo {
     action: Option<MouseAction>,
     scroll_event: Option<ScrollEvent>,
     down_timestamp: Option<Instant>,
-    drag_position: (i32, i32),
     position: (i32, i32),
     debug_print: bool
 }
@@ -983,9 +969,8 @@ impl MouseInfo {
             action: None,
             scroll_event: None,
             down_timestamp: None,
-            drag_position: (0, 0),
             position: (0, 0),
-            debug_print: false,
+            debug_print: true,
         }
     }
 
@@ -996,7 +981,6 @@ impl MouseInfo {
             println!("Action: {:?}", self.action);
             println!("Scroll: {:?}", self.scroll_event);
             println!("Down TS: {:?}", self.down_timestamp);
-            println!("Drag Pos: {:?}", self.drag_position);
             println!("Position: {:?}", self.position);
         }
     }
