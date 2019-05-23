@@ -374,6 +374,8 @@ impl ClientNetState {
             }
 
             if action == RequestAction::Disconnect {
+                // TODO: we don't necessarily want the netwayste thread to exit when we Disconnect
+                // from a server!
                 self.disconnect_initiated = true;
                 netwayste_send!(exit_tx, ());
             }
@@ -490,16 +492,17 @@ impl ClientNetState {
         });
 
         let conwayste_rx = channel_from_conwayste.map_err(|_| panic!());
-        let conwayste_stream = conwayste_rx.filter(|event| {
-            *event != NetwaysteEvent::None
-        })
-        .map(|event| {
-            Event::ConwaysteEvent(event)
-        })
-        .map_err(|e| {
-            error!("Got error from conwayste event channel {:?}", e);
-            exit(1);
-        });
+        let conwayste_stream = conwayste_rx
+            .filter(|event| {
+                *event != NetwaysteEvent::None
+            })
+            .map(|event| {
+                Event::ConwaysteEvent(event)
+            })
+            .map_err(|e| {
+                error!("Got error from conwayste event channel {:?}", e);
+                exit(1);
+            });
 
         let main_loop_fut = tick_stream
             .select(packet_stream)
@@ -518,6 +521,14 @@ impl ClientNetState {
                     }
                     Event::ConwaysteEvent(netwayste_request) => {
                         let action: RequestAction = NetwaysteEvent::build_request_action_from_netwayste_event(netwayste_request, client_state.in_game());
+                        match action {
+                            RequestAction::Connect{ref name, ..} => {
+                                // TODO: do not store the name on client_state since that's the wrong
+                                // place for it.
+                                client_state.name = Some(name.to_owned());
+                            }
+                            _ => {}
+                        }
                         client_state.try_server_send(&udp_tx, &exit_tx, action);
                     }
                 }

@@ -32,8 +32,6 @@ use std::sync::mpsc::TryRecvError;
 use std::thread;
 use std::time::Duration;
 
-const SLEEP: Duration = Duration::from_millis(33);
-
 use chrono::Local;
 use futures::sync::mpsc;
 use log::LevelFilter;
@@ -41,6 +39,8 @@ use netwayste::{
     client::{ClientNetState, CLIENT_VERSION},
     net::{NetwaysteEvent, RequestAction, Packet, ResponseCode},
 };
+
+const SLEEP: Duration = Duration::from_millis(33);  // 30 "frames" per second
 
 #[derive(PartialEq, Debug, Clone)]
 enum UserInput {
@@ -166,7 +166,7 @@ fn build_command_request_action(cmd: String, args: Vec<String>) -> NetwaysteEven
             debug!("Command not recognized: {}", cmd);
         }
     }
-    return new_event;
+    new_event
 }
 
 fn handle_user_input_event(user_input: UserInput) -> NetwaysteEvent {
