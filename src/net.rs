@@ -17,28 +17,24 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-extern crate futures;
-extern crate tokio_core;
-extern crate bincode;
-extern crate semver;
-
 use std::cmp::{PartialEq, PartialOrd, Ordering};
 use std::fmt::Debug;
 use std::{io, fmt, str, result, time::{Duration, Instant}};
 use std::net::{self, SocketAddr};
 use std::collections::VecDeque;
 
-use self::futures::sync::mpsc;
-use self::tokio_core::net::{UdpSocket, UdpCodec};
-use self::tokio_core::reactor::Handle;
-use self::bincode::{serialize, deserialize, Infinite};
-use self::semver::{Version, SemVerError};
+use futures::sync::mpsc;
+use tokio_core::net::{UdpSocket, UdpCodec};
+use tokio_core::reactor::Handle;
+use bincode::{serialize, deserialize, Infinite};
+use semver::{Version, SemVerError};
+use serde::{Serialize, Deserialize};
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
 pub const DEFAULT_PORT: u16 = 2016;
-const TIMEOUT_IN_SECONDS:    u64   = 5;
-const NETWORK_QUEUE_LENGTH: usize = 600;        // spot testing with poor network (~675 cmds) showed a max of ~512 length
+pub const TIMEOUT_IN_SECONDS:    u64   = 5;
+pub const NETWORK_QUEUE_LENGTH: usize = 600;        // spot testing with poor network (~675 cmds) showed a max of ~512 length
                                                 // keep this for now until the performance issues are resolved
 const RETRANSMISSION_THRESHOLD_IN_MS: Duration = Duration::from_millis(400);
 const RETRY_THRESHOLD_IN_MS: usize = 2;             //
@@ -93,7 +89,7 @@ impl From<io::Error> for NetError {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum RequestAction {
     None,   // never actually sent
-    Connect{name: String, client_version: String},      // server replies w/ OK/PleaseUpgrade; TODO: password
+    Connect{name: String, client_version: String},
     Disconnect,
     KeepAlive(u64),     // Send latest response ack on each heartbeat
     ListPlayers,
@@ -109,18 +105,18 @@ pub enum RequestAction {
 pub enum ResponseCode {
     // success - these are all 200 in HTTP
     OK,                              // 200 no data
-    LoggedIn(String, String),        // player is logged in -- provide cookie
+    LoggedIn(String, String),        // player is logged in -- (cookie, server version)
     JoinedRoom(String),              // player has joined the room
     LeaveRoom,                       // player has left the room
     PlayerList(Vec<String>),         // list of players in room or lobby
-    RoomList(Vec<(String, u64, bool)>), // (room name, # players, game has started?)
+    RoomList(Vec<(String, u64, bool)>), // (room name, # players, game has started?
+
     // errors
     BadRequest(Option<String>),      // 400 unspecified error that is client's fault
     Unauthorized(Option<String>),    // 401 not logged in
     TooManyRequests(Option<String>), // 429
     ServerError(Option<String>),     // 500
     NotConnected(Option<String>),    // no equivalent in HTTP due to handling at lower (TCP) level
-    PleaseUpgrade(Option<String>),   // client should give upgrade msg to user, but continue as if OK
     KeepAlive,                       // Server's heart is beating
 }
 
@@ -341,6 +337,7 @@ impl Ord for Packet {
 }
 
 //////////////// Packet (de)serialization ////////////////
+#[allow(dead_code)]
 pub struct LineCodec;
 impl UdpCodec for LineCodec {
     type In = (SocketAddr, Option<Packet>);   // if 2nd element is None, it means deserialization failure
@@ -387,6 +384,7 @@ pub fn get_version() -> result::Result<Version, SemVerError> {
     Version::parse(VERSION)
 }
 
+#[allow(dead_code)]
 pub fn has_connection_timed_out(heartbeat: Option<Instant>) -> bool {
     if let Some(heartbeat) = heartbeat {
         (Instant::now() - heartbeat) > Duration::from_secs(TIMEOUT_IN_SECONDS)
@@ -943,1011 +941,124 @@ impl NetworkManager {
         }
     }
 
+}
+
+#[derive(PartialEq, Debug, Clone)]
+#[allow(dead_code)]
+pub enum NetwaysteEvent {
+    None,
+
+    // Requests
+    Connect(String, String),            // Player name, version
+    Disconnect,
+    List,
+    ChatMessage(String),                // chat message
+    NewRoom(String),                    // room name
+    JoinRoom(String),                   // room name
+    LeaveRoom,
+
+    // Responses
+    LoggedIn(String),                   // player is logged in -- (version)
+    JoinedRoom(String),                 // player has joined the room
+    PlayerList(Vec<String>),     // list of players in room or lobby with ping (ms)
+    RoomList(Vec<(String, u64, bool)>), // (room name, # players, game has started?)
+    LeftRoom,
+    BadRequest(Option<String>),
+    ServerError(Option<String>),
+
+    // Updates
+    ChatMessages(Vec<(String, String)>), // (player name, message)
+    UniverseUpdate,                       // TODO add libconway stuff for current universe gen
 
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use std::{thread, time::{Instant, Duration}};
+impl NetwaysteEvent {
 
-    fn fake_socket_addr() -> SocketAddr {
-        use std::net::{IpAddr, Ipv4Addr};
-        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)), 5678)
-    }
-
-
-    // `discord_older_packets()` tests are disabled  until after the necessity of the function is re-evaluated
-    #[test]
-    #[ignore]
-    fn test_discard_older_packets_empty_queue() {
-        let mut nm = NetworkManager::new();
-
-        nm.tx_packets.discard_older_items();
-        nm.rx_packets.discard_older_items();
-        assert_eq!(nm.tx_packets.len(), 0);
-        assert_eq!(nm.rx_packets.len(), 0);
-    }
-
-    #[test]
-    #[ignore]
-    fn test_discard_older_packets_under_limit_keeps_all_messages() {
-        let mut nm = NetworkManager::new();
-        let pkt = Packet::Request {
-            sequence: 0,
-            response_ack: None,
-            cookie: None,
-            action: RequestAction::None
-        };
-
-        nm.tx_packets.push_back(pkt.clone());
-        nm.tx_packets.push_back(pkt.clone());
-        nm.tx_packets.push_back(pkt.clone());
-
-        nm.tx_packets.discard_older_items();
-        assert_eq!(nm.tx_packets.len(), 3);
-
-        nm.rx_packets.push_back(pkt.clone());
-        nm.rx_packets.push_back(pkt.clone());
-        nm.rx_packets.push_back(pkt.clone());
-
-        nm.rx_packets.discard_older_items();
-        assert_eq!(nm.rx_packets.len(), 3);
-    }
-
-    #[test]
-    #[ignore]
-    fn test_discard_older_packets_equal_to_limit() {
-        let mut nm = NetworkManager::new();
-        let pkt = Packet::Request {
-            sequence: 0,
-            response_ack: None,
-            cookie: None,
-            action: RequestAction::None
-        };
-
-        for _ in 0..NETWORK_QUEUE_LENGTH {
-            nm.tx_packets.push_back(pkt.clone());
-        }
-        assert_eq!(nm.tx_packets.len(), NETWORK_QUEUE_LENGTH);
-        nm.tx_packets.discard_older_items();
-        assert_eq!(nm.tx_packets.len(), NETWORK_QUEUE_LENGTH-1);
-
-        for _ in 0..NETWORK_QUEUE_LENGTH {
-            nm.rx_packets.push_back(pkt.clone());
-        }
-        assert_eq!(nm.rx_packets.len(), NETWORK_QUEUE_LENGTH);
-        nm.rx_packets.discard_older_items();
-        assert_eq!(nm.rx_packets.len(), NETWORK_QUEUE_LENGTH);
-    }
-
-    #[test]
-    #[ignore]
-    fn test_discard_older_packets_exceeds_limit_retains_max() {
-        let mut nm = NetworkManager::new();
-        let pkt = Packet::Request {
-            sequence: 0,
-            response_ack: None,
-            cookie: None,
-            action: RequestAction::None
-        };
-
-        for _ in 0..NETWORK_QUEUE_LENGTH+10 {
-            nm.tx_packets.push_back(pkt.clone());
-        }
-        assert_eq!(nm.tx_packets.len(), NETWORK_QUEUE_LENGTH+10);
-        nm.tx_packets.discard_older_items();
-        assert_eq!(nm.tx_packets.len(), NETWORK_QUEUE_LENGTH-1);
-
-        for _ in 0..NETWORK_QUEUE_LENGTH+5 {
-            nm.rx_packets.push_back(pkt.clone());
-        }
-        assert_eq!(nm.rx_packets.len(), NETWORK_QUEUE_LENGTH+5);
-        nm.rx_packets.discard_older_items();
-        assert_eq!(nm.rx_packets.len(), NETWORK_QUEUE_LENGTH);
-    }
-
-    #[test]
-    fn test_buffer_item_queue_is_empty() {
-        let mut nm = NetworkManager::new();
-        let pkt = Packet::Request {
-            sequence: 0,
-            response_ack: None,
-            cookie: None,
-            action: RequestAction::None
-        };
-
-        nm.tx_packets.buffer_item(pkt);
-        assert_eq!(nm.tx_packets.len(), 1);
-    }
-
-    #[test]
-    fn test_buffer_item_sequence_number_reused() {
-        let mut nm = NetworkManager::new();
-        let pkt = Packet::Request {
-            sequence: 0,
-            response_ack: None,
-            cookie: None,
-            action: RequestAction::None
-        };
-
-        nm.tx_packets.buffer_item(pkt);
-        let pkt = Packet::Request {
-            sequence: 0,
-            response_ack: None,
-            cookie: None,
-            action: RequestAction::LeaveRoom
-        };
-
-        nm.tx_packets.buffer_item(pkt);
-        let pkt = nm.tx_packets.queue.back().unwrap();
-        if let Packet::Request { sequence: _, response_ack: _, cookie: _, action } = pkt {
-            assert_eq!(*action, RequestAction::None);
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_basic_sequencing() {
-        let mut nm = NetworkManager::new();
-        let pkt = Packet::Request {
-            sequence: 0,
-            response_ack: None,
-            cookie: None,
-            action: RequestAction::None
-        };
-
-        nm.tx_packets.buffer_item(pkt);
-        let pkt = Packet::Request {
-            sequence: 1,
-            response_ack: None,
-            cookie: None,
-            action: RequestAction::LeaveRoom
-        };
-        nm.tx_packets.buffer_item(pkt);
-        assert_eq!(nm.tx_packets.len(), 2);
-    }
-
-    #[test]
-    fn test_buffer_item_newer_packet_has_smaller_sequence_number() {
-        let mut nm = NetworkManager::new();
-        let pkt = Packet::Request {
-            sequence: 1,
-            response_ack: None,
-            cookie: None,
-            action: RequestAction::None
-        };
-
-        nm.tx_packets.buffer_item(pkt);
-        let pkt = Packet::Request {
-            sequence: 0,
-            response_ack: None,
-            cookie: None,
-            action: RequestAction::LeaveRoom
-        };
-        nm.tx_packets.buffer_item(pkt);
-        assert_eq!(nm.tx_packets.len(), 2);
-
-        let pkt = nm.tx_packets.queue.back().unwrap();
-        if let Packet::Request { sequence, response_ack: _, cookie: _, action:_ } = pkt {
-            assert_eq!(*sequence, 1);
-        }
-    }
-
-
-    // `buffer_item()` test with an enforced hard limit size is disabled until performance is re-examined
-    #[test]
-    #[ignore]
-    fn test_buffer_item_max_queue_limit_maintained() {
-        let mut nm = NetworkManager::new();
-        for index in 0..NETWORK_QUEUE_LENGTH+5 {
-            let pkt = Packet::Request {
-                sequence: index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.tx_packets.buffer_item(pkt);
-        }
-
-        let mut iter =  nm.tx_packets.queue.iter();
-        for index in 5..NETWORK_QUEUE_LENGTH+5 {
-            let pkt = iter.next().unwrap();
-            if let Packet::Request { sequence, response_ack: _, cookie: _, action:_ } = pkt {
-                assert_eq!(*sequence, index as u64);
+    #[allow(dead_code)]
+    pub fn build_request_action_from_netwayste_event(nw_event: NetwaysteEvent, is_in_game: bool) -> RequestAction {
+        match nw_event {
+            NetwaysteEvent::None => {
+                RequestAction::None
+            }
+            NetwaysteEvent::Connect(name, version) => {
+                RequestAction::Connect{name: name, client_version: version}
+            }
+            NetwaysteEvent::Disconnect => {
+                RequestAction::Disconnect
+            }
+            NetwaysteEvent::List => {
+                // players or rooms
+                if is_in_game {
+                    RequestAction::ListPlayers
+                } else {
+                    // lobby
+                    RequestAction::ListRooms
+                }
+            }
+            NetwaysteEvent::ChatMessage(msg) => {
+                RequestAction::ChatMessage(msg)
+            }
+            NetwaysteEvent::NewRoom(name) => {
+                if !is_in_game {
+                    RequestAction::NewRoom(name)
+                } else {
+                    debug!("Command failed: You are in a game");
+                    RequestAction::None
+                }
+            }
+            NetwaysteEvent::JoinRoom(name) => {
+                if !is_in_game {
+                    RequestAction::JoinRoom(name)
+                } else {
+                    debug!("Command failed: You are already in a game");
+                    RequestAction::None
+                }
+            }
+            NetwaysteEvent::LeaveRoom => {
+                if is_in_game {
+                    RequestAction::LeaveRoom
+                } else {
+                    debug!("Command failed: You are already in the lobby");
+                    RequestAction::None
+                }
+            }
+            _ => {
+                panic!("Unexpected netwayste event during request action construction! {:?}", nw_event);
             }
         }
     }
 
-    #[test]
-    fn test_buffer_item_basic_contiguous_ascending() {
-        let mut nm = NetworkManager::new();
-        for index in 0..5 {
-            let pkt = Packet::Request {
-                sequence: index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        for index in 0..5 {
-            let pkt = iter.next().unwrap();
-            assert_eq!(index, pkt.sequence_number() as usize);
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_basic_contiguous_descending() {
-        let mut nm = NetworkManager::new();
-        for index in (0..5).rev() {
-            let pkt = Packet::Request {
-                sequence: index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        for index in 0..5 {
-            let pkt = iter.next().unwrap();
-            assert_eq!(index, pkt.sequence_number() as usize);
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_basic_sequential_gap_ascending() {
-        let mut nm = NetworkManager::new();
-        // TODO Replace with (x,y).step_by(z) once stable
-        for index in [0,2,4,6,8,10].iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        for &index in [0,2,4,6,8,10].iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(index, pkt.sequence_number() as usize);
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_basic_sequential_gap_descending() {
-        let mut nm = NetworkManager::new();
-        for index in [0,2,4,6,8,10].iter().rev() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        for index in [0,2,4,6,8,10].iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number());
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_basic_random() {
-        let mut nm = NetworkManager::new();
-        for index in [5, 2, 9, 1, 0, 8, 6].iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        for index in [0, 1, 2, 5, 6, 8, 9].iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number() as usize);
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_butterfly_pattern() {
-        let mut nm = NetworkManager::new();
-        // This one is fun because it tests the internal edges of (front_slice and back_slice)
-        for index in [0, 10, 1, 9, 2, 8, 3, 7, 4, 6, 5].iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        for index in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number() as usize);
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_basic_repetition() {
-        let mut nm = NetworkManager::new();
-        for index in [0, 0, 0, 0, 1, 2, 2, 2, 5].iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        for index in [0, 1, 2, 5].iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number() as usize);
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_advanced_sequential_then_pseudorandom_then_sequential() {
-        let mut nm = NetworkManager::new();
-
-        for index in 0..5 {
-            let pkt = Packet::Request {
-                sequence: index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        for index in [10, 7, 11, 9, 12, 8, 99, 6].iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        for index in 13..20 {
-            let pkt = Packet::Request {
-                sequence: index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        let mut range = (0..20).collect::<Vec<usize>>();
-        range.extend([99].iter().cloned()); // Add in 99
-        range.remove(5); // But remove 5 since it was never included
-        for index in range.iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number() as usize);
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_advanced_reverse_sequential_then_random_then_reverse_sequential() {
-        let mut nm = NetworkManager::new();
-
-        for index in (0..5).rev() {
-            let pkt = Packet::Request {
-                sequence: index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        for index in [10, 7, 11, 9, 12, 8, 99, 6].iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        for index in (13..20).rev() {
-            let pkt = Packet::Request {
-                sequence: index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        let mut range = (0..20).collect::<Vec<usize>>();
-        range.extend([99].iter().cloned()); // Add in 99
-        range.remove(5); // But remove 5 since it was never included
-        for index in range.iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number() as usize);
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_basic_wrapping_case() {
-        let mut nm = NetworkManager::new();
-        let u64_max = <u64>::max_value();
-        let start = u64_max - 5;
-
-        for index in start..(start+5) {
-            let pkt = Packet::Request {
-                sequence: index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        {
-            let pkt = Packet::Request {
-                sequence: u64_max,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        for index in 0..5 {
-            let pkt = Packet::Request {
-                sequence: index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        let mut range = (start..u64_max).collect::<Vec<u64>>();
-        range.extend([u64_max, 0, 1, 2, 3, 4].iter().cloned()); // Add in u64 max value plus others
-        for index in range.iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number());
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_basic_wrapping_case_then_out_of_order() {
-        let mut nm = NetworkManager::new();
-        let u64_max = <u64>::max_value();
-        let start = u64_max - 5;
-
-        for index in start..(start+5) {
-            let pkt = Packet::Request {
-                sequence: index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        {
-            let pkt = Packet::Request {
-                sequence: u64_max,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        for index in [5, 0, 4, 1, 3, 2].iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        let mut range = (start..u64_max).collect::<Vec<u64>>();
-        range.extend([u64_max, 0, 1, 2, 3, 4, 5].iter().cloned()); // Add in u64 max value plus others
-        for index in range.iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number());
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_advanced_wrapping_case_everything_out_of_order() {
-        let mut nm = NetworkManager::new();
-        let u64_max = <u64>::max_value();
-        let max_minus_5 = u64_max - 5;
-        let max_minus_4 = u64_max - 4;
-        let max_minus_3 = u64_max - 3;
-        let max_minus_2 = u64_max - 2;
-        let max_minus_1 = u64_max - 1;
-        let zero = 0;
-        let one = 1;
-        let two = 2;
-        let three = 3;
-
-        let input_order = [ max_minus_4,
-                            two,
-                            max_minus_1,
-                            max_minus_5,
-                            u64_max,
-                            three,
-                            max_minus_2,
-                            zero,
-                            max_minus_3,
-                            one ];
-
-        for index in input_order.iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        let mut range = vec![];
-        range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three]
-                .iter()
-                .cloned()); // Add in u64 max value plus others
-
-        for index in range.iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number());
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_advanced_max_sequence_number_arrives_after_a_wrap() {
-        let mut nm = NetworkManager::new();
-        let u64_max = <u64>::max_value();
-        let max_minus_2 = u64_max - 2;
-        let max_minus_1 = u64_max - 1;
-        let two = 2;
-        let three = 3;
-
-        let input_order = [max_minus_1, max_minus_2, three, u64_max, two];
-
-        for index in input_order.iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        let mut range = vec![];
-        range.extend([max_minus_2, max_minus_1, u64_max, two, three].iter().cloned()); // Add in u64 max value plus others
-        for index in range.iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number());
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_advanced_oldest_sequence_number_arrived_last() {
-        let mut nm = NetworkManager::new();
-        let u64_max = <u64>::max_value();
-        let max_minus_3 = u64_max - 3;
-        let max_minus_2 = u64_max - 2;
-        let max_minus_1 = u64_max - 1;
-        let zero = 0;
-        let one = 1;
-        let two = 2;
-        let three = 3;
-
-        let input_order = [max_minus_1, max_minus_2, three, u64_max, two, one, zero, max_minus_3];
-
-        for index in input_order.iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        let mut range = vec![];
-        range.extend([max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned());
-
-        for index in range.iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number());
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_advanced_wrap_occurs_with_two_item_queue() {
-        let mut nm = NetworkManager::new();
-        let u64_max = <u64>::max_value();
-        let max_minus_3 = u64_max - 3;
-        let max_minus_2 = u64_max - 2;
-        let max_minus_1 = u64_max - 1;
-        let zero = 0;
-        let one = 1;
-        let two = 2;
-        let three = 3;
-
-        // Forward wrap occurs non-contiguously (aka [254, 0, ...] for bytes)
-        let input_order = [max_minus_1, zero, three, u64_max, max_minus_2, one, two, max_minus_3];
-
-        for index in input_order.iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        let mut range = vec![];
-        range.extend([max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned());
-
-        for index in range.iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number());
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_advanced_wrap_occurs_with_two_item_queue_in_reverse() {
-        let mut nm = NetworkManager::new();
-        let u64_max = <u64>::max_value();
-        let max_minus_3 = u64_max - 3;
-        let max_minus_2 = u64_max - 2;
-        let max_minus_1 = u64_max - 1;
-        let zero = 0;
-        let one = 1;
-        let two = 2;
-        let three = 3;
-
-        // Wrap takes place in reverse order ( aka [0, 254, ...] for bytes)
-        let input_order = [zero, max_minus_1, three, u64_max, max_minus_2, one, two, max_minus_3];
-
-        for index in input_order.iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        let mut range = vec![];
-        range.extend([max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned());
-
-        for index in range.iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number());
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_advanced_wrapping_case_max_arrives_first() {
-        let mut nm = NetworkManager::new();
-        let u64_max = <u64>::max_value();
-        let max_minus_5 = u64_max - 5;
-        let max_minus_4 = u64_max - 4;
-        let max_minus_3 = u64_max - 3;
-        let max_minus_2 = u64_max - 2;
-        let max_minus_1 = u64_max - 1;
-        let zero = 0;
-        let one = 1;
-        let two = 2;
-        let three = 3;
-
-        let input_order = [u64_max, max_minus_4, two, max_minus_1, max_minus_5, three, max_minus_2, zero, max_minus_3, one];
-
-        for index in input_order.iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        let mut range = vec![];
-        range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three].iter().cloned());
-
-        for index in range.iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number());
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_advanced_wrapping_case_sequence_number_descending() {
-        let mut nm = NetworkManager::new();
-        let u64_max = <u64>::max_value();
-        let max_minus_5 = u64_max - 5;
-        let max_minus_4 = u64_max - 4;
-        let max_minus_3 = u64_max - 3;
-        let max_minus_2 = u64_max - 2;
-        let max_minus_1 = u64_max - 1;
-        let zero = 0;
-        let one = 1;
-        let two = 2;
-        let three = 3;
-
-        let input_order = [three, two, one, zero, u64_max, max_minus_1, max_minus_2, max_minus_3, max_minus_4, max_minus_5];
-
-        for index in input_order.iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        let mut range = vec![];
-        range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three]
-                .iter()
-                .cloned());
-
-        for index in range.iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number());
-        }
-    }
-
-    #[test]
-    fn test_buffer_item_advanced_wrapping_case_sequence_number_alternating() {
-        let mut nm = NetworkManager::new();
-        let u64_max = <u64>::max_value();
-        let max_minus_5 = u64_max - 5;
-        let max_minus_4 = u64_max - 4;
-        let max_minus_3 = u64_max - 3;
-        let max_minus_2 = u64_max - 2;
-        let max_minus_1 = u64_max - 1;
-        let zero = 0;
-        let one = 1;
-        let two = 2;
-        let three = 3;
-
-        let input_order = [max_minus_5, three, max_minus_4, two, max_minus_3, one, max_minus_2, zero, max_minus_1, u64_max];
-
-        for index in input_order.iter() {
-            let pkt = Packet::Request {
-                sequence: *index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let mut iter = nm.rx_packets.queue.iter();
-        let mut range = vec![];
-        range.extend([max_minus_5, max_minus_4, max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three]
-                .iter()
-                .cloned()); // Add in u64 max value plus others
-
-        for index in range.iter() {
-            let pkt = iter.next().unwrap();
-            assert_eq!(*index, pkt.sequence_number());
-        }
-    }
-
-    #[test]
-    fn test_reinitialize_all_queues_cleared() {
-        let mut nm = NetworkManager::new();
-        let pkt = Packet::Request {
-            sequence: 0,
-            response_ack: None,
-            cookie: None,
-            action: RequestAction::None
-        };
-
-        for _ in 0..NETWORK_QUEUE_LENGTH {
-            nm.tx_packets.push_back(pkt.clone());
-        }
-        assert_eq!(nm.tx_packets.len(), NETWORK_QUEUE_LENGTH);
-
-        let _chat_msg = BroadcastChatMessage::new(0, "chatchat".to_owned(), "chatchat".to_owned());
-    }
-
-    #[test]
-    fn test_get_contiguous_packets_count() {
-        let mut nm = NetworkManager::new();
-        for index in 0..5 {
-            let pkt = Packet::Request {
-                sequence: index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-        for index in 8..10 {
-            let pkt = Packet::Request {
-                sequence: index as u64,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-            nm.rx_packets.buffer_item(pkt);
-        }
-
-        let count = nm.rx_packets.get_contiguous_packets_count(0);
-        assert_eq!(count, 5);
-        let mut iter = nm.rx_packets.as_queue_type().iter();
-        for index in 0..5 {
-            let pkt = iter.next().unwrap();
-            assert_eq!(index, pkt.sequence_number() as usize);
-            // Verify that the packet is not dequeued
-            assert_eq!(index, nm.rx_packets.as_queue_type().get(index).unwrap().sequence_number() as usize);
-        }
-    }
-
-    #[test]
-    fn test_get_retransmit_indices() {
-        let mut nm = NetworkManager::new();
-        for i in 0..5 {
-            let pkt = Packet::Request {
-                sequence: i,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-
-            nm.tx_packets.buffer_item(pkt.clone());
-
-            if i < 3 {
-                let attempt: &mut NetAttempt = nm.tx_packets.attempts.back_mut().unwrap();
-                attempt.time = Instant::now() - Duration::from_secs(i+1);
+    #[allow(dead_code)]
+    pub fn build_netwayste_event_from_response_code(code: ResponseCode) -> NetwaysteEvent {
+        match code {
+            ResponseCode::LoggedIn(_cookie, server_version) => {
+                NetwaysteEvent::LoggedIn(server_version)
+            }
+            ResponseCode::JoinedRoom(name) => {
+                NetwaysteEvent::JoinedRoom(name)
+            }
+            ResponseCode::PlayerList(list) => {
+                NetwaysteEvent::PlayerList(list)
+            }
+            ResponseCode::RoomList(list) => {
+                NetwaysteEvent::RoomList(list)
+            }
+            ResponseCode::LeaveRoom => {
+                NetwaysteEvent::LeftRoom
+            }
+            ResponseCode::BadRequest(opt_error) => {
+                NetwaysteEvent::BadRequest(opt_error)
+            }
+            ResponseCode::ServerError( opt_error) => {
+                NetwaysteEvent::ServerError(opt_error)
+            }
+            ResponseCode::Unauthorized(opt_error) => {
+                NetwaysteEvent::BadRequest(opt_error)
+            }
+            _ => {
+                panic!("Unexpected response code during netwayste event construction: {:?}", code);
             }
         }
-        assert_eq!(nm.tx_packets.get_retransmit_indices().len(), 3);
-        thread::sleep(Duration::from_millis(2000));
-        assert_eq!(nm.tx_packets.get_retransmit_indices().len(), 5);
     }
 
-    #[test]
-    fn test_retransmit_expired_tx_packets_no_expirations() {
-        let mut nm = NetworkManager::new();
-
-        for i in 0..5 {
-            let pkt = Packet::Request {
-                sequence: i,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-
-            nm.tx_packets.buffer_item(pkt.clone());
-        }
-
-        let indices = nm.tx_packets.get_retransmit_indices();
-
-        let (udp_tx, _) = mpsc::unbounded();
-        let addr = fake_socket_addr();
-        nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
-
-        for i in 0..5 {
-            assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 0);
-        }
-    }
-
-    #[test]
-    fn test_retransmit_expired_tx_packets_basic_retries() {
-        let mut nm = NetworkManager::new();
-
-        for i in 0..5 {
-            let pkt = Packet::Request {
-                sequence: i,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-
-            nm.tx_packets.buffer_item(pkt.clone());
-
-           if i < 3 {
-                let attempt: &mut NetAttempt = nm.tx_packets.attempts.back_mut().unwrap();
-                attempt.time = Instant::now() - Duration::from_secs(i+1);
-            }
-        }
-
-        let indices = nm.tx_packets.get_retransmit_indices();
-
-        let (udp_tx, _) = mpsc::unbounded();
-        let addr = fake_socket_addr();
-        nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
-
-        for i in 0..3 {
-            assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 1);
-        }
-        for i in 3..5 {
-            assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 0);
-        }
-    }
-
-    #[test]
-    fn test_retransmit_expired_tx_packets_aggressive_retries() {
-        let mut nm = NetworkManager::new();
-
-        for i in 0..5 {
-            let pkt = Packet::Request {
-                sequence: i,
-                response_ack: None,
-                cookie: None,
-                action: RequestAction::None
-            };
-
-            nm.tx_packets.buffer_item(pkt.clone());
-
-           if i < 3 {
-                let attempt: &mut NetAttempt = nm.tx_packets.attempts.back_mut().unwrap();
-                attempt.time = Instant::now() - Duration::from_secs(i+1);
-            }
-        }
-
-        // After 2 attempts, aggressive mode should kick in
-        for _ in 0..5 {
-            let indices = nm.tx_packets.get_retransmit_indices();
-
-            println!("{:?}", indices);
-
-            let (udp_tx, _) = mpsc::unbounded();
-            let addr = fake_socket_addr();
-            nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
-
-            for j in 0..indices.len() {
-                let attempt: &mut NetAttempt = nm.tx_packets.attempts.get_mut(j).unwrap();
-                attempt.time = Instant::now() - Duration::from_secs( 1u64);
-            }
-        }
-
-        for i in 0..3 {
-            // 5 + 2 + 2 + 3
-            assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 11);
-        }
-        for i in 3..5 {
-            assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 0);
-        }
-
-    }
 }
