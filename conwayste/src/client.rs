@@ -21,7 +21,7 @@ extern crate env_logger;
 extern crate ggez;
 #[macro_use] extern crate log;
 extern crate sdl2;
-#[macro_use] extern crate serde_derive;
+#[macro_use] extern crate serde;
 #[macro_use] extern crate version;
 extern crate rand;
 extern crate color_backtrace;
@@ -31,14 +31,20 @@ mod config;
 mod constants;
 mod input;
 mod menu;
+mod network;
 mod utils;
 mod video;
 mod viewport;
+
+use chrono::Local;
+use log::LevelFilter;
 
 use conway::universe::{BigBang, Universe, CellState, Region, PlayerBuilder};
 use conway::grids::CharGrid;
 use conway::rle::Pattern;
 use conway::ConwayResult;
+
+use netwayste::net::NetwaysteEvent;
 
 use ggez::conf;
 use ggez::event::*;
@@ -48,6 +54,7 @@ use ggez::graphics::{Point2, Color};
 use ggez::timer;
 
 use std::env;
+use std::io::Write; // For env logger
 use std::path;
 use std::collections::BTreeMap;
 
@@ -65,9 +72,11 @@ use constants::{
 };
 
 #[derive(PartialEq, Clone, Copy)]
-enum Screen {
+enum Stage {
     Intro(f64),   // seconds
     Menu,
+    ServerList,
+    InRoom,
     Run,          // TODO: break it out more to indicate whether waiting for game or playing game
     Exit,         // We're getting ready to quit the game, WRAP IT UP SON
 }
@@ -75,7 +84,7 @@ enum Screen {
 // All game state
 struct MainState {
     small_font:          graphics::Font,
-    screen:              Screen,            // Where are we in the game (Intro/Menu Main/Running..)
+    stage:              Stage,            // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     intro_uni:           Universe,
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
@@ -86,6 +95,7 @@ struct MainState {
     config:              config::Config,
     viewport:            viewport::Viewport,
     input_manager:       input::InputManager,
+    net_worker:     Option<network::ConwaysteNetWorker>,
 
     // Input state
     single_step:         bool,
@@ -129,7 +139,7 @@ impl ColorSettings {
 
 
 fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
-    let pat = Pattern("10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW$10bW$10bW$10b16W48$100b2A5b2A$100b2A5b2A2$104b2A$104b2A5$122b2Ab2A$121bA5bA$121bA6bA2b2A$121b3A3bA3b2A$126bA!".to_owned());
+    let _pat = Pattern("10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW$10bW$10bW$10b16W48$100b2A5b2A$100b2A5b2A2$104b2A$104b2A5$122b2Ab2A$121bA5bA$121bA6bA2b2A$121b3A3bA3b2A$126bA!".to_owned());
     //XXX apply to universe, then return Ok
     //XXX return Ok(());
     // TODO: remove the following
@@ -460,7 +470,10 @@ impl MainState {
         let small_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
         let menu_font  = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
 
-        let bigbang = 
+        /*
+         * Game Universe Initialization
+         */
+        let bigbang =
         {
             // we're going to have to tear this all out when this becomes a real game
             let player0_writable = Region::new(100, 70, 34, 16);
@@ -470,18 +483,22 @@ impl MainState {
             let player1 = PlayerBuilder::new(player1_writable);
             let players = vec![player0, player1];
 
+            // TODO we should probably get these settings from the server's universe
             BigBang::new()
             .width(universe_width_in_cells)
             .height(universe_height_in_cells)
-            .server_mode(true) // TODO will change to false once we get server support up
-                               // Currently 'client' is technically both client and server
+            // TODO (libconway#11) setting to false will crash because the `Known` BitGrid is not set up
+            .server_mode(true)
             .history(HISTORY_SIZE)
             .fog_radius(FOG_RADIUS)
             .add_players(players)
             .birth()
         };
 
-        let intro_universe = 
+        /*
+         * Introduction Universe Initialization
+         */
+        let intro_universe =
         {
             let player = PlayerBuilder::new(Region::new(0, 0, 256, 256));
             BigBang::new()
@@ -492,9 +509,13 @@ impl MainState {
                 .birth()
         };
 
+        /*
+         * Network Initialization
+         */
+
         let mut s = MainState {
             small_font:          small_font,
-            screen:              Screen::Intro(INTRO_DURATION),
+            stage:              Stage::Intro(INTRO_DURATION),
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
@@ -505,6 +526,7 @@ impl MainState {
             config:              config,
             viewport:            viewport,
             input_manager:       input::InputManager::new(input::InputDeviceType::PRIMARY),
+            net_worker:          None,
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -525,180 +547,57 @@ impl EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
         let duration = timer::duration_to_f64(timer::get_delta(ctx)); // seconds
 
-        match self.screen {
-            Screen::Intro(mut remaining) => {
+        self.receive_net_updates();
+
+        match self.stage {
+            Stage::Intro(mut remaining) => {
 
                 remaining -= duration;
                 if remaining > INTRO_DURATION - INTRO_PAUSE_DURATION {
-                    self.screen = Screen::Intro(remaining);
-                } 
+                    self.stage = Stage::Intro(remaining);
+                }
                 else {
                     if remaining > 0.0 && remaining <= INTRO_DURATION - INTRO_PAUSE_DURATION {
                         self.intro_uni.next();
-                        self.screen = Screen::Intro(remaining);
+                        self.stage = Stage::Intro(remaining);
                     }
                     else {
-                        self.screen = Screen::Run; // XXX Menu Screen is disabled for the time being
+                        self.stage = Stage::Run; // XXX Menu Stage is disabled for the time being
                     }
                 }
             }
-            Screen::Menu => {
-                self.process_menu_inputs();
-
-                let is_direction_key_pressed = {
-                    self.menu_sys.get_controls().is_menu_key_pressed()
-                };
-
-                //// Directional Key / Menu movement
-                ////////////////////////////////////////
-                if self.arrow_input != (0,0) && !is_direction_key_pressed {
-                    // move selection accordingly
-                    let (_,y) = self.arrow_input;
-                    {
-                        let container = self.menu_sys.get_menu_container_mut(); 
-                        let mainmenu_md = container.get_metadata();
-                        mainmenu_md.adjust_index(y);
-                    }
-                    self.menu_sys.get_controls().set_menu_key_pressed(true);
-                }
-                else {
-                    /////////////////////////
-                    //// Non-Arrow key was pressed
-                    //////////////////////////
-
-                    if self.return_key_pressed || self.escape_key_pressed {
-
-                        let mut id = {
-                            let container = self.menu_sys.get_menu_container();
-                            let index = container.get_menu_item_index();
-                            let menu_item_list = container.get_menu_item_list();
-                            let menu_item = menu_item_list.get(index).unwrap();
-                            menu_item.id
-                        };
-
-                        if self.escape_key_pressed {
-                            id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
-                        }
-
-                        match self.menu_sys.menu_state {
-                            menu::MenuState::MainMenu => {
-                                if !self.escape_key_pressed {
-                                    match id {
-                                        menu::MenuItemIdentifier::StartGame => {
-                                            self.pause_or_resume_game();
-                                        }
-                                        menu::MenuItemIdentifier::ExitGame => {
-                                            self.screen = Screen::Exit;
-                                        }
-                                        menu::MenuItemIdentifier::Options => {
-                                            self.menu_sys.menu_state = menu::MenuState::Options;
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                            menu::MenuState::Options => {
-                                match id {
-                                    menu::MenuItemIdentifier::VideoSettings => {
-                                        if !self.escape_key_pressed {
-                                            self.menu_sys.menu_state = menu::MenuState::Video;
-                                        }
-                                    }
-                                    menu::MenuItemIdentifier::AudioSettings => {
-                                        if !self.escape_key_pressed {
-                                            self.menu_sys.menu_state = menu::MenuState::Audio;
-                                        }
-                                    }
-                                    menu::MenuItemIdentifier::GameplaySettings => {
-                                        if !self.escape_key_pressed {
-                                            self.menu_sys.menu_state = menu::MenuState::Gameplay;
-                                        }
-                                    }
-                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                            self.menu_sys.menu_state = menu::MenuState::MainMenu;
-                                    }
-                                   _ => {}
-                                }
-                            }
-                            menu::MenuState::Audio => {
-                                match id {
-                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                        self.menu_sys.menu_state = menu::MenuState::Options;
-                                    }
-                                    _ => {
-                                        if !self.escape_key_pressed { }
-                                    }
-                                }
-                            }
-                            menu::MenuState::Gameplay => {
-                                match id {
-                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                        self.menu_sys.menu_state = menu::MenuState::Options;
-                                    }
-                                    _ => {
-                                        if !self.escape_key_pressed { }
-                                    }
-                                }
-                            }
-                            menu::MenuState::Video => {
-                                match id {
-                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                        self.menu_sys.menu_state = menu::MenuState::Options;
-                                    }
-                                    menu::MenuItemIdentifier::Fullscreen => {
-                                        if !self.escape_key_pressed {
-                                            self.video_settings.toggle_fullscreen(ctx);
-                                            let is_fullscreen = self.video_settings.is_fullscreen();
-                                            self.config.modify(|settings| {
-                                                settings.video.fullscreen = is_fullscreen;
-                                            });
-                                        }
-                                    }
-                                    menu::MenuItemIdentifier::Resolution => {
-                                        if !self.escape_key_pressed {
-                                            self.video_settings.advance_to_next_resolution(ctx);
-
-                                            // Update the configuration file and resize the viewing
-                                            // screen
-                                            let (w,h) = self.video_settings.get_active_resolution();
-                                            self.config.set_resolution(w as i32, h as i32);
-                                            self.viewport.set_dimensions(w, h);
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-                }
-
-                self.return_key_pressed = false;
-                self.escape_key_pressed = false;
+            Stage::Menu => {
+                self.update_current_screen(ctx); // TODO rewrite for ui changes
             }
-            Screen::Run => {
-// TODO while this works at limiting the FPS, its a bit glitchy for input events
-// Disable until we have time to look into it
-//                while timer::check_update_time(ctx, FPS) { 
-                {
-                    self.process_running_inputs();
+            Stage::Run => {
+                // while this works at limiting the FPS, its a bit glitchy for input events... that probably should be
+                // rewritten as it was hacked together originally
+               // while timer::check_update_time(ctx, FPS)
 
-                    if self.single_step {
-                        self.running = false;
-                    }
+                self.process_running_inputs();
 
-                    if self.first_gen_was_drawn && (self.running || self.single_step) {
-                        self.uni.next();     // next generation
-                        self.single_step = false;
-                    }
-
-                    if self.toggle_paused_game {
-                        self.pause_or_resume_game();
-                    }
-
-                    self.viewport.update(self.arrow_input);
+                if self.single_step {
+                    self.running = false;
                 }
+
+                if self.first_gen_was_drawn && (self.running || self.single_step) {
+                    self.uni.next();     // next generation
+                    self.single_step = false;
+                }
+
+                if self.toggle_paused_game {
+                    self.pause_or_resume_game();
+                }
+
+                self.viewport.update(self.arrow_input);
             }
-            Screen::Exit => {
+            Stage::InRoom => {
+                // TODO implement
+            }
+            Stage::ServerList => {
+                // TODO implement
+             },
+            Stage::Exit => {
                let _ = ctx.quit();
             }
         }
@@ -712,17 +611,23 @@ impl EventHandler for MainState {
         graphics::clear(ctx);
         graphics::set_background_color(ctx, (0, 0, 0, 1).into());
 
-        match self.screen {
-            Screen::Intro(_) => {
+        match self.stage {
+            Stage::Intro(_) => {
                 self.draw_intro(ctx)?;
             }
-            Screen::Menu => {
+            Stage::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn);
             }
-            Screen::Run => {
+            Stage::Run => {
                 self.draw_universe(ctx)?;
             }
-            Screen::Exit => {}
+            Stage::InRoom => {
+                // TODO
+            }
+            Stage::ServerList => {
+                // TODO
+             },
+            Stage::Exit => {}
         }
 
         graphics::present(ctx);
@@ -750,16 +655,22 @@ impl EventHandler for MainState {
                           _xrel: i32,
                           _yrel: i32
                           ) {
-        match self.screen {
-            Screen::Intro(_) => {}
-            Screen::Menu | Screen::Run => {
+        match self.stage {
+            Stage::Intro(_) => {}
+            Stage::Menu | Stage::Run => {
                 if state.left() && self.drag_draw != None {
                     self.input_manager.add(input::InputAction::MouseDrag(MouseButton::Left, x, y));
                 } else {
                     self.input_manager.add(input::InputAction::MouseMovement(x, y));
                 }
             }
-            Screen::Exit => { unreachable!() }
+            Stage::InRoom => {
+                // TODO implement
+            }
+            Stage::ServerList => {
+                // TODO implement
+             },
+            Stage::Exit => { unreachable!() }
         }
     }
 
@@ -780,12 +691,12 @@ impl EventHandler for MainState {
                       repeat: bool
                       ) {
 
-        match self.screen {
-            Screen::Intro(_) => {
-                self.screen = Screen::Run; // TODO lets just go to the game for now...
+        match self.stage {
+            Stage::Intro(_) => {
+                self.stage = Stage::Run; // TODO lets just go to the game for now...
                 self.menu_sys.reset();
             }
-            Screen::Menu | Screen::Run => {
+            Stage::Menu | Stage::Run | Stage::InRoom | Stage::ServerList => {
                 // TODO for now just quit the game
                 if keycode == Keycode::Escape {
                     self.quit_event(ctx);
@@ -793,7 +704,7 @@ impl EventHandler for MainState {
 
                 self.input_manager.add(input::InputAction::KeyPress(keycode, repeat));
             }
-            Screen::Exit => {}
+            Stage::Exit => {}
         }
     }
 
@@ -810,15 +721,15 @@ impl EventHandler for MainState {
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
         let mut quit = false;
 
-        match self.screen {
-            Screen::Run => {
+        match self.stage {
+            Stage::Run => {
                 self.pause_or_resume_game();
             }
-            Screen::Menu => {
+            Stage::Menu | Stage::InRoom | Stage::ServerList => {
                 // This is currently handled in the return_key_pressed path as well
                 self.escape_key_pressed = true;
             }
-            Screen::Exit => {
+            Stage::Exit => {
                 quit = true;
             }
             _ => {}
@@ -843,7 +754,7 @@ struct GameOfLifeDrawParams {
 
 impl MainState {
 
-    fn draw_game_of_life(&self, 
+    fn draw_game_of_life(&self,
                          ctx: &mut Context,
                          universe: &Universe,
                          draw_params: &GameOfLifeDrawParams
@@ -897,7 +808,7 @@ impl MainState {
         if draw_params.draw_counter {
             let gen_counter_str = universe.latest_gen().to_string();
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
-            utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None);
+            utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
         }
 
         ////////////////////// END
@@ -933,17 +844,17 @@ impl MainState {
 
     fn pause_or_resume_game(&mut self) {
         let cur_menu_state = self.menu_sys.menu_state;
-        let cur_stage = self.screen;
+        let cur_stage = self.stage;
 
         match cur_stage {
-            Screen::Menu => {
+            Stage::Menu => {
                 if cur_menu_state == menu::MenuState::MainMenu {
-                    self.screen = Screen::Run;
+                    self.stage = Stage::Run;
                     self.running = true;
                 }
             }
-            Screen::Run => {
-                self.screen = Screen::Menu;
+            Stage::Run => {
+                self.stage = Stage::Menu;
                 self.menu_sys.menu_state = menu::MenuState::MainMenu;
                 self.running = false;
             }
@@ -1032,7 +943,7 @@ impl MainState {
                                 self.win_resize = 3;
                             }
                             Keycode::LGui => {
-                            
+
                             }
                             Keycode::D => {
                                 // TODO: do something with this debug code
@@ -1106,6 +1017,199 @@ impl MainState {
 
     }
 
+    // update
+    fn update_current_screen(&mut self, ctx: &mut Context) {
+        self.process_menu_inputs();
+
+        let is_direction_key_pressed = {
+            self.menu_sys.get_controls().is_menu_key_pressed()
+        };
+
+        //// Directional Key / Menu movement
+        ////////////////////////////////////////
+        if self.arrow_input != (0,0) && !is_direction_key_pressed {
+            // move selection accordingly
+            let (_,y) = self.arrow_input;
+            {
+                let container = self.menu_sys.get_menu_container_mut();
+                let mainmenu_md = container.get_metadata();
+                mainmenu_md.adjust_index(y);
+            }
+            self.menu_sys.get_controls().set_menu_key_pressed(true);
+        }
+        else {
+            /////////////////////////
+            //// Non-Arrow key was pressed
+            //////////////////////////
+
+            if self.return_key_pressed || self.escape_key_pressed {
+
+                let mut id = {
+                    let container = self.menu_sys.get_menu_container();
+                    let index = container.get_menu_item_index();
+                    let menu_item_list = container.get_menu_item_list();
+                    let menu_item = menu_item_list.get(index).unwrap();
+                    menu_item.id
+                };
+
+                if self.escape_key_pressed {
+                    id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
+                }
+
+                match self.menu_sys.menu_state {
+                    menu::MenuState::MainMenu => {
+                        if !self.escape_key_pressed {
+                            match id {
+                                menu::MenuItemIdentifier::Connect => {
+                                    if self.net_worker.is_some() {
+                                        info!("already connected! Reconnecting...");
+                                    }
+                                    let mut net_worker = network::ConwaysteNetWorker::new();
+                                    net_worker.connect(self.config.get().user.name.clone());
+                                    info!("Connected.");
+                                    self.net_worker = Some(net_worker);
+
+                                }
+                                menu::MenuItemIdentifier::StartGame => {
+                                    self.pause_or_resume_game();
+                                }
+                                menu::MenuItemIdentifier::ExitGame => {
+                                    self.stage = Stage::Exit;
+                                }
+                                menu::MenuItemIdentifier::Options => {
+                                    self.menu_sys.menu_state = menu::MenuState::Options;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    menu::MenuState::Options => {
+                        match id {
+                            menu::MenuItemIdentifier::VideoSettings => {
+                                if !self.escape_key_pressed {
+                                    self.menu_sys.menu_state = menu::MenuState::Video;
+                                }
+                            }
+                            menu::MenuItemIdentifier::AudioSettings => {
+                                if !self.escape_key_pressed {
+                                    self.menu_sys.menu_state = menu::MenuState::Audio;
+                                }
+                            }
+                            menu::MenuItemIdentifier::GameplaySettings => {
+                                if !self.escape_key_pressed {
+                                    self.menu_sys.menu_state = menu::MenuState::Gameplay;
+                                }
+                            }
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                            }
+                            _ => {}
+                        }
+                    }
+                    menu::MenuState::Audio => {
+                        match id {
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                self.menu_sys.menu_state = menu::MenuState::Options;
+                            }
+                            _ => {
+                                if !self.escape_key_pressed { }
+                            }
+                        }
+                    }
+                    menu::MenuState::Gameplay => {
+                        match id {
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                self.menu_sys.menu_state = menu::MenuState::Options;
+                            }
+                            _ => {
+                                if !self.escape_key_pressed { }
+                            }
+                        }
+                    }
+                    menu::MenuState::Video => {
+                        match id {
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                self.menu_sys.menu_state = menu::MenuState::Options;
+                            }
+                            menu::MenuItemIdentifier::Fullscreen => {
+                                if !self.escape_key_pressed {
+                                    self.video_settings.toggle_fullscreen(ctx);
+                                    let is_fullscreen = self.video_settings.is_fullscreen();
+                                    self.config.modify(|settings| {
+                                        settings.video.fullscreen = is_fullscreen;
+                                    });
+                                }
+                            }
+                            menu::MenuItemIdentifier::Resolution => {
+                                if !self.escape_key_pressed {
+                                    self.video_settings.advance_to_next_resolution(ctx);
+
+                                    // Update the configuration file and resize the viewing
+                                    // screen
+                                    let (w,h) = self.video_settings.get_active_resolution();
+                                    self.config.set_resolution(w as i32, h as i32);
+                                    self.viewport.set_dimensions(w, h);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+
+        self.return_key_pressed = false;
+        self.escape_key_pressed = false;
+    }
+
+    // update
+    fn receive_net_updates(&mut self) {
+        if self.net_worker.is_none() {
+            return;
+        }
+        let net_worker = self.net_worker.as_mut().unwrap();
+        for e in net_worker.try_receive().into_iter() {
+            match e {
+                NetwaysteEvent::LoggedIn(server_version) => {
+                    info!("Logged in! Server version: v{}", server_version);
+                    self.stage = Stage::ServerList; //XXX
+                    // do other stuff
+                    net_worker.try_send(NetwaysteEvent::List);
+                }
+                NetwaysteEvent::JoinedRoom(room_name) => {
+                    println!("Joined Room: {}", room_name);
+                    self.stage = Stage::InRoom;
+                }
+                NetwaysteEvent::PlayerList(list) => {
+                    println!("PlayerList: {:?}",list);
+                }
+                NetwaysteEvent::RoomList(list) => {
+                    println!("RoomList: {:?}",list);
+                }
+                NetwaysteEvent::UniverseUpdate => {
+                    println!("Universe update");
+                }
+                NetwaysteEvent::ChatMessages(msgs) => {
+                    for m in msgs {
+                        println!("{:?}", m);
+                    }
+                }
+                NetwaysteEvent::LeftRoom => {
+                    println!("Left Room");
+                }
+                NetwaysteEvent::BadRequest(error) => {
+                    println!("Server responded with Bad Request: {:?}", error);
+                }
+                NetwaysteEvent::ServerError(error) => {
+                    println!("Server encountered an error: {:?}", error);
+                }
+                _ => {
+                    panic!("Development panic: Unexpected NetwaysteEvent during netwayste receive update: {:?}", e);
+                }
+            }
+        }
+    }
+
     fn post_update(&mut self) -> GameResult<()> {
         /*
         match self.input_manager.peek() {
@@ -1164,7 +1268,23 @@ impl MainState {
 // do the work of creating our MainState and running our game,
 // * then just call `game.run()` which runs the `Game` mainloop.
 pub fn main() {
-    env_logger::init().unwrap();
+    env_logger::Builder::new()
+        .format(|buf, record| {
+            writeln!(buf,
+                "{} [{:5}] - {}",
+                Local::now().format("%a %Y-%m-%d %H:%M:%S%.6f"),
+                record.level(),
+                record.args(),
+            )
+        })
+        .filter(None, LevelFilter::Trace)
+        .filter(Some("futures"), LevelFilter::Off)
+        .filter(Some("tokio_core"), LevelFilter::Off)
+        .filter(Some("tokio_reactor"), LevelFilter::Off)
+        .filter(Some("conway"), LevelFilter::Off)
+        .filter(Some("ggez"), LevelFilter::Off)
+        .filter(Some("gfx_device_gl"), LevelFilter::Off)
+        .init();
 
     color_backtrace::install();
 
@@ -1189,7 +1309,10 @@ pub fn main() {
         println!("Not building from cargo? Okie dokie.");
     }
 
-    let ctx = &mut cb.build().unwrap();
+    let ctx = &mut cb.build().unwrap_or_else(|e| {
+        error!("ContextBuilter failed: {:?}", e);
+        std::process::exit(1);
+    });
 
     match MainState::new(ctx) {
         Err(e) => {

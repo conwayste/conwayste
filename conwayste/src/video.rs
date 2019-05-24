@@ -17,7 +17,6 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::{Context, graphics, GameResult};
-use sdl2::video::{FullscreenType};
 use std::num::Wrapping;
 
 #[derive(Debug, Clone, PartialEq, Copy)]
