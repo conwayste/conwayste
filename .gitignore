@@ -1,4 +1,5 @@
-target
-.sw?
+**/*.rs.bk
 .*.sw?
+.sw?
+/target/
 rusty-tags.*
