@@ -5,13 +5,13 @@ Multiplayer Conway's Game of Life!
 ![life in action](https://giant.gfycat.com/BlaringTidyDutchsmoushond.gif)
 
 ## Installation
-Clone this repository with the submodules:
+Clone this repository:
 
 ```
-$ git clone --recursive https://github.com/conwayste/conwayste
+$ git clone https://github.com/conwayste/conwayste
 ```
 
-`conwayste` depends on `SDL2`, `SDL2_Mixer` and `SDL2_Image`. We do plan on bundling these libraries with the binary at some point in the future, but for now you will need to manually install them. The versions (at least) needed are:
+The GUI client (`cargo run --bin client`) depends on `SDL2`, `SDL2_Mixer` and `SDL2_Image`. We do plan on bundling these libraries with the binary at some point in the future, but for now you will need to manually install them. The versions (at least) needed are:
 
 * `SDL2 v2.0.5`
 * `SDL2_Mixer v2.0.1`
