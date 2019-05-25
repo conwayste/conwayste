@@ -1,0 +1,46 @@
+# Handle "1:" is equivalent to <major>:<minor>... minor of qdisc is always 0.
+#   This is the "root" qdisc with a handle of 1:
+# Classes need to have the same major number as their parent.
+#   The following command instantly creates classes 1:1, 1:2, and 1:3.
+
+#tc qdisc add dev eth0 root handle 1: prio
+
+
+# 1:3 refers to the third band of the PRIO queue.
+# This described by qdisc ID of 30:
+
+#tc class add dev lo parent 1:3 classid 1:10 netem delay 200ms 20ms distribution normal    # Delayed 200
+#tc class add dev eth0 parent 1:3 classid 1:20 netem loss 1%                                 # Dropped 1%
+# 20% of packets sent immediately, rest delayed 10ms
+#tc class add dev eth0 parent 1:3 classid 1:30 netem delay 10ms reorder 25% 50%              # out-of-order
+#tc class add dev eth0 parent 1:3 classid 1:30 netem delay 10ms duplicate 10%                # duplicate 10%
+#tc class add dev eth0 parent 1:3 classid 1:40 netem corrupt 1%                              # corrupt 1%
+
+
+# What packets belong in what qdisc?
+#
+# protocol ip   -- We are accepting IP traffic
+# parent        -- Must already exist (1:0 as specified above)
+# prio          -- Priority of this filter is set to 3. Lower the quicker.
+# fw flowid     -- Bases the decision on how the firewall (iptables) marked the packet, to be processed by the 1:3 class
+# handle        -- filter ID
+
+#tc filter add dev eth0 parent 1:0 protocol ip prio 3 handle 1 fw flowid 1:3
+
+# -o is for outbound; -i is for inbound
+# Mangle (modify) packets before they leave (POSTROUTING) on eth0 udp traffic.
+# Applied to class 1:3 <parent>:<child>
+
+#iptables -t mangle -A POSTROUTING -o eth0 -p udp -j CLASSIFY --set-class 1:3
+
+# So all in all, IP tables marks that all UDP packets sent out are processed by '1:3' which enacts on the IP protocol,
+# adding a delay of 200ms to each UDP packet.
+
+# Goal will be to set up a few netem filters and use IP tables to control which one is in use.
+#   1. Outgoing packet delay
+#   2. Dropping outgoing packets
+#   3. Re-ordering packets
+#   4. Packet duplication
+#   5. Packet corruption
+#   6. Enable ALL in some fashion (dying connection)
+
