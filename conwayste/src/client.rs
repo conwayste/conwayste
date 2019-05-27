@@ -127,7 +127,6 @@ struct MainState {
     single_step:         bool,
     arrow_input:         (isize, isize),
     drag_draw:           Option<CellState>,
-    win_resize:          u8,
     return_key_pressed:  bool,
     escape_key_pressed:  bool,
     toggle_paused_game:  bool,
@@ -257,7 +256,6 @@ impl MainState {
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
-            win_resize:          0,
             return_key_pressed:  false,
             escape_key_pressed:  false,
             toggle_paused_game:  false,
@@ -304,10 +302,6 @@ impl EventHandler for MainState {
             Screen::Menu => {
                 self.process_menu_inputs();
 
-                let is_direction_key_pressed = {
-                    self.menu_sys.get_controls().is_menu_key_pressed()
-                };
-
                 let mouse_point = Point2::new(self.mouse_info.position.0 as f32, self.mouse_info.position.1 as f32);
                 self.button.on_hover(&mouse_point);
                 if self.mouse_info.action == Some(MouseAction::Click) && self.mouse_info.mousebutton == MouseButton::Left {
@@ -316,7 +310,7 @@ impl EventHandler for MainState {
 
                 //// Directional Key / Menu movement
                 ////////////////////////////////////////
-                if self.arrow_input != (0,0) && !is_direction_key_pressed {
+                if self.arrow_input != (0,0) && self.key_info.key.is_some() {
                     // move selection accordingly
                     let (_,y) = self.arrow_input;
                     {
@@ -602,9 +596,9 @@ impl EventHandler for MainState {
 
     fn key_down_event(&mut self, ctx: &mut Context, keycode: Keycode, keymod: Mod, repeat: bool ) {
         let key_as_int32 = keycode as i32;
-        // Support just the basics for now by ignoring everything after F1 in the key code list
-        if key_as_int32 < (Keycode::F1 as i32) {
-            println!("int({}), MaxInt({})", key_as_int32, (Keycode::F1 as i32));
+        // Support just the basics for now by ignoring everything after the last arrow key in the key code list
+        if key_as_int32 < (Keycode::NumLockClear as i32) {
+            println!("int({}), MaxInt({})", key_as_int32, (Keycode::NumLockClear as i32));
             if self.key_info.key.is_none() {
                 self.key_info.key = Some(keycode);
             }
@@ -637,12 +631,9 @@ impl EventHandler for MainState {
                 self.menu_sys.reset();
             }
             Screen::Menu | Screen::Run => {
-                // TODO for now just quit the game
                 if keycode == Keycode::Escape {
                     self.quit_event(ctx);
                 }
-
-                self.input_manager.add(input::InputAction::KeyPress(keycode, repeat));
             }
             Screen::Exit => {}
         }
@@ -667,6 +658,7 @@ impl EventHandler for MainState {
     }
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
+        println!("Got quit event!");
         let mut quit = false;
         let current_screen = match self.screen_stack.last() {
             Some(screen) => screen,
@@ -825,124 +817,93 @@ impl MainState {
     }
 
     fn process_running_inputs(&mut self) {
+        let keycode;
 
-        while self.input_manager.has_more() {
-            if let Some(input) = self.input_manager.remove() {
-                match input {
+        if let Some(k) = self.key_info.key {
+            keycode = k;
+        } else {
+            return;
+        }
 
-                    // KEYBOARD EVENTS
-                    input::InputAction::KeyPress(keycode, repeat) => {
-                        match keycode {
-                            Keycode::Return => {
-                                if !repeat {
-                                    self.running = !self.running;
-                                }
-                            }
-                            Keycode::Space => {
-                                self.single_step = true;
-                            }
-                            Keycode::Up => {
-                                self.arrow_input = (0, -1);
-                            }
-                            Keycode::Down => {
-                                self.arrow_input = (0, 1);
-                            }
-                            Keycode::Left => {
-                                self.arrow_input = (-1, 0);
-                            }
-                            Keycode::Right => {
-                                self.arrow_input = (1, 0);
-                            }
-                            Keycode::Plus | Keycode::Equals => {
-                                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
-                                let cell_size = self.viewport.get_cell_size();
-                                self.config.modify(|settings| {
-                                    settings.gameplay.zoom = cell_size;
-                                });
-                            }
-                            Keycode::Minus | Keycode::Underscore => {
-                                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
-                                let cell_size = self.viewport.get_cell_size();
-                                self.config.modify(|settings| {
-                                    settings.gameplay.zoom = cell_size;
-                                });
-                            }
-                            Keycode::Num1 => {
-                                self.win_resize = 1;
-                            }
-                            Keycode::Num2 => {
-                                self.win_resize = 2;
-                            }
-                            Keycode::Num3 => {
-                                self.win_resize = 3;
-                            }
-                            Keycode::LGui => {
-
-                            }
-                            Keycode::D => {
-                                // TODO: do something with this debug code
-                                let visibility = None;  // can also do Some(player_id)
-                                let pat = self.uni.to_pattern(visibility);
-                                println!("PATTERN DUMP:\n{}", pat.0);
-                            }
-                            _ => {
-                                println!("Unrecognized keycode {}", keycode);
-                            }
-                        }
-                    }
-
-                    _ => {},
+        match keycode {
+            Keycode::Return => {
+                if !self.key_info.repeating {
+                    self.running = !self.running;
                 }
+            }
+            Keycode::Space => {
+                self.single_step = true;
+            }
+            Keycode::Up => {
+                self.arrow_input = (0, -1);
+            }
+            Keycode::Down => {
+                self.arrow_input = (0, 1);
+            }
+            Keycode::Left => {
+                self.arrow_input = (-1, 0);
+            }
+            Keycode::Right => {
+                self.arrow_input = (1, 0);
+            }
+            Keycode::Plus | Keycode::Equals => {
+                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
+                let cell_size = self.viewport.get_cell_size();
+                self.config.modify(|settings| {
+                    settings.gameplay.zoom = cell_size;
+                });
+            }
+            Keycode::Minus | Keycode::Underscore => {
+                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
+                let cell_size = self.viewport.get_cell_size();
+                self.config.modify(|settings| {
+                    settings.gameplay.zoom = cell_size;
+                });
+            }
+            Keycode::D => {
+                // TODO: do something with this debug code
+                let visibility = None;  // can also do Some(player_id)
+                let pat = self.uni.to_pattern(visibility);
+                println!("PATTERN DUMP:\n{}", pat.0);
+            }
+            _ => {
+                println!("Unrecognized keycode {}", keycode);
             }
         }
     }
 
     fn process_menu_inputs(&mut self) {
-        while self.input_manager.has_more() {
-            if let Some(input) = self.input_manager.remove() {
-                match input {
-                    input::InputAction::KeyPress(keycode, repeat) => {
-                        if !self.menu_sys.get_controls().is_menu_key_pressed() {
-                            match keycode {
-                                Keycode::Up => {
-                                    self.arrow_input = (0, -1);
-                                }
-                                Keycode::Down => {
-                                    self.arrow_input = (0, 1);
-                                }
-                                Keycode::Left => {
-                                    self.arrow_input = (-1, 0);
-                                }
-                                Keycode::Right => {
-                                    self.arrow_input = (1, 0);
-                                }
-                                Keycode::Return => {
-                                    if !repeat {
-                                        self.return_key_pressed = true;
-                                    }
-                                }
-                                Keycode::Escape => {
-                                    self.escape_key_pressed = true;
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    input::InputAction::KeyRelease(keycode) => {
-                        match keycode {
-                            Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right => {
-                                self.arrow_input = (0, 0);
-                                self.menu_sys.get_controls().set_menu_key_pressed(false);
-                            }
-                            _ => {}
-                        }
-                    }
+        let keycode;
 
-                    _ => {},
-                }
-            }
+        if let Some(k) = self.key_info.key {
+            keycode = k;
+        } else {
+            return;
         }
 
+        match keycode {
+            Keycode::Up => {
+                self.arrow_input = (0, -1);
+            }
+            Keycode::Down => {
+                self.arrow_input = (0, 1);
+            }
+            Keycode::Left => {
+                self.arrow_input = (-1, 0);
+            }
+            Keycode::Right => {
+                self.arrow_input = (1, 0);
+            }
+            Keycode::Return => {
+                if !self.key_info.repeating {
+                    self.return_key_pressed = true;
+                }
+            }
+            Keycode::Escape => {
+                self.escape_key_pressed = true;
+            }
+            _ => {}
+        }
     }
 
     fn post_update(&mut self) -> GameResult<()> {
@@ -958,8 +919,11 @@ impl MainState {
         }
         self.mouse_info.scroll_event = None;
 
+        if self.key_info.key.is_some() {
+            self.key_info.key = None;
+        }
+
         self.arrow_input = (0, 0);
-        self.input_manager.expunge();
 
         // Flush config
         self.config.flush().map_err(|e| {

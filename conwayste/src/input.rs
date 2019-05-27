@@ -19,68 +19,19 @@
 use std::collections::VecDeque;
 
 use ggez::event::{Keycode, MouseButton};
-//use ggez::event::{Button, Axis};
 
 const NUM_OF_QUEUED_INPUTS: usize = 10;
 
-#[derive(Debug, PartialEq)]
-pub enum InputDeviceType {
-    PRIMARY,
-//    GAMEPAD,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum InputAction {
-    KeyPress(Keycode, bool),
-    KeyRelease(Keycode),
-}
-
 /// InputManager maps input from devices to in-game events.
 pub struct InputManager {
-    _device: InputDeviceType,
-    events: VecDeque<InputAction>,
 }
 
 impl InputManager {
     /// Instantiates the InputManager for the specified device
     /// and handles the associated events.
-    pub fn new(device_type: InputDeviceType) -> InputManager {
+    pub fn new() -> InputManager {
         InputManager {
-            _device: device_type,
-            events: VecDeque::<InputAction>::new(),
         }
-    }
-
-    /// Adds an event to the queue.
-    /// This will panic if we fill up the queue past `NUM_OF_QUEUED_INPUTS`.
-    pub fn add(&mut self, input: InputAction) {
-        // Curious to see if we actually can hit this condition
-        if self.events.len() >= NUM_OF_QUEUED_INPUTS {
-            println!("{:?}", self.events);
-            assert!(false);
-        }
-
-        self.events.push_back(input);
-    }
-
-    /// Pokes at the head of the queue and returns an event if available.
-    pub fn peek(&self) -> Option<&InputAction> {
-        self.events.front()
-    }
-
-    /// Dequeues can input event.
-    pub fn remove(&mut self) -> Option<InputAction> {
-        self.events.pop_front()
-    }
-
-    /// Clears all events received during this frame.
-    pub fn expunge(&mut self) {
-        self.events.clear();
-    }
-
-    /// Checks to see if there are any more input events in this frame to process.
-    pub fn has_more(&self) -> bool {
-        !self.events.is_empty()
     }
 
 }
