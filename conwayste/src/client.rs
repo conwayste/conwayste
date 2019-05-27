@@ -121,6 +121,7 @@ struct MainState {
     viewport:            viewport::Viewport,
     input_manager:       input::InputManager,
     mouse_info:          MouseInfo,
+    key_info:            KeyInfo,
 
     // Input state
     single_step:         bool,
@@ -252,7 +253,7 @@ impl MainState {
             video_settings:      vs,
             config:              config,
             viewport:            viewport,
-            input_manager:       input::InputManager::new(input::InputDeviceType::PRIMARY),
+            input_manager:       input::InputManager::new(),
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -262,6 +263,7 @@ impl MainState {
             toggle_paused_game:  false,
             button: button,
             mouse_info:          MouseInfo::new(),
+            key_info:            KeyInfo::new(),
         };
 
         init_patterns(&mut s).unwrap();
@@ -308,7 +310,7 @@ impl EventHandler for MainState {
 
                 let mouse_point = Point2::new(self.mouse_info.position.0 as f32, self.mouse_info.position.1 as f32);
                 self.button.on_hover(&mouse_point);
-                if self.mouse_info.action == Some(MouseAction::Click) && self.mouse_info.current_button == MouseButton::Left {
+                if self.mouse_info.action == Some(MouseAction::Click) && self.mouse_info.mousebutton == MouseButton::Left {
                     self.button.on_click(&mouse_point, &mut self.screen_stack);
                 }
 
@@ -444,7 +446,7 @@ impl EventHandler for MainState {
                 // while timer::check_update_time(ctx, FPS) {
                 {
                     self.process_running_inputs();
-                    if self.mouse_info.current_button == MouseButton::Left {
+                    if self.mouse_info.mousebutton == MouseButton::Left {
                         let (x,y) = self.mouse_info.position;
                         let mouse_pos = Point2::new(x as f32, y as f32);
 
@@ -537,8 +539,8 @@ impl EventHandler for MainState {
     // going top to bottom.
     // Currently only allow one mouse button event at a time (e.g. left+right click not valid)
     fn mouse_button_down_event(&mut self, _ctx: &mut Context, button: MouseButton, x: i32, y: i32) {
-        if self.mouse_info.current_button == MouseButton::Unknown {
-            self.mouse_info.current_button = button;
+        if self.mouse_info.mousebutton == MouseButton::Unknown {
+            self.mouse_info.mousebutton = button;
             self.mouse_info.down_timestamp = Some(Instant::now());
             self.mouse_info.action = Some(MouseAction::Held);
             self.mouse_info.position = (x,y);
@@ -552,13 +554,13 @@ impl EventHandler for MainState {
     fn mouse_motion_event(&mut self, _ctx: &mut Context, _state: MouseState, x: i32, y: i32, _xrel: i32, _yrel: i32) {
         self.mouse_info.position = (x, y);
 
-        if self.mouse_info.current_button != MouseButton::Unknown
+        if self.mouse_info.mousebutton != MouseButton::Unknown
             && (self.mouse_info.action == Some(MouseAction::Held) || self.mouse_info.action == Some(MouseAction::Drag)) {
             self.mouse_info.action = Some(MouseAction::Drag);
 
             if self.mouse_info.debug_print {
                 println!("Dragging {:?}, Current Position {:?}, Time Held: {:?}",
-                    self.mouse_info.current_button,
+                    self.mouse_info.mousebutton,
                     self.mouse_info.position,
                     self.mouse_info.down_timestamp.unwrap().elapsed());
             }
@@ -567,7 +569,7 @@ impl EventHandler for MainState {
 
     fn mouse_button_up_event(&mut self, _ctx: &mut Context, button: MouseButton, x: i32, y: i32) {
         // Register as a click if we ended near where we started
-        if self.mouse_info.current_button == button {
+        if self.mouse_info.mousebutton == button {
             self.mouse_info.action = Some(MouseAction::Click);
             self.mouse_info.position = (x, y);
 
@@ -584,7 +586,7 @@ impl EventHandler for MainState {
 
     /// Vertical scroll:   (y, positive away from and negative toward the user)
     /// Horizontal scroll: (x, positive to the right and negative to the left)
-    fn mouse_wheel_event(&mut self, _ctx: &mut Context, x: i32, y: i32) {
+    fn mouse_wheel_event(&mut self, _ctx: &mut Context, _x: i32, y: i32) {
         self.mouse_info.scroll_event = if y > 0 {
                 Some(ScrollEvent::ScrollUp)
             } else if y < 0 {
@@ -598,7 +600,31 @@ impl EventHandler for MainState {
         }
     }
 
-    fn key_down_event(&mut self, ctx: &mut Context, keycode: Keycode, _keymod: Mod, repeat: bool ) {
+    fn key_down_event(&mut self, ctx: &mut Context, keycode: Keycode, keymod: Mod, repeat: bool ) {
+        let key_as_int32 = keycode as i32;
+        // Support just the basics for now by ignoring everything after F1 in the key code list
+        if key_as_int32 < (Keycode::F1 as i32) {
+            println!("int({}), MaxInt({})", key_as_int32, (Keycode::F1 as i32));
+            if self.key_info.key.is_none() {
+                self.key_info.key = Some(keycode);
+            }
+            else if self.key_info.key == Some(keycode) {
+                self.key_info.repeating = true;
+            }
+        } else if self.key_info.modifier.is_none() {
+            match keycode {
+                Keycode::LCtrl | Keycode::LGui | Keycode::LAlt | Keycode::LShift |
+                Keycode::RCtrl | Keycode::RGui | Keycode::RAlt | Keycode::RShift => {
+                    self.key_info.modifier = Some(keymod);
+                }
+                _ => {} // ignore all other non-standard, non-modifier keys
+            }
+        }
+
+        if self.key_info.debug_print {
+            println!("Key_Down K: {:?}, M: {:?}, R: {}", self.key_info.key, self.key_info.modifier, self.key_info.repeating);
+        }
+
         let current_screen = match self.screen_stack.last() {
             Some(screen) => screen,
             None => panic!("Error in key_down_event! Screen_stack is empty!"),
@@ -623,8 +649,21 @@ impl EventHandler for MainState {
     }
 
     fn key_up_event(&mut self, _ctx: &mut Context, keycode: Keycode, _keymod: Mod, _repeat: bool) {
-        //self.input_manager.clear_input_start_time();
-        self.input_manager.add(input::InputAction::KeyRelease(keycode));
+        if self.key_info.modifier.is_some() {
+            match keycode {
+                Keycode::LCtrl | Keycode::LGui | Keycode::LAlt | Keycode::LShift |
+                Keycode::RCtrl | Keycode::RGui | Keycode::RAlt | Keycode::RShift => {
+                    self.key_info.modifier = None;
+                }
+                _ => {}, // ignore the non-modifier keys as they're handled below
+            }
+        }
+        self.key_info.key = None;
+        self.key_info.repeating = false;
+
+        if self.key_info.debug_print {
+            println!("Key_Up K: {:?}, M: {:?}, R: {}", self.key_info.key, self.key_info.modifier, self.key_info.repeating);
+        }
     }
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
@@ -912,7 +951,7 @@ impl MainState {
                 MouseAction::Click => {
                     self.mouse_info.down_timestamp = None;
                     self.mouse_info.action = None;
-                    self.mouse_info.current_button = MouseButton::Unknown;
+                    self.mouse_info.mousebutton = MouseButton::Unknown;
                 }
                 MouseAction::Drag | MouseAction::Held => {}
             }
@@ -954,7 +993,7 @@ enum MouseAction {
 }
 
 struct MouseInfo {
-    current_button: MouseButton,
+    mousebutton: MouseButton,
     action: Option<MouseAction>,
     scroll_event: Option<ScrollEvent>,
     down_timestamp: Option<Instant>,
@@ -965,7 +1004,7 @@ struct MouseInfo {
 impl MouseInfo {
     fn new() -> Self {
         MouseInfo {
-            current_button: MouseButton::Unknown,
+            mousebutton: MouseButton::Unknown,
             action: None,
             scroll_event: None,
             down_timestamp: None,
@@ -974,14 +1013,41 @@ impl MouseInfo {
         }
     }
 
-    #[allow(dead_code)]
+    #[allow(unused)]
     fn print_mouse_state(&mut self) {
         if self.debug_print {
-            println!("Button: {:?}", self.current_button);
+            println!("Button: {:?}", self.mousebutton);
             println!("Action: {:?}", self.action);
             println!("Scroll: {:?}", self.scroll_event);
             println!("Down TS: {:?}", self.down_timestamp);
             println!("Position: {:?}", self.position);
+        }
+    }
+}
+
+struct KeyInfo {
+    key: Option<Keycode>,
+    repeating: bool,
+    modifier: Option<Mod>,
+    debug_print: bool,
+}
+
+impl KeyInfo {
+    fn new() -> Self {
+        KeyInfo {
+            key: None,
+            repeating: false,
+            modifier: None,
+            debug_print: true,
+        }
+    }
+
+    #[allow(unused)]
+    fn print_keyboard_state(&mut self) {
+        if self.debug_print {
+            println!("Key: {:?}", self.key);
+            println!("Modifier: {:?}", self.modifier);
+            println!("Repeating: {:?}", self.repeating);
         }
     }
 }
