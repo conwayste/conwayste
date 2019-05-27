@@ -51,7 +51,7 @@ use ggez::timer;
 use std::env;
 use std::path;
 use std::collections::BTreeMap;
-use std::time::{Instant, Duration};
+use std::time::Instant;
 
 use constants::{
     CURRENT_PLAYER_ID,
@@ -65,6 +65,7 @@ use constants::{
     INTRO_DURATION,
     INTRO_PAUSE_DURATION,
 };
+use input::{MouseAction, ScrollEvent};
 use viewport::Cell;
 use ui::{Button, Widget};
 
@@ -119,9 +120,7 @@ struct MainState {
     video_settings:      video::VideoSettings,
     config:              config::Config,
     viewport:            viewport::Viewport,
-    input_manager:       input::InputManager,
-    mouse_info:          MouseInfo,
-    key_info:            KeyInfo,
+    inputs:              input::InputManager,
 
     // Input state
     single_step:         bool,
@@ -252,7 +251,7 @@ impl MainState {
             video_settings:      vs,
             config:              config,
             viewport:            viewport,
-            input_manager:       input::InputManager::new(),
+            inputs:              input::InputManager::new(),
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -260,8 +259,6 @@ impl MainState {
             escape_key_pressed:  false,
             toggle_paused_game:  false,
             button: button,
-            mouse_info:          MouseInfo::new(),
-            key_info:            KeyInfo::new(),
         };
 
         init_patterns(&mut s).unwrap();
@@ -302,15 +299,15 @@ impl EventHandler for MainState {
             Screen::Menu => {
                 self.process_menu_inputs();
 
-                let mouse_point = Point2::new(self.mouse_info.position.0 as f32, self.mouse_info.position.1 as f32);
+                let mouse_point = Point2::new(self.inputs.mouse_info.position.0 as f32, self.inputs.mouse_info.position.1 as f32);
                 self.button.on_hover(&mouse_point);
-                if self.mouse_info.action == Some(MouseAction::Click) && self.mouse_info.mousebutton == MouseButton::Left {
+                if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
                     self.button.on_click(&mouse_point, &mut self.screen_stack);
                 }
 
                 //// Directional Key / Menu movement
                 ////////////////////////////////////////
-                if self.arrow_input != (0,0) && self.key_info.key.is_some() {
+                if self.arrow_input != (0,0) && self.inputs.key_info.key.is_some() {
                     // move selection accordingly
                     let (_,y) = self.arrow_input;
                     {
@@ -440,8 +437,8 @@ impl EventHandler for MainState {
                 // while timer::check_update_time(ctx, FPS) {
                 {
                     self.process_running_inputs();
-                    if self.mouse_info.mousebutton == MouseButton::Left {
-                        let (x,y) = self.mouse_info.position;
+                    if self.inputs.mouse_info.mousebutton == MouseButton::Left {
+                        let (x,y) = self.inputs.mouse_info.position;
                         let mouse_pos = Point2::new(x as f32, y as f32);
 
                         fn flip_cell(ms: &mut MainState, cell: Cell) {
@@ -453,7 +450,7 @@ impl EventHandler for MainState {
                             };
                         }
 
-                        match self.mouse_info.action {
+                        match self.inputs.mouse_info.action {
                             Some(MouseAction::Click) => {
                                 if let Some(cell) = self.viewport.get_cell(mouse_pos) {
                                     flip_cell(self, cell)
@@ -533,45 +530,45 @@ impl EventHandler for MainState {
     // going top to bottom.
     // Currently only allow one mouse button event at a time (e.g. left+right click not valid)
     fn mouse_button_down_event(&mut self, _ctx: &mut Context, button: MouseButton, x: i32, y: i32) {
-        if self.mouse_info.mousebutton == MouseButton::Unknown {
-            self.mouse_info.mousebutton = button;
-            self.mouse_info.down_timestamp = Some(Instant::now());
-            self.mouse_info.action = Some(MouseAction::Held);
-            self.mouse_info.position = (x,y);
+        if self.inputs.mouse_info.mousebutton == MouseButton::Unknown {
+            self.inputs.mouse_info.mousebutton = button;
+            self.inputs.mouse_info.down_timestamp = Some(Instant::now());
+            self.inputs.mouse_info.action = Some(MouseAction::Held);
+            self.inputs.mouse_info.position = (x,y);
 
-            if self.mouse_info.debug_print {
+            if self.inputs.mouse_info.debug_print {
                 println!("{:?} Down", button);
             }
         }
     }
 
     fn mouse_motion_event(&mut self, _ctx: &mut Context, _state: MouseState, x: i32, y: i32, _xrel: i32, _yrel: i32) {
-        self.mouse_info.position = (x, y);
+        self.inputs.mouse_info.position = (x, y);
 
-        if self.mouse_info.mousebutton != MouseButton::Unknown
-            && (self.mouse_info.action == Some(MouseAction::Held) || self.mouse_info.action == Some(MouseAction::Drag)) {
-            self.mouse_info.action = Some(MouseAction::Drag);
+        if self.inputs.mouse_info.mousebutton != MouseButton::Unknown
+            && (self.inputs.mouse_info.action == Some(MouseAction::Held) || self.inputs.mouse_info.action == Some(MouseAction::Drag)) {
+            self.inputs.mouse_info.action = Some(MouseAction::Drag);
 
-            if self.mouse_info.debug_print {
+            if self.inputs.mouse_info.debug_print {
                 println!("Dragging {:?}, Current Position {:?}, Time Held: {:?}",
-                    self.mouse_info.mousebutton,
-                    self.mouse_info.position,
-                    self.mouse_info.down_timestamp.unwrap().elapsed());
+                    self.inputs.mouse_info.mousebutton,
+                    self.inputs.mouse_info.position,
+                    self.inputs.mouse_info.down_timestamp.unwrap().elapsed());
             }
         }
     }
 
     fn mouse_button_up_event(&mut self, _ctx: &mut Context, button: MouseButton, x: i32, y: i32) {
         // Register as a click if we ended near where we started
-        if self.mouse_info.mousebutton == button {
-            self.mouse_info.action = Some(MouseAction::Click);
-            self.mouse_info.position = (x, y);
+        if self.inputs.mouse_info.mousebutton == button {
+            self.inputs.mouse_info.action = Some(MouseAction::Click);
+            self.inputs.mouse_info.position = (x, y);
 
-            if self.mouse_info.debug_print {
+            if self.inputs.mouse_info.debug_print {
                 println!("Clicked {:?}, Current Position {:?}, Time Held: {:?}",
                     button,
                     (x, y),
-                    self.mouse_info.down_timestamp.unwrap().elapsed());
+                    self.inputs.mouse_info.down_timestamp.unwrap().elapsed());
             }
         }
 
@@ -581,7 +578,7 @@ impl EventHandler for MainState {
     /// Vertical scroll:   (y, positive away from and negative toward the user)
     /// Horizontal scroll: (x, positive to the right and negative to the left)
     fn mouse_wheel_event(&mut self, _ctx: &mut Context, _x: i32, y: i32) {
-        self.mouse_info.scroll_event = if y > 0 {
+        self.inputs.mouse_info.scroll_event = if y > 0 {
                 Some(ScrollEvent::ScrollUp)
             } else if y < 0 {
                 Some(ScrollEvent::ScrollDown)
@@ -589,34 +586,34 @@ impl EventHandler for MainState {
                 None
             };
 
-        if self.mouse_info.debug_print {
-            println!("Wheel Event {:?}", self.mouse_info.scroll_event);
+        if self.inputs.mouse_info.debug_print {
+            println!("Wheel Event {:?}", self.inputs.mouse_info.scroll_event);
         }
     }
 
     fn key_down_event(&mut self, ctx: &mut Context, keycode: Keycode, keymod: Mod, repeat: bool ) {
         let key_as_int32 = keycode as i32;
+
         // Support just the basics for now by ignoring everything after the last arrow key in the key code list
         if key_as_int32 < (Keycode::NumLockClear as i32) {
-            println!("int({}), MaxInt({})", key_as_int32, (Keycode::NumLockClear as i32));
-            if self.key_info.key.is_none() {
-                self.key_info.key = Some(keycode);
+            if self.inputs.key_info.key.is_none() {
+                self.inputs.key_info.key = Some(keycode);
             }
-            else if self.key_info.key == Some(keycode) {
-                self.key_info.repeating = true;
+            else if self.inputs.key_info.key == Some(keycode) {
+                self.inputs.key_info.repeating = repeat;
             }
-        } else if self.key_info.modifier.is_none() {
+        } else if self.inputs.key_info.modifier.is_none() {
             match keycode {
                 Keycode::LCtrl | Keycode::LGui | Keycode::LAlt | Keycode::LShift |
                 Keycode::RCtrl | Keycode::RGui | Keycode::RAlt | Keycode::RShift => {
-                    self.key_info.modifier = Some(keymod);
+                    self.inputs.key_info.modifier = Some(keymod);
                 }
                 _ => {} // ignore all other non-standard, non-modifier keys
             }
         }
 
-        if self.key_info.debug_print {
-            println!("Key_Down K: {:?}, M: {:?}, R: {}", self.key_info.key, self.key_info.modifier, self.key_info.repeating);
+        if self.inputs.key_info.debug_print {
+            println!("Key_Down K: {:?}, M: {:?}, R: {}", self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating);
         }
 
         let current_screen = match self.screen_stack.last() {
@@ -640,20 +637,20 @@ impl EventHandler for MainState {
     }
 
     fn key_up_event(&mut self, _ctx: &mut Context, keycode: Keycode, _keymod: Mod, _repeat: bool) {
-        if self.key_info.modifier.is_some() {
+        if self.inputs.key_info.modifier.is_some() {
             match keycode {
                 Keycode::LCtrl | Keycode::LGui | Keycode::LAlt | Keycode::LShift |
                 Keycode::RCtrl | Keycode::RGui | Keycode::RAlt | Keycode::RShift => {
-                    self.key_info.modifier = None;
+                    self.inputs.key_info.modifier = None;
                 }
                 _ => {}, // ignore the non-modifier keys as they're handled below
             }
         }
-        self.key_info.key = None;
-        self.key_info.repeating = false;
+        self.inputs.key_info.key = None;
+        self.inputs.key_info.repeating = false;
 
-        if self.key_info.debug_print {
-            println!("Key_Up K: {:?}, M: {:?}, R: {}", self.key_info.key, self.key_info.modifier, self.key_info.repeating);
+        if self.inputs.key_info.debug_print {
+            println!("Key_Up K: {:?}, M: {:?}, R: {}", self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating);
         }
     }
 
@@ -819,7 +816,7 @@ impl MainState {
     fn process_running_inputs(&mut self) {
         let keycode;
 
-        if let Some(k) = self.key_info.key {
+        if let Some(k) = self.inputs.key_info.key {
             keycode = k;
         } else {
             return;
@@ -827,7 +824,7 @@ impl MainState {
 
         match keycode {
             Keycode::Return => {
-                if !self.key_info.repeating {
+                if !self.inputs.key_info.repeating {
                     self.running = !self.running;
                 }
             }
@@ -875,7 +872,7 @@ impl MainState {
     fn process_menu_inputs(&mut self) {
         let keycode;
 
-        if let Some(k) = self.key_info.key {
+        if let Some(k) = self.inputs.key_info.key {
             keycode = k;
         } else {
             return;
@@ -895,7 +892,7 @@ impl MainState {
                 self.arrow_input = (1, 0);
             }
             Keycode::Return => {
-                if !self.key_info.repeating {
+                if !self.inputs.key_info.repeating {
                     self.return_key_pressed = true;
                 }
             }
@@ -907,20 +904,20 @@ impl MainState {
     }
 
     fn post_update(&mut self) -> GameResult<()> {
-        if let Some(action) = self.mouse_info.action {
+        if let Some(action) = self.inputs.mouse_info.action {
             match action {
                 MouseAction::Click => {
-                    self.mouse_info.down_timestamp = None;
-                    self.mouse_info.action = None;
-                    self.mouse_info.mousebutton = MouseButton::Unknown;
+                    self.inputs.mouse_info.down_timestamp = None;
+                    self.inputs.mouse_info.action = None;
+                    self.inputs.mouse_info.mousebutton = MouseButton::Unknown;
                 }
                 MouseAction::Drag | MouseAction::Held => {}
             }
         }
-        self.mouse_info.scroll_event = None;
+        self.inputs.mouse_info.scroll_event = None;
 
-        if self.key_info.key.is_some() {
-            self.key_info.key = None;
+        if self.inputs.key_info.key.is_some() {
+            self.inputs.key_info.key = None;
         }
 
         self.arrow_input = (0, 0);
@@ -942,80 +939,6 @@ impl MainState {
         }
     }
 }
-
-#[derive(PartialEq, Clone, Copy, Debug)]
-enum ScrollEvent {
-    ScrollUp, // Away from the user
-    ScrollDown, // Towards the user
-}
-
-#[derive(PartialEq, Clone, Copy, Debug)]
-enum MouseAction {
-    Held,
-    Drag,
-    Click,
-}
-
-struct MouseInfo {
-    mousebutton: MouseButton,
-    action: Option<MouseAction>,
-    scroll_event: Option<ScrollEvent>,
-    down_timestamp: Option<Instant>,
-    position: (i32, i32),
-    debug_print: bool
-}
-
-impl MouseInfo {
-    fn new() -> Self {
-        MouseInfo {
-            mousebutton: MouseButton::Unknown,
-            action: None,
-            scroll_event: None,
-            down_timestamp: None,
-            position: (0, 0),
-            debug_print: true,
-        }
-    }
-
-    #[allow(unused)]
-    fn print_mouse_state(&mut self) {
-        if self.debug_print {
-            println!("Button: {:?}", self.mousebutton);
-            println!("Action: {:?}", self.action);
-            println!("Scroll: {:?}", self.scroll_event);
-            println!("Down TS: {:?}", self.down_timestamp);
-            println!("Position: {:?}", self.position);
-        }
-    }
-}
-
-struct KeyInfo {
-    key: Option<Keycode>,
-    repeating: bool,
-    modifier: Option<Mod>,
-    debug_print: bool,
-}
-
-impl KeyInfo {
-    fn new() -> Self {
-        KeyInfo {
-            key: None,
-            repeating: false,
-            modifier: None,
-            debug_print: true,
-        }
-    }
-
-    #[allow(unused)]
-    fn print_keyboard_state(&mut self) {
-        if self.debug_print {
-            println!("Key: {:?}", self.key);
-            println!("Modifier: {:?}", self.modifier);
-            println!("Repeating: {:?}", self.repeating);
-        }
-    }
-}
-
 fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
     let pat = Pattern("10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW$10bW$10bW$10b16W48$100b2A5b2A$100b2A5b2A2$104b2A$104b2A5$122b2Ab2A$121bA5bA$121bA6bA2b2A$121b3A3bA3b2A$126bA!".to_owned());
     //XXX apply to universe, then return Ok
