@@ -281,18 +281,24 @@ impl EventHandler for MainState {
             Screen::Intro(mut remaining) => {
 
                 self.screen_stack.pop();
-                remaining -= duration;
-                if remaining > INTRO_DURATION - INTRO_PAUSE_DURATION {
-                    self.screen_stack.push(Screen::Intro(remaining));
-                }
-                else {
-                    if remaining > 0.0 && remaining <= INTRO_DURATION - INTRO_PAUSE_DURATION {
-                        self.intro_uni.next();
 
+                // Any key should skip the intro
+                if self.inputs.key_info.key.is_some() {
+                    self.screen_stack.push(Screen::Menu);
+                } else {
+                    remaining -= duration;
+                    if remaining > INTRO_DURATION - INTRO_PAUSE_DURATION {
                         self.screen_stack.push(Screen::Intro(remaining));
                     }
                     else {
-                        self.screen_stack.push(Screen::Menu);
+                        if remaining > 0.0 && remaining <= INTRO_DURATION - INTRO_PAUSE_DURATION {
+                            self.intro_uni.next();
+
+                            self.screen_stack.push(Screen::Intro(remaining));
+                        }
+                        else {
+                            self.screen_stack.push(Screen::Menu);
+                        }
                     }
                 }
             }
@@ -615,25 +621,6 @@ impl EventHandler for MainState {
         if self.inputs.key_info.debug_print {
             println!("Key_Down K: {:?}, M: {:?}, R: {}", self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating);
         }
-
-        let current_screen = match self.screen_stack.last() {
-            Some(screen) => screen,
-            None => panic!("Error in key_down_event! Screen_stack is empty!"),
-        };
-
-        match current_screen {
-            Screen::Intro(_) => {
-                self.screen_stack.pop();
-                self.screen_stack.push(Screen::Menu);
-                self.menu_sys.reset();
-            }
-            Screen::Menu | Screen::Run => {
-                if keycode == Keycode::Escape {
-                    self.quit_event(ctx);
-                }
-            }
-            Screen::Exit => {}
-        }
     }
 
     fn key_up_event(&mut self, _ctx: &mut Context, keycode: Keycode, _keymod: Mod, _repeat: bool) {
@@ -862,6 +849,9 @@ impl MainState {
                 let visibility = None;  // can also do Some(player_id)
                 let pat = self.uni.to_pattern(visibility);
                 println!("PATTERN DUMP:\n{}", pat.0);
+            }
+            Keycode::Escape => {
+                self.toggle_paused_game = true;
             }
             _ => {
                 println!("Unrecognized keycode {}", keycode);
