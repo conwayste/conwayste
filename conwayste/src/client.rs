@@ -66,7 +66,7 @@ use constants::{
 };
 use input::{MouseAction, ScrollEvent};
 use viewport::Cell;
-use ui::{Button, Widget};
+use ui::{Button, Widget, Checkbox};
 
 #[derive(PartialEq, Clone, Copy)]
 enum Screen {
@@ -129,6 +129,7 @@ struct MainState {
     escape_key_pressed:  bool,
     toggle_paused_game:  bool,
     button:              Button<Vec<Screen>>,
+    checkbox:            Checkbox<bool>,
 }
 
 // Then we implement the `ggez::game::GameState` trait on it, which
@@ -238,6 +239,11 @@ impl MainState {
             screen_stack.push(Screen::Run);
         }));
 
+        let checkbox = Checkbox::<bool>::new("Test Checkbox! :)", Box::new(|testcheck: &mut bool| {
+            println!("The test checkbox has been clicked!");
+            if *testcheck { *testcheck = false } else { *testcheck = true }
+        }));
+
         let mut s = MainState {
             small_font:          small_font,
             screen_stack:        vec![Screen::Intro(INTRO_DURATION)],
@@ -258,6 +264,7 @@ impl MainState {
             escape_key_pressed:  false,
             toggle_paused_game:  false,
             button: button,
+            checkbox: checkbox,
         };
 
         init_patterns(&mut s).unwrap();
@@ -308,6 +315,11 @@ impl EventHandler for MainState {
                 self.button.on_hover(&mouse_point);
                 if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
                     self.button.on_click(&mouse_point, &mut self.screen_stack);
+                }
+
+                self.checkbox.on_hover(&mouse_point);
+                if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
+                    self.checkbox.on_click(&mouse_point, &mut self.single_step);
                 }
 
                 //// Directional Key / Menu movement
@@ -518,6 +530,8 @@ impl EventHandler for MainState {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn);
 
                 self.button.draw(ctx, &self.small_font)?;
+
+                self.checkbox.draw(ctx, &self.small_font)?;
             }
             Screen::Run => {
                 self.draw_universe(ctx)?;

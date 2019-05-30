@@ -1,3 +1,4 @@
+
 /*  Copyright 2019 the Conwayste Developers.
  *
  *  This file is part of conwayste.
@@ -15,10 +16,9 @@
  *  You should have received a copy of the GNU General Public License
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
-
 use chromatica::css;
 
-use ggez::graphics::{self, Rect, Font, Text, Point2, Color, DrawMode};
+use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode};
 use ggez::{Context, GameResult};
 
 use super::{
@@ -27,68 +27,74 @@ use super::{
     helpe::{within_widget, draw_text}
     };
 
-pub struct Button<T> {
+#[derive(PartialEq)]
+pub enum ToggleState {
+    Disabled,
+    Enabled
+}
+
+pub struct Checkbox<T> {
     pub label: Label,
-    pub button_color: Color,
-    pub draw_mode: DrawMode,
+    pub state: ToggleState,
     pub dimensions: Rect,
     pub hover: bool,
-    pub borderless: bool,
     pub click: Box<dyn FnMut(&mut T)>
 }
 
-impl<T> Button<T> {
-    pub fn new(font: &Font, button_text: &'static str, action: Box<dyn FnMut(&mut T)>) -> Self {
-        let offset = Point2::new(8.0, 4.0);
-        let width = font.get_width(button_text) as f32 + offset.x*2.0;
-        let height = font.get_height() as f32 + offset.y*2.0;
-
-        Button {
-            label: Label::new(button_text, Color::from(css::WHITE)),
-            button_color: Color::from(css::DARKCYAN),
-            draw_mode: DrawMode::Fill,
-            dimensions: Rect::new(30.0, 20.0, width, height),
+impl<T> Checkbox<T> {
+    pub fn new(text: &'static str, action: Box<dyn FnMut(&mut T)>) -> Self {
+        Checkbox {
+            label: Label::new(text, Color::from(css::WHITE)),
+            state: ToggleState::Disabled,
+            dimensions: Rect::new(160.0, 160.0, 20.0, 20.0),
             hover: false,
-            borderless: false,
-            click: action,
+            click: action
         }
     }
 
-    pub fn label_color(mut self, color: Color) -> Self {
-        self.label = self.label.set_color(color);
-        self
+    pub fn toggle(&mut self) {
+        if self.state == ToggleState::Disabled {
+            self.state = ToggleState::Enabled
+        } else {
+            self.state = ToggleState::Disabled
+        }
     }
 
-    pub fn button_color(mut self, color: Color) -> Self {
-        self.button_color = color;
-        self
-    }
 }
 
-impl<T> Widget<T> for Button<T> {
+
+impl<T> Widget<T> for Checkbox<T> {
     fn on_hover(&mut self, point: &Point2) {
         self.hover = within_widget(point, &self.dimensions);
-        //println!("Hovering over Button, \"{}\"", self.label);
+        //println!("Hovering over Checkbox, \"{}\"", self.label);
     }
 
     fn on_click(&mut self, point: &Point2, t: &mut T)
     {
         if within_widget(point, &self.dimensions) {
-            println!("Clicked Button, \"{}\"", self.label.text);
+            println!("Clicked Checkbox, \"{}\"", self.label.text);
+            self.toggle();
             (self.click)(t)
         }
     }
 
     fn draw(&self, ctx: &mut Context, font: &Font) -> GameResult<()> {
-        let offset = Point2::new(8.0, 4.0);
+        let offset = Point2::new(30.0, -5.0);
         let old_color = graphics::get_color(ctx);
-        graphics::set_color(ctx, self.button_color)?;
+        graphics::set_color(ctx, self.label.color)?;
 
-        let draw_mode = if self.hover {
+        let draw_mode = if self.state == ToggleState::Enabled {
             DrawMode::Fill
         } else {
-            DrawMode::Line(2.0)
+            DrawMode::Line(1.0)
         };
+
+        if self.hover {
+            // Add in a violet border/fill while hovered. Intention is to color actual checkbox while hovered as well.
+            let border_rect = Rect::new(self.dimensions.x-3.0, self.dimensions.y-3.0, self.dimensions.w + 6.0, self.dimensions.h + 6.0);
+            graphics::set_color(ctx, Color::from(css::VIOLET))?;
+            graphics::rectangle(ctx, DrawMode::Line(2.0), border_rect)?;
+        }
 
         graphics::rectangle(ctx, draw_mode, self.dimensions)?;
         draw_text(ctx, font, self.label.color, &self.label.text, &self.dimensions.point(), Some(&offset))?;

@@ -20,11 +20,13 @@ extern crate ggez;
 extern crate chromatica;
 
 mod button;
+mod checkbox;
 mod helpe;
 mod widget;
 mod label;
 
 pub use button::Button;
+pub use checkbox::Checkbox;
 pub use helpe::{
     within_widget,
     center,
