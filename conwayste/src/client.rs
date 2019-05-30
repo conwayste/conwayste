@@ -695,7 +695,7 @@ impl MainState {
         // grid foreground (dead cells)
         let full_rect = self.viewport.get_rect_from_origin();
 
-        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
+        if let Some(clipped_rect) = ui::intersection(full_rect, self.viewport.get_viewport()) {
             graphics::set_color(ctx, draw_params.fg_color)?;
             graphics::rectangle(ctx,  GRID_DRAW_STYLE.to_draw_mode(), clipped_rect)?;
         }
@@ -736,7 +736,7 @@ impl MainState {
         if draw_params.draw_counter {
             let gen_counter_str = universe.latest_gen().to_string();
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
-            utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
+            ui::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
         }
 
         ////////////////////// END

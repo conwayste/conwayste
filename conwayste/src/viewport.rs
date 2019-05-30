@@ -20,7 +20,7 @@ extern crate ggez;
 
 use ggez::graphics::{Point2, Rect};
 
-use crate::utils;
+use crate::ui;
 use crate::constants::{
     DEFAULT_SCREEN_HEIGHT,
     DEFAULT_SCREEN_WIDTH,
@@ -66,7 +66,7 @@ pub enum ZoomDirection {
 impl Viewport {
 
     /// Creates a new Viewport which manages how the how things
-    /// are displayed within the Window. 
+    /// are displayed within the Window.
     pub fn new(cell_size: f32, length: usize, width: usize) -> Viewport {
         Viewport {
             grid_view : GridView::new(cell_size, length, width),
@@ -75,10 +75,10 @@ impl Viewport {
 
     /// Adjusting the zoom level is a two step process:
     ///
-    /// 1) The cell size controls the rectangle size of each cell. 
+    /// 1) The cell size controls the rectangle size of each cell.
     ///   Zooming in increments, out decrements.
     ///
-    /// 2) The offset needs to be repositioned so that the center of the screen 
+    /// 2) The offset needs to be repositioned so that the center of the screen
     ///   holds after the cell size change.
     pub fn adjust_zoom_level(&mut self, direction : ZoomDirection) {
         if (direction == ZoomDirection::ZoomIn && self.grid_view.cell_size < MAX_CELL_SIZE) ||
@@ -115,7 +115,7 @@ impl Viewport {
                 let alpha = self.grid_view.rect.w as i32;
 
                 if phi > alpha {
-                    self.grid_view.grid_origin = utils::Graphics::point_offset(self.grid_view.grid_origin,
+                    self.grid_view.grid_origin = ui::point_offset(self.grid_view.grid_origin,
                                                                          -zoom_dir * delta_x,
                                                                          -zoom_dir * delta_y
                                                                          );
@@ -132,14 +132,14 @@ impl Viewport {
     /// Panning moves the grid_origin around, if it can.
     /// We always keep a border of ten pixels on each side.
     /// This works by checking to see how much of the grid (or lack thereof) is
-    /// displayed on the onscreen. 
+    /// displayed on the onscreen.
     ///
-    /// We need to re-adjust the grid origin if the cell size changes or if 
+    /// We need to re-adjust the grid origin if the cell size changes or if
     /// the user moves around.
     ///
     /// The panning Left and Up cases are straightforward as the origin does not move.
     /// The Down and Right cases look at how much of the Grid is displayed on screen (`ϕ`, `phi`).
-    /// This is compared against the size of the screen, `α`, `alpha`, to see if we can 
+    /// This is compared against the size of the screen, `α`, `alpha`, to see if we can
     /// adjust the grid origin.
     fn adjust_panning(&mut self, recenter_after_zoom: bool, arrow_input: (isize, isize)) {
         let (columns, rows) = (self.grid_view.columns as u32, self.grid_view.rows as u32);
@@ -229,7 +229,7 @@ impl Viewport {
         }
 
         if pan {
-            self.grid_view.grid_origin = utils::Graphics::point_offset(self.grid_view.grid_origin, dx_in_pixels, dy_in_pixels);
+            self.grid_view.grid_origin = ui::point_offset(self.grid_view.grid_origin, dx_in_pixels, dy_in_pixels);
         }
         else {
             // We cannot pan as we are out of bounds, but let us ensure we maintain a border
@@ -244,7 +244,7 @@ impl Viewport {
         self.adjust_panning(false, direction);
     }
 
-    /// Set dimensions of the grid. This may cause unintended consequences if modified during run-time. 
+    /// Set dimensions of the grid. This may cause unintended consequences if modified during run-time.
     /// Be mindful of the window size.
     pub fn set_dimensions(&mut self, w: f32, h: f32) {
         self.grid_view.set_width(w);
@@ -360,7 +360,7 @@ impl GridView {
 
         // The 'minus one' above for right and bottom give it that grid-like feel :)
         let rect = Rect::new(left, top, right - left, bottom - top);
-        utils::Graphics::intersection(rect, self.rect)
+        ui::intersection(rect, self.rect)
     }
 
     /// The column and row supplied lies is `None` outside of the grid.
@@ -413,7 +413,7 @@ mod test {
         let inside = Point2::new(5.0, 5.0);
         let corner = Point2::new(DEFAULT_SCREEN_WIDTH as f32 * gv.cell_size, DEFAULT_SCREEN_HEIGHT as f32 * gv.cell_size);
         let outside = Point2::new(-10.0, -10.0);
-        
+
         assert_eq!(gv.game_coords_from_window_unchecked(inside), (0, 0));
         assert_eq!(gv.game_coords_from_window_unchecked(corner), (1200, 800));
         assert_eq!(gv.game_coords_from_window_unchecked(outside), (-1, -1));
@@ -427,7 +427,7 @@ mod test {
         let corner2 = Point2::new( DEFAULT_SCREEN_WIDTH * gv.cell_size, DEFAULT_SCREEN_HEIGHT * gv.cell_size);
         let outside = Point2::new(-10.0, -10.0);
         let edge_point = Point2::new(1200.0, 800.0);
-        
+
         assert_eq!(gv.game_coords_from_window(inside), Some(Cell::new(0, 0)));
         assert_eq!(gv.game_coords_from_window(corner1), None);
         assert_eq!(gv.game_coords_from_window(corner2), None);
@@ -451,7 +451,7 @@ mod test {
         let corner = Cell::new(120, 80);
         let outside1 = Cell::new(121, 80);
         let outside2 = Cell::new(120, 81);
-        
+
         assert_eq!(gv.window_coords_from_game(inside), Some(Rect::new(0.0, 0.0, 9.0, 9.0)) );
         assert_eq!(gv.window_coords_from_game(corner), None);
         assert_eq!(gv.window_coords_from_game(outside1), None);

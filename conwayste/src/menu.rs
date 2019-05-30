@@ -22,7 +22,7 @@ use ggez::graphics::{Point2, Color};
 use std::collections::{HashMap};
 
 use crate::video;
-use crate::utils;
+use crate::ui;
 use crate::constants::{DEFAULT_ACTIVE_COLOR, DEFAULT_INACTIVE_COLOR};
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
@@ -316,7 +316,7 @@ impl MenuSystem {
 
     fn draw_general_menu_view(&self, _ctx: &mut Context, has_game_started: bool) -> GameResult<()> {
         let index = self.get_menu_container().get_menu_item_index(); // current position in this menu
-        // Menu Navigation 
+        // Menu Navigation
         /////////////////////////////////////////
         //TODO: is this match necessary still?
         match self.menu_state {
@@ -337,9 +337,9 @@ impl MenuSystem {
                         }
 
                         let color = if index == i { self.active_color } else { self.inactive_color };
-                        utils::Graphics::draw_text(_ctx, &self.font, color, &menu_option_str, &coords, Some(&offset))?;
+                        ui::draw_text(_ctx, &self.font, color, &menu_option_str, &coords, Some(&offset))?;
 
-                        offset = utils::Graphics::point_offset(offset, 0.0, 50.0);
+                        offset = ui::point_offset(offset, 0.0, 50.0);
                     }
                 }
 
@@ -377,7 +377,7 @@ impl MenuSystem {
                     let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
 
                     // TODO: color
-                    utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color, &is_fullscreen_str, &coords, None);
+                    ui::draw_text(_ctx, &self.font, self.inactive_color, &is_fullscreen_str, &coords, None);
                 }
 
                 ////////////////////////////////
@@ -389,7 +389,7 @@ impl MenuSystem {
                     let cur_res_str = format!("{}x{}", width, height);
 
                     // TODO: color
-                    utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color, &cur_res_str, &coords, None);
+                    ui::draw_text(_ctx, &self.font, self.inactive_color, &cur_res_str, &coords, None);
                }
             }
              _  => {}

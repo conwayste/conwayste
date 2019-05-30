@@ -1,4 +1,3 @@
-
 /*  Copyright 2019 the Conwayste Developers.
  *
  *  This file is part of conwayste.
@@ -17,52 +16,25 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-extern crate ggez;
-extern crate chromatica;
+use chromatica::css;
 
 use ggez::graphics::{self, Rect, Font, Text, Point2, Color, DrawMode};
 use ggez::{Context, GameResult};
-use chromatica::css;
-use crate::utils;
 
-pub trait Widget<T> {
-    fn on_hover(&mut self, point: &Point2);
-    fn on_click(&mut self, point: &Point2, t: &mut T);
-    fn draw(&self, ctx: &mut Context, font: &Font) -> GameResult<()>;
-}
-
-pub struct Label {
-    text: &'static str,
-    color: Color,
-}
-
-impl Label {
-    pub fn new(text: &'static str, color: Color) -> Self {
-        Label {
-            text: text,
-            color: color,
-        }
-    }
-
-    pub fn set_color(mut self, color: Color) -> Self {
-        self.color = color;
-        self
-    }
-
-    pub fn set_text(mut self, text: &'static str) -> Self {
-        self.text = text;
-        self
-    }
-}
+use super::{
+    label::Label,
+    widget::Widget,
+    helpe::{within_widget, draw_text}
+    };
 
 pub struct Button<T> {
-    label: Label,
-    button_color: Color,
-    draw_mode: DrawMode,
+    pub label: Label,
+    pub button_color: Color,
+    pub draw_mode: DrawMode,
     pub dimensions: Rect,
-    hover: bool,
-    borderless: bool,
-    click: Box<dyn FnMut(&mut T)>
+    pub hover: bool,
+    pub borderless: bool,
+    pub click: Box<dyn FnMut(&mut T)>
 }
 
 impl<T> Button<T> {
@@ -118,14 +90,6 @@ impl<T> Widget<T> for Button<T> {
         };
 
         graphics::rectangle(ctx, draw_mode, self.dimensions)?;
-        utils::Graphics::draw_text(ctx, font, self.label.color, &self.label.text, &self.dimensions.point(), Some(&offset))
+        draw_text(ctx, font, self.label.color, &self.label.text, &self.dimensions.point(), Some(&offset))
     }
-}
-
-fn within_widget(point: &Point2, bounds: &Rect) -> bool {
-    bounds.contains(*point)
-}
-
-fn center(r: &Rect) -> Point2 {
-    Point2::new((r.left() + r.right()) / 2.0, (r.top() + r.bottom()) / 2.0)
 }

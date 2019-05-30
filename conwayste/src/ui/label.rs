@@ -1,4 +1,4 @@
-/*  Copyright 2017-2018 the Conwayste Developers.
+/*  Copyright 2019 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -15,3 +15,29 @@
  *  You should have received a copy of the GNU General Public License
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
+
+use ggez::graphics::Color;
+
+pub struct Label {
+    pub text: &'static str,
+    pub color: Color,
+}
+
+impl Label {
+    pub fn new(text: &'static str, color: Color) -> Self {
+        Label {
+            text: text,
+            color: color,
+        }
+    }
+
+    pub fn set_color(mut self, color: Color) -> Self {
+        self.color = color;
+        self
+    }
+
+    pub fn set_text(mut self, text: &'static str) -> Self {
+        self.text = text;
+        self
+    }
+}
