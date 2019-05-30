@@ -32,7 +32,6 @@ mod constants;
 mod input;
 mod menu;
 mod ui;
-mod utils;
 mod video;
 mod viewport;
 
@@ -597,7 +596,7 @@ impl EventHandler for MainState {
         }
     }
 
-    fn key_down_event(&mut self, ctx: &mut Context, keycode: Keycode, keymod: Mod, repeat: bool ) {
+    fn key_down_event(&mut self, _ctx: &mut Context, keycode: Keycode, keymod: Mod, repeat: bool ) {
         let key_as_int32 = keycode as i32;
 
         // Support just the basics for now by ignoring everything after the last arrow key in the key code list
