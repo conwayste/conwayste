@@ -142,4 +142,28 @@ mod test {
 
         assert_eq!(intersection(rect1, rect2), None);
     }
+
+    #[test]
+    fn test_center_no_size_rectangle() {
+        let rect = Rect::new(0.0, 0.0, 0.0, 0.0);
+        assert_eq!(center(&rect), Point2::new(0.0, 0.0) )
+    }
+
+    #[test]
+    fn test_center_rectangle_coordinate_negative() {
+        let rect = Rect::new(-1.0, -1.0, 3.0, 5.0);
+        assert_eq!(center(&rect), Point2::new(0.5, 1.5) )
+    }
+
+    #[test]
+    fn test_center_rectangle_size_negative() {
+        let rect = Rect::new(0.0, 0.0, -2.0, -2.0);
+        assert_eq!(center(&rect), Point2::new(-1.0,-1.0) )
+    }
+
+    #[test]
+    fn test_center_rectangle_size_positive() {
+        let rect = Rect::new(0.0, 0.0, 2.0, 2.0);
+        assert_eq!(center(&rect), Point2::new(1.0, 1.0) )
+    }
 }
