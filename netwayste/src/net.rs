@@ -385,10 +385,8 @@ pub fn get_version() -> result::Result<Version, SemVerError> {
 }
 
 #[allow(dead_code)]
-pub fn has_connection_timed_out(heartbeat: Option<Instant>) -> bool {
-    if let Some(heartbeat) = heartbeat {
-        (Instant::now() - heartbeat) > Duration::from_secs(TIMEOUT_IN_SECONDS)
-    } else { false }
+pub fn has_connection_timed_out(last_received: Instant) -> bool {
+    (Instant::now() - last_received) > Duration::from_secs(TIMEOUT_IN_SECONDS)
 }
 
 pub struct NetworkStatistics {

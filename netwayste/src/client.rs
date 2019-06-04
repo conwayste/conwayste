@@ -60,7 +60,7 @@ pub struct ClientNetState {
     pub chat_msg_seq_num: u64,
     pub tick:             usize,
     pub network:          NetworkManager,
-    pub heartbeat:        Option<Instant>,
+    pub last_received:    Option<Instant>,
     pub disconnect_initiated: bool,
     pub server_address:   Option<SocketAddr>,
     pub channel_to_conwayste:     std::sync::mpsc::Sender<NetwaysteEvent>,
@@ -78,7 +78,7 @@ impl ClientNetState {
             chat_msg_seq_num: 0,
             tick:            0,
             network:         NetworkManager::new().with_message_buffering(),
-            heartbeat:       None,
+            last_received:   None,
             disconnect_initiated: false,
             server_address:  None,
             channel_to_conwayste: channel_to_conwayste,
@@ -99,7 +99,7 @@ impl ClientNetState {
             ref mut chat_msg_seq_num,
             ref mut tick,
             ref mut network,
-            ref mut heartbeat,
+            ref mut last_received,
             ref mut disconnect_initiated,
             ref mut server_address,
             channel_to_conwayste: ref _channel_to_conwayste,          // Don't clear the channel to conwayste
@@ -110,7 +110,7 @@ impl ClientNetState {
         *cookie           = None;
         *chat_msg_seq_num = 0;
         *tick             = 0;
-        *heartbeat        = None;
+        *last_received    = None;
         *disconnect_initiated = false;
         *server_address   = None;
         network.reset();
@@ -199,7 +199,7 @@ impl ClientNetState {
         let packet = opt_packet.unwrap();
         match packet.clone() {
             Packet::Response{sequence, request_ack: _, code} => {
-                self.heartbeat = Some(Instant::now());
+                self.last_received = Some(Instant::now());
                 let code = code.clone();
                 if code != ResponseCode::KeepAlive {
                     // When a packet is acked, we can remove it from the TX buffer and buffer the response for
@@ -262,14 +262,14 @@ impl ClientNetState {
     fn handle_tick_event(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>) {
         // Every 100ms, after we've connected
         if self.cookie.is_some() {
-            // Send a keep alive heartbeat if the connection is live
+            // Send a keep alive if the connection is live
             let keep_alive = Packet::Request {
                 cookie: self.cookie.clone(),
                 sequence: self.sequence,
                 response_ack: None,
                 action: RequestAction::KeepAlive(self.response_sequence),
             };
-            let timed_out = has_connection_timed_out(self.heartbeat);
+            let timed_out = has_connection_timed_out(self.last_received.unwrap());
 
             if timed_out || self.disconnect_initiated {
                 if timed_out {

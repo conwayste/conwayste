@@ -85,7 +85,7 @@ pub struct Player {
     pub request_ack:   Option<u64>,          // The next number we expect is request_ack + 1
     pub next_resp_seq: u64,                  // This is the sequence number for the Response packet the Server sends to the Client
     pub game_info:     Option<PlayerInGameInfo>,   // none means in lobby
-    pub heartbeat:     Option<time::Instant>,
+    pub last_received: time::Instant,        // Time of last message received from player
 }
 
 // info for a player as it relates to a game/room
@@ -495,26 +495,20 @@ impl ServerState {
     }
 
     pub fn remove_player(&mut self, player_id: PlayerID, player_cookie: String) {
+        if self.is_player_in_game(player_id) {
+            let player = self.get_player(player_id);
+            let broadcast_msg = format!("Player {} has left.", player.name);
+            let room: &mut Room = self.get_room_mut(player_id).unwrap(); // safe because in game check verifies room's existence
+            room.broadcast(broadcast_msg);
+            let _left = self.leave_room(player_id);     // Ignore return since we don't care
+        }
         self.player_map.remove(&player_cookie);
         self.players.remove(&player_id);
     }
 
     pub fn handle_disconnect(&mut self, player_id: PlayerID) -> ResponseCode {
-        let (player_name, player_cookie) = {
-            let player = self.get_player(player_id);
-            let name = player.name.to_owned();
-            let cookie = player.cookie.clone();
-            (name, cookie)
-        };
-
-        if self.is_player_in_game(player_id) {
-            {
-                let room: &mut Room = self.get_room_mut(player_id).unwrap(); // safe because in game check verifies room's existence
-                room.broadcast(format!("Player {} has left.", player_name));
-            }
-            let _left = self.leave_room(player_id);     // Ignore return since we don't care
-        }
-
+        let player = self.get_player(player_id);
+        let player_cookie = player.cookie.clone();
         self.remove_player(player_id, player_cookie);
 
         ResponseCode::OK
@@ -527,8 +521,6 @@ impl ServerState {
                 return self.handle_disconnect(player_id);
             },
             RequestAction:: KeepAlive(_) => {
-                let player: &mut Player = self.get_player_mut(player_id);
-                player.heartbeat = Some(time::Instant::now());
                 return ResponseCode::OK;
             },
             RequestAction::ListPlayers     => {
@@ -850,6 +842,8 @@ impl ServerState {
                         }
                     };
 
+                    let mut player: &mut Player = self.get_player_mut(player_id);
+                    player.last_received = time::Instant::now();   // reset time of last received packet from player
                     match action.clone() {
                         RequestAction::KeepAlive(resp_ack) => {
                             // If the client does not send new requests, the Server will never get a reply for
@@ -1087,7 +1081,7 @@ impl ServerState {
             request_ack:   None,
             next_resp_seq: 0,
             game_info:     None,
-            heartbeat:     None,
+            last_received: Instant::now(),
         };
 
         // save player into players hash map, and save player ID into hash map using cookie
@@ -1106,8 +1100,8 @@ impl ServerState {
         let mut timed_out_players: Vec<PlayerID> = vec![];
 
         for (p_id, p) in self.players.iter() {
-            if has_connection_timed_out(p.heartbeat) {
-                info!("Player({}) has timed out", p.cookie);
+            if has_connection_timed_out(p.last_received) {
+                info!("Player(cookie={:?}) has timed out", p.cookie);
                 timed_out_players.push(*p_id);
             }
         }
@@ -1136,7 +1130,7 @@ impl ServerState {
 enum Event {
     TickEvent,
     Request((SocketAddr, Option<Packet>)),
-    NetworkEvent,
+    NetworkTickEvent,
     HeartBeat,
 //    Notify((SocketAddr, Option<Packet>)),
 }
@@ -1213,11 +1207,11 @@ pub fn main() {
         })
         .map_err(|_| ());
 
-    let network_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () ));
-    let network_stream = network_stream.and_then(|_| {
+    let network_tick_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () ));
+    let network_tick_stream = network_tick_stream.and_then(|_| {
         let timeout = Timeout::new(Duration::from_millis(NETWORK_INTERVAL_IN_MS), &handle).unwrap();
         timeout.and_then(move |_| {
-            ok(Event::NetworkEvent)
+            ok(Event::NetworkTickEvent)
         })
     }).map_err(|_| ());
 
@@ -1231,7 +1225,7 @@ pub fn main() {
 
     let server_fut = tick_stream
         .select(packet_stream)
-        .select(network_stream)
+        .select(network_tick_stream)
         .select(heartbeat_stream)
         .fold(initial_server_state, move |mut server_state: ServerState, event: Event | {
             match event {
@@ -1279,7 +1273,7 @@ pub fn main() {
                     server_state.tick  = 1usize.wrapping_add(server_state.tick);
                 }
 
-                Event::NetworkEvent => {
+                Event::NetworkTickEvent => {
                     // Process players in rooms
                     server_state.process_buffered_packets_in_rooms();
 
