@@ -42,11 +42,16 @@ pub struct Checkbox<T> {
 }
 
 impl<T> Checkbox<T> {
-    pub fn new(text: &'static str, action: Box<dyn FnMut(&mut T)>) -> Self {
+    pub fn new(font: &Font, text: &'static str, dimensions: Rect, action: Box<dyn FnMut(&mut T)>) -> Self {
+        const LABEL_OFFSET_X: f32 = 20.0;
+        const LABEL_OFFSET_Y: f32 = -25.0;
+
+        let label_origin = Point2::new(dimensions.x + dimensions.w + LABEL_OFFSET_X, dimensions.y + dimensions.h + LABEL_OFFSET_Y);
+
         Checkbox {
-            label: Label::new(text, Color::from(css::WHITE)),
+            label: Label::new(font, text, Color::from(css::WHITE), label_origin),
             state: ToggleState::Disabled,
-            dimensions: Rect::new(160.0, 160.0, 20.0, 20.0),
+            dimensions: dimensions,
             hover: false,
             click: action
         }
@@ -65,13 +70,15 @@ impl<T> Checkbox<T> {
 
 impl<T> Widget<T> for Checkbox<T> {
     fn on_hover(&mut self, point: &Point2) {
-        self.hover = within_widget(point, &self.dimensions);
-        //println!("Hovering over Checkbox, \"{}\"", self.label);
+        self.hover = within_widget(point, &self.dimensions) || within_widget(point, &self.label.dimensions);
+        //if self.hover {
+        //    println!("Hovering over Checkbox, \"{:?}\"", self.label.dimensions);
+        //}
     }
 
     fn on_click(&mut self, point: &Point2, t: &mut T)
     {
-        if within_widget(point, &self.dimensions) {
+        if within_widget(point, &self.dimensions) || within_widget(point, &self.label.dimensions) {
             println!("Clicked Checkbox, \"{}\"", self.label.text);
             self.toggle();
             (self.click)(t)
@@ -79,7 +86,6 @@ impl<T> Widget<T> for Checkbox<T> {
     }
 
     fn draw(&self, ctx: &mut Context, font: &Font) -> GameResult<()> {
-        let offset = Point2::new(30.0, -5.0);
         let old_color = graphics::get_color(ctx);
         graphics::set_color(ctx, self.label.color)?;
 
@@ -90,14 +96,14 @@ impl<T> Widget<T> for Checkbox<T> {
         };
 
         if self.hover {
-            // Add in a violet border/fill while hovered. Intention is to color actual checkbox while hovered as well.
-            let border_rect = Rect::new(self.dimensions.x-3.0, self.dimensions.y-3.0, self.dimensions.w + 6.0, self.dimensions.h + 6.0);
+            // Add in a violet border/fill while hovered. Color checkbox differently to indicate  hovered state.
+            let border_rect = Rect::new(self.dimensions.x-1.0, self.dimensions.y-1.0, self.dimensions.w + 4.0, self.dimensions.h + 4.0);
             graphics::set_color(ctx, Color::from(css::VIOLET))?;
             graphics::rectangle(ctx, DrawMode::Line(2.0), border_rect)?;
         }
 
         graphics::rectangle(ctx, draw_mode, self.dimensions)?;
-        draw_text(ctx, font, self.label.color, &self.label.text, &self.dimensions.point(), Some(&offset))?;
+        draw_text(ctx, font, self.label.color, &self.label.text, &self.label.dimensions.point(), None)?;
 
         graphics::set_color(ctx, old_color)
     }

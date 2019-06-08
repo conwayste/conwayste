@@ -16,18 +16,23 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::Color;
+use ggez::graphics::{Color, Rect, Font, Point2};
 
 pub struct Label {
     pub text: &'static str,
     pub color: Color,
+    pub dimensions: Rect,
 }
 
 impl Label {
-    pub fn new(text: &'static str, color: Color) -> Self {
+    pub fn new(font: &Font, text: &'static str, color: Color, origin: Point2) -> Self {
+        let w = font.get_width(text) as f32;
+        let h = font.get_height() as f32;
+
         Label {
             text: text,
             color: color,
+            dimensions: Rect::new(origin.x, origin.y, w, h),
         }
     }
 

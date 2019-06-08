@@ -44,7 +44,7 @@ use ggez::conf;
 use ggez::event::*;
 use ggez::{GameError, GameResult, Context, ContextBuilder};
 use ggez::graphics;
-use ggez::graphics::{Point2, Color};
+use ggez::graphics::{Point2, Color, Rect};
 use ggez::timer;
 
 use std::env;
@@ -239,10 +239,14 @@ impl MainState {
             screen_stack.push(Screen::Run);
         }));
 
-        let checkbox = Checkbox::<bool>::new("Test Checkbox! :)", Box::new(|testcheck: &mut bool| {
-            println!("The test checkbox has been clicked!");
-            if *testcheck { *testcheck = false } else { *testcheck = true }
-        }));
+        let checkbox = Checkbox::<bool>::new( &small_font,
+            "Test Checkbox! :)",
+            Rect::new(160.0, 160.0, 20.0, 20.0),
+            Box::new(|testcheck: &mut bool| {
+                println!("The test checkbox has been clicked!");
+                if *testcheck { *testcheck = false } else { *testcheck = true }
+            })
+        );
 
         let mut s = MainState {
             small_font:          small_font,

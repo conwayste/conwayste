@@ -39,15 +39,18 @@ pub struct Button<T> {
 
 impl<T> Button<T> {
     pub fn new(font: &Font, button_text: &'static str, action: Box<dyn FnMut(&mut T)>) -> Self {
-        let offset = Point2::new(8.0, 4.0);
-        let width = font.get_width(button_text) as f32 + offset.x*2.0;
-        let height = font.get_height() as f32 + offset.y*2.0;
+        const OFFSET_X: f32 = 8.0;
+        const OFFSET_Y: f32 = 4.0;
+        let width = font.get_width(button_text) as f32 + OFFSET_X*2.0;
+        let height = font.get_height() as f32 + OFFSET_Y*2.0;
+        let dimensions = Rect::new(30.0, 20.0, width, height);
+        let offset = Point2::new(dimensions.x + OFFSET_X, OFFSET_Y);
 
         Button {
-            label: Label::new(button_text, Color::from(css::WHITE)),
+            label: Label::new(font, button_text, Color::from(css::WHITE), offset),
             button_color: Color::from(css::DARKCYAN),
             draw_mode: DrawMode::Fill,
-            dimensions: Rect::new(30.0, 20.0, width, height),
+            dimensions: dimensions,
             hover: false,
             borderless: false,
             click: action,
@@ -80,7 +83,6 @@ impl<T> Widget<T> for Button<T> {
     }
 
     fn draw(&self, ctx: &mut Context, font: &Font) -> GameResult<()> {
-        let offset = Point2::new(8.0, 4.0);
         let old_color = graphics::get_color(ctx);
         graphics::set_color(ctx, self.button_color)?;
 
@@ -91,7 +93,7 @@ impl<T> Widget<T> for Button<T> {
         };
 
         graphics::rectangle(ctx, draw_mode, self.dimensions)?;
-        draw_text(ctx, font, self.label.color, &self.label.text, &self.dimensions.point(), Some(&offset))?;
+        draw_text(ctx, font, self.label.color, &self.label.text, &self.dimensions.point(), None)?;
 
         graphics::set_color(ctx, old_color)
     }
