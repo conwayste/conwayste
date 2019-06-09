@@ -26,6 +26,7 @@ extern crate sdl2;
 extern crate rand;
 extern crate color_backtrace;
 #[macro_use] extern crate lazy_static;
+extern crate chromatica;
 
 mod config;
 mod constants;
@@ -37,6 +38,7 @@ mod video;
 mod viewport;
 
 use chrono::Local;
+use chromatica::css;
 use log::LevelFilter;
 
 use conway::universe::{BigBang, Universe, CellState, Region, PlayerBuilder};
@@ -73,7 +75,7 @@ use constants::{
 };
 use input::{MouseAction, ScrollEvent};
 use viewport::Cell;
-use ui::{Button, Widget, Checkbox};
+use ui::{Button, Widget, Checkbox, Chatbox};
 
 #[derive(PartialEq, Clone, Copy)]
 enum Screen {
@@ -88,6 +90,7 @@ enum Screen {
 // All game state
 struct MainState {
     small_font:          graphics::Font,
+    menu_font:           graphics::Font,
     screen_stack:        Vec<Screen>,       // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     intro_uni:           Universe,
@@ -110,6 +113,7 @@ struct MainState {
     // Temp place holder for testing ui widgets
     button:              Button<Vec<Screen>>,
     checkbox:            Checkbox<bool>,
+    chatbox:             Chatbox<()>,
 }
 
 
@@ -327,7 +331,7 @@ impl MainState {
         color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
         color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
 
-        let small_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
+        let small_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 12)?;
         let menu_font  = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
 
         let bigbang =
@@ -362,12 +366,12 @@ impl MainState {
                 .birth()
         };
 
-        let button = Button::<Vec<Screen>>::new(&small_font, "Test Button", Box::new(|screen_stack: &mut Vec<Screen>| {
+        let button = Button::<Vec<Screen>>::new(&menu_font, "Test Button", Box::new(|screen_stack: &mut Vec<Screen>| {
             println!("The test button has been clicked!");
             screen_stack.push(Screen::Run);
         }));
 
-        let checkbox = Checkbox::<bool>::new( &small_font,
+        let checkbox = Checkbox::<bool>::new( &menu_font,
             "Test Checkbox! :)",
             Rect::new(160.0, 160.0, 20.0, 20.0),
             Box::new(|testcheck: &mut bool| {
@@ -375,6 +379,9 @@ impl MainState {
                 if *testcheck { *testcheck = false } else { *testcheck = true }
             })
         );
+
+        let chatbox = Chatbox::<()>::new(5);
+
         let mut config = config::Config::new();
         config.load_or_create_default().map_err(|e| {
             let msg = format!("Error while loading config: {:?}", e);
@@ -388,6 +395,7 @@ impl MainState {
 
         let mut s = MainState {
             small_font:          small_font,
+            menu_font:           menu_font.clone(),
             screen_stack:        vec![Screen::Intro(INTRO_DURATION)],
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
@@ -406,6 +414,7 @@ impl MainState {
             toggle_paused_game:  false,
             button: button,
             checkbox: checkbox,
+            chatbox: chatbox,
         };
 
         init_patterns(&mut s).unwrap();
@@ -419,7 +428,7 @@ impl EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
         let duration = timer::duration_to_f64(timer::get_delta(ctx)); // seconds
 
-        self.receive_net_updates();
+        self.receive_net_updates(ctx);
 
         let current_screen = match self.screen_stack.last() {
             Some(screen) => screen,
@@ -492,6 +501,9 @@ impl EventHandler for MainState {
                         }
                     }
 
+                    let mouse_point = Point2::new(self.inputs.mouse_info.position.0 as f32, self.inputs.mouse_info.position.1 as f32);
+                    self.chatbox.on_hover(&mouse_point);
+
                     if self.single_step {
                         self.running = false;
                     }
@@ -512,8 +524,16 @@ impl EventHandler for MainState {
             }
             Screen::InRoom => {
                 // TODO implement
+                if let Some(k) = self.inputs.key_info.key {
+                    println!("Leaving InRoom to ServerList");
+                    self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
+                }
             }
             Screen::ServerList => {
+                if let Some(k) = self.inputs.key_info.key {
+                    println!("Leaving ServerList to MainMenu");
+                    self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
+                }
                 // TODO implement
              },
             Screen::Exit => {
@@ -542,17 +562,20 @@ impl EventHandler for MainState {
             Screen::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn);
 
-                self.button.draw(ctx, &self.small_font)?;
+                self.button.draw(ctx, &self.menu_font)?;
 
-                self.checkbox.draw(ctx, &self.small_font)?;
+                self.checkbox.draw(ctx, &self.menu_font)?;
             }
             Screen::Run => {
                 self.draw_universe(ctx)?;
+                self.chatbox.draw(ctx, &self.small_font)?;
             }
             Screen::InRoom => {
+                ui::draw_text(ctx, &self.menu_font, Color::from(css::WHITE), "In Room", &Point2::new(100.0, 100.0), None)?;
                 // TODO
             }
             Screen::ServerList => {
+                ui::draw_text(ctx, &self.menu_font, Color::from(css::WHITE), "Server List", &Point2::new(100.0, 100.0), None)?;
                 // TODO
              },
             Screen::Exit => {}
@@ -981,7 +1004,7 @@ impl MainState {
                                     }
                                     let mut net_worker = network::ConwaysteNetWorker::new();
                                     net_worker.connect(self.config.get().user.name.clone());
-                                    info!("Connected.");
+                                    info!("Connecting...");
                                     self.net_worker = Some(net_worker);
 
                                 }
@@ -1075,9 +1098,9 @@ impl MainState {
     }
 
     // update
-    fn receive_net_updates(&mut self) {
+    fn receive_net_updates(&mut self, ctx: &mut Context) -> GameResult<()> {
         if self.net_worker.is_none() {
-            return;
+            return Ok(());
         }
         let net_worker = self.net_worker.as_mut().unwrap();
         for e in net_worker.try_receive().into_iter() {
@@ -1087,6 +1110,7 @@ impl MainState {
                     self.screen_stack.push(Screen::ServerList); // XXX
                     // do other stuff
                     net_worker.try_send(NetwaysteEvent::List);
+                    net_worker.try_send(NetwaysteEvent::JoinRoom("room".to_owned()));
                 }
                 NetwaysteEvent::JoinedRoom(room_name) => {
                     println!("Joined Room: {}", room_name);
@@ -1103,6 +1127,8 @@ impl MainState {
                 }
                 NetwaysteEvent::ChatMessages(msgs) => {
                     for m in msgs {
+                        let msg = format!("{}: {}", m.0, m.1);
+                        self.chatbox.add_message(ctx, &self.small_font, &msg)?;
                         println!("{:?}", m);
                     }
                 }
@@ -1120,6 +1146,8 @@ impl MainState {
                 }
             }
         }
+
+        Ok(())
     }
 
     fn post_update(&mut self) -> GameResult<()> {

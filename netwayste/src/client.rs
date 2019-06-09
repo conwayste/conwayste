@@ -341,9 +341,13 @@ impl ClientNetState {
             chat_messages.retain(|ref chat_message| {
                 self.chat_msg_seq_num < chat_message.chat_seq.unwrap()
             });
-            // This loop does two things:
+
+            let mut to_conwayste_msgs = vec![];
+
+            // This loop does three things:
             //  1) update chat_msg_seq_num, and
             //  2) prints messages from other players
+            //  3) Transmits chats to conwayste
             for chat_message in chat_messages {
                 let chat_seq = chat_message.chat_seq.unwrap();
                 self.chat_msg_seq_num = std::cmp::max(chat_seq, self.chat_msg_seq_num);
@@ -354,10 +358,17 @@ impl ClientNetState {
                 if let Some(client_name) = self.name.as_ref() {
                     if client_name != &chat_message.player_name {
                         info!("{}: {}", chat_message.player_name, chat_message.message);
+                        to_conwayste_msgs.push((chat_message.player_name, chat_message.message));
                     }
                 } else {
                    panic!("Client name not set!");
                 }
+            }
+
+            let nw_response = NetwaysteEvent::ChatMessages(to_conwayste_msgs);
+            match self.channel_to_conwayste.send(nw_response) {
+                Err(e) => error!("Could not send a netwayste response via channel_to_conwayste: {:?}", e),
+                Ok(_) => ()
             }
         }
     }

@@ -21,12 +21,14 @@ extern crate chromatica;
 
 mod button;
 mod checkbox;
+mod chatbox;
 mod helpe;
 mod widget;
 mod label;
 
 pub use button::Button;
 pub use checkbox::Checkbox;
+pub use chatbox::Chatbox;
 pub use helpe::{
     within_widget,
     center,
