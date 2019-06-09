@@ -21,7 +21,7 @@ extern crate env_logger;
 extern crate ggez;
 #[macro_use] extern crate log;
 extern crate sdl2;
-#[macro_use] extern crate serde_derive;
+#[macro_use] extern crate serde;
 #[macro_use] extern crate version;
 extern crate rand;
 extern crate color_backtrace;
@@ -31,14 +31,20 @@ mod config;
 mod constants;
 mod input;
 mod menu;
+mod network;
 mod ui;
 mod video;
 mod viewport;
+
+use chrono::Local;
+use log::LevelFilter;
 
 use conway::universe::{BigBang, Universe, CellState, Region, PlayerBuilder};
 use conway::grids::CharGrid;
 use conway::rle::Pattern;
 use conway::ConwayResult;
+
+use netwayste::net::NetwaysteEvent;
 
 use ggez::conf;
 use ggez::event::*;
@@ -48,6 +54,7 @@ use ggez::graphics::{Point2, Color, Rect};
 use ggez::timer;
 
 use std::env;
+use std::io::Write; // For env logger
 use std::path;
 use std::collections::BTreeMap;
 use std::time::Instant;
@@ -72,9 +79,41 @@ use ui::{Button, Widget, Checkbox};
 enum Screen {
     Intro(f64),   // seconds
     Menu,
+    ServerList,
+    InRoom,
     Run,          // TODO: break it out more to indicate whether waiting for game or playing game
     Exit,         // We're getting ready to quit the game, WRAP IT UP SON
 }
+
+// All game state
+struct MainState {
+    small_font:          graphics::Font,
+    screen_stack:        Vec<Screen>,       // Where are we in the game (Intro/Menu Main/Running..)
+    uni:                 Universe,          // Things alive and moving here
+    intro_uni:           Universe,
+    first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
+    color_settings:      ColorSettings,
+    running:             bool,
+    menu_sys:            menu::MenuSystem,
+    video_settings:      video::VideoSettings,
+    config:              config::Config,
+    viewport:            viewport::Viewport,
+    inputs:              input::InputManager,
+    net_worker:          Option<network::ConwaysteNetWorker>,
+
+    // Input state
+    single_step:         bool,
+    arrow_input:         (isize, isize),
+    drag_draw:           Option<CellState>,
+    return_key_pressed:  bool,
+    escape_key_pressed:  bool,
+    toggle_paused_game:  bool,
+
+    // Temp place holder for testing ui widgets
+    button:              Button<Vec<Screen>>,
+    checkbox:            Checkbox<bool>,
+}
+
 
 // Support non-alive/dead/bg colors
 struct ColorSettings {
@@ -105,32 +144,123 @@ impl ColorSettings {
     }
 }
 
+fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
+    let _pat = Pattern("10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW$10bW$10bW$10b16W48$100b2A5b2A$100b2A5b2A2$104b2A$104b2A5$122b2Ab2A$121bA5bA$121bA6bA2b2A$121b3A3bA3b2A$126bA!".to_owned());
+    //XXX apply to universe, then return Ok
+    //XXX return Ok(());
+    // TODO: remove the following
+    /*
+    // R pentomino
+    s.uni.toggle(16, 15, 0)?;
+    s.uni.toggle(17, 15, 0)?;
+    s.uni.toggle(15, 16, 0)?;
+    s.uni.toggle(16, 16, 0)?;
+    s.uni.toggle(16, 17, 0)?;
+    */
 
-// All game state
-struct MainState {
-    small_font:          graphics::Font,
-    screen_stack:        Vec<Screen>,       // Where are we in the game (Intro/Menu Main/Running..)
-    uni:                 Universe,          // Things alive and moving here
-    intro_uni:           Universe,
-    first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
-    color_settings:      ColorSettings,
-    running:             bool,
-    menu_sys:            menu::MenuSystem,
-    video_settings:      video::VideoSettings,
-    config:              config::Config,
-    viewport:            viewport::Viewport,
-    inputs:              input::InputManager,
+    /*
+    // Acorn
+    s.uni.toggle(23, 19, 0)?;
+    s.uni.toggle(24, 19, 0)?;
+    s.uni.toggle(24, 17, 0)?;
+    s.uni.toggle(26, 18, 0)?;
+    s.uni.toggle(27, 19, 0)?;
+    s.uni.toggle(28, 19, 0)?;
+    s.uni.toggle(29, 19, 0)?;
+    */
 
-    // Input state
-    single_step:         bool,
-    arrow_input:         (isize, isize),
-    drag_draw:           Option<CellState>,
-    return_key_pressed:  bool,
-    escape_key_pressed:  bool,
-    toggle_paused_game:  bool,
-    button:              Button<Vec<Screen>>,
-    checkbox:            Checkbox<bool>,
+
+    // Simkin glider gun
+    s.uni.toggle(100, 70, 0)?;
+    s.uni.toggle(100, 71, 0)?;
+    s.uni.toggle(101, 70, 0)?;
+    s.uni.toggle(101, 71, 0)?;
+
+    s.uni.toggle(104, 73, 0)?;
+    s.uni.toggle(104, 74, 0)?;
+    s.uni.toggle(105, 73, 0)?;
+    s.uni.toggle(105, 74, 0)?;
+
+    s.uni.toggle(107, 70, 0)?;
+    s.uni.toggle(107, 71, 0)?;
+    s.uni.toggle(108, 70, 0)?;
+    s.uni.toggle(108, 71, 0)?;
+
+    /* eater
+    s.uni.toggle(120, 87, 0)?;
+    s.uni.toggle(120, 88, 0)?;
+    s.uni.toggle(121, 87, 0)?;
+    s.uni.toggle(121, 89, 0)?;
+    s.uni.toggle(122, 89, 0)?;
+    s.uni.toggle(123, 89, 0)?;
+    s.uni.toggle(123, 90, 0)?;
+    */
+
+    s.uni.toggle(121, 80, 0)?;
+    s.uni.toggle(121, 81, 0)?;
+    s.uni.toggle(121, 82, 0)?;
+    s.uni.toggle(122, 79, 0)?;
+    s.uni.toggle(122, 82, 0)?;
+    s.uni.toggle(123, 79, 0)?;
+    s.uni.toggle(123, 82, 0)?;
+    s.uni.toggle(125, 79, 0)?;
+    s.uni.toggle(126, 79, 0)?;
+    s.uni.toggle(126, 83, 0)?;
+    s.uni.toggle(127, 80, 0)?;
+    s.uni.toggle(127, 82, 0)?;
+    s.uni.toggle(128, 81, 0)?;
+
+    s.uni.toggle(131, 81, 0)?;
+    s.uni.toggle(131, 82, 0)?;
+    s.uni.toggle(132, 81, 0)?;
+    s.uni.toggle(132, 82, 0)?;
+
+    //Wall in player 0 area!
+    let bw = 5; // buffer width
+
+    // right side
+    for row in (70-bw)..(83+bw+1) {
+        s.uni.set_unchecked(132+bw, row, CellState::Wall);
+    }
+
+    // top side
+    for col in (100-bw)..109 {
+        s.uni.set_unchecked(col, 70-bw, CellState::Wall);
+    }
+    for col in 114..(132+bw+1) {
+        s.uni.set_unchecked(col, 70-bw, CellState::Wall);
+    }
+
+    // left side
+    for row in (70-bw)..(83+bw+1) {
+        s.uni.set_unchecked(100-bw, row, CellState::Wall);
+    }
+
+    // bottom side
+    for col in (100-bw)..120 {
+        s.uni.set_unchecked(col, 83+bw, CellState::Wall);
+    }
+    for col in 125..(132+bw+1) {
+        s.uni.set_unchecked(col, 83+bw, CellState::Wall);
+    }
+
+    //Wall in player 1!
+    for row in 10..19 {
+        s.uni.set_unchecked(25, row, CellState::Wall);
+    }
+    for col in 10..25 {
+        s.uni.set_unchecked(col, 10, CellState::Wall);
+    }
+    for row in 11..23 {
+        s.uni.set_unchecked(10, row, CellState::Wall);
+    }
+    for col in 11..26 {
+        s.uni.set_unchecked(col, 22, CellState::Wall);
+    }
+
+    Ok(())
 }
+
 
 // Then we implement the `ggez::game::GameState` trait on it, which
 // requires callbacks for creating the game state, updating it each
@@ -247,6 +377,16 @@ impl MainState {
                 if *testcheck { *testcheck = false } else { *testcheck = true }
             })
         );
+        let mut config = config::Config::new();
+        config.load_or_create_default().map_err(|e| {
+            let msg = format!("Error while loading config: {:?}", e);
+            GameError::from(msg)
+        })?;
+
+        let mut vs = video::VideoSettings::new();
+        vs.gather_display_modes(ctx)?;
+
+        vs.print_resolutions();
 
         let mut s = MainState {
             small_font:          small_font,
@@ -261,6 +401,7 @@ impl MainState {
             config:              config,
             viewport:            viewport,
             inputs:              input::InputManager::new(),
+            net_worker:          None,
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -281,6 +422,8 @@ impl MainState {
 impl EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
         let duration = timer::duration_to_f64(timer::get_delta(ctx)); // seconds
+
+        self.receive_net_updates();
 
         let current_screen = match self.screen_stack.last() {
             Some(screen) => screen,
@@ -313,148 +456,10 @@ impl EventHandler for MainState {
                 }
             }
             Screen::Menu => {
-                self.process_menu_inputs();
-
-                let mouse_point = Point2::new(self.inputs.mouse_info.position.0 as f32, self.inputs.mouse_info.position.1 as f32);
-                self.button.on_hover(&mouse_point);
-                if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
-                    self.button.on_click(&mouse_point, &mut self.screen_stack);
-                }
-
-                self.checkbox.on_hover(&mouse_point);
-                if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
-                    self.checkbox.on_click(&mouse_point, &mut self.single_step);
-                }
-
-                //// Directional Key / Menu movement
-                ////////////////////////////////////////
-                if self.arrow_input != (0,0) && self.inputs.key_info.key.is_some() {
-                    // move selection accordingly
-                    let (_,y) = self.arrow_input;
-                    {
-                        let container = self.menu_sys.get_menu_container_mut();
-                        let mainmenu_md = container.get_metadata();
-                        mainmenu_md.adjust_index(y);
-                    }
-                    self.menu_sys.get_controls().set_menu_key_pressed(true);
-                }
-                else {
-                    /////////////////////////
-                    //// Non-Arrow key was pressed
-                    //////////////////////////
-
-                    if self.return_key_pressed || self.escape_key_pressed {
-
-                        let mut id = {
-                            let container = self.menu_sys.get_menu_container();
-                            let index = container.get_menu_item_index();
-                            let menu_item_list = container.get_menu_item_list();
-                            let menu_item = menu_item_list.get(index).unwrap();
-                            menu_item.id
-                        };
-
-                        if self.escape_key_pressed {
-                            id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
-                        }
-
-                        match self.menu_sys.menu_state {
-                            menu::MenuState::MainMenu => {
-                                if !self.escape_key_pressed {
-                                    match id {
-                                        menu::MenuItemIdentifier::StartGame => {
-                                            self.pause_or_resume_game();
-                                        }
-                                        menu::MenuItemIdentifier::ExitGame => {
-                                            self.screen_stack.push(Screen::Exit);
-                                        }
-                                        menu::MenuItemIdentifier::Options => {
-                                            self.menu_sys.menu_state = menu::MenuState::Options;
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            }
-                            menu::MenuState::Options => {
-                                match id {
-                                    menu::MenuItemIdentifier::VideoSettings => {
-                                        if !self.escape_key_pressed {
-                                            self.menu_sys.menu_state = menu::MenuState::Video;
-                                        }
-                                    }
-                                    menu::MenuItemIdentifier::AudioSettings => {
-                                        if !self.escape_key_pressed {
-                                            self.menu_sys.menu_state = menu::MenuState::Audio;
-                                        }
-                                    }
-                                    menu::MenuItemIdentifier::GameplaySettings => {
-                                        if !self.escape_key_pressed {
-                                            self.menu_sys.menu_state = menu::MenuState::Gameplay;
-                                        }
-                                    }
-                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                            self.menu_sys.menu_state = menu::MenuState::MainMenu;
-                                    }
-                                   _ => {}
-                                }
-                            }
-                            menu::MenuState::Audio => {
-                                match id {
-                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                        self.menu_sys.menu_state = menu::MenuState::Options;
-                                    }
-                                    _ => {
-                                        if !self.escape_key_pressed { }
-                                    }
-                                }
-                            }
-                            menu::MenuState::Gameplay => {
-                                match id {
-                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                        self.menu_sys.menu_state = menu::MenuState::Options;
-                                    }
-                                    _ => {
-                                        if !self.escape_key_pressed { }
-                                    }
-                                }
-                            }
-                            menu::MenuState::Video => {
-                                match id {
-                                    menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                        self.menu_sys.menu_state = menu::MenuState::Options;
-                                    }
-                                    menu::MenuItemIdentifier::Fullscreen => {
-                                        if !self.escape_key_pressed {
-                                            self.video_settings.toggle_fullscreen(ctx);
-                                            let is_fullscreen = self.video_settings.is_fullscreen();
-                                            self.config.modify(|settings| {
-                                                settings.video.fullscreen = is_fullscreen;
-                                            });
-                                        }
-                                    }
-                                    menu::MenuItemIdentifier::Resolution => {
-                                        if !self.escape_key_pressed {
-                                            self.video_settings.advance_to_next_resolution(ctx);
-
-                                            // Update the configuration file and resize the viewing
-                                            // screen
-                                            let (w,h) = self.video_settings.get_active_resolution();
-                                            self.config.set_resolution(w as i32, h as i32);
-                                            self.viewport.set_dimensions(w, h);
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-                }
-
-                self.return_key_pressed = false;
-                self.escape_key_pressed = false;
+                self.update_current_screen(ctx); // TODO rewrite for ui changes
             }
             Screen::Run => {
-                // TODO while this works at limiting the FPS, its a bit glitchy for input events
-                // Disable until we have time to look into it
+                // TODO Disable FSP limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
                 {
                     self.process_running_inputs();
@@ -506,7 +511,15 @@ impl EventHandler for MainState {
 
                     self.viewport.update(self.arrow_input);
                 }
+
+                self.viewport.update(self.arrow_input);
             }
+            Screen::InRoom => {
+                // TODO implement
+            }
+            Screen::ServerList => {
+                // TODO implement
+             },
             Screen::Exit => {
                let _ = ctx.quit();
             }
@@ -540,6 +553,12 @@ impl EventHandler for MainState {
             Screen::Run => {
                 self.draw_universe(ctx)?;
             }
+            Screen::InRoom => {
+                // TODO
+            }
+            Screen::ServerList => {
+                // TODO
+             },
             Screen::Exit => {}
         }
 
@@ -670,7 +689,7 @@ impl EventHandler for MainState {
             Screen::Run => {
                 self.pause_or_resume_game();
             }
-            Screen::Menu => {
+            Screen::Menu | Screen::InRoom | Screen::ServerList => {
                 // This is currently handled in the return_key_pressed path as well
                 self.escape_key_pressed = true;
             }
@@ -881,6 +900,7 @@ impl MainState {
 
         if let Some(k) = self.inputs.key_info.key {
             keycode = k;
+            println!("Processing key: {}", keycode);
         } else {
             return;
         }
@@ -890,6 +910,7 @@ impl MainState {
                 self.arrow_input = (0, -1);
             }
             Keycode::Down => {
+                println!("Keycode::Down");
                 self.arrow_input = (0, 1);
             }
             Keycode::Left => {
@@ -907,6 +928,206 @@ impl MainState {
                 self.escape_key_pressed = true;
             }
             _ => {}
+        }
+    }
+
+    // update
+    fn update_current_screen(&mut self, ctx: &mut Context) {
+        self.process_menu_inputs();
+
+        let mouse_point = Point2::new(self.inputs.mouse_info.position.0 as f32, self.inputs.mouse_info.position.1 as f32);
+        self.button.on_hover(&mouse_point);
+        if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
+            self.button.on_click(&mouse_point, &mut self.screen_stack);
+        }
+
+        self.checkbox.on_hover(&mouse_point);
+        if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
+            self.checkbox.on_click(&mouse_point, &mut self.single_step);
+        }
+
+        //// Directional Key / Menu movement
+        ////////////////////////////////////////
+        if self.arrow_input != (0,0) && self.inputs.key_info.key.is_some() {
+            // move selection accordingly
+            let (_,y) = self.arrow_input;
+            {
+                let container = self.menu_sys.get_menu_container_mut();
+                let mainmenu_md = container.get_metadata();
+                mainmenu_md.adjust_index(y);
+            }
+            self.menu_sys.get_controls().set_menu_key_pressed(true);
+        }
+        else {
+            /////////////////////////
+            //// Non-Arrow key was pressed
+            //////////////////////////
+
+            if self.return_key_pressed || self.escape_key_pressed {
+
+                let mut id = {
+                    let container = self.menu_sys.get_menu_container();
+                    let index = container.get_menu_item_index();
+                    let menu_item_list = container.get_menu_item_list();
+                    let menu_item = menu_item_list.get(index).unwrap();
+                    menu_item.id
+                };
+
+                if self.escape_key_pressed {
+                    id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
+                }
+
+                match self.menu_sys.menu_state {
+                    menu::MenuState::MainMenu => {
+                        if !self.escape_key_pressed {
+                            match id {
+                                menu::MenuItemIdentifier::Connect => {
+                                    if self.net_worker.is_some() {
+                                        info!("already connected! Reconnecting...");
+                                    }
+                                    let mut net_worker = network::ConwaysteNetWorker::new();
+                                    net_worker.connect(self.config.get().user.name.clone());
+                                    info!("Connected.");
+                                    self.net_worker = Some(net_worker);
+
+                                }
+                                menu::MenuItemIdentifier::StartGame => {
+                                    self.pause_or_resume_game();
+                                }
+                                menu::MenuItemIdentifier::ExitGame => {
+                                    self.screen_stack.push(Screen::Exit);;
+                                }
+                                menu::MenuItemIdentifier::Options => {
+                                    self.menu_sys.menu_state = menu::MenuState::Options;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    menu::MenuState::Options => {
+                        match id {
+                            menu::MenuItemIdentifier::VideoSettings => {
+                                if !self.escape_key_pressed {
+                                    self.menu_sys.menu_state = menu::MenuState::Video;
+                                }
+                            }
+                            menu::MenuItemIdentifier::AudioSettings => {
+                                if !self.escape_key_pressed {
+                                    self.menu_sys.menu_state = menu::MenuState::Audio;
+                                }
+                            }
+                            menu::MenuItemIdentifier::GameplaySettings => {
+                                if !self.escape_key_pressed {
+                                    self.menu_sys.menu_state = menu::MenuState::Gameplay;
+                                }
+                            }
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                            }
+                            _ => {}
+                        }
+                    }
+                    menu::MenuState::Audio => {
+                        match id {
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                self.menu_sys.menu_state = menu::MenuState::Options;
+                            }
+                            _ => {
+                                if !self.escape_key_pressed { }
+                            }
+                        }
+                    }
+                    menu::MenuState::Gameplay => {
+                        match id {
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                self.menu_sys.menu_state = menu::MenuState::Options;
+                            }
+                            _ => {
+                                if !self.escape_key_pressed { }
+                            }
+                        }
+                    }
+                    menu::MenuState::Video => {
+                        match id {
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                self.menu_sys.menu_state = menu::MenuState::Options;
+                            }
+                            menu::MenuItemIdentifier::Fullscreen => {
+                                if !self.escape_key_pressed {
+                                    self.video_settings.toggle_fullscreen(ctx);
+                                    let is_fullscreen = self.video_settings.is_fullscreen();
+                                    self.config.modify(|settings| {
+                                        settings.video.fullscreen = is_fullscreen;
+                                    });
+                                }
+                            }
+                            menu::MenuItemIdentifier::Resolution => {
+                                if !self.escape_key_pressed {
+                                    self.video_settings.advance_to_next_resolution(ctx);
+
+                                    // Update the configuration file and resize the viewing
+                                    // screen
+                                    let (w,h) = self.video_settings.get_active_resolution();
+                                    self.config.set_resolution(w as i32, h as i32);
+                                    self.viewport.set_dimensions(w, h);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+
+        self.return_key_pressed = false;
+        self.escape_key_pressed = false;
+    }
+
+    // update
+    fn receive_net_updates(&mut self) {
+        if self.net_worker.is_none() {
+            return;
+        }
+        let net_worker = self.net_worker.as_mut().unwrap();
+        for e in net_worker.try_receive().into_iter() {
+            match e {
+                NetwaysteEvent::LoggedIn(server_version) => {
+                    info!("Logged in! Server version: v{}", server_version);
+                    self.screen_stack.push(Screen::ServerList); // XXX
+                    // do other stuff
+                    net_worker.try_send(NetwaysteEvent::List);
+                }
+                NetwaysteEvent::JoinedRoom(room_name) => {
+                    println!("Joined Room: {}", room_name);
+                    self.screen_stack.push(Screen::InRoom); // XXX
+                }
+                NetwaysteEvent::PlayerList(list) => {
+                    println!("PlayerList: {:?}",list);
+                }
+                NetwaysteEvent::RoomList(list) => {
+                    println!("RoomList: {:?}",list);
+                }
+                NetwaysteEvent::UniverseUpdate => {
+                    println!("Universe update");
+                }
+                NetwaysteEvent::ChatMessages(msgs) => {
+                    for m in msgs {
+                        println!("{:?}", m);
+                    }
+                }
+                NetwaysteEvent::LeftRoom => {
+                    println!("Left Room");
+                }
+                NetwaysteEvent::BadRequest(error) => {
+                    println!("Server responded with Bad Request: {:?}", error);
+                }
+                NetwaysteEvent::ServerError(error) => {
+                    println!("Server encountered an error: {:?}", error);
+                }
+                _ => {
+                    panic!("Development panic: Unexpected NetwaysteEvent during netwayste receive update: {:?}", e);
+                }
+            }
         }
     }
 
@@ -946,123 +1167,6 @@ impl MainState {
         }
     }
 }
-fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
-    let pat = Pattern("10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW$10bW$10bW$10b16W48$100b2A5b2A$100b2A5b2A2$104b2A$104b2A5$122b2Ab2A$121bA5bA$121bA6bA2b2A$121b3A3bA3b2A$126bA!".to_owned());
-    //XXX apply to universe, then return Ok
-    //XXX return Ok(());
-    // TODO: remove the following
-    /*
-    // R pentomino
-    s.uni.toggle(16, 15, 0)?;
-    s.uni.toggle(17, 15, 0)?;
-    s.uni.toggle(15, 16, 0)?;
-    s.uni.toggle(16, 16, 0)?;
-    s.uni.toggle(16, 17, 0)?;
-    */
-
-    /*
-    // Acorn
-    s.uni.toggle(23, 19, 0)?;
-    s.uni.toggle(24, 19, 0)?;
-    s.uni.toggle(24, 17, 0)?;
-    s.uni.toggle(26, 18, 0)?;
-    s.uni.toggle(27, 19, 0)?;
-    s.uni.toggle(28, 19, 0)?;
-    s.uni.toggle(29, 19, 0)?;
-    */
-
-
-    // Simkin glider gun
-    s.uni.toggle(100, 70, 0)?;
-    s.uni.toggle(100, 71, 0)?;
-    s.uni.toggle(101, 70, 0)?;
-    s.uni.toggle(101, 71, 0)?;
-
-    s.uni.toggle(104, 73, 0)?;
-    s.uni.toggle(104, 74, 0)?;
-    s.uni.toggle(105, 73, 0)?;
-    s.uni.toggle(105, 74, 0)?;
-
-    s.uni.toggle(107, 70, 0)?;
-    s.uni.toggle(107, 71, 0)?;
-    s.uni.toggle(108, 70, 0)?;
-    s.uni.toggle(108, 71, 0)?;
-
-    /* eater
-    s.uni.toggle(120, 87, 0)?;
-    s.uni.toggle(120, 88, 0)?;
-    s.uni.toggle(121, 87, 0)?;
-    s.uni.toggle(121, 89, 0)?;
-    s.uni.toggle(122, 89, 0)?;
-    s.uni.toggle(123, 89, 0)?;
-    s.uni.toggle(123, 90, 0)?;
-    */
-
-    s.uni.toggle(121, 80, 0)?;
-    s.uni.toggle(121, 81, 0)?;
-    s.uni.toggle(121, 82, 0)?;
-    s.uni.toggle(122, 79, 0)?;
-    s.uni.toggle(122, 82, 0)?;
-    s.uni.toggle(123, 79, 0)?;
-    s.uni.toggle(123, 82, 0)?;
-    s.uni.toggle(125, 79, 0)?;
-    s.uni.toggle(126, 79, 0)?;
-    s.uni.toggle(126, 83, 0)?;
-    s.uni.toggle(127, 80, 0)?;
-    s.uni.toggle(127, 82, 0)?;
-    s.uni.toggle(128, 81, 0)?;
-
-    s.uni.toggle(131, 81, 0)?;
-    s.uni.toggle(131, 82, 0)?;
-    s.uni.toggle(132, 81, 0)?;
-    s.uni.toggle(132, 82, 0)?;
-
-    //Wall in player 0 area!
-    let bw = 5; // buffer width
-
-    // right side
-    for row in (70-bw)..(83+bw+1) {
-        s.uni.set_unchecked(132+bw, row, CellState::Wall);
-    }
-
-    // top side
-    for col in (100-bw)..109 {
-        s.uni.set_unchecked(col, 70-bw, CellState::Wall);
-    }
-    for col in 114..(132+bw+1) {
-        s.uni.set_unchecked(col, 70-bw, CellState::Wall);
-    }
-
-    // left side
-    for row in (70-bw)..(83+bw+1) {
-        s.uni.set_unchecked(100-bw, row, CellState::Wall);
-    }
-
-    // bottom side
-    for col in (100-bw)..120 {
-        s.uni.set_unchecked(col, 83+bw, CellState::Wall);
-    }
-    for col in 125..(132+bw+1) {
-        s.uni.set_unchecked(col, 83+bw, CellState::Wall);
-    }
-
-    //Wall in player 1!
-    for row in 10..19 {
-        s.uni.set_unchecked(25, row, CellState::Wall);
-    }
-    for col in 10..25 {
-        s.uni.set_unchecked(col, 10, CellState::Wall);
-    }
-    for row in 11..23 {
-        s.uni.set_unchecked(10, row, CellState::Wall);
-    }
-    for col in 11..26 {
-        s.uni.set_unchecked(col, 22, CellState::Wall);
-    }
-
-    Ok(())
-}
-
 
 enum Orientation {
     Vertical,
@@ -1218,7 +1322,23 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
 // do the work of creating our MainState and running our game,
 // * then just call `game.run()` which runs the `Game` mainloop.
 pub fn main() {
-    env_logger::init().unwrap();
+    env_logger::Builder::new()
+        .format(|buf, record| {
+            writeln!(buf,
+                "{} [{:5}] - {}",
+                Local::now().format("%a %Y-%m-%d %H:%M:%S%.6f"),
+                record.level(),
+                record.args(),
+            )
+        })
+        .filter(None, LevelFilter::Trace)
+        .filter(Some("futures"), LevelFilter::Off)
+        .filter(Some("tokio_core"), LevelFilter::Off)
+        .filter(Some("tokio_reactor"), LevelFilter::Off)
+        .filter(Some("conway"), LevelFilter::Off)
+        .filter(Some("ggez"), LevelFilter::Off)
+        .filter(Some("gfx_device_gl"), LevelFilter::Off)
+        .init();
 
     color_backtrace::install();
 
@@ -1243,7 +1363,10 @@ pub fn main() {
         println!("Not building from cargo? Okie dokie.");
     }
 
-    let ctx = &mut cb.build().unwrap();
+    let ctx = &mut cb.build().unwrap_or_else(|e| {
+        error!("ContextBuilter failed: {:?}", e);
+        std::process::exit(1);
+    });
 
     match MainState::new(ctx) {
         Err(e) => {

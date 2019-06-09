@@ -38,6 +38,7 @@ pub enum MenuState {
 pub enum MenuItemIdentifier {
     StartGame,
     Options,
+    Connect,
     AudioSettings,
     VideoSettings,
     GameplaySettings,
@@ -229,6 +230,7 @@ impl MenuSystem {
         menu_sys.menus.insert(MenuState::Gameplay, MenuContainer::new(200.0, 100.0));
 
         let start_game  = MenuItem::new(MenuItemIdentifier::StartGame,            String ::from("Start Game"), false, MenuItemValue::ValNone());
+        let connect     = MenuItem::new(MenuItemIdentifier::Connect,              String ::from("Connect to Server"), false, MenuItemValue::ValNone());
         let options     = MenuItem::new(MenuItemIdentifier::Options,              String ::from("Options"),    false, MenuItemValue::ValNone());
         let video       = MenuItem::new(MenuItemIdentifier::VideoSettings,        String ::from("Video"),      false, MenuItemValue::ValNone());
         let audio       = MenuItem::new(MenuItemIdentifier::AudioSettings,        String ::from("Audio"),      false, MenuItemValue::ValNone());
@@ -245,7 +247,7 @@ impl MenuSystem {
             /////////////////////////
             let container = menu_sys.menus.get_mut(&MenuState::MainMenu).unwrap();
 
-            container.update_menu_items(vec![start_game, options, quit]);
+            container.update_menu_items(vec![start_game, connect, options, quit]);
             let count = container.get_menu_item_list().len();
             container.update_menu_size(count);
             container.update_menu_index(0);
