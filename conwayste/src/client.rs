@@ -105,8 +105,6 @@ struct MainState {
     single_step:         bool,
     arrow_input:         (isize, isize),
     drag_draw:           Option<CellState>,
-    return_key_pressed:  bool,
-    escape_key_pressed:  bool,
     toggle_paused_game:  bool,
 
     // Temp place holder for testing ui widgets
@@ -405,8 +403,6 @@ impl MainState {
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
-            return_key_pressed:  false,
-            escape_key_pressed:  false,
             toggle_paused_game:  false,
             button: button,
             checkbox: checkbox,
@@ -637,20 +633,24 @@ impl EventHandler for MainState {
         let key_as_int32 = keycode as i32;
 
         // Support just the basics for now by ignoring everything after the last arrow key in the key code list
-        if key_as_int32 < (Keycode::NumLockClear as i32) {
+        if key_as_int32 < (Keycode::NumLockClear as i32)
+            || (key_as_int32 >= Keycode::LCtrl as i32 && key_as_int32 < Keycode::Mode as i32) {
             if self.inputs.key_info.key.is_none() {
                 self.inputs.key_info.key = Some(keycode);
             }
-            else if self.inputs.key_info.key == Some(keycode) {
+
+            if self.inputs.key_info.key == Some(keycode) {
                 self.inputs.key_info.repeating = repeat;
             }
-        } else if self.inputs.key_info.modifier.is_none() {
-            match keycode {
-                Keycode::LCtrl | Keycode::LGui | Keycode::LAlt | Keycode::LShift |
-                Keycode::RCtrl | Keycode::RGui | Keycode::RAlt | Keycode::RShift => {
-                    self.inputs.key_info.modifier = Some(keymod);
+
+            if self.inputs.key_info.modifier.is_none() {
+                match keycode {
+                    Keycode::LCtrl | Keycode::LGui | Keycode::LAlt | Keycode::LShift |
+                    Keycode::RCtrl | Keycode::RGui | Keycode::RAlt | Keycode::RShift => {
+                        self.inputs.key_info.modifier = Some(keymod);
+                    }
+                    _ => {} // ignore all other non-standard, non-modifier keys
                 }
-                _ => {} // ignore all other non-standard, non-modifier keys
             }
         }
 
@@ -690,8 +690,7 @@ impl EventHandler for MainState {
                 self.pause_or_resume_game();
             }
             Screen::Menu | Screen::InRoom | Screen::ServerList => {
-                // This is currently handled in the return_key_pressed path as well
-                self.escape_key_pressed = true;
+                // This is currently handled in the menu processing state path as well
             }
             Screen::Exit => {
                 quit = true;
@@ -900,7 +899,6 @@ impl MainState {
 
         if let Some(k) = self.inputs.key_info.key {
             keycode = k;
-            println!("Processing key: {}", keycode);
         } else {
             return;
         }
@@ -910,7 +908,6 @@ impl MainState {
                 self.arrow_input = (0, -1);
             }
             Keycode::Down => {
-                println!("Keycode::Down");
                 self.arrow_input = (0, 1);
             }
             Keycode::Left => {
@@ -918,14 +915,6 @@ impl MainState {
             }
             Keycode::Right => {
                 self.arrow_input = (1, 0);
-            }
-            Keycode::Return => {
-                if !self.inputs.key_info.repeating {
-                    self.return_key_pressed = true;
-                }
-            }
-            Keycode::Escape => {
-                self.escape_key_pressed = true;
             }
             _ => {}
         }
@@ -962,8 +951,13 @@ impl MainState {
             /////////////////////////
             //// Non-Arrow key was pressed
             //////////////////////////
+            if let Some(k) = self.inputs.key_info.key {
+                let escape_key_pressed = k == Keycode::Escape && !self.inputs.key_info.repeating;
+                let return_key_pressed = k == Keycode::Return && !self.inputs.key_info.repeating;
 
-            if self.return_key_pressed || self.escape_key_pressed {
+                if !escape_key_pressed && !return_key_pressed {
+                    return;
+                }
 
                 let mut id = {
                     let container = self.menu_sys.get_menu_container();
@@ -973,13 +967,13 @@ impl MainState {
                     menu_item.id
                 };
 
-                if self.escape_key_pressed {
+                if escape_key_pressed {
                     id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
                 }
 
                 match self.menu_sys.menu_state {
                     menu::MenuState::MainMenu => {
-                        if !self.escape_key_pressed {
+                        if !escape_key_pressed {
                             match id {
                                 menu::MenuItemIdentifier::Connect => {
                                     if self.net_worker.is_some() {
@@ -1007,17 +1001,17 @@ impl MainState {
                     menu::MenuState::Options => {
                         match id {
                             menu::MenuItemIdentifier::VideoSettings => {
-                                if !self.escape_key_pressed {
+                                if !escape_key_pressed {
                                     self.menu_sys.menu_state = menu::MenuState::Video;
                                 }
                             }
                             menu::MenuItemIdentifier::AudioSettings => {
-                                if !self.escape_key_pressed {
+                                if !escape_key_pressed {
                                     self.menu_sys.menu_state = menu::MenuState::Audio;
                                 }
                             }
                             menu::MenuItemIdentifier::GameplaySettings => {
-                                if !self.escape_key_pressed {
+                                if !escape_key_pressed {
                                     self.menu_sys.menu_state = menu::MenuState::Gameplay;
                                 }
                             }
@@ -1033,7 +1027,7 @@ impl MainState {
                                 self.menu_sys.menu_state = menu::MenuState::Options;
                             }
                             _ => {
-                                if !self.escape_key_pressed { }
+                                if !escape_key_pressed { }
                             }
                         }
                     }
@@ -1043,7 +1037,7 @@ impl MainState {
                                 self.menu_sys.menu_state = menu::MenuState::Options;
                             }
                             _ => {
-                                if !self.escape_key_pressed { }
+                                if !escape_key_pressed { }
                             }
                         }
                     }
@@ -1053,7 +1047,7 @@ impl MainState {
                                 self.menu_sys.menu_state = menu::MenuState::Options;
                             }
                             menu::MenuItemIdentifier::Fullscreen => {
-                                if !self.escape_key_pressed {
+                                if !escape_key_pressed {
                                     self.video_settings.toggle_fullscreen(ctx);
                                     let is_fullscreen = self.video_settings.is_fullscreen();
                                     self.config.modify(|settings| {
@@ -1062,7 +1056,7 @@ impl MainState {
                                 }
                             }
                             menu::MenuItemIdentifier::Resolution => {
-                                if !self.escape_key_pressed {
+                                if !escape_key_pressed {
                                     self.video_settings.advance_to_next_resolution(ctx);
 
                                     // Update the configuration file and resize the viewing
@@ -1078,9 +1072,6 @@ impl MainState {
                 }
             }
         }
-
-        self.return_key_pressed = false;
-        self.escape_key_pressed = false;
     }
 
     // update
