@@ -4,6 +4,7 @@ members = [
   "conwayste",
   "netwayste",
   "libconway",
+  "dissect-netwayste",
 ]
 
 [profile.dev]
