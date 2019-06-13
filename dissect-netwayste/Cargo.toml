@@ -5,7 +5,8 @@ authors = ["Aaron Miller <aaron.miller04@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-netwayste    = { path = "../netwayste" }
+netwayste   = { path = "../netwayste" }
+lazy_static = "1.3.0"
 
 [build-dependencies]
 bindgen = "0.49.0"
