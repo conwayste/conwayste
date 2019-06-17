@@ -24,25 +24,26 @@ use ggez::{Context, GameResult};
 use super::{
     label::Label,
     widget::Widget,
-    helpe::{within_widget, draw_text}
-    };
+    helpe::{within_widget, draw_text},
+    UserAction,
+};
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 pub enum ToggleState {
     Disabled,
     Enabled
 }
 
-pub struct Checkbox<T> {
+pub struct Checkbox {
     pub label: Label,
     pub state: ToggleState,
     pub dimensions: Rect,
     pub hover: bool,
-    pub click: Box<dyn FnMut(&mut T)>
+    pub action: UserAction
 }
 
-impl<T> Checkbox<T> {
-    pub fn new(font: &Font, text: &'static str, dimensions: Rect, action: Box<dyn FnMut(&mut T)>) -> Self {
+impl Checkbox {
+    pub fn new(font: &Font, text: &'static str, dimensions: Rect, action: UserAction) -> Self {
         const LABEL_OFFSET_X: f32 = 20.0;
         const LABEL_OFFSET_Y: f32 = -25.0;
 
@@ -53,22 +54,23 @@ impl<T> Checkbox<T> {
             state: ToggleState::Disabled,
             dimensions: dimensions,
             hover: false,
-            click: action
+            action: action
         }
     }
 
-    pub fn toggle(&mut self) {
+    pub fn toggle(&mut self) -> ToggleState {
         if self.state == ToggleState::Disabled {
-            self.state = ToggleState::Enabled
+            self.state = ToggleState::Enabled;
         } else {
-            self.state = ToggleState::Disabled
+            self.state = ToggleState::Disabled;
         }
+        self.state
     }
 
 }
 
 
-impl<T> Widget<T> for Checkbox<T> {
+impl Widget for Checkbox {
     fn on_hover(&mut self, point: &Point2) {
         self.hover = within_widget(point, &self.dimensions) || within_widget(point, &self.label.dimensions);
         //if self.hover {
@@ -76,13 +78,13 @@ impl<T> Widget<T> for Checkbox<T> {
         //}
     }
 
-    fn on_click(&mut self, point: &Point2, t: &mut T)
+    fn on_click(&mut self, point: &Point2) -> Option<UserAction>
     {
         if within_widget(point, &self.dimensions) || within_widget(point, &self.label.dimensions) {
             println!("Clicked Checkbox, \"{}\"", self.label.text);
-            self.toggle();
-            (self.click)(t)
+            return Some(UserAction::Toggle(self.toggle()))
         }
+        None
     }
 
     fn draw(&self, ctx: &mut Context, font: &Font) -> GameResult<()> {

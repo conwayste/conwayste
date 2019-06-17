@@ -27,8 +27,8 @@ mod widget;
 mod label;
 
 pub use button::Button;
-pub use checkbox::Checkbox;
-pub use chatbox::Chatbox;
+pub use checkbox::{Checkbox, ToggleState};
+pub use chatbox::{Chatbox, TextState};
 pub use helpe::{
     within_widget,
     center,
@@ -38,3 +38,20 @@ pub use helpe::{
     };
 pub use label::Label;
 pub use widget::Widget;
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum Screen {
+    Intro(f64),   // seconds
+    Menu,
+    ServerList,
+    InRoom,
+    Run,          // TODO: break it out more to indicate whether waiting for game or playing game
+    Exit,         // We're getting ready to quit the game, WRAP IT UP SON
+}
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum UserAction {
+    ScreenTransition(Screen),
+    Toggle(ToggleState),
+    EnterText(TextState),
+}

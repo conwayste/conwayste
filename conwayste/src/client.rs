@@ -75,17 +75,14 @@ use constants::{
 };
 use input::{MouseAction, ScrollEvent};
 use viewport::Cell;
-use ui::{Button, Widget, Checkbox, Chatbox};
-
-#[derive(PartialEq, Clone, Copy)]
-enum Screen {
-    Intro(f64),   // seconds
-    Menu,
-    ServerList,
-    InRoom,
-    Run,          // TODO: break it out more to indicate whether waiting for game or playing game
-    Exit,         // We're getting ready to quit the game, WRAP IT UP SON
-}
+use ui::{
+    Widget,
+    Button,
+    Checkbox, ToggleState,
+    Chatbox, //TextState,
+    Screen,
+    UserAction
+};
 
 // All game state
 struct MainState {
@@ -111,9 +108,9 @@ struct MainState {
     toggle_paused_game:  bool,
 
     // Temp place holder for testing ui widgets
-    button:              Button<Vec<Screen>>,
-    checkbox:            Checkbox<bool>,
-    chatbox:             Chatbox<()>,
+    button:              Button,
+    checkbox:            Checkbox,
+    chatbox:             Chatbox,
 }
 
 
@@ -366,22 +363,6 @@ impl MainState {
                 .birth()
         };
 
-        let button = Button::<Vec<Screen>>::new(&menu_font, "Test Button", Box::new(|screen_stack: &mut Vec<Screen>| {
-            println!("The test button has been clicked!");
-            screen_stack.push(Screen::Run);
-        }));
-
-        let checkbox = Checkbox::<bool>::new( &menu_font,
-            "Test Checkbox! :)",
-            Rect::new(160.0, 160.0, 20.0, 20.0),
-            Box::new(|testcheck: &mut bool| {
-                println!("The test checkbox has been clicked!");
-                if *testcheck { *testcheck = false } else { *testcheck = true }
-            })
-        );
-
-        let chatbox = Chatbox::<()>::new(5);
-
         let mut config = config::Config::new();
         config.load_or_create_default().map_err(|e| {
             let msg = format!("Error while loading config: {:?}", e);
@@ -392,6 +373,14 @@ impl MainState {
         vs.gather_display_modes(ctx)?;
 
         vs.print_resolutions();
+
+        let button = Button::new(&menu_font, "Test Button",UserAction::ScreenTransition(Screen::Run));
+        let chatbox = Chatbox::new(5);
+        let checkbox = Checkbox::new( &menu_font,
+            "Test FS Checkbox! :)",
+            Rect::new(160.0, 160.0, 20.0, 20.0),
+            UserAction::Toggle( if vs.is_fullscreen { ToggleState::Enabled } else { ToggleState::Disabled } ),
+        );
 
         let mut s = MainState {
             small_font:          small_font,
@@ -524,13 +513,13 @@ impl EventHandler for MainState {
             }
             Screen::InRoom => {
                 // TODO implement
-                if let Some(k) = self.inputs.key_info.key {
+                if let Some(_k) = self.inputs.key_info.key {
                     println!("Leaving InRoom to ServerList");
                     self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
                 }
             }
             Screen::ServerList => {
-                if let Some(k) = self.inputs.key_info.key {
+                if let Some(_k) = self.inputs.key_info.key {
                     println!("Leaving ServerList to MainMenu");
                     self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
                 }
@@ -950,12 +939,33 @@ impl MainState {
         let mouse_point = Point2::new(self.inputs.mouse_info.position.0 as f32, self.inputs.mouse_info.position.1 as f32);
         self.button.on_hover(&mouse_point);
         if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
-            self.button.on_click(&mouse_point, &mut self.screen_stack);
+            if let Some(action) = self.button.on_click(&mouse_point) {
+                match action {
+                    UserAction::ScreenTransition(s) => self.screen_stack.push(s),
+                    _ => { },
+                }
+            }
         }
 
         self.checkbox.on_hover(&mouse_point);
         if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
-            self.checkbox.on_click(&mouse_point, &mut self.single_step);
+            if let Some(action) = self.checkbox.on_click(&mouse_point) {
+                match action {
+                    UserAction::Toggle(t) => {
+                        if t == ToggleState::Disabled {
+                            self.config.modify(|settings| {
+                                settings.video.fullscreen = false;
+                            });
+                        } else {
+                            self.config.modify(|settings| {
+                                settings.video.fullscreen = true;
+                            });
+                        }
+                        self.video_settings.toggle_fullscreen(ctx);
+                    }
+                    _ => { } // ignore all others
+                }
+            }
         }
 
         //// Directional Key / Menu movement
@@ -1072,7 +1082,7 @@ impl MainState {
                             menu::MenuItemIdentifier::Fullscreen => {
                                 if !escape_key_pressed {
                                     self.video_settings.toggle_fullscreen(ctx);
-                                    let is_fullscreen = self.video_settings.is_fullscreen();
+                                    let is_fullscreen = self.video_settings.is_fullscreen;
                                     self.config.modify(|settings| {
                                         settings.video.fullscreen = is_fullscreen;
                                     });

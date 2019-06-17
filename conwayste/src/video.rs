@@ -164,9 +164,4 @@ impl VideoSettings {
         let _ = graphics::set_fullscreen(ctx, !is_fullscreen);
         self.is_fullscreen = !is_fullscreen;
     }
-
-    /// Queries if we are fullscreen or otherwise.
-    pub fn is_fullscreen(&self) -> bool {
-        self.is_fullscreen
-    }
 }

@@ -18,27 +18,28 @@
 
 use chromatica::css;
 
-use ggez::graphics::{self, Rect, Font, Text, Point2, Color, DrawMode};
+use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode};
 use ggez::{Context, GameResult};
 
 use super::{
     label::Label,
     widget::Widget,
-    helpe::{within_widget, draw_text}
-    };
+    helpe::{within_widget, draw_text},
+    UserAction
+};
 
-pub struct Button<T> {
+pub struct Button {
     pub label: Label,
     pub button_color: Color,
     pub draw_mode: DrawMode,
     pub dimensions: Rect,
     pub hover: bool,
     pub borderless: bool,
-    pub click: Box<dyn FnMut(&mut T)>
+    pub action: UserAction
 }
 
-impl<T> Button<T> {
-    pub fn new(font: &Font, button_text: &'static str, action: Box<dyn FnMut(&mut T)>) -> Self {
+impl Button {
+    pub fn new(font: &Font, button_text: &'static str, action: UserAction) -> Self {
         const OFFSET_X: f32 = 8.0;
         const OFFSET_Y: f32 = 4.0;
         let width = font.get_width(button_text) as f32 + OFFSET_X*2.0;
@@ -53,7 +54,7 @@ impl<T> Button<T> {
             dimensions: dimensions,
             hover: false,
             borderless: false,
-            click: action,
+            action: action,
         }
     }
 
@@ -68,18 +69,19 @@ impl<T> Button<T> {
     }
 }
 
-impl<T> Widget<T> for Button<T> {
+impl Widget for Button {
     fn on_hover(&mut self, point: &Point2) {
         self.hover = within_widget(point, &self.dimensions);
         //println!("Hovering over Button, \"{}\"", self.label);
     }
 
-    fn on_click(&mut self, point: &Point2, t: &mut T)
+    fn on_click(&mut self, point: &Point2) -> Option<UserAction>
     {
         if within_widget(point, &self.dimensions) {
             println!("Clicked Button, \"{}\"", self.label.text);
-            (self.click)(t)
+            return Some(self.action);
         }
+        None
     }
 
     fn draw(&self, ctx: &mut Context, font: &Font) -> GameResult<()> {

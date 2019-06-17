@@ -24,21 +24,28 @@ use ggez::{Context, GameResult};
 
 use super::{
     widget::Widget,
-    helpe::within_widget
-    };
+    helpe::within_widget,
+    UserAction
+};
 
 const CHAT_DISPLAY_LIMIT: f32 = 10.0;
 
-pub struct Chatbox<T> {
+#[derive(PartialEq, Clone, Copy)]
+pub enum TextState {
+    NoInput,
+    Chatting,
+}
+
+pub struct Chatbox {
     pub history_len: usize,
     pub color: Color,
     pub messages: VecDeque<Text>,
     pub dimensions: Rect,
     pub hover: bool,
-    pub click: Box<dyn FnMut(&mut T)>
+    pub action: UserAction,
 }
 
-impl<T> Chatbox<T> {
+impl Chatbox {
     pub fn new(len: usize) -> Self {
         let rect = Rect::new(30.0, 600.0, 300.0, 15.0*CHAT_DISPLAY_LIMIT);
         Chatbox {
@@ -47,7 +54,7 @@ impl<T> Chatbox<T> {
             messages: VecDeque::with_capacity(len),
             dimensions: rect,
             hover: false,
-            click: Box::new(|_|{}),
+            action: UserAction::EnterText(TextState::NoInput),
         }
     }
 
@@ -62,7 +69,7 @@ impl<T> Chatbox<T> {
 }
 
 
-impl<T> Widget<T> for Chatbox<T> {
+impl Widget for Chatbox {
     fn on_hover(&mut self, point: &Point2) {
         self.hover = within_widget(point, &self.dimensions);
         //if self.hover {
@@ -70,12 +77,20 @@ impl<T> Widget<T> for Chatbox<T> {
         //}
     }
 
-    fn on_click(&mut self, point: &Point2, _t: &mut T)
+    fn on_click(&mut self, point: &Point2) -> Option<UserAction>
     {
         if within_widget(point, &self.dimensions) {
             println!("Clicked within Chatbox");
-            //(self.click)(t)
+            self.action = UserAction::EnterText(TextState::Chatting);
+            return Some(self.action);
         }
+        else
+        {
+            // Maybe be dead code since on_click is filtered when within_widget?
+            self.action = UserAction::EnterText(TextState::NoInput);
+        }
+
+        None
     }
 
     fn draw(&self, ctx: &mut Context, _font: &Font) -> GameResult<()> {
