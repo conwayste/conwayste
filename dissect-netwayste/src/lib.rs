@@ -7,6 +7,13 @@
 extern crate netwayste;
 #[macro_use]
 extern crate lazy_static;
+extern crate tokio_core;
+
+use netwayste::net::LineCodec;
+use tokio_core::net::UdpCodec;
+
+use std::net::SocketAddr;
+use std::slice;
 
 use std::ffi::CString;
 //use std::os::raw::c_char;
@@ -37,10 +44,15 @@ static mut plug_conwayste: ws::proto_plugin = ws::proto_plugin {
 };
 
 static mut proto_conwayste: c_int = -1;
+
 lazy_static! {
     static ref reg_proto_name: CString = { CString::new("Conwayste Protocol").unwrap() };
     static ref reg_short_name: CString = { CString::new("CWTE").unwrap() };
-    static ref reg_abbrev: CString = { CString::new("cw").unwrap() };
+    static ref reg_abbrev: CString = { CString::new("udp.cw").unwrap() };
+    static ref invalid_packet_str: CString = { CString::new("[INVALID PACKET]").unwrap() };
+
+    // our UDP codec expects a SocketAddr argument but we don't care
+    static ref dummy_addr: SocketAddr = { SocketAddr::new([127,0,0,1].into(), 54321) };
 }
 
 // THE MEAT
@@ -53,11 +65,31 @@ extern "C" fn dissect_conwayste(
 ) -> c_int {
     //println!("called dissect_conwayste()");
     unsafe {
-        ws::col_set_str((*pinfo).cinfo, ws::COL_PROTOCOL as i32, reg_short_name.as_ptr());
+        ws::col_set_str(
+            (*pinfo).cinfo,
+            ws::COL_PROTOCOL as i32,
+            reg_short_name.as_ptr(),
+        );
         /* Clear out stuff in the info column */
         ws::col_clear((*pinfo).cinfo, ws::COL_INFO as i32);
+
+        // decode packet into a Rust str
+
+        // set the info column
+        let tvb_slice: &[u8] = slice::from_raw_parts(tvb as *const u8, ws::tvb_captured_length(tvb) as usize);
+        let (_, opt_packet) = LineCodec.decode(&dummy_addr, tvb_slice).unwrap();
+        if let Some(packet) = opt_packet {
+            let info_str = CString::new(format!("{:?}", packet)).unwrap();
+
+            // col_add_str copies from the provided pointer, so info_str can be dropped safely
+            ws::col_add_str((*pinfo).cinfo, ws::COL_INFO as i32, info_str.as_ptr());
+        } else {
+            // col_set_str takes the provided pointer! Must live long enough
+            ws::col_set_str((*pinfo).cinfo, ws::COL_INFO as i32, invalid_packet_str.as_ptr());
+        }
+
     }
-    //XXX do more stuff! start w/ example 9.4 from https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
+    //XXX make tree, etc.! start w/ example 9.4 from https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
     unsafe { ws::tvb_captured_length(tvb) as i32 } // return length of packet
 }
 
