@@ -55,6 +55,16 @@ lazy_static! {
     static ref dummy_addr: SocketAddr = { SocketAddr::new([127,0,0,1].into(), 54321) };
 }
 
+// Just a sad little utility function to print hex in a u8 slice
+fn print_hex(buf: &[u8]) {
+    let mut v = vec![];
+    for i in 0..buf.len() {
+        v.push(format!("{:02x} ", buf[i]));
+    }
+    let s: String = v.join("");
+    println!("[{}]", s);
+}
+
 // THE MEAT
 // called multiple times
 extern "C" fn dissect_conwayste(
@@ -76,8 +86,18 @@ extern "C" fn dissect_conwayste(
         // decode packet into a Rust str
 
         // set the info column
-        let tvb_slice: &[u8] = slice::from_raw_parts(tvb as *const u8, ws::tvb_captured_length(tvb) as usize);
-        let (_, opt_packet) = LineCodec.decode(&dummy_addr, tvb_slice).unwrap();
+        println!("reported len is {:?}", ws::tvb_reported_length(tvb));
+        let tvblen = ws::tvb_reported_length(tvb) as usize;
+        //let tvb_slice: &[u8] = slice::from_raw_parts(tvb as *const u8, tvblen);
+        //println!("tvb_slice:");
+        //print_hex(tvb_slice);
+        let mut packet_vec = Vec::<u8>::with_capacity(tvblen);
+        for i in 0..tvblen {
+            packet_vec.push(ws::tvb_get_guint8(tvb, i as i32));
+        }
+        print_hex(&packet_vec);
+        //println!("first byte from tvb_get_guint8 is {:02x}", ws::tvb_get_guint8(tvb, 0));
+        let (_, opt_packet) = LineCodec.decode(&dummy_addr, &packet_vec).unwrap();
         if let Some(packet) = opt_packet {
             let info_str = CString::new(format!("{:?}", packet)).unwrap();
 
