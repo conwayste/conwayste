@@ -17,7 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::{Context, GameResult};
-use ggez::graphics::{Font, Point2};
+use ggez::graphics::{Font, Point2, Rect};
 
 use super::UserAction;
 
@@ -30,7 +30,15 @@ pub trait Widget {
         None
     }
 
+    fn on_drag(&mut self, _point: &Point2) {
+        ()
+    }
+
     fn draw(&self, _ctx: &mut Context, _font: &Font) -> GameResult<()> {
         Ok(())
+    }
+
+    fn dimensions(&self) -> Rect {
+        Rect::new(0.0, 0.0, 0.0, 0.0)
     }
 }

@@ -80,6 +80,7 @@ use ui::{
     Button,
     Checkbox, ToggleState,
     Chatbox, //TextState,
+    Pane,
     Screen,
     UserAction
 };
@@ -111,6 +112,7 @@ struct MainState {
     button:              Button,
     checkbox:            Checkbox,
     chatbox:             Chatbox,
+    pane:                Pane,
 }
 
 
@@ -382,6 +384,8 @@ impl MainState {
             UserAction::Toggle( if vs.is_fullscreen { ToggleState::Enabled } else { ToggleState::Disabled } ),
         );
 
+        let pane = Pane::new(Rect::new_i32(500, 500, 200, 200));
+
         let mut s = MainState {
             small_font:          small_font,
             menu_font:           menu_font.clone(),
@@ -404,6 +408,7 @@ impl MainState {
             button: button,
             checkbox: checkbox,
             chatbox: chatbox,
+            pane: pane,
         };
 
         init_patterns(&mut s).unwrap();
@@ -417,7 +422,7 @@ impl EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
         let duration = timer::duration_to_f64(timer::get_delta(ctx)); // seconds
 
-        self.receive_net_updates(ctx);
+        self.receive_net_updates(ctx)?;
 
         let current_screen = match self.screen_stack.last() {
             Some(screen) => screen,
@@ -554,6 +559,8 @@ impl EventHandler for MainState {
                 self.button.draw(ctx, &self.menu_font)?;
 
                 self.checkbox.draw(ctx, &self.menu_font)?;
+
+                self.pane.draw(ctx, &self.menu_font)?;
             }
             Screen::Run => {
                 self.draw_universe(ctx)?;
@@ -965,6 +972,14 @@ impl MainState {
                     }
                     _ => { } // ignore all others
                 }
+            }
+        }
+
+        if let Some(action) =  self.inputs.mouse_info.action {
+            if action == MouseAction::Drag {
+                self.pane.on_drag(&mouse_point);
+            } else if action == MouseAction::Click {
+                self.pane.update(true);
             }
         }
 

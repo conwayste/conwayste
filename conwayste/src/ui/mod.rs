@@ -20,15 +20,16 @@ extern crate ggez;
 extern crate chromatica;
 
 mod button;
-mod checkbox;
 mod chatbox;
+mod checkbox;
+mod pane;
 mod helpe;
 mod widget;
 mod label;
 
 pub use button::Button;
-pub use checkbox::{Checkbox, ToggleState};
 pub use chatbox::{Chatbox, TextState};
+pub use checkbox::{Checkbox, ToggleState};
 pub use helpe::{
     within_widget,
     center,
@@ -37,6 +38,7 @@ pub use helpe::{
     point_offset
     };
 pub use label::Label;
+pub use pane::Pane;
 pub use widget::Widget;
 
 #[derive(PartialEq, Clone, Copy)]
