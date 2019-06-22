@@ -17,7 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::{Context, GameResult};
-use ggez::graphics::{Font, Point2, Rect};
+use ggez::graphics::{Font, Point2, Rect, Vector2};
 
 use super::UserAction;
 
@@ -30,7 +30,7 @@ pub trait Widget {
         None
     }
 
-    fn on_drag(&mut self, _point: &Point2) {
+    fn on_drag(&mut self, _original_point: &Point2, _point: &Point2) {
         ()
     }
 
@@ -38,7 +38,9 @@ pub trait Widget {
         Ok(())
     }
 
-    fn dimensions(&self) -> Rect {
-        Rect::new(0.0, 0.0, 0.0, 0.0)
-    }
+    // The following implementaions tend to use struct member variables so they need to define their own definitions
+
+    fn dimensions(&self) -> Rect;
+    fn set_dimensions(&mut self, new_dimensions: Rect);
+    fn translate(&mut self, point: Vector2);
 }

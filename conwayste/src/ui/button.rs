@@ -18,7 +18,7 @@
 
 use chromatica::css;
 
-use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode};
+use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
@@ -98,5 +98,18 @@ impl Widget for Button {
         draw_text(ctx, font, self.label.color, &self.label.text, &self.dimensions.point(), None)?;
 
         graphics::set_color(ctx, old_color)
+    }
+
+    fn dimensions(&self) -> Rect {
+        self.dimensions
+    }
+
+    fn set_dimensions(&mut self, new_dims: Rect) {
+        self.dimensions = new_dims;
+    }
+
+    fn translate(&mut self, point: Vector2)
+    {
+        self.dimensions.translate(point);
     }
 }

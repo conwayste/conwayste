@@ -37,6 +37,7 @@ pub struct MouseInfo {
     pub action: Option<MouseAction>,
     pub scroll_event: Option<ScrollEvent>,
     pub down_timestamp: Option<Instant>,
+    pub down_position: (i32, i32),
     pub position: (i32, i32),
     pub debug_print: bool
 }
@@ -48,6 +49,7 @@ impl MouseInfo {
             action: None,
             scroll_event: None,
             down_timestamp: None,
+            down_position: (0, 0),
             position: (0, 0),
             debug_print: false,
         }
@@ -60,6 +62,7 @@ impl MouseInfo {
             println!("Action: {:?}", self.action);
             println!("Scroll: {:?}", self.scroll_event);
             println!("Down TS: {:?}", self.down_timestamp);
+            println!("Down Pos: {:?}", self.down_position);
             println!("Position: {:?}", self.position);
         }
     }

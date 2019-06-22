@@ -18,7 +18,7 @@
  *  <http://www.gnu.org/licenses/>. */
 use chromatica::css;
 
-use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode};
+use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
@@ -71,6 +71,19 @@ impl Checkbox {
 
 
 impl Widget for Checkbox {
+    fn dimensions(&self) -> Rect {
+        self.dimensions
+    }
+
+    fn set_dimensions(&mut self, new_dims: Rect) {
+        self.dimensions = new_dims;
+    }
+
+    fn translate(&mut self, point: Vector2)
+    {
+        self.dimensions.translate(point);
+    }
+
     fn on_hover(&mut self, point: &Point2) {
         self.hover = within_widget(point, &self.dimensions) || within_widget(point, &self.label.dimensions);
         //if self.hover {

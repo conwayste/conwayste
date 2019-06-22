@@ -19,7 +19,7 @@ use chromatica::css;
 
 use std::collections::VecDeque;
 
-use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode, Text};
+use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode, Text, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
@@ -70,6 +70,19 @@ impl Chatbox {
 
 
 impl Widget for Chatbox {
+    fn dimensions(&self) -> Rect {
+        self.dimensions
+    }
+
+    fn set_dimensions(&mut self, new_dims: Rect) {
+        self.dimensions = new_dims;
+    }
+
+    fn translate(&mut self, point: Vector2)
+    {
+        self.dimensions.translate(point);
+    }
+
     fn on_hover(&mut self, point: &Point2) {
         self.hover = within_widget(point, &self.dimensions);
         //if self.hover {

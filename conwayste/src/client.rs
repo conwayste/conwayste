@@ -384,7 +384,10 @@ impl MainState {
             UserAction::Toggle( if vs.is_fullscreen { ToggleState::Enabled } else { ToggleState::Disabled } ),
         );
 
-        let pane = Pane::new(Rect::new_i32(500, 500, 200, 200));
+        let mut pane = Pane::new(Rect::new_i32(500, 500, 200, 200));
+        let mut pane_button = Box::new(Button::new(&small_font, "Pane Button", UserAction::ScreenTransition(Screen::ServerList)));
+        pane_button.set_dimensions(Rect::new(550.0, 550.0, 100.0, 100.0));
+        pane.add(pane_button);
 
         let mut s = MainState {
             small_font:          small_font,
@@ -455,7 +458,7 @@ impl EventHandler for MainState {
                 }
             }
             Screen::Menu => {
-                self.update_current_screen(ctx); // TODO rewrite for ui changes
+                self.update_current_screen(ctx);
             }
             Screen::Run => {
                 // TODO Disable FSP limit until we decide if we need it
@@ -592,6 +595,7 @@ impl EventHandler for MainState {
             self.inputs.mouse_info.down_timestamp = Some(Instant::now());
             self.inputs.mouse_info.action = Some(MouseAction::Held);
             self.inputs.mouse_info.position = (x,y);
+            self.inputs.mouse_info.down_position = (x,y);
 
             if self.inputs.mouse_info.debug_print {
                 println!("{:?} Down", button);
@@ -944,6 +948,8 @@ impl MainState {
         self.process_menu_inputs();
 
         let mouse_point = Point2::new(self.inputs.mouse_info.position.0 as f32, self.inputs.mouse_info.position.1 as f32);
+        let origin_point = Point2::new(self.inputs.mouse_info.down_position.0 as f32, self.inputs.mouse_info.down_position.1 as f32);
+
         self.button.on_hover(&mouse_point);
         if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
             if let Some(action) = self.button.on_click(&mouse_point) {
@@ -977,7 +983,7 @@ impl MainState {
 
         if let Some(action) =  self.inputs.mouse_info.action {
             if action == MouseAction::Drag {
-                self.pane.on_drag(&mouse_point);
+                self.pane.on_drag(&origin_point, &mouse_point);
             } else if action == MouseAction::Click {
                 self.pane.update(true);
             }
@@ -1182,6 +1188,7 @@ impl MainState {
                     self.inputs.mouse_info.down_timestamp = None;
                     self.inputs.mouse_info.action = None;
                     self.inputs.mouse_info.mousebutton = MouseButton::Unknown;
+                    self.inputs.mouse_info.down_position = (0, 0);
                 }
                 MouseAction::Drag | MouseAction::Held => {}
             }
