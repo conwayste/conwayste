@@ -12,11 +12,11 @@ extern crate tokio_core;
 use netwayste::net::LineCodec;
 use tokio_core::net::UdpCodec;
 
+use std::mem;
 use std::net::SocketAddr;
-use std::slice;
+use std::ptr;
 
 use std::ffi::CString;
-//use std::os::raw::c_char;
 use std::os::raw::{c_int, c_void};
 
 /// Wireshark C bindings
@@ -45,6 +45,20 @@ static mut plug_conwayste: ws::proto_plugin = ws::proto_plugin {
 
 static mut proto_conwayste: c_int = -1;
 
+static mut hf_conwayste_enum_tag_field: c_int = -1;
+static mut ett_conwayste: c_int = -1;
+
+// same as hf_register_info from bindings.rs except the pointer is *const instead of *mut
+// UGLY HACK
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct sync_hf_register_info {
+    pub p_id: *mut c_int,
+    pub hfinfo: ws::header_field_info,
+}
+
+unsafe impl Sync for sync_hf_register_info {}
+
 lazy_static! {
     static ref reg_proto_name: CString = { CString::new("Conwayste Protocol").unwrap() };
     static ref reg_short_name: CString = { CString::new("CWTE").unwrap() };
@@ -53,6 +67,52 @@ lazy_static! {
 
     // our UDP codec expects a SocketAddr argument but we don't care
     static ref dummy_addr: SocketAddr = { SocketAddr::new([127,0,0,1].into(), 54321) };
+
+    static ref enum_tag_field_name: CString = { CString::new("CW Enum Tag Field").unwrap() };
+    static ref enum_tag_field_abbrev: CString = { CString::new("cw.enumtag").unwrap() };
+
+    // setup protocol subtree array
+    // this is actually a Vec<*mut c_int> containing a pointer to ett_conwayste
+    static ref ett: Vec<usize> = {
+        let mut _ett = vec![];
+        // UGLY HACK
+        _ett.push(unsafe { mem::transmute::<*const c_int, usize>(&ett_conwayste as *const c_int) } );
+        _ett
+    };
+
+    // setup protocol field array
+    static ref hf: Vec<sync_hf_register_info> = {
+        let mut _hf = vec![];
+
+        // enum tag field of the Packet
+        // TODO: auto-generate this by reading the AST of netwayste/src/net.rs
+        let enum_tag_field = sync_hf_register_info {
+            p_id: unsafe { &mut hf_conwayste_enum_tag_field as *mut c_int },
+            hfinfo: ws::header_field_info {
+                name:              enum_tag_field_name.as_ptr(),   // < [FIELDNAME] full name of this field
+                abbrev:            enum_tag_field_abbrev.as_ptr(), // < [FIELDABBREV] abbreviated name of this field
+                type_:             ws::ftenum_FT_UINT32,     // < [FIELDTYPE] field type, one of FT_ (from ftypes.h)
+                // < [FIELDDISPLAY] one of BASE_, or field bit-width if FT_BOOLEAN and non-zero bitmask
+                display:           ws::field_display_e_BASE_DEC as i32,
+                // < [FIELDCONVERT] value_string, val64_string, range_string or true_false_string,
+                // typically converted by VALS(), RVALS() or TFS().
+                // If this is an FT_PROTOCOL or BASE_PROTOCOL_INFO then it points to the
+                // associated protocol_t structure
+                // < [BITMASK] bitmask of interesting bits
+                strings:           ptr::null(),
+                bitmask:           0,
+                blurb:             ptr::null(),   // < [FIELDDESCR] Brief description of field
+                id:                -1,   // < Field ID
+                parent:            -1,   // < parent protocol tree
+                ref_type:          0,    // < is this field referenced by a filter
+                same_name_prev_id: -1,   // < ID of previous hfinfo with same abbrev
+                same_name_next:    ptr::null_mut(), // < Link to next hfinfo with same abbrev
+            },
+        };
+
+        _hf.push(enum_tag_field);
+        _hf
+    };
 }
 
 // Just a sad little utility function to print hex in a u8 slice
@@ -70,7 +130,7 @@ fn print_hex(buf: &[u8]) {
 extern "C" fn dissect_conwayste(
     tvb: *mut ws::tvbuff_t,
     pinfo: *mut ws::packet_info,
-    _tree: *mut ws::proto_tree,
+    tree: *mut ws::proto_tree,
     _data: *mut c_void,
 ) -> c_int {
     //println!("called dissect_conwayste()");
@@ -86,16 +146,11 @@ extern "C" fn dissect_conwayste(
         // decode packet into a Rust str
 
         // set the info column
-        println!("reported len is {:?}", ws::tvb_reported_length(tvb));
         let tvblen = ws::tvb_reported_length(tvb) as usize;
-        //let tvb_slice: &[u8] = slice::from_raw_parts(tvb as *const u8, tvblen);
-        //println!("tvb_slice:");
-        //print_hex(tvb_slice);
         let mut packet_vec = Vec::<u8>::with_capacity(tvblen);
         for i in 0..tvblen {
             packet_vec.push(ws::tvb_get_guint8(tvb, i as i32));
         }
-        print_hex(&packet_vec);
         //println!("first byte from tvb_get_guint8 is {:02x}", ws::tvb_get_guint8(tvb, 0));
         let (_, opt_packet) = LineCodec.decode(&dummy_addr, &packet_vec).unwrap();
         if let Some(packet) = opt_packet {
@@ -105,12 +160,24 @@ extern "C" fn dissect_conwayste(
             ws::col_add_str((*pinfo).cinfo, ws::COL_INFO as i32, info_str.as_ptr());
         } else {
             // col_set_str takes the provided pointer! Must live long enough
-            ws::col_set_str((*pinfo).cinfo, ws::COL_INFO as i32, invalid_packet_str.as_ptr());
+            ws::col_set_str(
+                (*pinfo).cinfo,
+                ws::COL_INFO as i32,
+                invalid_packet_str.as_ptr(),
+            );
         }
 
+        //// make tree, etc.! See example 9.4+ from https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
+        // Add "Conwayste Protocol" tree (initially with nothing under it), under "User Datagram
+        // Protocol" in middle pane.
+        let ti = ws::proto_tree_add_item(tree, proto_conwayste, tvb, 0, -1, ws::ENC_NA);
+        let cw_tree = ws::proto_item_add_subtree(ti, ett_conwayste);
+
+        // Attach stuff under "Conwayste Protocol" tree
+        //XXX
+
+        ws::tvb_captured_length(tvb) as i32 // return length of packet
     }
-    //XXX make tree, etc.! start w/ example 9.4 from https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
-    unsafe { ws::tvb_captured_length(tvb) as i32 } // return length of packet
 }
 
 // called once
@@ -123,6 +190,13 @@ extern "C" fn proto_register_conwayste() {
             reg_short_name.as_ptr(),
             reg_abbrev.as_ptr(),
         );
+
+        ws::proto_register_field_array(
+            proto_conwayste,
+            hf.as_ptr() as *mut ws::hf_register_info,
+            hf.len() as i32,
+        );
+        ws::proto_register_subtree_array(ett.as_ptr() as *const *mut i32, ett.len() as i32);
     }
 }
 
