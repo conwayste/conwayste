@@ -19,14 +19,14 @@
 use ggez::{Context, GameResult};
 use ggez::graphics::{Font, Point2, Rect, Vector2};
 
-use super::UserAction;
+use super::{UIAction,WidgetID};
 
 pub trait Widget {
     fn on_hover(&mut self, _point: &Point2) {
         ()
     }
 
-    fn on_click(&mut self, _point: &Point2) -> Option<UserAction> {
+    fn on_click(&mut self, _point: &Point2) -> Option<UIAction> {
         None
     }
 
@@ -38,9 +38,10 @@ pub trait Widget {
         Ok(())
     }
 
-    // The following implementaions tend to use struct member variables so they need to define their own definitions
+    // The following implementaions tend to use struct member variables so we need to define their own definitions
 
-    fn dimensions(&self) -> Rect;
-    fn set_dimensions(&mut self, new_dimensions: Rect);
+    fn size(&self) -> Rect;
+    fn set_size(&mut self, new_dimensions: Rect);
     fn translate(&mut self, point: Vector2);
+    fn id(&self) -> WidgetID;
 }

@@ -25,10 +25,11 @@ use super::{
     label::Label,
     widget::Widget,
     helpe::{within_widget, draw_text},
-    UserAction
+    UIAction, WidgetID
     };
 
 pub struct Pane {
+    pub id: WidgetID,
     pub dimensions: Rect,
     pub widgets: Vec<Box<dyn Widget>>,
     pub hover: bool,
@@ -39,8 +40,9 @@ pub struct Pane {
 }
 
 impl Pane {
-    pub fn new(dimensions: Rect) -> Self {
+    pub fn new(widget_id: WidgetID, dimensions: Rect) -> Self {
         Pane {
+            id: widget_id,
             dimensions: dimensions,
             widgets: vec![],
             hover: false,
@@ -61,11 +63,15 @@ impl Pane {
 }
 
 impl Widget for Pane {
-    fn dimensions(&self) -> Rect {
+    fn id(&self) -> WidgetID {
+        self.id
+    }
+
+    fn size(&self) -> Rect {
         self.dimensions
     }
 
-    fn set_dimensions(&mut self, new_dims: Rect) {
+    fn set_size(&mut self, new_dims: Rect) {
         self.dimensions = new_dims;
     }
 
@@ -78,8 +84,7 @@ impl Widget for Pane {
         self.hover = within_widget(point, &self.dimensions);
     }
 
-    fn on_click(&mut self, _point: &Point2) -> Option<UserAction> {
-
+    fn on_click(&mut self, _point: &Point2) -> Option<UIAction> {
         None
     }
 
@@ -94,7 +99,7 @@ impl Widget for Pane {
         // Check that the mouse down event is bounded by the pane but not by a sub-widget
         if within_widget(original_pos, &self.dimensions) {
             for widget in self.widgets.iter() {
-                if within_widget(original_pos, &widget.dimensions()) && self.previous_pos.is_none() {
+                if within_widget(original_pos, &widget.size()) && self.previous_pos.is_none() {
                     drag_ok = false;
                     break;
                 }

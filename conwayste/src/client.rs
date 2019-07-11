@@ -17,6 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 extern crate conway;
+#[macro_use] extern crate custom_error;
 extern crate env_logger;
 extern crate ggez;
 #[macro_use] extern crate log;
@@ -30,6 +31,7 @@ extern crate chromatica;
 
 mod config;
 mod constants;
+mod error;
 mod input;
 mod menu;
 mod network;
@@ -74,6 +76,7 @@ use constants::{
     INTRO_PAUSE_DURATION,
 };
 use input::{MouseAction, ScrollEvent};
+use error::{ConwaysteResult, ConwaysteError::*};
 use viewport::Cell;
 use ui::{
     Widget,
@@ -82,7 +85,8 @@ use ui::{
     Chatbox, //TextState,
     Pane,
     Screen,
-    UserAction
+    UIAction,
+    WidgetID,
 };
 
 // All game state
@@ -376,17 +380,18 @@ impl MainState {
 
         vs.print_resolutions();
 
-        let button = Button::new(&menu_font, "Test Button",UserAction::ScreenTransition(Screen::Run));
-        let chatbox = Chatbox::new(5);
+        let button = Button::new(&menu_font, "Test Button", WidgetID::MainMenuTestButton, UIAction::ScreenTransition(Screen::Run));
+        let chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, 5);
         let checkbox = Checkbox::new( &menu_font,
             "Test FS Checkbox! :)",
             Rect::new(160.0, 160.0, 20.0, 20.0),
-            UserAction::Toggle( if vs.is_fullscreen { ToggleState::Enabled } else { ToggleState::Disabled } ),
+            WidgetID::MainMenuTestCheckbox,
+            UIAction::Toggle( if vs.is_fullscreen { ToggleState::Enabled } else { ToggleState::Disabled } ),
         );
 
-        let mut pane = Pane::new(Rect::new_i32(500, 500, 200, 200));
-        let mut pane_button = Box::new(Button::new(&small_font, "Pane Button", UserAction::ScreenTransition(Screen::ServerList)));
-        pane_button.set_dimensions(Rect::new(550.0, 550.0, 100.0, 100.0));
+        let mut pane = Pane::new(WidgetID::MainMenuPane1, Rect::new_i32(500, 500, 200, 200));
+        let mut pane_button = Box::new(Button::new(&small_font, "Pane Button", WidgetID::MainMenuPane1ButtonYes, UIAction::ScreenTransition(Screen::ServerList)));
+        pane_button.set_size(Rect::new(550.0, 550.0, 100.0, 100.0));
         pane.add(pane_button);
 
         let mut s = MainState {
@@ -952,32 +957,15 @@ impl MainState {
 
         self.button.on_hover(&mouse_point);
         if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
-            if let Some(action) = self.button.on_click(&mouse_point) {
-                match action {
-                    UserAction::ScreenTransition(s) => self.screen_stack.push(s),
-                    _ => { },
-                }
+            if let Some(ui_action) = self.button.on_click(&mouse_point) {
+                self.handle_ui_action(ctx, self.button.id(), ui_action);
             }
         }
 
         self.checkbox.on_hover(&mouse_point);
         if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
             if let Some(action) = self.checkbox.on_click(&mouse_point) {
-                match action {
-                    UserAction::Toggle(t) => {
-                        if t == ToggleState::Disabled {
-                            self.config.modify(|settings| {
-                                settings.video.fullscreen = false;
-                            });
-                        } else {
-                            self.config.modify(|settings| {
-                                settings.video.fullscreen = true;
-                            });
-                        }
-                        self.video_settings.toggle_fullscreen(ctx);
-                    }
-                    _ => { } // ignore all others
-                }
+                self.handle_ui_action(ctx, self.checkbox.id(), action);
             }
         }
 
@@ -1216,6 +1204,60 @@ impl MainState {
                 error!("Failed to flush config on exit: {:?}", e);
             });
         }
+    }
+
+    fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> ConwaysteResult<()> {
+        match widget_id {
+            WidgetID::MainMenuPane1ButtonYes => {
+                match action {
+                    UIAction::ScreenTransition(s) => {
+                        self.screen_stack.push(s);
+                    }
+                    _ => {
+                        return Err(InvalidUIAction{reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)});
+                    }
+                }
+            },
+            WidgetID::MainMenuTestButton => {
+                match action {
+                    UIAction::ScreenTransition(s) => {
+                        self.screen_stack.push(s);
+                    }
+                    _ => {
+                        return Err(InvalidUIAction{reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)});
+                    }
+                }
+            },
+            WidgetID::MainMenuTestCheckbox => {
+                match action {
+                    UIAction::Toggle(t) => {
+                        if t == ToggleState::Disabled {
+                            self.config.modify(|settings| {
+                                settings.video.fullscreen = false;
+                            });
+                        } else {
+                            self.config.modify(|settings| {
+                                settings.video.fullscreen = true;
+                            });
+                        }
+                        self.video_settings.toggle_fullscreen(ctx);
+                    }
+                    _ => {
+                        return Err(InvalidUIAction{reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)});
+                     } // ignore all others
+                }
+            },
+            WidgetID::MainMenuPane1 => {
+                return Err(NoAssociatedUIAction{
+                    reason: format!("Widget: {:?} is a Pane element and has no associated action", widget_id)
+                });
+            },
+            WidgetID::InGamePane1Chatbox => {
+                // TODO
+            },
+        }
+
+        Ok(())
     }
 }
 

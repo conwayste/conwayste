@@ -25,31 +25,34 @@ use super::{
     label::Label,
     widget::Widget,
     helpe::{within_widget, draw_text},
-    UserAction,
+    UIAction,
+    WidgetID,
 };
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum ToggleState {
     Disabled,
     Enabled
 }
 
 pub struct Checkbox {
+    pub id:     WidgetID,
     pub label: Label,
     pub state: ToggleState,
     pub dimensions: Rect,
     pub hover: bool,
-    pub action: UserAction
+    pub action: UIAction
 }
 
 impl Checkbox {
-    pub fn new(font: &Font, text: &'static str, dimensions: Rect, action: UserAction) -> Self {
+    pub fn new(font: &Font, text: &'static str, dimensions: Rect, widget_id: WidgetID, action: UIAction) -> Self {
         const LABEL_OFFSET_X: f32 = 20.0;
         const LABEL_OFFSET_Y: f32 = -25.0;
 
         let label_origin = Point2::new(dimensions.x + dimensions.w + LABEL_OFFSET_X, dimensions.y + dimensions.h + LABEL_OFFSET_Y);
 
         Checkbox {
+            id: widget_id,
             label: Label::new(font, text, Color::from(css::WHITE), label_origin),
             state: ToggleState::Disabled,
             dimensions: dimensions,
@@ -71,11 +74,15 @@ impl Checkbox {
 
 
 impl Widget for Checkbox {
-    fn dimensions(&self) -> Rect {
+    fn id(&self) -> WidgetID {
+        self.id
+    }
+
+    fn size(&self) -> Rect {
         self.dimensions
     }
 
-    fn set_dimensions(&mut self, new_dims: Rect) {
+    fn set_size(&mut self, new_dims: Rect) {
         self.dimensions = new_dims;
     }
 
@@ -91,11 +98,11 @@ impl Widget for Checkbox {
         //}
     }
 
-    fn on_click(&mut self, point: &Point2) -> Option<UserAction>
+    fn on_click(&mut self, point: &Point2) -> Option<UIAction>
     {
         if within_widget(point, &self.dimensions) || within_widget(point, &self.label.dimensions) {
             println!("Clicked Checkbox, \"{}\"", self.label.text);
-            return Some(UserAction::Toggle(self.toggle()))
+            return Some(UIAction::Toggle(self.toggle()))
         }
         None
     }

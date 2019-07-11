@@ -25,21 +25,22 @@ use super::{
     label::Label,
     widget::Widget,
     helpe::{within_widget, draw_text},
-    UserAction
+    UIAction, WidgetID
 };
 
 pub struct Button {
+    pub id:     WidgetID,
     pub label: Label,
     pub button_color: Color,
     pub draw_mode: DrawMode,
     pub dimensions: Rect,
     pub hover: bool,
     pub borderless: bool,
-    pub action: UserAction
+    pub action: UIAction
 }
 
 impl Button {
-    pub fn new(font: &Font, button_text: &'static str, action: UserAction) -> Self {
+    pub fn new(font: &Font, button_text: &'static str, widget_id: WidgetID, action: UIAction) -> Self {
         const OFFSET_X: f32 = 8.0;
         const OFFSET_Y: f32 = 4.0;
         let width = font.get_width(button_text) as f32 + OFFSET_X*2.0;
@@ -48,6 +49,7 @@ impl Button {
         let offset = Point2::new(dimensions.x + OFFSET_X, OFFSET_Y);
 
         Button {
+            id: widget_id,
             label: Label::new(font, button_text, Color::from(css::WHITE), offset),
             button_color: Color::from(css::DARKCYAN),
             draw_mode: DrawMode::Fill,
@@ -70,12 +72,16 @@ impl Button {
 }
 
 impl Widget for Button {
+    fn id(&self) -> WidgetID {
+        self.id
+    }
+
     fn on_hover(&mut self, point: &Point2) {
         self.hover = within_widget(point, &self.dimensions);
         //println!("Hovering over Button, \"{}\"", self.label);
     }
 
-    fn on_click(&mut self, point: &Point2) -> Option<UserAction>
+    fn on_click(&mut self, point: &Point2) -> Option<UIAction>
     {
         if within_widget(point, &self.dimensions) {
             println!("Clicked Button, \"{}\"", self.label.text);
@@ -100,11 +106,11 @@ impl Widget for Button {
         graphics::set_color(ctx, old_color)
     }
 
-    fn dimensions(&self) -> Rect {
+    fn size(&self) -> Rect {
         self.dimensions
     }
 
-    fn set_dimensions(&mut self, new_dims: Rect) {
+    fn set_size(&mut self, new_dims: Rect) {
         self.dimensions = new_dims;
     }
 

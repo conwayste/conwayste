@@ -25,36 +25,38 @@ use ggez::{Context, GameResult};
 use super::{
     widget::Widget,
     helpe::within_widget,
-    UserAction
+    UIAction, WidgetID
 };
 
 const CHAT_DISPLAY_LIMIT: f32 = 10.0;
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TextState {
     NoInput,
     Chatting,
 }
 
 pub struct Chatbox {
+    pub id: WidgetID,
     pub history_len: usize,
     pub color: Color,
     pub messages: VecDeque<Text>,
     pub dimensions: Rect,
     pub hover: bool,
-    pub action: UserAction,
+    pub action: UIAction,
 }
 
 impl Chatbox {
-    pub fn new(len: usize) -> Self {
+    pub fn new(widget_id: WidgetID, len: usize) -> Self {
         let rect = Rect::new(30.0, 600.0, 300.0, 15.0*CHAT_DISPLAY_LIMIT);
         Chatbox {
+            id: widget_id,
             history_len: len,
             color: Color::from(css::VIOLET),
             messages: VecDeque::with_capacity(len),
             dimensions: rect,
             hover: false,
-            action: UserAction::EnterText(TextState::NoInput),
+            action: UIAction::EnterText(TextState::NoInput),
         }
     }
 
@@ -70,11 +72,15 @@ impl Chatbox {
 
 
 impl Widget for Chatbox {
-    fn dimensions(&self) -> Rect {
+    fn id(&self) -> WidgetID {
+        self.id
+    }
+
+    fn size(&self) -> Rect {
         self.dimensions
     }
 
-    fn set_dimensions(&mut self, new_dims: Rect) {
+    fn set_size(&mut self, new_dims: Rect) {
         self.dimensions = new_dims;
     }
 
@@ -90,17 +96,17 @@ impl Widget for Chatbox {
         //}
     }
 
-    fn on_click(&mut self, point: &Point2) -> Option<UserAction>
+    fn on_click(&mut self, point: &Point2) -> Option<UIAction>
     {
         if within_widget(point, &self.dimensions) {
             println!("Clicked within Chatbox");
-            self.action = UserAction::EnterText(TextState::Chatting);
+            self.action = UIAction::EnterText(TextState::Chatting);
             return Some(self.action);
         }
         else
         {
             // Maybe be dead code since on_click is filtered when within_widget?
-            self.action = UserAction::EnterText(TextState::NoInput);
+            self.action = UIAction::EnterText(TextState::NoInput);
         }
 
         None

@@ -41,7 +41,7 @@ pub use label::Label;
 pub use pane::Pane;
 pub use widget::Widget;
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum Screen {
     Intro(f64),   // seconds
     Menu,
@@ -51,9 +51,20 @@ pub enum Screen {
     Exit,         // We're getting ready to quit the game, WRAP IT UP SON
 }
 
-#[derive(PartialEq, Clone, Copy)]
-pub enum UserAction {
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum UIAction {
     ScreenTransition(Screen),
     Toggle(ToggleState),
     EnterText(TextState),
+}
+
+#[derive(PartialEq, Debug, Copy, Clone)]
+pub enum WidgetID {
+    MainMenuTestButton,
+    MainMenuTestCheckbox,
+
+    MainMenuPane1,
+    MainMenuPane1ButtonYes,
+
+    InGamePane1Chatbox
 }
