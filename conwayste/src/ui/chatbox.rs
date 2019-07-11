@@ -96,15 +96,16 @@ impl Widget for Chatbox {
         //}
     }
 
-    fn on_click(&mut self, point: &Point2) -> Option<UIAction>
+    fn on_click(&mut self, point: &Point2) -> Option<(WidgetID, UIAction)>
     {
-        if within_widget(point, &self.dimensions) {
+        let hover = self.hover;
+        self.hover = false;
+
+        if hover {
             println!("Clicked within Chatbox");
             self.action = UIAction::EnterText(TextState::Chatting);
-            return Some(self.action);
-        }
-        else
-        {
+            return Some((self.id, self.action));
+        } else {
             // Maybe be dead code since on_click is filtered when within_widget?
             self.action = UIAction::EnterText(TextState::NoInput);
         }

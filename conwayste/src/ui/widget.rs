@@ -26,7 +26,7 @@ pub trait Widget {
         ()
     }
 
-    fn on_click(&mut self, _point: &Point2) -> Option<UIAction> {
+    fn on_click(&mut self, _point: &Point2) -> Option<(WidgetID, UIAction)> {
         None
     }
 

@@ -78,14 +78,19 @@ impl Widget for Button {
 
     fn on_hover(&mut self, point: &Point2) {
         self.hover = within_widget(point, &self.dimensions);
-        //println!("Hovering over Button, \"{}\"", self.label);
+        if self.hover {
+            //println!("Hovering over Button, \"{}\"", self.label.text);
+        }
     }
 
-    fn on_click(&mut self, point: &Point2) -> Option<UIAction>
+    fn on_click(&mut self, _point: &Point2) -> Option<(WidgetID, UIAction)>
     {
-        if within_widget(point, &self.dimensions) {
+        let hover = self.hover;
+        self.hover = false;
+
+        if hover {
             println!("Clicked Button, \"{}\"", self.label.text);
-            return Some(self.action);
+            return Some((self.id, self.action));
         }
         None
     }

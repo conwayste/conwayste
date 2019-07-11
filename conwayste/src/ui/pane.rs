@@ -51,7 +51,9 @@ impl Pane {
         }
     }
 
-    pub fn add(&mut self, widget: Box<dyn Widget>) {
+    pub fn add(&mut self, mut widget: Box<dyn Widget>) {
+        let dims = widget.size();
+        widget.set_size(Rect::new(dims.x + self.dimensions.x, dims.y + self.dimensions.y, dims.w, dims.h));
         self.widgets.push(widget);
     }
 
@@ -81,16 +83,32 @@ impl Widget for Pane {
     }
 
     fn on_hover(&mut self, point: &Point2) {
-        self.hover = within_widget(point, &self.dimensions);
+        if within_widget(point, &self.dimensions) {
+            self.hover = true;
+            for w in self.widgets.iter_mut() {
+                w.on_hover(point);
+            }
+        }
     }
 
-    fn on_click(&mut self, _point: &Point2) -> Option<UIAction> {
+    fn on_click(&mut self, point: &Point2) -> Option<(WidgetID, UIAction)> {
+        let hover = self.hover;
+        self.hover = false;
+
+        if hover {
+            for w in self.widgets.iter_mut() {
+                let ui_action = w.on_click(point);
+                if ui_action.is_some() {
+                    return ui_action;
+                }
+            }
+        }
         None
     }
 
     fn on_drag(&mut self, original_pos: &Point2, current_pos: &Point2) {
 
-        if !self.floating {
+        if !self.floating || !self.hover {
             return;
         }
 
@@ -136,8 +154,8 @@ impl Widget for Pane {
     fn draw(&self, ctx: &mut Context, font: &Font) -> GameResult<()> {
         let old_color = graphics::get_color(ctx);
 
-        graphics::set_color(ctx, Color::from(css::WHITE))?;
-        graphics::rectangle(ctx, DrawMode::Line(4.0), self.dimensions)?;
+        graphics::set_color(ctx, Color::from(css::FIREBRICK))?;
+        graphics::rectangle(ctx, DrawMode::Fill, self.dimensions)?;
 
         for widget in self.widgets.iter() {
             widget.draw(ctx, font)?;

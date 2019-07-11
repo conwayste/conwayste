@@ -44,11 +44,11 @@ pub struct Checkbox {
     pub action: UIAction
 }
 
+const LABEL_OFFSET_X: f32 = 30.0;
+const LABEL_OFFSET_Y: f32 = -5.0;
+
 impl Checkbox {
     pub fn new(font: &Font, text: &'static str, dimensions: Rect, widget_id: WidgetID, action: UIAction) -> Self {
-        const LABEL_OFFSET_X: f32 = 20.0;
-        const LABEL_OFFSET_Y: f32 = -25.0;
-
         let label_origin = Point2::new(dimensions.x + dimensions.w + LABEL_OFFSET_X, dimensions.y + dimensions.h + LABEL_OFFSET_Y);
 
         Checkbox {
@@ -84,11 +84,14 @@ impl Widget for Checkbox {
 
     fn set_size(&mut self, new_dims: Rect) {
         self.dimensions = new_dims;
+
+        self.label.dimensions = Rect::new(new_dims.x + LABEL_OFFSET_X, new_dims.y + LABEL_OFFSET_Y, new_dims.w, new_dims.h);
     }
 
     fn translate(&mut self, point: Vector2)
     {
         self.dimensions.translate(point);
+        self.label.dimensions.translate(point);
     }
 
     fn on_hover(&mut self, point: &Point2) {
@@ -98,11 +101,14 @@ impl Widget for Checkbox {
         //}
     }
 
-    fn on_click(&mut self, point: &Point2) -> Option<UIAction>
+    fn on_click(&mut self, _point: &Point2) -> Option<(WidgetID, UIAction)>
     {
-        if within_widget(point, &self.dimensions) || within_widget(point, &self.label.dimensions) {
+        let hover = self.hover;
+        self.hover = false;
+
+        if hover {
             println!("Clicked Checkbox, \"{}\"", self.label.text);
-            return Some(UIAction::Toggle(self.toggle()))
+            return Some(( self.id, UIAction::Toggle(self.toggle()) ));
         }
         None
     }

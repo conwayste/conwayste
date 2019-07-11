@@ -113,8 +113,6 @@ struct MainState {
     toggle_paused_game:  bool,
 
     // Temp place holder for testing ui widgets
-    button:              Button,
-    checkbox:            Checkbox,
     chatbox:             Chatbox,
     pane:                Pane,
 }
@@ -380,19 +378,30 @@ impl MainState {
 
         vs.print_resolutions();
 
-        let button = Button::new(&menu_font, "Test Button", WidgetID::MainMenuTestButton, UIAction::ScreenTransition(Screen::Run));
         let chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, 5);
-        let checkbox = Checkbox::new( &menu_font,
-            "Test FS Checkbox! :)",
-            Rect::new(160.0, 160.0, 20.0, 20.0),
+
+        let checkbox = Box::new(Checkbox::new( &menu_font,
+            "Toggle FullScreen",
+            Rect::new(10.0, 210.0, 20.0, 20.0),
             WidgetID::MainMenuTestCheckbox,
             UIAction::Toggle( if vs.is_fullscreen { ToggleState::Enabled } else { ToggleState::Disabled } ),
-        );
+        ));
 
-        let mut pane = Pane::new(WidgetID::MainMenuPane1, Rect::new_i32(500, 500, 200, 200));
-        let mut pane_button = Box::new(Button::new(&small_font, "Pane Button", WidgetID::MainMenuPane1ButtonYes, UIAction::ScreenTransition(Screen::ServerList)));
-        pane_button.set_size(Rect::new(550.0, 550.0, 100.0, 100.0));
+        // Create a new pane, and add two test buttons to it. Actions do not really matter for now, WIP
+        let mut pane = Pane::new(WidgetID::MainMenuPane1, Rect::new_i32(20, 20, 300, 250));
+        let mut pane_button = Box::new(Button::new(&small_font, "ServerList", WidgetID::MainMenuPane1ButtonYes, UIAction::ScreenTransition(Screen::ServerList)));
+        pane_button.set_size(Rect::new(10.0, 10.0, 180.0, 50.0));
         pane.add(pane_button);
+
+        let mut pane_button = Box::new(Button::new(&small_font, "InRoom", WidgetID::MainMenuPane1ButtonNo, UIAction::ScreenTransition(Screen::InRoom)));
+        pane_button.set_size(Rect::new(10.0, 70.0, 180.0, 50.0));
+        pane.add(pane_button);
+
+        let mut pane_button = Box::new(Button::new(&small_font, "StartGame", WidgetID::MainMenuTestButton, UIAction::ScreenTransition(Screen::Run)));
+        pane_button.set_size(Rect::new(10.0, 130.0, 180.0, 50.0));
+        pane.add(pane_button);
+
+        pane.add(checkbox);
 
         let mut s = MainState {
             small_font:          small_font,
@@ -413,8 +422,6 @@ impl MainState {
             arrow_input:         (0, 0),
             drag_draw:           None,
             toggle_paused_game:  false,
-            button: button,
-            checkbox: checkbox,
             chatbox: chatbox,
             pane: pane,
         };
@@ -563,10 +570,6 @@ impl EventHandler for MainState {
             }
             Screen::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn);
-
-                self.button.draw(ctx, &self.menu_font)?;
-
-                self.checkbox.draw(ctx, &self.menu_font)?;
 
                 self.pane.draw(ctx, &self.menu_font)?;
             }
@@ -955,19 +958,14 @@ impl MainState {
         let mouse_point = Point2::new(self.inputs.mouse_info.position.0 as f32, self.inputs.mouse_info.position.1 as f32);
         let origin_point = Point2::new(self.inputs.mouse_info.down_position.0 as f32, self.inputs.mouse_info.down_position.1 as f32);
 
-        self.button.on_hover(&mouse_point);
+        self.pane.on_hover(&mouse_point);
+
         if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
-            if let Some(ui_action) = self.button.on_click(&mouse_point) {
-                self.handle_ui_action(ctx, self.button.id(), ui_action);
+            if let Some((ui_id, ui_action)) = self.pane.on_click(&mouse_point) {
+                self.handle_ui_action(ctx, ui_id, ui_action);
             }
         }
 
-        self.checkbox.on_hover(&mouse_point);
-        if self.inputs.mouse_info.action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left {
-            if let Some(action) = self.checkbox.on_click(&mouse_point) {
-                self.handle_ui_action(ctx, self.checkbox.id(), action);
-            }
-        }
 
         if let Some(action) =  self.inputs.mouse_info.action {
             if action == MouseAction::Drag {
@@ -1208,17 +1206,7 @@ impl MainState {
 
     fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> ConwaysteResult<()> {
         match widget_id {
-            WidgetID::MainMenuPane1ButtonYes => {
-                match action {
-                    UIAction::ScreenTransition(s) => {
-                        self.screen_stack.push(s);
-                    }
-                    _ => {
-                        return Err(InvalidUIAction{reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)});
-                    }
-                }
-            },
-            WidgetID::MainMenuTestButton => {
+            WidgetID::MainMenuPane1ButtonYes | WidgetID::MainMenuPane1ButtonNo | WidgetID::MainMenuTestButton  => {
                 match action {
                     UIAction::ScreenTransition(s) => {
                         self.screen_stack.push(s);
@@ -1244,7 +1232,7 @@ impl MainState {
                     }
                     _ => {
                         return Err(InvalidUIAction{reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)});
-                     } // ignore all others
+                     }
                 }
             },
             WidgetID::MainMenuPane1 => {

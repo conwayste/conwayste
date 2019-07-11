@@ -65,6 +65,7 @@ pub enum WidgetID {
 
     MainMenuPane1,
     MainMenuPane1ButtonYes,
+    MainMenuPane1ButtonNo,
 
     InGamePane1Chatbox
 }
