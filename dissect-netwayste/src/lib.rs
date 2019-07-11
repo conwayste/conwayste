@@ -174,7 +174,8 @@ extern "C" fn dissect_conwayste(
         let cw_tree = ws::proto_item_add_subtree(ti, ett_conwayste);
 
         // Attach stuff under "Conwayste Protocol" tree
-        //XXX
+        ws::proto_tree_add_item(cw_tree, hf_conwayste_enum_tag_field, tvb, 0, 1, ws::ENC_BIG_ENDIAN);
+        // TODO: auto-generate more trees and items from inspecting AST of Packet
 
         ws::tvb_captured_length(tvb) as i32 // return length of packet
     }
