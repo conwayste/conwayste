@@ -18,13 +18,12 @@
 
 use chromatica::css;
 
-use ggez::graphics::{self, Rect, Font, Text, Point2, Color, DrawMode, Vector2};
+use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
-    label::Label,
     widget::Widget,
-    helpe::{within_widget, draw_text},
+    helpe::{within_widget},
     UIAction, WidgetID
     };
 
@@ -151,13 +150,13 @@ impl Widget for Pane {
         }
     }
 
-    fn draw(&self, ctx: &mut Context, font: &Font) -> GameResult<()> {
+    fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
         let old_color = graphics::get_color(ctx);
 
         graphics::set_color(ctx, Color::from(css::FIREBRICK))?;
         graphics::rectangle(ctx, DrawMode::Fill, self.dimensions)?;
 
-        for widget in self.widgets.iter() {
+        for widget in self.widgets.iter_mut() {
             widget.draw(ctx, font)?;
         }
 

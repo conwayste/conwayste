@@ -24,7 +24,7 @@ use ggez::{Context, GameResult};
 use super::{
     label::Label,
     widget::Widget,
-    helpe::{within_widget, draw_text},
+    helpe::{within_widget, draw_text, color_with_alpha},
     UIAction, WidgetID
 };
 
@@ -50,8 +50,8 @@ impl Button {
 
         Button {
             id: widget_id,
-            label: Label::new(font, button_text, Color::from(css::WHITE), offset),
-            button_color: Color::from(css::DARKCYAN),
+            label: Label::new(font, button_text, color_with_alpha(css::WHITE, 0.1), offset),
+            button_color: color_with_alpha(css::DARKCYAN, 0.8),
             draw_mode: DrawMode::Fill,
             dimensions: dimensions,
             hover: false,
@@ -95,7 +95,7 @@ impl Widget for Button {
         None
     }
 
-    fn draw(&self, ctx: &mut Context, font: &Font) -> GameResult<()> {
+    fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
         let old_color = graphics::get_color(ctx);
         graphics::set_color(ctx, self.button_color)?;
 

@@ -25,16 +25,11 @@ use ggez::{Context, GameResult};
 use super::{
     widget::Widget,
     helpe::within_widget,
+    textfield::TextField,
     UIAction, WidgetID
 };
 
 const CHAT_DISPLAY_LIMIT: f32 = 10.0;
-
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub enum TextState {
-    NoInput,
-    Chatting,
-}
 
 pub struct Chatbox {
     pub id: WidgetID,
@@ -44,6 +39,7 @@ pub struct Chatbox {
     pub dimensions: Rect,
     pub hover: bool,
     pub action: UIAction,
+    pub chat_input: TextField,
 }
 
 impl Chatbox {
@@ -56,7 +52,8 @@ impl Chatbox {
             messages: VecDeque::with_capacity(len),
             dimensions: rect,
             hover: false,
-            action: UIAction::EnterText(TextState::NoInput),
+            action: UIAction::EnterText,
+            chat_input: TextField::new( (rect.x, rect.y + rect.h), WidgetID::InGamePane1ChatboxTextField),
         }
     }
 
@@ -96,24 +93,20 @@ impl Widget for Chatbox {
         //}
     }
 
-    fn on_click(&mut self, point: &Point2) -> Option<(WidgetID, UIAction)>
+    fn on_click(&mut self, _point: &Point2) -> Option<(WidgetID, UIAction)>
     {
         let hover = self.hover;
         self.hover = false;
 
         if hover {
             println!("Clicked within Chatbox");
-            self.action = UIAction::EnterText(TextState::Chatting);
             return Some((self.id, self.action));
-        } else {
-            // Maybe be dead code since on_click is filtered when within_widget?
-            self.action = UIAction::EnterText(TextState::NoInput);
         }
 
         None
     }
 
-    fn draw(&self, ctx: &mut Context, _font: &Font) -> GameResult<()> {
+    fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
         let old_color = graphics::get_color(ctx);
 
         if self.hover {
@@ -135,6 +128,8 @@ impl Widget for Chatbox {
             //graphics::queue_text(ctx, msg, &self.dimensions.point(), Some(Point2::new(0.0, i*30.0)))?;
         }
         // graphics::draw_queued_text(ctx, DrawParam::default())?;
+
+        self.chat_input.draw(ctx, font)?;
 
         graphics::set_color(ctx, old_color)
     }

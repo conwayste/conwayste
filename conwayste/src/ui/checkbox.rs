@@ -113,7 +113,7 @@ impl Widget for Checkbox {
         None
     }
 
-    fn draw(&self, ctx: &mut Context, font: &Font) -> GameResult<()> {
+    fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
         let old_color = graphics::get_color(ctx);
         graphics::set_color(ctx, self.label.color)?;
 
@@ -131,6 +131,7 @@ impl Widget for Checkbox {
         }
 
         graphics::rectangle(ctx, draw_mode, self.dimensions)?;
+        graphics::rectangle(ctx, draw_mode, self.label.dimensions)?;
         draw_text(ctx, font, self.label.color, &self.label.text, &self.label.dimensions.point(), None)?;
 
         graphics::set_color(ctx, old_color)

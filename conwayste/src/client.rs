@@ -85,6 +85,7 @@ use ui::{
     Chatbox, //TextState,
     Pane,
     Screen,
+    TextInputState,
     UIAction,
     WidgetID,
 };
@@ -476,7 +477,12 @@ impl EventHandler for MainState {
                 // TODO Disable FSP limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
                 {
-                    self.process_running_inputs();
+                    if self.chatbox.chat_input.state.is_some() {
+                        self.process_text_field_inputs();
+                    } else {
+                        self.process_running_inputs();
+                    }
+
                     if self.inputs.mouse_info.mousebutton == MouseButton::Left {
                         let (x,y) = self.inputs.mouse_info.position;
                         let mouse_pos = Point2::new(x as f32, y as f32);
@@ -508,6 +514,15 @@ impl EventHandler for MainState {
                             }
                             Some(MouseAction::Held) | Some(MouseAction::DoubleClick) | None => {} // do nothing
                         }
+                    }
+
+                    match self.chatbox.chat_input.state {
+                        Some(TextInputState::TextInputComplete) =>  {
+                            self.handle_user_chat_complete(ctx)?;
+                        }
+                        Some(TextInputState::EnteringText) | None => {
+                            self.chatbox.chat_input.update(ctx)?;
+                        },
                     }
 
                     let mouse_point = Point2::new(self.inputs.mouse_info.position.0 as f32, self.inputs.mouse_info.position.1 as f32);
@@ -708,6 +723,30 @@ impl EventHandler for MainState {
         }
     }
 
+    /// Candidate text is passed by the OS (via Input Method Editor).
+    /// Refer to:
+    /// <https://wiki.libsdl.org/SDL_TextEditingEvent>
+    /// <https://wiki.libsdl.org/SDL_TextInputEvent>
+    /// <https://wiki.libsdl.org/Tutorials/TextInput>
+    fn text_editing_event(&mut self, _ctx: &mut Context, _text: String, _start: i32, _length: i32) {
+        //println!("[text_editing_event] (text,start,length) {}, {}, {}", _text, _start, _length);
+    }
+
+    /// Resulting text (usually a unicode character) is passed by the OS (via Input Method Editor).
+    /// Refer to:
+    /// <https://wiki.libsdl.org/SDL_TextEditingEvent>
+    /// <https://wiki.libsdl.org/SDL_TextInputEvent>
+    /// <https://wiki.libsdl.org/Tutorials/TextInput>
+    fn text_input_event(&mut self, _ctx: &mut Context, text: String) {
+        if self.chatbox.chat_input.state.is_some() {
+            self.chatbox.chat_input.add_to(text);
+
+            // println!("{}", self.chatbox.chat_input.text);
+        }
+        // println!("[text_input_event] (text) {}", text);
+    }
+
+
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
         println!("Got quit event!");
         let mut quit = false;
@@ -877,6 +916,11 @@ impl MainState {
 
         match keycode {
             Keycode::Return => {
+                if self.chatbox.chat_input.state.is_none() {
+                    self.chatbox.chat_input.enter_focus();
+                }
+            }
+            Keycode::R => {
                 if !self.inputs.key_info.repeating {
                     self.running = !self.running;
                 }
@@ -948,6 +992,50 @@ impl MainState {
                 self.arrow_input = (1, 0);
             }
             _ => {}
+        }
+    }
+
+    fn process_text_field_inputs(&mut self) {
+        let keycode;
+
+        if let Some(k) = self.inputs.key_info.key {
+            keycode = k;
+        } else {
+            return;
+        }
+
+        match keycode {
+            Keycode::Return => {
+                self.chatbox.chat_input.state = Some(TextInputState::TextInputComplete);
+            }
+            Keycode::Escape => {
+                self.chatbox.chat_input.exit_focus();
+            }
+            Keycode::Backspace => {
+                if let Some(TextInputState::EnteringText) = self.chatbox.chat_input.state {
+                    self.chatbox.chat_input.backspace_char();
+                }
+            }
+            Keycode::Delete => {
+                if let Some(TextInputState::EnteringText) = self.chatbox.chat_input.state {
+                    self.chatbox.chat_input.delete_char();
+                }
+            }
+            Keycode::Left => {
+                self.chatbox.chat_input.dec_cursor_pos();
+            },
+            Keycode::Right => {
+                self.chatbox.chat_input.inc_cursor_pos();
+            }
+            Keycode::Up => {},    // ?? go up and down the message stack?
+            Keycode::Down => {},
+            Keycode::Home => {
+                self.chatbox.chat_input.cursor_home();
+            }
+            Keycode::End => {
+                self.chatbox.chat_input.cursor_end();
+            }
+            _ => {} // do nothing for now
         }
     }
 
@@ -1240,10 +1328,28 @@ impl MainState {
                     reason: format!("Widget: {:?} is a Pane element and has no associated action", widget_id)
                 });
             },
-            WidgetID::InGamePane1Chatbox => {
+            WidgetID::InGamePane1Chatbox | WidgetID::InGamePane1ChatboxTextField => {
                 // TODO
             },
         }
+
+        Ok(())
+    }
+
+    fn handle_user_chat_complete(&mut self, ctx: &mut Context) -> GameResult<()> {
+        if let Some(msg) = self.chatbox.chat_input.text() {
+            let username = &self.config.get().user.name;
+            let msg = format!("{}: {}", username, msg);
+
+            self.chatbox.add_message(ctx, &self.small_font, &msg)?;
+
+            if let Some(ref mut netwayste) = self.net_worker {
+                netwayste.try_send(NetwaysteEvent::ChatMessage(msg));
+            }
+        }
+
+        self.chatbox.chat_input.state = None;
+        self.chatbox.chat_input.clear();
 
         Ok(())
     }

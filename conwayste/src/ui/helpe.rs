@@ -112,6 +112,10 @@ pub fn within_widget(point: &Point2, bounds: &Rect) -> bool {
     bounds.contains(*point)
 }
 
+pub fn color_with_alpha((r, g, b): (u8, u8, u8), alpha: f32) -> Color {
+    Color::from( (r, g, b, (alpha * 255.0) as u8) )
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

@@ -34,7 +34,11 @@ pub trait Widget {
         ()
     }
 
-    fn draw(&self, _ctx: &mut Context, _font: &Font) -> GameResult<()> {
+    fn draw(&mut self, _ctx: &mut Context, _font: &Font) -> GameResult<()> {
+        Ok(())
+    }
+
+    fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
         Ok(())
     }
 

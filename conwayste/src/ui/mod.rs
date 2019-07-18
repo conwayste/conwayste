@@ -22,13 +22,14 @@ extern crate chromatica;
 mod button;
 mod chatbox;
 mod checkbox;
-mod pane;
 mod helpe;
-mod widget;
 mod label;
+mod pane;
+mod widget;
+mod textfield;
 
 pub use button::Button;
-pub use chatbox::{Chatbox, TextState};
+pub use chatbox::Chatbox;
 pub use checkbox::{Checkbox, ToggleState};
 pub use helpe::{
     within_widget,
@@ -39,6 +40,7 @@ pub use helpe::{
     };
 pub use label::Label;
 pub use pane::Pane;
+pub use textfield::{TextField, TextInputState};
 pub use widget::Widget;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -55,7 +57,7 @@ pub enum Screen {
 pub enum UIAction {
     ScreenTransition(Screen),
     Toggle(ToggleState),
-    EnterText(TextState),
+    EnterText,
 }
 
 #[derive(PartialEq, Debug, Copy, Clone)]
@@ -67,5 +69,6 @@ pub enum WidgetID {
     MainMenuPane1ButtonYes,
     MainMenuPane1ButtonNo,
 
-    InGamePane1Chatbox
+    InGamePane1Chatbox,
+    InGamePane1ChatboxTextField,
 }
