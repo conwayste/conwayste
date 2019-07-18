@@ -506,7 +506,7 @@ impl EventHandler for MainState {
                                     }
                                 }
                             }
-                            Some(MouseAction::Held) | None => {} // do nothing
+                            Some(MouseAction::Held) | Some(MouseAction::DoubleClick) | None => {} // do nothing
                         }
                     }
 
@@ -1176,7 +1176,7 @@ impl MainState {
                     self.inputs.mouse_info.mousebutton = MouseButton::Unknown;
                     self.inputs.mouse_info.down_position = (0, 0);
                 }
-                MouseAction::Drag | MouseAction::Held => {}
+                MouseAction::Drag | MouseAction::Held | MouseAction::DoubleClick => {}
             }
         }
         self.inputs.mouse_info.scroll_event = None;

@@ -30,6 +30,7 @@ pub enum MouseAction {
     Held,
     Drag,
     Click,
+    DoubleClick, // For Aaron TODO :)
 }
 
 pub struct MouseInfo {
