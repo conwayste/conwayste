@@ -189,7 +189,7 @@ impl Widget for TextField {
             let text_with_cursor = self.text.clone();
             let text_pos = Point2::new(self.dimensions.x + CURSOR_OFFSET_PX, self.dimensions.y);
 
-            draw_text(ctx, font, Color::from(css::VIOLET), &text_with_cursor, &text_pos, None)?;
+            draw_text(ctx, font, Color::from(css::WHITESMOKE), &text_with_cursor, &text_pos, None)?;
 
             if self.draw_cursor {
                 let cursor_position_px = font.get_width(&text_with_cursor[0..self.cursor_index]) as f32;
