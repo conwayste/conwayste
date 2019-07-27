@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::{Context, graphics, GameResult};
+use ggez::{Context, graphics, GameResult, conf::FullscreenType};
 use std::num::Wrapping;
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -164,16 +164,18 @@ impl VideoSettings {
 /*
  * FIXME
  * as of ggez 0.5.1, there wasn't an obvious way to query whether the window is fullscreen or not.
- * Likely have to dig into wininit to find the answer
+ * Likely have to dig into wininit to find the answer.
+ * */
     /// Toggles fullscreen mode within the SDL video context
     pub fn toggle_fullscreen(&mut self, ctx: &mut Context) {
-        let is_fullscreen = graphics::is_fullscreen(ctx);
-        assert_eq!(is_fullscreen, self.is_fullscreen);
-
-        let _ = graphics::set_fullscreen(ctx, !is_fullscreen);
-        self.is_fullscreen = !is_fullscreen;
+        let fs_type = if self.is_fullscreen {
+            FullscreenType::Windowed
+        } else {
+            FullscreenType::True
+        };
+        let _ = graphics::set_fullscreen(ctx, fs_type);
     }
-*/
+
 
     /// Queries if we are fullscreen or otherwise.
     pub fn is_fullscreen(&self) -> bool {

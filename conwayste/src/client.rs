@@ -711,6 +711,18 @@ impl EventHandler for MainState {
         self.input_manager.add(input::InputAction::KeyRelease(keycode));
     }
 
+    fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
+        println!("Resized screen to {}, {}", width, height);
+        let new_rect = graphics::Rect::new(
+            0.0,
+            0.0,
+            width,
+            height,
+        );
+        graphics::set_screen_coordinates(ctx, new_rect).unwrap();
+        self.viewport.set_dimensions(width, height);
+    }
+
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
         let mut quit = false;
 
@@ -1128,7 +1140,7 @@ impl MainState {
                                 self.menu_sys.menu_state = menu::MenuState::Options;
                             }
                             menu::MenuItemIdentifier::Fullscreen => {
-                                /* TODO/FIXME, no fullscreen support in 0.5.1
+                                /* TODO/FIXME, somewhat limping fullscreen support in 0.5.1 */
                                 if !self.escape_key_pressed {
                                     self.video_settings.toggle_fullscreen(ctx);
                                     let is_fullscreen = self.video_settings.is_fullscreen();
@@ -1136,7 +1148,6 @@ impl MainState {
                                         settings.video.fullscreen = is_fullscreen;
                                     });
                                 }
-                                */
                             }
                             menu::MenuItemIdentifier::Resolution => {
                                 if !self.escape_key_pressed {
