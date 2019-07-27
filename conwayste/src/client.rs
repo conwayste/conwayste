@@ -626,7 +626,7 @@ impl EventHandler for MainState {
             Stage::Exit => {}
         }
 
-        graphics::present(ctx);
+        graphics::present(ctx)?;
         timer::yield_now();
         Ok(())
     }
@@ -761,15 +761,10 @@ impl MainState {
             GRID_DRAW_STYLE.to_draw_mode(),
             graphics::Rect::new(0.0, 0.0, viewport.w, viewport.h),
             draw_params.bg_color)?;
-        graphics::draw(ctx, &rectangle, DrawParam::default().dest(viewport.point()))?;
+        graphics::draw(ctx, &rectangle, DrawParam::new().dest(viewport.point()))?;
 
         // grid foreground (dead cells)
         let full_rect = self.viewport.get_rect_from_origin();
-
-        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
-            let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect, draw_params.fg_color)?;
-            graphics::draw(ctx, &rectangle, DrawParam::default().dest(clipped_rect.point()))?;
-        }
 
         let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
         let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
@@ -789,18 +784,23 @@ impl MainState {
             };
 
             if let Some(rect) = self.viewport.get_screen_area(viewport::Cell::new(col, row)) {
-                let p = graphics::DrawParam {
-                    dest: Point2::new(rect.x, rect.y).into(),
-                    scale: Vector2::new(rect.w, rect.h).into(), // scaling a 1x1 Image to correct cell size
-                    color: color,
-                    ..Default::default()
-                };
+                let p = graphics::DrawParam::new()
+                    .dest(Point2::new(rect.x, rect.y))
+                    .scale(Vector2::new(rect.w, rect.h))
+                    .color(color);
 
                 spritebatch.add(p);
             }
         });
 
-        graphics::draw(ctx, &spritebatch, graphics::DrawParam{ dest: Point2::new(0.0, 0.0).into(), .. Default::default()} )?;
+        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
+            let origin = graphics::DrawParam::new().dest(clipped_rect.point());
+            let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect, draw_params.fg_color)?;
+
+            graphics::draw(ctx, &rectangle, origin)?;
+            graphics::draw(ctx, &spritebatch, origin)?;
+        }
+
         spritebatch.clear();
 
         ////////// draw generation counter
@@ -809,9 +809,6 @@ impl MainState {
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
             utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
         }
-
-        ////////////////////// END
-        graphics::clear(ctx, graphics::BLACK); // Clear color residue
 
         Ok(())
     }
@@ -925,7 +922,7 @@ impl MainState {
                                     settings.gameplay.zoom = cell_size;
                                 });
                             }
-                            KeyCode::Minus | KeyCode::Underline => {
+                            KeyCode::Minus | KeyCode::Subtract => {
                                 self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
                                 let cell_size = self.viewport.get_cell_size();
                                 self.config.modify(|settings| {
