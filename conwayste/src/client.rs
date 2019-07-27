@@ -1301,7 +1301,6 @@ pub fn main() {
         .window_setup(conf::WindowSetup::default()
                       .title(format!("{} {} {}", "💥 conwayste", version!().to_owned(),"💥").as_str())
                       .icon("//conwayste.ico")
-                      //.allow_highdpi(true)
                       .vsync(true)
                       )
         .window_mode(conf::WindowMode::default()

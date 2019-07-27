@@ -30,7 +30,7 @@ impl Graphics {
     /// An offset can be specified by an optional `adjustment` point.
     pub fn draw_text(_ctx: &mut Context, font: &Font, color: Color, text: &str, coords: &Point2<f32>, adjustment: Option<&Point2<f32>>) -> GameResult<()> {
         let text_fragment = TextFragment::new(text)
-            .scale(Scale::uniform(20.0))              // TODO needs refactoring so size is specified in signature
+            .scale(Scale::uniform(20.0))              // TODO needs refactoring so size is specified in signature, fix in UI branch
             .color(color)
             .font(*font);
 
