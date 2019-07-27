@@ -98,7 +98,7 @@ impl Viewport {
             let next_cell_size = self.grid_view.cell_size + zoom_dir;
             let old_cell_size = self.grid_view.cell_size;
 
-            let window_center = Point2::<f32>::new(self.grid_view.rect.w/2.0, self.grid_view.rect.h/2.0);
+            let window_center = Point2::new(self.grid_view.rect.w/2.0, self.grid_view.rect.h/2.0);
 
             if let Some(cell) = self.grid_view.game_coords_from_window(window_center) {
                 let (old_cell_count_for_x, old_cell_count_for_y) = (cell.row, cell.col);
