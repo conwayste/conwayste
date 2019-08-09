@@ -20,7 +20,6 @@ extern crate conway;
 extern crate env_logger;
 extern crate ggez;
 #[macro_use] extern crate log;
-extern crate sdl2;
 #[macro_use] extern crate serde;
 #[macro_use] extern crate version;
 extern crate rand;
@@ -50,7 +49,8 @@ use ggez::conf;
 use ggez::event::*;
 use ggez::{GameError, GameResult, Context, ContextBuilder};
 use ggez::graphics;
-use ggez::graphics::{Point2, Color};
+use ggez::graphics::{Color, DrawParam};
+use ggez::nalgebra::{Point2, Vector2};
 use ggez::timer;
 
 use std::env;
@@ -409,19 +409,17 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
 impl MainState {
 
     fn new(ctx: &mut Context) -> GameResult<MainState> {
-        ctx.print_resource_stats();
-
         let universe_width_in_cells  = 256;
         let universe_height_in_cells = 120;
 
         let mut config = config::Config::new();
         config.load_or_create_default().map_err(|e| {
             let msg = format!("Error while loading config: {:?}", e);
-            GameError::from(msg)
+            GameError::FilesystemError(msg)
         })?;
 
         let mut vs = video::VideoSettings::new();
-        vs.gather_display_modes(ctx)?;
+        //vs.gather_display_modes(ctx)?;
 
         vs.print_resolutions();
 
@@ -467,8 +465,7 @@ impl MainState {
         color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
         color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
 
-        let small_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
-        let menu_font  = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
+        let font = graphics::Font::default(); // Provides DejaVuSerif.ttf
 
         /*
          * Game Universe Initialization
@@ -514,14 +511,14 @@ impl MainState {
          */
 
         let mut s = MainState {
-            small_font:          small_font,
+            small_font:          font.clone(),
             stage:              Stage::Intro(INTRO_DURATION),
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
             color_settings:      color_settings,
             running:             false,
-            menu_sys:            menu::MenuSystem::new(menu_font),
+            menu_sys:            menu::MenuSystem::new(font),
             video_settings:      vs,
             config:              config,
             viewport:            viewport,
@@ -545,7 +542,7 @@ impl MainState {
 
 impl EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
-        let duration = timer::duration_to_f64(timer::get_delta(ctx)); // seconds
+        let duration = timer::duration_to_f64(timer::delta(ctx)); // seconds
 
         self.receive_net_updates();
 
@@ -598,7 +595,7 @@ impl EventHandler for MainState {
                 // TODO implement
              },
             Stage::Exit => {
-               let _ = ctx.quit();
+               let _ = ggez::event::quit(ctx);
             }
         }
 
@@ -608,8 +605,7 @@ impl EventHandler for MainState {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        graphics::clear(ctx);
-        graphics::set_background_color(ctx, (0, 0, 0, 1).into());
+        graphics::clear(ctx, [0.0, 0.0, 0.0, 1.0].into());
 
         match self.stage {
             Stage::Intro(_) => {
@@ -630,7 +626,7 @@ impl EventHandler for MainState {
             Stage::Exit => {}
         }
 
-        graphics::present(ctx);
+        graphics::present(ctx)?;
         timer::yield_now();
         Ok(())
     }
@@ -641,27 +637,26 @@ impl EventHandler for MainState {
     fn mouse_button_down_event(&mut self,
                                _ctx: &mut Context,
                                button: MouseButton,
-                               x: i32,
-                               y: i32
+                               x: f32,
+                               y: f32
                                ) {
-        self.input_manager.add(input::InputAction::MouseClick(button, x, y));
+        self.input_manager.add(input::InputAction::MouseClick(button, x as i32, y as i32));
     }
 
     fn mouse_motion_event(&mut self,
                           _ctx: &mut Context,
-                          state: MouseState,
-                          x: i32,
-                          y: i32,
-                          _xrel: i32,
-                          _yrel: i32
+                          x: f32,
+                          y: f32,
+                          dx: f32,
+                          dy: f32
                           ) {
         match self.stage {
             Stage::Intro(_) => {}
             Stage::Menu | Stage::Run => {
-                if state.left() && self.drag_draw != None {
-                    self.input_manager.add(input::InputAction::MouseDrag(MouseButton::Left, x, y));
+                if self.drag_draw != None {
+                    self.input_manager.add(input::InputAction::MouseDrag(MouseButton::Left, x as i32, y as i32));
                 } else {
-                    self.input_manager.add(input::InputAction::MouseMovement(x, y));
+                    self.input_manager.add(input::InputAction::MouseMovement(x as i32, y as i32));
                 }
             }
             Stage::InRoom => {
@@ -677,8 +672,8 @@ impl EventHandler for MainState {
     fn mouse_button_up_event(&mut self,
                              _ctx: &mut Context,
                              _button: MouseButton,
-                             _x: i32,
-                             _y: i32
+                             _x: f32,
+                             _y: f32
                              ) {
         // TODO Later, we'll need to support drag-and-drop patterns as well as drag draw
         self.drag_draw = None;   // probably unnecessary because of state.left() check in mouse_motion_event
@@ -686,8 +681,8 @@ impl EventHandler for MainState {
 
     fn key_down_event(&mut self,
                       ctx: &mut Context,
-                      keycode: Keycode,
-                      _keymod: Mod,
+                      keycode: KeyCode,
+                      _keymod: KeyMods,
                       repeat: bool
                       ) {
 
@@ -698,7 +693,7 @@ impl EventHandler for MainState {
             }
             Stage::Menu | Stage::Run | Stage::InRoom | Stage::ServerList => {
                 // TODO for now just quit the game
-                if keycode == Keycode::Escape {
+                if keycode == KeyCode::Escape {
                     self.quit_event(ctx);
                 }
 
@@ -710,12 +705,22 @@ impl EventHandler for MainState {
 
     fn key_up_event(&mut self,
                     _ctx: &mut Context,
-                    keycode: Keycode,
-                    _keymod: Mod,
-                    _repeat: bool
-                    ) {
+                    keycode: KeyCode,
+                    _keymod: KeyMods) {
         //self.input_manager.clear_input_start_time();
         self.input_manager.add(input::InputAction::KeyRelease(keycode));
+    }
+
+    fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
+        println!("Resized screen to {}, {}", width, height);
+        let new_rect = graphics::Rect::new(
+            0.0,
+            0.0,
+            width,
+            height,
+        );
+        graphics::set_screen_coordinates(ctx, new_rect).unwrap();
+        self.viewport.set_dimensions(width, height);
     }
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
@@ -760,17 +765,18 @@ impl MainState {
                          draw_params: &GameOfLifeDrawParams
                          ) -> GameResult<()> {
 
+
+        let viewport = self.viewport.get_viewport();
+
         // grid background
-        graphics::set_color(ctx, draw_params.bg_color)?;
-        graphics::rectangle(ctx,  GRID_DRAW_STYLE.to_draw_mode(), self.viewport.get_viewport())?;
+        let rectangle = graphics::Mesh::new_rectangle(ctx,
+            GRID_DRAW_STYLE.to_draw_mode(),
+            graphics::Rect::new(0.0, 0.0, viewport.w, viewport.h),
+            draw_params.bg_color)?;
+        graphics::draw(ctx, &rectangle, DrawParam::new().dest(viewport.point()))?;
 
         // grid foreground (dead cells)
         let full_rect = self.viewport.get_rect_from_origin();
-
-        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
-            graphics::set_color(ctx, draw_params.fg_color)?;
-            graphics::rectangle(ctx,  GRID_DRAW_STYLE.to_draw_mode(), clipped_rect)?;
-        }
 
         let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
         let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
@@ -790,18 +796,23 @@ impl MainState {
             };
 
             if let Some(rect) = self.viewport.get_screen_area(viewport::Cell::new(col, row)) {
-                let p = graphics::DrawParam {
-                    dest: Point2::new(rect.x, rect.y),
-                    scale: Point2::new(rect.w, rect.h), // scaling a 1x1 Image to correct cell size
-                    color: Some(color),
-                    ..Default::default()
-                };
+                let p = graphics::DrawParam::new()
+                    .dest(Point2::new(rect.x, rect.y))
+                    .scale(Vector2::new(rect.w, rect.h))
+                    .color(color);
 
                 spritebatch.add(p);
             }
         });
 
-        graphics::draw_ex(ctx, &spritebatch, graphics::DrawParam{ dest: Point2::new(0.0, 0.0), .. Default::default()} )?;
+        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
+            let origin = graphics::DrawParam::new().dest(clipped_rect.point());
+            let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect, draw_params.fg_color)?;
+
+            graphics::draw(ctx, &rectangle, origin)?;
+            graphics::draw(ctx, &spritebatch, origin)?;
+        }
+
         spritebatch.clear();
 
         ////////// draw generation counter
@@ -810,9 +821,6 @@ impl MainState {
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
             utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
         }
-
-        ////////////////////// END
-        graphics::set_color(ctx, graphics::BLACK)?; // Clear color residue
 
         Ok(())
     }
@@ -899,60 +907,60 @@ impl MainState {
                     // KEYBOARD EVENTS
                     input::InputAction::KeyPress(keycode, repeat) => {
                         match keycode {
-                            Keycode::Return => {
+                            KeyCode::Return => {
                                 if !repeat {
                                     self.running = !self.running;
                                 }
                             }
-                            Keycode::Space => {
+                            KeyCode::Space => {
                                 self.single_step = true;
                             }
-                            Keycode::Up => {
+                            KeyCode::Up => {
                                 self.arrow_input = (0, -1);
                             }
-                            Keycode::Down => {
+                            KeyCode::Down => {
                                 self.arrow_input = (0, 1);
                             }
-                            Keycode::Left => {
+                            KeyCode::Left => {
                                 self.arrow_input = (-1, 0);
                             }
-                            Keycode::Right => {
+                            KeyCode::Right => {
                                 self.arrow_input = (1, 0);
                             }
-                            Keycode::Plus | Keycode::Equals => {
+                            KeyCode::Add | KeyCode::Equals => {
                                 self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
                                 let cell_size = self.viewport.get_cell_size();
                                 self.config.modify(|settings| {
                                     settings.gameplay.zoom = cell_size;
                                 });
                             }
-                            Keycode::Minus | Keycode::Underscore => {
+                            KeyCode::Minus | KeyCode::Subtract => {
                                 self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
                                 let cell_size = self.viewport.get_cell_size();
                                 self.config.modify(|settings| {
                                     settings.gameplay.zoom = cell_size;
                                 });
                             }
-                            Keycode::Num1 => {
+                            KeyCode::Numpad1 => {
                                 self.win_resize = 1;
                             }
-                            Keycode::Num2 => {
+                            KeyCode::Numpad2 => {
                                 self.win_resize = 2;
                             }
-                            Keycode::Num3 => {
+                            KeyCode::Numpad3 => {
                                 self.win_resize = 3;
                             }
-                            Keycode::LGui => {
+                            KeyCode::LWin => {
 
                             }
-                            Keycode::D => {
+                            KeyCode::D => {
                                 // TODO: do something with this debug code
                                 let visibility = None;  // can also do Some(player_id)
                                 let pat = self.uni.to_pattern(visibility);
                                 println!("PATTERN DUMP:\n{}", pat.0);
                             }
                             _ => {
-                                println!("Unrecognized keycode {}", keycode);
+                                println!("Unrecognized keycode {:?}", keycode);
                             }
                         }
                     }
@@ -976,24 +984,24 @@ impl MainState {
                     input::InputAction::KeyPress(keycode, repeat) => {
                         if !self.menu_sys.get_controls().is_menu_key_pressed() {
                             match keycode {
-                                Keycode::Up => {
+                                KeyCode::Up => {
                                     self.arrow_input = (0, -1);
                                 }
-                                Keycode::Down => {
+                                KeyCode::Down => {
                                     self.arrow_input = (0, 1);
                                 }
-                                Keycode::Left => {
+                                KeyCode::Left => {
                                     self.arrow_input = (-1, 0);
                                 }
-                                Keycode::Right => {
+                                KeyCode::Right => {
                                     self.arrow_input = (1, 0);
                                 }
-                                Keycode::Return => {
+                                KeyCode::Return => {
                                     if !repeat {
                                         self.return_key_pressed = true;
                                     }
                                 }
-                                Keycode::Escape => {
+                                KeyCode::Escape => {
                                     self.escape_key_pressed = true;
                                 }
                                 _ => {}
@@ -1002,7 +1010,7 @@ impl MainState {
                     }
                     input::InputAction::KeyRelease(keycode) => {
                         match keycode {
-                            Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right => {
+                            KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right => {
                                 self.arrow_input = (0, 0);
                                 self.menu_sys.get_controls().set_menu_key_pressed(false);
                             }
@@ -1132,6 +1140,7 @@ impl MainState {
                                 self.menu_sys.menu_state = menu::MenuState::Options;
                             }
                             menu::MenuItemIdentifier::Fullscreen => {
+                                /* TODO/FIXME, somewhat limping fullscreen support in 0.5.1 */
                                 if !self.escape_key_pressed {
                                     self.video_settings.toggle_fullscreen(ctx);
                                     let is_fullscreen = self.video_settings.is_fullscreen();
@@ -1216,16 +1225,16 @@ impl MainState {
             Some(&input::InputAction::KeyPress(keycode, repeat)) => {
                 if repeat {
                     match keycode {
-                        Keycode::Up => {
+                        KeyCode::Up => {
                             self.arrow_input = (0, -1);
                         }
-                        Keycode::Down => {
+                        KeyCode::Down => {
                             self.arrow_input = (0, 1);
                         }
-                        Keycode::Left => {
+                        KeyCode::Left => {
                             self.arrow_input = (-1, 0);
                         }
-                        Keycode::Right => {
+                        KeyCode::Right => {
                             self.arrow_input = (1, 0);
                         }
                         _ => self.arrow_input = (0, 0)
@@ -1241,7 +1250,7 @@ impl MainState {
 
         // Flush config
         self.config.flush().map_err(|e| {
-            GameError::UnknownError(format!("Error while flushing config: {:?}", e))
+            GameError::FilesystemError(format!("Error while flushing config: {:?}", e))
         })?;
 
         Ok(())
@@ -1292,12 +1301,11 @@ pub fn main() {
         .window_setup(conf::WindowSetup::default()
                       .title(format!("{} {} {}", "💥 conwayste", version!().to_owned(),"💥").as_str())
                       .icon("//conwayste.ico")
-                      .resizable(false)
-                      .allow_highdpi(true)
+                      .vsync(true)
                       )
         .window_mode(conf::WindowMode::default()
-                     .dimensions(DEFAULT_SCREEN_WIDTH as u32, DEFAULT_SCREEN_HEIGHT as u32)
-                     .vsync(true)
+                      .dimensions(DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT)
+                      .resizable(false)
                      );
 
     if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
@@ -1309,7 +1317,7 @@ pub fn main() {
         println!("Not building from cargo? Okie dokie.");
     }
 
-    let ctx = &mut cb.build().unwrap_or_else(|e| {
+    let (ctx, events_loop) = &mut cb.build().unwrap_or_else(|e| {
         error!("ContextBuilter failed: {:?}", e);
         std::process::exit(1);
     });
@@ -1320,7 +1328,7 @@ pub fn main() {
             println!("Error: {}", e);
         }
         Ok(ref mut game) => {
-            let result = run(ctx, game);
+            let result = run(ctx, events_loop, game);
             if let Err(e) = result {
                 println!("Error encountered while running game: {}", e);
             } else {
