@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 conway       = { path = "../libconway" }
 netwayste    = { path = "../netwayste" }
+downcast-rs  = "1.0.4"
 ggez         = "0.4.3"
 log          = "0.4.6"
 chrono       = "0.4.6"

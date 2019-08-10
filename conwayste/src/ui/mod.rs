@@ -24,9 +24,12 @@ mod chatbox;
 mod checkbox;
 mod helpe;
 mod label;
+mod layer;
 mod pane;
 mod widget;
 mod textfield;
+
+use std::cmp::Ordering;
 
 pub use button::Button;
 pub use chatbox::Chatbox;
@@ -39,13 +42,14 @@ pub use helpe::{
     point_offset
     };
 pub use label::Label;
+pub use layer::Layer;
 pub use pane::Pane;
 pub use textfield::{TextField, TextInputState};
 pub use widget::Widget;
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash, Eq)]
 pub enum Screen {
-    Intro(f64),   // seconds
+    Intro,   // seconds
     Menu,
     ServerList,
     InRoom,
@@ -62,6 +66,7 @@ pub enum UIAction {
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum WidgetID {
+    MainMenuLayer1,
     MainMenuTestButton,
     MainMenuTestCheckbox,
 
@@ -69,6 +74,29 @@ pub enum WidgetID {
     MainMenuPane1ButtonYes,
     MainMenuPane1ButtonNo,
 
+    InGameLayer1,
+    InGamePane1,
     InGamePane1Chatbox,
     InGamePane1ChatboxTextField,
+}
+
+impl PartialEq for Screen {
+    fn eq(&self, other: &Self) -> bool {
+        // Equal if all key members are equal
+        self == other
+    }
+}
+
+
+impl Ord for Screen {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.cmp(&other)
+    }
+}
+
+impl PartialOrd for Screen {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.partial_cmp(&other)
+    }
 }

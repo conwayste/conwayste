@@ -105,6 +105,9 @@ impl Widget for Pane {
         None
     }
 
+
+    /// original_pos is the mouse position at which the button was held before any dragging occurred
+    /// current_pos is the latest mouse position after any movement
     fn on_drag(&mut self, original_pos: &Point2, current_pos: &Point2) {
 
         if !self.floating || !self.hover {
@@ -154,7 +157,7 @@ impl Widget for Pane {
         let old_color = graphics::get_color(ctx);
 
         graphics::set_color(ctx, Color::from(css::FIREBRICK))?;
-        graphics::rectangle(ctx, DrawMode::Fill, self.dimensions)?;
+        graphics::rectangle(ctx, DrawMode::Line(1.0), self.dimensions)?;
 
         for widget in self.widgets.iter_mut() {
             widget.draw(ctx, font)?;

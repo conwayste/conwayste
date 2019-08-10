@@ -41,7 +41,7 @@ pub enum TextInputState {
 pub struct TextField {
     pub id: WidgetID,
     pub action: UIAction,
-    pub state: Option<TextInputState>,
+    pub state: Option<TextInputState>, // fixme input state
     text: String,
     pub cursor_index: usize,
     pub blink_timestamp: Option<Instant>,
@@ -65,21 +65,26 @@ impl TextField {
         }
     }
 
-    pub fn text(&self) -> Option<&str> {
+    pub fn text(&self) -> Option<String> {
         let trimmed_str = self.text.trim();
         if !trimmed_str.is_empty() {
-            return Some(trimmed_str);
+            return Some(String::from(trimmed_str));
         }
         None
     }
 
-    pub fn add_to(&mut self, string: String) {
+    pub fn set_text(&mut self, text: String) {
+        self.text = text;
+        self.cursor_index = 0;
+    }
+
+    pub fn add_at_cursor(&mut self, text: String) {
         if self.cursor_index == self.text.len() {
-            self.text.push_str(&string);
+            self.text.push_str(&text);
         } else {
-            self.text.insert_str(self.cursor_index, &string);
+            self.text.insert_str(self.cursor_index, &text);
         }
-        self.cursor_index += string.len();
+        self.cursor_index += text.len();
     }
 
     pub fn backspace_char(&mut self) {

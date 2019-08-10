@@ -39,7 +39,6 @@ pub struct Chatbox {
     pub dimensions: Rect,
     pub hover: bool,
     pub action: UIAction,
-    pub chat_input: TextField,
 }
 
 impl Chatbox {
@@ -53,7 +52,6 @@ impl Chatbox {
             dimensions: rect,
             hover: false,
             action: UIAction::EnterText,
-            chat_input: TextField::new( (rect.x, rect.y + rect.h), WidgetID::InGamePane1ChatboxTextField),
         }
     }
 
@@ -61,6 +59,7 @@ impl Chatbox {
         if self.messages.len() + 1 > self.history_len {
             self.messages.pop_front();
         }
+        // FIXME ggez0.5
         let text = Text::new(ctx, msg, font)?;
         self.messages.push_back(text);
         Ok(())
@@ -128,8 +127,6 @@ impl Widget for Chatbox {
             //graphics::queue_text(ctx, msg, &self.dimensions.point(), Some(Point2::new(0.0, i*30.0)))?;
         }
         // graphics::draw_queued_text(ctx, DrawParam::default())?;
-
-        self.chat_input.draw(ctx, font)?;
 
         graphics::set_color(ctx, old_color)
     }

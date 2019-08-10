@@ -19,9 +19,11 @@
 use ggez::{Context, GameResult};
 use ggez::graphics::{Font, Point2, Rect, Vector2};
 
+use downcast_rs::Downcast;
+
 use super::{UIAction,WidgetID};
 
-pub trait Widget {
+pub trait Widget: Downcast {
     fn on_hover(&mut self, _point: &Point2) {
         ()
     }
@@ -49,3 +51,5 @@ pub trait Widget {
     fn translate(&mut self, point: Vector2);
     fn id(&self) -> WidgetID;
 }
+
+impl_downcast!(Widget);
