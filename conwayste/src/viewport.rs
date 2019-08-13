@@ -364,7 +364,7 @@ impl GridView {
     }
 
     /// The column and row supplied lies is `None` outside of the grid.
-    // Otherwise we'll translate a row/column pair into its representative rectangle.
+    /// Otherwise we'll translate a row/column pair into its representative rectangle.
     fn window_coords_from_game(&self, cell: Cell) -> Option<Rect> {
         if cell.row < self.rows && cell.col < self.columns {
             return self.window_coords_from_game_unchecked( cell.col as isize, cell.row as isize);
