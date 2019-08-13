@@ -35,7 +35,7 @@ pub const DEFAULT_ZOOM_LEVEL        : f32   =  5.0; // default cell size in pixe
 pub const GRID_DRAW_STYLE           : DrawStyle = DrawStyle::Fill;
 pub const INTRO_DURATION            : f64   =  8.0; // seconds
 pub const INTRO_PAUSE_DURATION      : f64   =  3.0; // seconds
-pub const MAX_CELL_SIZE             : f32   = 20.0; // pixels
+pub const MAX_CELL_SIZE             : f32   = 40.0; // pixels
 pub const MIN_CELL_SIZE             : f32   =  5.0; // pixels
 pub const PIXELS_SCROLLED_PER_FRAME : f32   = 50.0; // pixels
 

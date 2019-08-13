@@ -84,11 +84,10 @@ impl Viewport {
         if (direction == ZoomDirection::ZoomIn && self.grid_view.cell_size < MAX_CELL_SIZE) ||
            (direction == ZoomDirection::ZoomOut && self.grid_view.cell_size > MIN_CELL_SIZE) {
 
-            let zoom_dir: f32;
-            match direction {
-                ZoomDirection::ZoomIn => zoom_dir = ZOOM_IN,
-                ZoomDirection::ZoomOut => zoom_dir = ZOOM_OUT,
-            }
+            let zoom_dir: f32 = match direction {
+                ZoomDirection::ZoomIn => ZOOM_IN,
+                ZoomDirection::ZoomOut => ZOOM_OUT,
+            };
 
             //debug!("Window Size: ({}, {})", self.grid_view.rect.w, self.grid_view.rect.h);
             //debug!("Origin Before: ({},{})", self.grid_view.grid_origin.x, self.grid_view.grid_origin.y);
@@ -96,13 +95,14 @@ impl Viewport {
 
             let next_cell_size = self.grid_view.cell_size + zoom_dir;
             let old_cell_size = self.grid_view.cell_size;
+            let cell_size_delta = next_cell_size - old_cell_size;
 
             let window_center = Point2::new(self.grid_view.rect.w/2.0, self.grid_view.rect.h/2.0);
 
             if let Some(cell) = self.grid_view.game_coords_from_window(window_center) {
                 let (old_cell_count_for_x, old_cell_count_for_y) = (cell.row, cell.col);
-                let delta_x = zoom_dir * (old_cell_count_for_x as f32 * next_cell_size as f32 - old_cell_count_for_x as f32 * old_cell_size as f32);
-                let delta_y = zoom_dir * (old_cell_count_for_y as f32 * next_cell_size as f32 - old_cell_count_for_y as f32 * old_cell_size as f32);
+                let delta_x = cell_size_delta * (old_cell_count_for_x as f32 * next_cell_size as f32 - old_cell_count_for_x as f32 * old_cell_size as f32);
+                let delta_y = cell_size_delta * (old_cell_count_for_y as f32 * next_cell_size as f32 - old_cell_count_for_y as f32 * old_cell_size as f32);
 
                 //debug!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
                 //debug!("delta in win coords: {}, {}", delta_x, delta_y);
@@ -116,8 +116,8 @@ impl Viewport {
 
                 if phi > alpha {
                     self.grid_view.grid_origin = utils::Graphics::point_offset(self.grid_view.grid_origin,
-                                                                         -zoom_dir * delta_x,
-                                                                         -zoom_dir * delta_y
+                                                                         -cell_size_delta * delta_x,
+                                                                         -cell_size_delta * delta_y
                                                                          );
                 }
 
