@@ -18,7 +18,8 @@
 
 use chromatica::css;
 
-use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode, Vector2};
+use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text, Scale};
+use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
@@ -40,19 +41,22 @@ pub struct Button {
 }
 
 impl Button {
-    pub fn new(font: &Font, button_text: &'static str, widget_id: WidgetID, action: UIAction) -> Self {
+    pub fn new(ctx: &mut Context, font: &Font, button_text: &'static str, widget_id: WidgetID, action: UIAction) -> Self {
         const OFFSET_X: f32 = 8.0;
         const OFFSET_Y: f32 = 4.0;
-        let width = font.get_width(button_text) as f32 + OFFSET_X*2.0;
-        let height = font.get_height() as f32 + OFFSET_Y*2.0;
+
+        let mut text = Text::new(button_text);
+        let text = text.set_font(*font, Scale::uniform(10.0));
+        let width = text.width(ctx) as f32 + OFFSET_X*2.0;
+        let height = text.height(ctx) as f32 + OFFSET_Y*2.0;
         let dimensions = Rect::new(30.0, 20.0, width, height);
         let offset = Point2::new(dimensions.x + OFFSET_X, OFFSET_Y);
 
         Button {
             id: widget_id,
-            label: Label::new(font, button_text, color_with_alpha(css::WHITE, 0.1), offset),
+            label: Label::new(ctx, font, button_text, color_with_alpha(css::WHITE, 0.1), offset),
             button_color: color_with_alpha(css::DARKCYAN, 0.8),
-            draw_mode: DrawMode::Fill,
+            draw_mode: DrawMode::fill(),
             dimensions: dimensions,
             hover: false,
             borderless: false,
@@ -76,14 +80,14 @@ impl Widget for Button {
         self.id
     }
 
-    fn on_hover(&mut self, point: &Point2) {
+    fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
         if self.hover {
             //println!("Hovering over Button, \"{}\"", self.label.text);
         }
     }
 
-    fn on_click(&mut self, _point: &Point2) -> Option<(WidgetID, UIAction)>
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
     {
         let hover = self.hover;
         self.hover = false;
@@ -96,19 +100,17 @@ impl Widget for Button {
     }
 
     fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
-        let old_color = graphics::get_color(ctx);
-        graphics::set_color(ctx, self.button_color)?;
-
         let draw_mode = if self.hover {
-            DrawMode::Fill
+            DrawMode::fill()
         } else {
-            DrawMode::Line(2.0)
+            DrawMode::stroke(2.0)
         };
 
-        graphics::rectangle(ctx, draw_mode, self.dimensions)?;
-        draw_text(ctx, font, self.label.color, &self.label.text, &self.dimensions.point(), None)?;
+        let button = graphics::Mesh::new_rectangle(ctx, draw_mode, self.dimensions, self.button_color)?;
+        graphics::draw(ctx, &button, DrawParam::default())?;
+        draw_text(ctx, font, self.label.color, &self.label.text, &self.dimensions.point().into(), None)?;
 
-        graphics::set_color(ctx, old_color)
+        Ok(())
     }
 
     fn size(&self) -> Rect {
@@ -119,7 +121,7 @@ impl Widget for Button {
         self.dimensions = new_dims;
     }
 
-    fn translate(&mut self, point: Vector2)
+    fn translate(&mut self, point: Vector2<f32>)
     {
         self.dimensions.translate(point);
     }

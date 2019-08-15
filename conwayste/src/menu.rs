@@ -18,8 +18,9 @@
 
 use ggez::{Context, GameResult};
 use ggez::graphics;
-use ggez::graphics::{Point2, Color};
-use std::collections::{HashMap};
+use ggez::graphics::Color;
+use ggez::nalgebra::Point2;
+use std::collections::HashMap;
 
 use crate::video;
 use crate::ui;
@@ -84,7 +85,7 @@ pub struct MenuControls {
 
 #[derive(Debug, Clone)]
 pub struct MenuContainer {
-    anchor:     Point2,
+    anchor:     Point2<f32>,
     menu_items: Vec<MenuItem>,
     metadata:   MenuMetaData,
     bg_color:   Color,
@@ -129,7 +130,7 @@ impl MenuContainer {
         self.metadata.menu_index
     }
 
-    pub fn get_anchor(&self) -> Point2 {
+    pub fn get_anchor(&self) -> Point2<f32> {
         self.anchor
     }
 

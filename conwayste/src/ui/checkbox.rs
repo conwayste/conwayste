@@ -18,7 +18,8 @@
  *  <http://www.gnu.org/licenses/>. */
 use chromatica::css;
 
-use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode, Vector2};
+use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam};
+use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
@@ -48,12 +49,12 @@ const LABEL_OFFSET_X: f32 = 30.0;
 const LABEL_OFFSET_Y: f32 = -5.0;
 
 impl Checkbox {
-    pub fn new(font: &Font, text: &'static str, dimensions: Rect, widget_id: WidgetID, action: UIAction) -> Self {
+    pub fn new(ctx: &mut Context, font: &Font, text: &'static str, dimensions: Rect, widget_id: WidgetID, action: UIAction) -> Self {
         let label_origin = Point2::new(dimensions.x + dimensions.w + LABEL_OFFSET_X, dimensions.y + dimensions.h + LABEL_OFFSET_Y);
 
         Checkbox {
             id: widget_id,
-            label: Label::new(font, text, Color::from(css::WHITE), label_origin),
+            label: Label::new(ctx, font, text, Color::from(css::WHITE), label_origin),
             state: ToggleState::Disabled,
             dimensions: dimensions,
             hover: false,
@@ -88,20 +89,20 @@ impl Widget for Checkbox {
         self.label.dimensions = Rect::new(new_dims.x + LABEL_OFFSET_X, new_dims.y + LABEL_OFFSET_Y, new_dims.w, new_dims.h);
     }
 
-    fn translate(&mut self, point: Vector2)
+    fn translate(&mut self, point: Vector2<f32>)
     {
         self.dimensions.translate(point);
         self.label.dimensions.translate(point);
     }
 
-    fn on_hover(&mut self, point: &Point2) {
+    fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions) || within_widget(point, &self.label.dimensions);
         //if self.hover {
         //    println!("Hovering over Checkbox, \"{:?}\"", self.label.dimensions);
         //}
     }
 
-    fn on_click(&mut self, _point: &Point2) -> Option<(WidgetID, UIAction)>
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
     {
         let hover = self.hover;
         self.hover = false;
@@ -114,26 +115,27 @@ impl Widget for Checkbox {
     }
 
     fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
-        let old_color = graphics::get_color(ctx);
-        graphics::set_color(ctx, self.label.color)?;
 
         let draw_mode = if self.state == ToggleState::Enabled {
-            DrawMode::Fill
+            DrawMode::fill()
         } else {
-            DrawMode::Line(1.0)
+            DrawMode::stroke(1.0)
         };
 
         if self.hover {
             // Add in a violet border/fill while hovered. Color checkbox differently to indicate  hovered state.
             let border_rect = Rect::new(self.dimensions.x-1.0, self.dimensions.y-1.0, self.dimensions.w + 4.0, self.dimensions.h + 4.0);
-            graphics::set_color(ctx, Color::from(css::VIOLET))?;
-            graphics::rectangle(ctx, DrawMode::Line(2.0), border_rect)?;
+            let hovered_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), border_rect, Color::from(css::VIOLET))?;
+            graphics::draw(ctx, &hovered_border, DrawParam::default())?;
         }
 
-        graphics::rectangle(ctx, draw_mode, self.dimensions)?;
-        graphics::rectangle(ctx, draw_mode, self.label.dimensions)?;
-        draw_text(ctx, font, self.label.color, &self.label.text, &self.label.dimensions.point(), None)?;
+        let border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, self.label.color)?;
+        graphics::draw(ctx, &border, DrawParam::default())?;
+        let label_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, self.label.color)?;
+        graphics::draw(ctx, &label_border, DrawParam::default())?;
 
-        graphics::set_color(ctx, old_color)
+        draw_text(ctx, font, self.label.color, &self.label.text, &self.label.dimensions.point().into(), None)?;
+
+        Ok(())
     }
 }

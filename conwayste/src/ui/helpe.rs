@@ -17,14 +17,20 @@
  *  <http://www.gnu.org/licenses/>. */
 
 
-use ggez::graphics::{self, Font, Point2, Rect, Text, Color};
+use ggez::graphics::{self, Font, Rect, Text, TextFragment, Scale, DrawParam, Color};
+use ggez::nalgebra::Point2;
 use ggez::{Context, GameResult};
 
 /// Helper function to draw text onto the screen.
 /// Given the string `str`, it will be drawn at the point coordinates specified by `coords`.
 /// An offset can be specified by an optional `adjustment` point.
-pub fn draw_text(_ctx: &mut Context, font: &Font, color: Color, text: &str, coords: &Point2, adjustment: Option<&Point2>) -> GameResult<()> {
-    let mut graphics_text = Text::new(_ctx, text, font)?;
+pub fn draw_text(_ctx: &mut Context, font: &Font, color: Color, text: &str, coords: &Point2<f32>, adjustment: Option<&Point2<f32>>) -> GameResult<()> {
+    let text_fragment = TextFragment::new(text)
+        .scale(Scale::uniform(20.0))              // TODO needs refactoring so size is specified in signature, fix in UI branch
+        .color(color)
+        .font(*font);
+
+    let mut graphics_text = Text::new(text_fragment);
     let dst;
 
     if let Some(offset) = adjustment {
@@ -33,13 +39,7 @@ pub fn draw_text(_ctx: &mut Context, font: &Font, color: Color, text: &str, coor
     else {
         dst = Point2::new(coords.x, coords.y);
     }
-    // We store the color being used to simplify code and aid in debuggability, since our
-    // drawing code is quite complex now. We don't the caller of this `draw_text` method to
-    // care what color we use to draw the text, or to clean up after calling it.
-    let previous_color = graphics::get_color(_ctx);      // store previous color
-    graphics::set_color(_ctx, color)?;                   // text foreground
-    graphics::draw(_ctx, &mut graphics_text, dst, 0.0)?; // actually draw the text!
-    graphics::set_color(_ctx, previous_color)?;          // restore previous color
+    graphics::draw(_ctx, &mut graphics_text, DrawParam::default().dest(dst))?; // actually draw the text!
     Ok(())
 }
 
@@ -98,17 +98,17 @@ pub fn intersection(a: Rect, b: Rect) -> Option<Rect> {
 }
 
 /// Provides a new `Point2` from the specified point a the specified offset.
-pub fn point_offset(p1: Point2, x: f32, y: f32) -> Point2 {
+pub fn point_offset(p1: Point2<f32>, x: f32, y: f32) -> Point2<f32> {
     Point2::new(p1.x + x, p1.y + y)
 }
 
 /// Calculates the center coordinate of the provided rectangle
-pub fn center(r: &Rect) -> Point2 {
+pub fn center(r: &Rect) -> Point2<f32> {
     Point2::new((r.left() + r.right()) / 2.0, (r.top() + r.bottom()) / 2.0)
 }
 
 /// Checks to see if the boundary defined by the provided rectangle contains the specified point
-pub fn within_widget(point: &Point2, bounds: &Rect) -> bool {
+pub fn within_widget(point: &Point2<f32>, bounds: &Rect) -> bool {
     bounds.contains(*point)
 }
 
@@ -145,29 +145,5 @@ mod test {
         let rect2 = Rect::new(150.0, 150.0, 150.0, 150.0);
 
         assert_eq!(intersection(rect1, rect2), None);
-    }
-
-    #[test]
-    fn test_center_no_size_rectangle() {
-        let rect = Rect::new(0.0, 0.0, 0.0, 0.0);
-        assert_eq!(center(&rect), Point2::new(0.0, 0.0) )
-    }
-
-    #[test]
-    fn test_center_rectangle_coordinate_negative() {
-        let rect = Rect::new(-1.0, -1.0, 3.0, 5.0);
-        assert_eq!(center(&rect), Point2::new(0.5, 1.5) )
-    }
-
-    #[test]
-    fn test_center_rectangle_size_negative() {
-        let rect = Rect::new(0.0, 0.0, -2.0, -2.0);
-        assert_eq!(center(&rect), Point2::new(-1.0,-1.0) )
-    }
-
-    #[test]
-    fn test_center_rectangle_size_positive() {
-        let rect = Rect::new(0.0, 0.0, 2.0, 2.0);
-        assert_eq!(center(&rect), Point2::new(1.0, 1.0) )
     }
 }

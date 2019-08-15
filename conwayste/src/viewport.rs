@@ -18,7 +18,8 @@
 
 extern crate ggez;
 
-use ggez::graphics::{Point2, Rect};
+use ggez::graphics::Rect;
+use ggez::nalgebra::Point2;
 
 use crate::ui;
 use crate::constants::{
@@ -254,7 +255,7 @@ impl Viewport {
     }
 
     /// Given a point, find the nearest Cell specified by a row and column.
-    pub fn get_cell(&self, point: Point2) -> Option<Cell> {
+    pub fn get_cell(&self, point: Point2<f32>) -> Option<Cell> {
         self.grid_view.game_coords_from_window(point)
     }
 
@@ -269,7 +270,7 @@ impl Viewport {
     }
 
     /// Returns the origin of the grid.
-    pub fn get_origin(&self) -> Point2 {
+    pub fn get_origin(&self) -> Point2<f32> {
         self.grid_view.grid_origin
     }
 
@@ -306,7 +307,7 @@ struct GridView {
     rows:        usize, // height in game coords (should match bitmap/universe height)
     // The grid origin point tells us where the top-left of the universe is with respect to the
     // window.
-    grid_origin: Point2, // top-left corner of grid in window coords. (may be outside rect)
+    grid_origin: Point2<f32>, // top-left corner of grid in window coords. (may be outside rect)
 }
 
 
@@ -327,7 +328,7 @@ impl GridView {
     /// Attempt to return a tuple of cell coordinates within the game space.
     /// Can be outside of the playble space, it is the responsibility of the caller
     /// to sanitize the output.
-    fn game_coords_from_window_unchecked(&self, point: Point2) -> (isize, isize) {
+    fn game_coords_from_window_unchecked(&self, point: Point2<f32>) -> (isize, isize) {
         let col: isize = ((point.x - self.grid_origin.x) / self.cell_size) as isize;
         let row: isize = ((point.y - self.grid_origin.y) / self.cell_size) as isize;
 
@@ -336,8 +337,8 @@ impl GridView {
 
     /// Given a window point in pixels, we'll determine the nearest intersecting
     /// row, column pair.
-    // Given a Point2(x,y), we determine a col/row tuple in cell units
-    fn game_coords_from_window(&self, point: Point2) -> Option<Cell> {
+    // Given a Point2<f32>(x,y), we determine a col/row tuple in cell units
+    fn game_coords_from_window(&self, point: Point2<f32>) -> Option<Cell> {
         let (col, row) = self.game_coords_from_window_unchecked(point);
 
         if col < 0 || col >= self.columns as isize || row < 0 || row >= self.rows as isize {

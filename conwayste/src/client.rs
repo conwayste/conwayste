@@ -22,7 +22,6 @@ extern crate conway;
 extern crate env_logger;
 extern crate ggez;
 #[macro_use] extern crate log;
-extern crate sdl2;
 #[macro_use] extern crate serde;
 #[macro_use] extern crate version;
 extern crate rand;
@@ -55,8 +54,9 @@ use netwayste::net::NetwaysteEvent;
 use ggez::conf;
 use ggez::event::*;
 use ggez::{GameError, GameResult, Context, ContextBuilder};
-use ggez::graphics;
-use ggez::graphics::{Point2, Color, Rect};
+use ggez::graphics::{self, Rect};
+use ggez::graphics::{Color, DrawParam};
+use ggez::nalgebra::{Point2, Vector2};
 use ggez::timer;
 
 use std::env;
@@ -277,19 +277,17 @@ fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
 impl MainState {
 
     fn new(ctx: &mut Context) -> GameResult<MainState> {
-        ctx.print_resource_stats();
-
         let universe_width_in_cells  = 256;
         let universe_height_in_cells = 120;
 
         let mut config = config::Config::new();
         config.load_or_create_default().map_err(|e| {
             let msg = format!("Error while loading config: {:?}", e);
-            GameError::from(msg)
+            GameError::FilesystemError(msg)
         })?;
 
         let mut vs = video::VideoSettings::new();
-        vs.gather_display_modes(ctx)?;
+        //vs.gather_display_modes(ctx)?;
 
         vs.print_resolutions();
 
@@ -335,8 +333,7 @@ impl MainState {
         color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
         color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
 
-        let small_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 12)?;
-        let menu_font  = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
+        let font = graphics::Font::default(); // Provides DejaVuSerif.ttf
 
         let bigbang =
         {
@@ -373,11 +370,10 @@ impl MainState {
         let mut config = config::Config::new();
         config.load_or_create_default().map_err(|e| {
             let msg = format!("Error while loading config: {:?}", e);
-            GameError::from(msg)
+            GameError::ConfigError(msg)
         })?;
 
         let mut vs = video::VideoSettings::new();
-        vs.gather_display_modes(ctx)?;
 
         vs.print_resolutions();
 
@@ -391,7 +387,7 @@ impl MainState {
         chatpane.add(chatbox);
         chatpane.add(chatfield);
 
-        let checkbox = Box::new(Checkbox::new( &menu_font,
+        let checkbox = Box::new(Checkbox::new(ctx, &font,
             "Toggle FullScreen",
             Rect::new(10.0, 210.0, 20.0, 20.0),
             WidgetID::MainMenuTestCheckbox,
@@ -404,15 +400,15 @@ impl MainState {
 
         // Create a new pane, and add two test buttons to it. Actions do not really matter for now, WIP
         let mut pane = Box::new(Pane::new(WidgetID::MainMenuPane1, Rect::new_i32(20, 20, 300, 250)));
-        let mut pane_button = Box::new(Button::new(&small_font, "ServerList", WidgetID::MainMenuPane1ButtonYes, UIAction::ScreenTransition(Screen::ServerList)));
+        let mut pane_button = Box::new(Button::new(ctx, &font, "ServerList", WidgetID::MainMenuPane1ButtonYes, UIAction::ScreenTransition(Screen::ServerList)));
         pane_button.set_size(Rect::new(10.0, 10.0, 180.0, 50.0));
         pane.add(pane_button);
 
-        let mut pane_button = Box::new(Button::new(&small_font, "InRoom", WidgetID::MainMenuPane1ButtonNo, UIAction::ScreenTransition(Screen::InRoom)));
+        let mut pane_button = Box::new(Button::new(ctx, &font, "InRoom", WidgetID::MainMenuPane1ButtonNo, UIAction::ScreenTransition(Screen::InRoom)));
         pane_button.set_size(Rect::new(10.0, 70.0, 180.0, 50.0));
         pane.add(pane_button);
 
-        let mut pane_button = Box::new(Button::new(&small_font, "StartGame", WidgetID::MainMenuTestButton, UIAction::ScreenTransition(Screen::Run)));
+        let mut pane_button = Box::new(Button::new(ctx, &font, "StartGame", WidgetID::MainMenuTestButton, UIAction::ScreenTransition(Screen::Run)));
         pane_button.set_size(Rect::new(10.0, 130.0, 180.0, 50.0));
         pane.add(pane_button);
 
@@ -427,15 +423,15 @@ impl MainState {
         ui_layers.insert(Screen::Run, vec![layer_ingame]);
 
         let mut s = MainState {
-            small_font:          small_font,
-            menu_font:           menu_font.clone(),
             screen_stack:        vec![Screen::Intro],
+            small_font:          font.clone(),
+            menu_font:           font.clone(),
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
             color_settings:      color_settings,
             running:             false,
-            menu_sys:            menu::MenuSystem::new(menu_font),
+            menu_sys:            menu::MenuSystem::new(font),
             video_settings:      vs,
             config:              config,
             viewport:            viewport,
@@ -458,7 +454,7 @@ impl MainState {
 
 impl EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
-        let duration = timer::duration_to_f64(timer::get_delta(ctx)); // seconds
+        let duration = timer::duration_to_f64(timer::delta(ctx)); // seconds
 
         self.receive_net_updates(ctx)?;
 
@@ -576,7 +572,7 @@ impl EventHandler for MainState {
                 // TODO implement
              },
             Screen::Exit => {
-               let _ = ctx.quit();
+               let _ = ggez::event::quit(ctx);
             }
         }
 
@@ -586,8 +582,7 @@ impl EventHandler for MainState {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        graphics::clear(ctx);
-        graphics::set_background_color(ctx, (0, 0, 0, 1).into());
+        graphics::clear(ctx, [0.0, 0.0, 0.0, 1.0].into());
 
         let current_screen = match self.screen_stack.last() {
             Some(screen) => *screen,
@@ -621,7 +616,7 @@ impl EventHandler for MainState {
             }
         }
 
-        graphics::present(ctx);
+        graphics::present(ctx)?;
         timer::yield_now();
         Ok(())
     }
@@ -630,8 +625,8 @@ impl EventHandler for MainState {
     // the screen. x becomes more positive going from left to right, and y becomes more positive
     // going top to bottom.
     // Currently only allow one mouse button event at a time (e.g. left+right click not valid)
-    fn mouse_button_down_event(&mut self, _ctx: &mut Context, button: MouseButton, x: i32, y: i32) {
-        if self.inputs.mouse_info.mousebutton == MouseButton::Unknown {
+    fn mouse_button_down_event(&mut self, _ctx: &mut Context, button: MouseButton, x: f32, y: f32) {
+        if self.inputs.mouse_info.mousebutton == MouseButton::Other(0) {
             self.inputs.mouse_info.mousebutton = button;
             self.inputs.mouse_info.down_timestamp = Some(Instant::now());
             self.inputs.mouse_info.action = Some(MouseAction::Held);
@@ -644,10 +639,10 @@ impl EventHandler for MainState {
         }
     }
 
-    fn mouse_motion_event(&mut self, _ctx: &mut Context, _state: MouseState, x: i32, y: i32, _xrel: i32, _yrel: i32) {
+    fn mouse_motion_event(&mut self, _ctx: &mut Context, x: f32, y: f32, dx: f32, dy: f32) {
         self.inputs.mouse_info.position = (x, y);
 
-        if self.inputs.mouse_info.mousebutton != MouseButton::Unknown
+        if self.inputs.mouse_info.mousebutton != MouseButton::Other(0)
             && (self.inputs.mouse_info.action == Some(MouseAction::Held) || self.inputs.mouse_info.action == Some(MouseAction::Drag)) {
             self.inputs.mouse_info.action = Some(MouseAction::Drag);
 
@@ -660,7 +655,7 @@ impl EventHandler for MainState {
         }
     }
 
-    fn mouse_button_up_event(&mut self, _ctx: &mut Context, button: MouseButton, x: i32, y: i32) {
+    fn mouse_button_up_event(&mut self, _ctx: &mut Context, button: MouseButton, x: f32, y: f32) {
         // Register as a click if we ended near where we started
         if self.inputs.mouse_info.mousebutton == button {
             self.inputs.mouse_info.action = Some(MouseAction::Click);
@@ -679,10 +674,10 @@ impl EventHandler for MainState {
 
     /// Vertical scroll:   (y, positive away from and negative toward the user)
     /// Horizontal scroll: (x, positive to the right and negative to the left)
-    fn mouse_wheel_event(&mut self, _ctx: &mut Context, _x: i32, y: i32) {
-        self.inputs.mouse_info.scroll_event = if y > 0 {
+    fn mouse_wheel_event(&mut self, _ctx: &mut Context, _x: f32, y: f32) {
+        self.inputs.mouse_info.scroll_event = if y > 0.0 {
                 Some(ScrollEvent::ScrollUp)
-            } else if y < 0 {
+            } else if y < 0.0 {
                 Some(ScrollEvent::ScrollDown)
             } else {
                 None
@@ -693,12 +688,13 @@ impl EventHandler for MainState {
         }
     }
 
-    fn key_down_event(&mut self, _ctx: &mut Context, keycode: Keycode, keymod: Mod, repeat: bool ) {
+    fn key_down_event(&mut self, _ctx: &mut Context, keycode: KeyCode, keymod: KeyMods, repeat: bool ) {
         let key_as_int32 = keycode as i32;
 
         // Support just the basics for now by ignoring everything after the last arrow key in the key code list
-        if key_as_int32 < (Keycode::NumLockClear as i32)
-            || (key_as_int32 >= Keycode::LCtrl as i32 && key_as_int32 < Keycode::Mode as i32) {
+        if key_as_int32 < (KeyCode::Numlock as i32)
+            || (key_as_int32 >= KeyCode::LAlt as i32 && key_as_int32 <= KeyCode::LWin as i32)
+            || (key_as_int32 >= KeyCode::RAlt as i32 && key_as_int32 <= KeyCode::RWin as i32) {
             if self.inputs.key_info.key.is_none() {
                 self.inputs.key_info.key = Some(keycode);
             }
@@ -709,8 +705,8 @@ impl EventHandler for MainState {
 
             if self.inputs.key_info.modifier.is_none() {
                 match keycode {
-                    Keycode::LCtrl | Keycode::LGui | Keycode::LAlt | Keycode::LShift |
-                    Keycode::RCtrl | Keycode::RGui | Keycode::RAlt | Keycode::RShift => {
+                    KeyCode::LControl | KeyCode::LWin | KeyCode::LAlt | KeyCode::LShift |
+                    KeyCode::RControl | KeyCode::RWin | KeyCode::RAlt | KeyCode::RShift => {
                         self.inputs.key_info.modifier = Some(keymod);
                     }
                     _ => {} // ignore all other non-standard, non-modifier keys
@@ -723,11 +719,11 @@ impl EventHandler for MainState {
         }
     }
 
-    fn key_up_event(&mut self, _ctx: &mut Context, keycode: Keycode, _keymod: Mod, _repeat: bool) {
+    fn key_up_event(&mut self, _ctx: &mut Context, keycode: KeyCode, _keymod: KeyMods) {
         if self.inputs.key_info.modifier.is_some() {
             match keycode {
-                Keycode::LCtrl | Keycode::LGui | Keycode::LAlt | Keycode::LShift |
-                Keycode::RCtrl | Keycode::RGui | Keycode::RAlt | Keycode::RShift => {
+                KeyCode::LControl | KeyCode::LWin | KeyCode::LAlt | KeyCode::LShift |
+                KeyCode::RControl | KeyCode::RWin | KeyCode::RAlt | KeyCode::RShift => {
                     self.inputs.key_info.modifier = None;
                 }
                 _ => {}, // ignore the non-modifier keys as they're handled below
@@ -741,29 +737,31 @@ impl EventHandler for MainState {
         }
     }
 
-    /// Candidate text is passed by the OS (via Input Method Editor).
-    /// Refer to:
-    /// <https://wiki.libsdl.org/SDL_TextEditingEvent>
-    /// <https://wiki.libsdl.org/SDL_TextInputEvent>
-    /// <https://wiki.libsdl.org/Tutorials/TextInput>
-    fn text_editing_event(&mut self, _ctx: &mut Context, _text: String, _start: i32, _length: i32) {
-        //println!("[text_editing_event] (text,start,length) {}, {}, {}", _text, _start, _length);
-    }
-
     /// Resulting text (usually a unicode character) is passed by the OS (via Input Method Editor).
     /// Refer to:
     /// <https://wiki.libsdl.org/SDL_TextEditingEvent>
     /// <https://wiki.libsdl.org/SDL_TextInputEvent>
     /// <https://wiki.libsdl.org/Tutorials/TextInput>
-    fn text_input_event(&mut self, _ctx: &mut Context, text: String) {
+    fn text_input_event(&mut self, _ctx: &mut Context, character: char) {
         if let Some(tf) = self.focused_textfield_mut() {
             if tf.state.is_some() {
-                tf.add_at_cursor(text);
+                tf.add_char_at_cursor(character);
             }
         }
         // println!("[text_input_event] (text) {}", text);
     }
 
+    fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
+        println!("Resized screen to {}, {}", width, height);
+        let new_rect = graphics::Rect::new(
+            0.0,
+            0.0,
+            width,
+            height,
+        );
+        graphics::set_screen_coordinates(ctx, new_rect).unwrap();
+        self.viewport.set_dimensions(width, height);
+    }
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
         println!("Got quit event!");
@@ -811,17 +809,18 @@ impl MainState {
                          draw_params: &GameOfLifeDrawParams
                          ) -> GameResult<()> {
 
+
+        let viewport = self.viewport.get_viewport();
+
         // grid background
-        graphics::set_color(ctx, draw_params.bg_color)?;
-        graphics::rectangle(ctx,  GRID_DRAW_STYLE.to_draw_mode(), self.viewport.get_viewport())?;
+        let rectangle = graphics::Mesh::new_rectangle(ctx,
+            GRID_DRAW_STYLE.to_draw_mode(),
+            graphics::Rect::new(0.0, 0.0, viewport.w, viewport.h),
+            draw_params.bg_color)?;
+        graphics::draw(ctx, &rectangle, DrawParam::new().dest(viewport.point()))?;
 
         // grid foreground (dead cells)
         let full_rect = self.viewport.get_rect_from_origin();
-
-        if let Some(clipped_rect) = ui::intersection(full_rect, self.viewport.get_viewport()) {
-            graphics::set_color(ctx, draw_params.fg_color)?;
-            graphics::rectangle(ctx,  GRID_DRAW_STYLE.to_draw_mode(), clipped_rect)?;
-        }
 
         let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
         let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
@@ -841,18 +840,23 @@ impl MainState {
             };
 
             if let Some(rect) = self.viewport.get_screen_area(viewport::Cell::new(col, row)) {
-                let p = graphics::DrawParam {
-                    dest: Point2::new(rect.x, rect.y),
-                    scale: Point2::new(rect.w, rect.h), // scaling a 1x1 Image to correct cell size
-                    color: Some(color),
-                    ..Default::default()
-                };
+                let p = graphics::DrawParam::new()
+                    .dest(Point2::new(rect.x, rect.y))
+                    .scale(Vector2::new(rect.w, rect.h))
+                    .color(color);
 
                 spritebatch.add(p);
             }
         });
 
-        graphics::draw_ex(ctx, &spritebatch, graphics::DrawParam{ dest: Point2::new(0.0, 0.0), .. Default::default()} )?;
+        if let Some(clipped_rect) = ui::intersection(full_rect, self.viewport.get_viewport()) {
+            let origin = graphics::DrawParam::new().dest(clipped_rect.point());
+            let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect, draw_params.fg_color)?;
+
+            graphics::draw(ctx, &rectangle, origin)?;
+            graphics::draw(ctx, &spritebatch, origin)?;
+        }
+
         spritebatch.clear();
 
         ////////// draw generation counter
@@ -861,9 +865,6 @@ impl MainState {
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
             ui::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
         }
-
-        ////////////////////// END
-        graphics::set_color(ctx, graphics::BLACK)?; // Clear color residue
 
         Ok(())
     }
@@ -933,7 +934,7 @@ impl MainState {
         }
 
         match keycode {
-            Keycode::Return => {
+            KeyCode::Return => {
                 if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
                     if tf.state.is_none() {
                         let layer_vec = self.ui_layers.get_mut(&Screen::Run).unwrap();
@@ -943,51 +944,51 @@ impl MainState {
                     }
                 }
             }
-            Keycode::R => {
+            KeyCode::R => {
                 if !self.inputs.key_info.repeating {
                     self.running = !self.running;
                 }
             }
-            Keycode::Space => {
+            KeyCode::Space => {
                 self.single_step = true;
             }
-            Keycode::Up => {
+            KeyCode::Up => {
                 self.arrow_input = (0, -1);
             }
-            Keycode::Down => {
+            KeyCode::Down => {
                 self.arrow_input = (0, 1);
             }
-            Keycode::Left => {
+            KeyCode::Left => {
                 self.arrow_input = (-1, 0);
             }
-            Keycode::Right => {
+            KeyCode::Right => {
                 self.arrow_input = (1, 0);
             }
-            Keycode::Plus | Keycode::Equals => {
+            KeyCode::Add | KeyCode::Equals => {
                 self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
                 let cell_size = self.viewport.get_cell_size();
                 self.config.modify(|settings| {
                     settings.gameplay.zoom = cell_size;
                 });
             }
-            Keycode::Minus | Keycode::Underscore => {
+            KeyCode::Minus | KeyCode::Subtract => {
                 self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
                 let cell_size = self.viewport.get_cell_size();
                 self.config.modify(|settings| {
                     settings.gameplay.zoom = cell_size;
                 });
             }
-            Keycode::D => {
+            KeyCode::D => {
                 // TODO: do something with this debug code
                 let visibility = None;  // can also do Some(player_id)
                 let pat = self.uni.to_pattern(visibility);
                 println!("PATTERN DUMP:\n{}", pat.0);
             }
-            Keycode::Escape => {
+            KeyCode::Escape => {
                 self.toggle_paused_game = true;
             }
             _ => {
-                println!("Unrecognized keycode {}", keycode);
+                println!("Unrecognized keycode {:?}", keycode);
             }
         }
     }
@@ -1002,16 +1003,16 @@ impl MainState {
         }
 
         match keycode {
-            Keycode::Up => {
+            KeyCode::Up => {
                 self.arrow_input = (0, -1);
             }
-            Keycode::Down => {
+            KeyCode::Down => {
                 self.arrow_input = (0, 1);
             }
-            Keycode::Left => {
+            KeyCode::Left => {
                 self.arrow_input = (-1, 0);
             }
-            Keycode::Right => {
+            KeyCode::Right => {
                 self.arrow_input = (1, 0);
             }
             _ => {}
@@ -1028,54 +1029,54 @@ impl MainState {
         }
 
         match keycode {
-            Keycode::Return => {
+            KeyCode::Return => {
                 if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
                     tf.state = Some(TextInputState::TextInputComplete);
                 }
             }
-            Keycode::Escape => {
+            KeyCode::Escape => {
                 if let Some(layer) = self.top_layer_mut() {
                     layer.exit_focus();
                 }
             }
-            Keycode::Backspace => {
+            KeyCode::Back => {
                 if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.backspace_char();
                     }
                 }
             }
-            Keycode::Delete => {
+            KeyCode::Delete => {
                 if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.delete_char();
                     }
                 }
             }
-            Keycode::Left => {
+            KeyCode::Left => {
                 if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.dec_cursor_pos();
                     }
                 }
             },
-            Keycode::Right => {
+            KeyCode::Right => {
                 if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.inc_cursor_pos();
                     }
                 }
             }
-            Keycode::Up => {},    // ?? go up and down the message stack?
-            Keycode::Down => {},
-            Keycode::Home => {
+            KeyCode::Up => {},    // ?? go up and down the message stack?
+            KeyCode::Down => {},
+            KeyCode::Home => {
                 if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.cursor_home();
                     }
                 }
             }
-            Keycode::End => {
+            KeyCode::End => {
                 if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.cursor_end();
@@ -1131,8 +1132,8 @@ impl MainState {
             //// Non-Arrow key was pressed
             //////////////////////////
             if let Some(k) = self.inputs.key_info.key {
-                let escape_key_pressed = k == Keycode::Escape && !self.inputs.key_info.repeating;
-                let return_key_pressed = k == Keycode::Return && !self.inputs.key_info.repeating;
+                let escape_key_pressed = k == KeyCode::Escape && !self.inputs.key_info.repeating;
+                let return_key_pressed = k == KeyCode::Return && !self.inputs.key_info.repeating;
 
                 if !escape_key_pressed && !return_key_pressed {
                     return;
@@ -1226,6 +1227,7 @@ impl MainState {
                                 self.menu_sys.menu_state = menu::MenuState::Options;
                             }
                             menu::MenuItemIdentifier::Fullscreen => {
+                                /* TODO/FIXME, somewhat limping fullscreen support in 0.5.1 */
                                 if !escape_key_pressed {
                                     self.video_settings.toggle_fullscreen(ctx);
                                     let is_fullscreen = self.video_settings.is_fullscreen;
@@ -1310,8 +1312,8 @@ impl MainState {
         for msg in incoming_messages {
             if let Some(cb) = self.chatbox_from_id(WidgetID::InGamePane1Chatbox) {
                 // FIXME once ggez 0.5 lands
-                let font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 12).unwrap();
-                cb.add_message(ctx, &font, &msg)?;
+                let font = graphics::Font::default();
+                cb.add_message(ctx, &font, msg)?;
             }
         }
 
@@ -1324,8 +1326,8 @@ impl MainState {
                 MouseAction::Click => {
                     self.inputs.mouse_info.down_timestamp = None;
                     self.inputs.mouse_info.action = None;
-                    self.inputs.mouse_info.mousebutton = MouseButton::Unknown;
-                    self.inputs.mouse_info.down_position = (0, 0);
+                    self.inputs.mouse_info.mousebutton = MouseButton::Other(0);
+                    self.inputs.mouse_info.down_position = (0.0, 0.0);
                 }
                 MouseAction::Drag | MouseAction::Held | MouseAction::DoubleClick => {}
             }
@@ -1340,7 +1342,7 @@ impl MainState {
 
         // Flush config
         self.config.flush().map_err(|e| {
-            GameError::UnknownError(format!("Error while flushing config: {:?}", e))
+            GameError::FilesystemError(format!("Error while flushing config: {:?}", e))
         })?;
 
         Ok(())
@@ -1413,10 +1415,10 @@ impl MainState {
         }
 
         if !msg.is_empty() {
-            let font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 12).unwrap();
+            let font = graphics::Font::default();
             if let Some(cb) = self.chatbox_from_id(WidgetID::InGamePane1Chatbox) {
                             // FIXME once ggez 0.5 lands
-                cb.add_message(ctx, &font, &msg)?;
+                cb.add_message(ctx, &font, msg.clone())?;
 
                 if let Some(ref mut netwayste) = self.net_worker {
                     netwayste.try_send(NetwaysteEvent::ChatMessage(msg));
@@ -1642,12 +1644,11 @@ pub fn main() {
         .window_setup(conf::WindowSetup::default()
                       .title(format!("{} {} {}", "💥 conwayste", version!().to_owned(),"💥").as_str())
                       .icon("//conwayste.ico")
-                      .resizable(false)
-                      .allow_highdpi(true)
+                      .vsync(true)
                       )
         .window_mode(conf::WindowMode::default()
-                     .dimensions(DEFAULT_SCREEN_WIDTH as u32, DEFAULT_SCREEN_HEIGHT as u32)
-                     .vsync(true)
+                      .dimensions(DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT)
+                      .resizable(false)
                      );
 
     if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
@@ -1659,7 +1660,7 @@ pub fn main() {
         println!("Not building from cargo? Okie dokie.");
     }
 
-    let ctx = &mut cb.build().unwrap_or_else(|e| {
+    let (ctx, events_loop) = &mut cb.build().unwrap_or_else(|e| {
         error!("ContextBuilter failed: {:?}", e);
         std::process::exit(1);
     });
@@ -1670,7 +1671,7 @@ pub fn main() {
             println!("Error: {}", e);
         }
         Ok(ref mut game) => {
-            let result = run(ctx, game);
+            let result = run(ctx, events_loop, game);
             if let Err(e) = result {
                 println!("Error encountered while running game: {}", e);
             } else {

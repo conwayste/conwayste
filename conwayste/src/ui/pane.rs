@@ -18,7 +18,8 @@
 
 use chromatica::css;
 
-use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode, Vector2};
+use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam};
+use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
@@ -33,7 +34,7 @@ pub struct Pane {
     pub widgets: Vec<Box<dyn Widget>>,
     pub hover: bool,
     pub floating: bool, // can the window be dragged around?
-    pub previous_pos: Option<Point2>,
+    pub previous_pos: Option<Point2<f32>>,
 
     // might need something to track mouse state to see if we are still clicked within the boundaries of the pane for dragging
 }
@@ -76,12 +77,12 @@ impl Widget for Pane {
         self.dimensions = new_dims;
     }
 
-    fn translate(&mut self, point: Vector2)
+    fn translate(&mut self, point: Vector2<f32>)
     {
         self.dimensions.translate(point);
     }
 
-    fn on_hover(&mut self, point: &Point2) {
+    fn on_hover(&mut self, point: &Point2<f32>) {
         if within_widget(point, &self.dimensions) {
             self.hover = true;
             for w in self.widgets.iter_mut() {
@@ -90,7 +91,7 @@ impl Widget for Pane {
         }
     }
 
-    fn on_click(&mut self, point: &Point2) -> Option<(WidgetID, UIAction)> {
+    fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
         let hover = self.hover;
         self.hover = false;
 
@@ -108,7 +109,7 @@ impl Widget for Pane {
 
     /// original_pos is the mouse position at which the button was held before any dragging occurred
     /// current_pos is the latest mouse position after any movement
-    fn on_drag(&mut self, original_pos: &Point2, current_pos: &Point2) {
+    fn on_drag(&mut self, original_pos: &Point2<f32>, current_pos: &Point2<f32>) {
 
         if !self.floating || !self.hover {
             return;
@@ -154,16 +155,12 @@ impl Widget for Pane {
     }
 
     fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
-        let old_color = graphics::get_color(ctx);
-
-        graphics::set_color(ctx, Color::from(css::FIREBRICK))?;
-        graphics::rectangle(ctx, DrawMode::Line(1.0), self.dimensions)?;
+        let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(1.0), self.dimensions, Color::from(css::FIREBRICK))?;
+        graphics::draw(ctx, &mesh, DrawParam::default())?;
 
         for widget in self.widgets.iter_mut() {
             widget.draw(ctx, font)?;
         }
-
-        graphics::set_color(ctx, old_color)?;
 
         Ok(())
     }

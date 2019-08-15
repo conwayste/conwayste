@@ -17,22 +17,23 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::{Context, GameResult};
-use ggez::graphics::{Font, Point2, Rect, Vector2};
+use ggez::graphics::{Font, Rect};
+use ggez::nalgebra::{Point2, Vector2};
 
 use downcast_rs::Downcast;
 
 use super::{UIAction,WidgetID};
 
 pub trait Widget: Downcast {
-    fn on_hover(&mut self, _point: &Point2) {
+    fn on_hover(&mut self, _point: &Point2<f32>) {
         ()
     }
 
-    fn on_click(&mut self, _point: &Point2) -> Option<(WidgetID, UIAction)> {
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
         None
     }
 
-    fn on_drag(&mut self, _original_point: &Point2, _point: &Point2) {
+    fn on_drag(&mut self, _original_point: &Point2<f32>, _point: &Point2<f32>) {
         ()
     }
 
@@ -48,7 +49,7 @@ pub trait Widget: Downcast {
 
     fn size(&self) -> Rect;
     fn set_size(&mut self, new_dimensions: Rect);
-    fn translate(&mut self, point: Vector2);
+    fn translate(&mut self, point: Vector2<f32>);
     fn id(&self) -> WidgetID;
 }
 

@@ -19,7 +19,8 @@ use chromatica::css;
 
 use std::collections::VecDeque;
 
-use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode, Text, Vector2};
+use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text, BlendMode, FilterMode, TextFragment};
+use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
@@ -55,12 +56,12 @@ impl Chatbox {
         }
     }
 
-    pub fn add_message(&mut self, ctx: &mut Context, font: &Font, msg: &String) -> GameResult<()> {
+    pub fn add_message(&mut self, ctx: &mut Context, font: &Font, msg: String) -> GameResult<()> {
         if self.messages.len() + 1 > self.history_len {
             self.messages.pop_front();
         }
         // FIXME ggez0.5
-        let text = Text::new(ctx, msg, font)?;
+        let text = Text::new(msg);
         self.messages.push_back(text);
         Ok(())
     }
@@ -80,19 +81,19 @@ impl Widget for Chatbox {
         self.dimensions = new_dims;
     }
 
-    fn translate(&mut self, point: Vector2)
+    fn translate(&mut self, point: Vector2<f32>)
     {
         self.dimensions.translate(point);
     }
 
-    fn on_hover(&mut self, point: &Point2) {
+    fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
         //if self.hover {
         //    println!("Hovering over Chatbox, \"{:?}\"", self.label.dimensions);
         //}
     }
 
-    fn on_click(&mut self, _point: &Point2) -> Option<(WidgetID, UIAction)>
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
     {
         let hover = self.hover;
         self.hover = false;
@@ -106,28 +107,27 @@ impl Widget for Chatbox {
     }
 
     fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
-        let old_color = graphics::get_color(ctx);
 
         if self.hover {
             // Add in a teal border while hovered. Color checkbox differently to indicate  hovered state.
             let border_rect = Rect::new(self.dimensions.x-1.0, self.dimensions.y-1.0, self.dimensions.w + 4.0, self.dimensions.h + 4.0);
-            graphics::set_color(ctx, Color::from(css::TEAL))?;
-            graphics::rectangle(ctx, DrawMode::Line(2.0), border_rect)?;
+            let hovered_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), border_rect, Color::from(css::TEAL))?;
+            graphics::draw(ctx, &hovered_border, DrawParam::default())?;
         }
-        graphics::set_color(ctx, self.color)?;
-        graphics::rectangle(ctx, DrawMode::Line(4.0), self.dimensions)?;
+
+        let border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(4.0), self.dimensions, self.color)?;
+        graphics::draw(ctx, &border, DrawParam::default())?;
 
         // TODO need to do width wrapping check
         for (i, msg) in self.messages.iter().enumerate() {
             let origin = self.dimensions.point();
             let point = Point2::new(origin.x + 5.0, origin.y + i as f32*30.0);
-            graphics::draw(ctx, msg, point, 0.0)?;
 
-            // TODO Switch to the queue draw method once ggez 0.5 lands as it is much more efficient
-            //graphics::queue_text(ctx, msg, &self.dimensions.point(), Some(Point2::new(0.0, i*30.0)))?;
+            graphics::queue_text(ctx, &msg, point, Some(Color::from(css::RED)));
         }
-        // graphics::draw_queued_text(ctx, DrawParam::default())?;
 
-        graphics::set_color(ctx, old_color)
+        graphics::draw_queued_text(ctx, DrawParam::default().dest(self.dimensions.point()), None, FilterMode::Linear)?;
+
+        Ok(())
     }
 }

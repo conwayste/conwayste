@@ -17,7 +17,8 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use chromatica::css;
-use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode, Vector2};
+use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam};
+use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
@@ -129,15 +130,15 @@ impl Widget for Layer {
 
     fn set_size(&mut self, _new_dimensions: Rect) {}
 
-    fn translate(&mut self, _point: Vector2) {}
+    fn translate(&mut self, _point: Vector2<f32>) {}
 
-    fn on_hover(&mut self, point: &Point2) {
+    fn on_hover(&mut self, point: &Point2<f32>) {
         for w in self.widgets.iter_mut() {
             w.on_hover(point);
         }
     }
 
-    fn on_click(&mut self, point: &Point2) -> Option<(WidgetID, UIAction)> {
+    fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
         for w in self.widgets.iter_mut() {
             let ui_action = w.on_click(point);
             if ui_action.is_some() {
@@ -147,26 +148,22 @@ impl Widget for Layer {
         None
     }
 
-    fn on_drag(&mut self, original_pos: &Point2, current_pos: &Point2) {
+    fn on_drag(&mut self, original_pos: &Point2<f32>, current_pos: &Point2<f32>) {
         for w in self.widgets.iter_mut() {
             w.on_drag(original_pos, current_pos);
         }
     }
 
     fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
-        let old_color = graphics::get_color(ctx);
-
         if self.with_transparency {
             // TODO wait for winint to get resolution
-            graphics::set_color(ctx, color_with_alpha(css::HONEYDEW, 0.1))?;
-            graphics::rectangle(ctx, DrawMode::Fill, Rect::new(0.0, 0.0, 1920.0, 1080.0))?;
+            let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), Rect::new(0.0, 0.0, 1920.0, 1080.0), color_with_alpha(css::HONEYDEW, 0.1))?;
+            graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
 
         for widget in self.widgets.iter_mut() {
             widget.draw(ctx, font)?;
         }
-
-        graphics::set_color(ctx, old_color)?;
 
         Ok(())
     }

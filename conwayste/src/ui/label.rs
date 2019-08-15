@@ -16,7 +16,9 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{Color, Rect, Font, Point2};
+use ggez::Context;
+use ggez::graphics::{Color, Rect, Font, Text, Scale};
+use ggez::nalgebra::Point2;
 
 pub struct Label {
     pub text: &'static str,
@@ -25,12 +27,15 @@ pub struct Label {
 }
 
 impl Label {
-    pub fn new(font: &Font, text: &'static str, color: Color, origin: Point2) -> Self {
-        let w = font.get_width(text) as f32;
-        let h = font.get_height() as f32;
+    pub fn new(ctx: &mut Context, font: &Font, string: &'static str, color: Color, origin: Point2<f32>) -> Self {
+        // TODO pass in as a parameter the scale
+        let mut text = Text::new(string);
+        text.set_font(*font, Scale::uniform(10.0));
+        let w = text.width(ctx) as f32;
+        let h = text.height(ctx) as f32;
 
         Label {
-            text: text,
+            text: string,
             color: color,
             dimensions: Rect::new(origin.x, origin.y, w, h),
         }

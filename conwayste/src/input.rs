@@ -17,7 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::time::{Instant};
-use ggez::event::{Keycode, Mod, MouseButton};
+use ggez::event::{KeyCode, KeyMods, MouseButton};
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum ScrollEvent {
@@ -38,20 +38,20 @@ pub struct MouseInfo {
     pub action: Option<MouseAction>,
     pub scroll_event: Option<ScrollEvent>,
     pub down_timestamp: Option<Instant>,
-    pub down_position: (i32, i32),
-    pub position: (i32, i32),
+    pub down_position: (f32, f32),
+    pub position: (f32, f32),
     pub debug_print: bool
 }
 
 impl MouseInfo {
     fn new() -> Self {
         MouseInfo {
-            mousebutton: MouseButton::Unknown,
+            mousebutton: MouseButton::Other(0),
             action: None,
             scroll_event: None,
             down_timestamp: None,
-            down_position: (0, 0),
-            position: (0, 0),
+            down_position: (0.0, 0.0),
+            position: (0.0, 0.0),
             debug_print: false,
         }
     }
@@ -70,9 +70,9 @@ impl MouseInfo {
 }
 
 pub struct KeyInfo {
-    pub key: Option<Keycode>,
+    pub key: Option<KeyCode>,
     pub repeating: bool,
-    pub modifier: Option<Mod>,
+    pub modifier: Option<KeyMods>,
     pub debug_print: bool,
 }
 

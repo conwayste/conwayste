@@ -20,7 +20,8 @@ use chromatica::css;
 
 use std::time::{Instant, Duration};
 
-use ggez::graphics::{self, Rect, Font, Point2, Color, DrawMode, Text, Vector2};
+use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text, Scale};
+use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
@@ -78,7 +79,17 @@ impl TextField {
         self.cursor_index = 0;
     }
 
-    pub fn add_at_cursor(&mut self, text: String) {
+    pub fn add_char_at_cursor(&mut self, character: char)
+    {
+        if self.cursor_index == self.text.len() {
+            self.text.push(character);
+        } else {
+            self.text.insert(self.cursor_index, character);
+        }
+        self.cursor_index += 1;
+    }
+
+    pub fn add_string_at_cursor(&mut self, text: String) {
         if self.cursor_index == self.text.len() {
             self.text.push_str(&text);
         } else {
@@ -143,11 +154,11 @@ impl TextField {
 }
 
 impl Widget for TextField {
-    fn on_hover(&mut self, point: &Point2) {
+    fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
     }
 
-    fn on_click(&mut self, _point: &Point2) -> Option<(WidgetID, UIAction)> {
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
         let hover = self.hover;
         self.hover = false;
 
@@ -158,7 +169,7 @@ impl Widget for TextField {
         None
     }
 
-    fn on_drag(&mut self, _original_point: &Point2, _point: &Point2) {
+    fn on_drag(&mut self, _original_point: &Point2<f32>, _point: &Point2<f32>) {
         // Any point to implementing highlighting in 1.0?
         ()
     }
@@ -181,15 +192,14 @@ impl Widget for TextField {
         if self.state.is_some() || !self.text.is_empty() {
             const CURSOR_OFFSET_PX: f32 = 10.0;
 
-            let old_color = graphics::get_color(ctx);
-
+            let colored_rect;
             if !self.text.is_empty() && self.state.is_none() {
-                graphics::set_color(ctx, color_with_alpha(css::VIOLET, 0.5))?;
+                colored_rect = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(4.0), self.dimensions, color_with_alpha(css::VIOLET, 0.5))?;
             } else {
-                graphics::set_color(ctx, Color::from(css::VIOLET))?;
+                colored_rect = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(4.0), self.dimensions, Color::from(css::VIOLET))?;
             }
 
-            graphics::rectangle(ctx, DrawMode::Line(4.0), self.dimensions)?;
+            graphics::draw(ctx, &colored_rect, DrawParam::default())?;
 
             let text_with_cursor = self.text.clone();
             let text_pos = Point2::new(self.dimensions.x + CURSOR_OFFSET_PX, self.dimensions.y);
@@ -197,12 +207,12 @@ impl Widget for TextField {
             draw_text(ctx, font, Color::from(css::WHITESMOKE), &text_with_cursor, &text_pos, None)?;
 
             if self.draw_cursor {
-                let cursor_position_px = font.get_width(&text_with_cursor[0..self.cursor_index]) as f32;
+                let mut text = Text::new(&text_with_cursor[0..self.cursor_index]);
+                let text = text.set_font(*font, Scale::uniform(10.0));
+                let cursor_position_px = text.width(ctx) as f32;
                 let cursor_position = Point2::new(self.dimensions.x + cursor_position_px + CURSOR_OFFSET_PX, self.dimensions.y);
                 draw_text(ctx, font, Color::from(css::WHITESMOKE), "|", &cursor_position, None)?;
             }
-
-            graphics::set_color(ctx, old_color)?;
         }
 
         Ok(())
@@ -216,7 +226,7 @@ impl Widget for TextField {
         self.dimensions = new_dimensions;
     }
 
-    fn translate(&mut self, point: Vector2) {
+    fn translate(&mut self, point: Vector2<f32>) {
         self.dimensions.translate(point);
     }
 
