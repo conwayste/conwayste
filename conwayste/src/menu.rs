@@ -85,6 +85,7 @@ pub struct MenuControls {
 #[derive(Debug, Clone)]
 pub struct MenuContainer {
     anchor:     Point2,
+    text_width: f32,            // maximum width in pixels of any option
     menu_items: Vec<MenuItem>,
     metadata:   MenuMetaData,
     bg_color:   Color,
@@ -95,6 +96,7 @@ impl MenuContainer {
     pub fn new(x: f32, y: f32) -> MenuContainer {
         MenuContainer {
             anchor: Point2::new(x, y),
+            text_width: 0.0,
             menu_items: Vec::<MenuItem>::new(),
             metadata: MenuMetaData::new(0, 0),
             bg_color: Color::new(1.0, 1.0, 1.0, 1.0),
@@ -194,10 +196,6 @@ impl MenuMetaData {
             menu_index: index,
             menu_size: size,
         }
-    }
-
-    pub fn get_index(&self) -> usize {
-        self.menu_index as usize
     }
 
     pub fn adjust_index(&mut self, amt: isize) {
@@ -316,7 +314,7 @@ impl MenuSystem {
         &mut self.controls
     }
 
-    fn draw_general_menu_view(&self, _ctx: &mut Context, has_game_started: bool) -> GameResult<()> {
+    fn draw_general_menu_view(&mut self, _ctx: &mut Context, has_game_started: bool) -> GameResult<()> {
         let index = self.get_menu_container().get_menu_item_index(); // current position in this menu
         // Menu Navigation 
         /////////////////////////////////////////
@@ -327,10 +325,11 @@ impl MenuSystem {
                 // Draw all menu Items
                 ////////////////////////////////////////////////
                 {
-                    let container = self.menus.get(&self.menu_state).unwrap();
+                    let container = self.menus.get_mut(&self.menu_state).unwrap();
                     let coords = container.get_anchor();
                     let mut offset = Point2::new(0.0,0.0);
 
+                    let mut max_text_width = container.text_width;
                     for (i, menu_item) in container.get_menu_item_list().iter().enumerate() {
                         let mut menu_option_str: &str = &menu_item.text;
 
@@ -339,9 +338,16 @@ impl MenuSystem {
                         }
 
                         let color = if index == i { self.active_color } else { self.inactive_color };
-                        utils::Graphics::draw_text(_ctx, &self.font, color, &menu_option_str, &coords, Some(&offset))?;
+                        let (w, h) = utils::Graphics::draw_text(_ctx, &self.font, color, &menu_option_str,
+                                                                 &coords, Some(&offset))?;
+                        if max_text_width < w as f32 {
+                            max_text_width = w as f32;
+                        }
 
-                        offset = utils::Graphics::point_offset(offset, 0.0, 50.0);
+                        offset = utils::Graphics::point_offset(offset, 0.0, h as f32 + 10.0);
+                    }
+                    if container.text_width < max_text_width {
+                        container.text_width = max_text_width;
                     }
                 }
 
@@ -362,7 +368,7 @@ impl MenuSystem {
         Ok(())
     }
 
-    fn draw_specific_menu_view(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context) {
+    fn draw_specific_menu_view(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context) -> GameResult<()> {
         match self.menu_state {
             ////////////////////////////////////
             // V I D E O
@@ -370,37 +376,40 @@ impl MenuSystem {
             MenuState::Video => {
                 let ref container = self.menus.get(&MenuState::Video).unwrap();
                 let anchor = container.get_anchor();
+                let x = anchor.x + container.text_width + 10.0;
+                let mut y = anchor.y;
 
                 ///////////////////////////////
                 // Fullscreen
                 ///////////////////////////////
-                {
-                    let coords = Point2::new(anchor.x + 200.0, anchor.y);
-                    let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
+                let coords = Point2::new(x, y);
+                let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
 
-                    // TODO: color
-                    utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color, &is_fullscreen_str, &coords, None);
-                }
+                // TODO: color
+                let (_w, h) = utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color,
+                                                         &is_fullscreen_str, &coords, None)?;
+                y += h as f32 + 10.0;
 
                 ////////////////////////////////
                 // Resolution
                 ///////////////////////////////
-                {
-                    let coords = Point2::new(anchor.x + 200.0, anchor.y + 50.0);
-                    let (width, height) = video_settings.get_active_resolution();
-                    let cur_res_str = format!("{}x{}", width, height);
+                let coords = Point2::new(x, y);
+                let (width, height) = video_settings.get_active_resolution();
+                let cur_res_str = format!("{}x{}", width, height);
 
-                    // TODO: color
-                    utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color, &cur_res_str, &coords, None);
-               }
+                // TODO: color
+                utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color, &cur_res_str,
+                                           &coords, None)?;
             }
              _  => {}
         }
+        Ok(())
     }
 
-    pub fn draw_menu(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context, has_game_started: bool) {
-        self.draw_general_menu_view(_ctx, has_game_started);
-        self.draw_specific_menu_view(video_settings, _ctx);
+    pub fn draw_menu(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context, has_game_started: bool) -> GameResult<()> {
+        self.draw_general_menu_view(_ctx, has_game_started)?;
+        self.draw_specific_menu_view(video_settings, _ctx)?;
+        Ok(())
     }
 
     pub fn reset(&mut self) {

@@ -27,8 +27,15 @@ impl Graphics {
     /// Helper function to draw text onto the screen.
     /// Given the string `str`, it will be drawn at the point coordinates specified by `coords`.
     /// An offset can be specified by an optional `adjustment` point.
-    pub fn draw_text(_ctx: &mut Context, font: &Font, color: Color, text: &str, coords: &Point2, adjustment: Option<&Point2>) -> GameResult<()> {
+    ///
+    /// # Return value
+    ///
+    /// On success, an `Ok((text_width, text_height))` tuple is returned, indicating the width
+    /// and height of the text in pixels.
+    pub fn draw_text(_ctx: &mut Context, font: &Font, color: Color, text: &str, coords: &Point2,
+                     adjustment: Option<&Point2>) -> GameResult<(u32, u32)> {
         let mut graphics_text = Text::new(_ctx, text, font)?;
+        let (text_width, text_height) = (graphics_text.width(), graphics_text.height());
         let dst;
 
         if let Some(offset) = adjustment {
@@ -44,7 +51,7 @@ impl Graphics {
         graphics::set_color(_ctx, color)?;                   // text foreground
         graphics::draw(_ctx, &mut graphics_text, dst, 0.0)?; // actually draw the text!
         graphics::set_color(_ctx, previous_color)?;          // restore previous color
-        Ok(())
+        Ok((text_width, text_height))
     }
 
     /// Determines if two rectangles overlap, and if so, 

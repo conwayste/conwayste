@@ -616,7 +616,7 @@ impl EventHandler for MainState {
                 self.draw_intro(ctx)?;
             }
             Stage::Menu => {
-                self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn);
+                self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn)?;
             }
             Stage::Run => {
                 self.draw_universe(ctx)?;
