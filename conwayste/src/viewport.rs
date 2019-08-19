@@ -297,7 +297,7 @@ impl Viewport {
 }
 
 /// Controls the mapping between window and game coordinates.
-/// This should always  be sized with respect to the window, otherwise we'll
+/// This should always be sized with respect to the window, otherwise we'll
 /// get black bars.
 struct GridView {
     rect:        Rect,  // the area the game grid takes up on screen
@@ -312,7 +312,7 @@ struct GridView {
 
 impl GridView {
 
-    /// Creates a new Gridview which maintains control over how the conwayste universe is positioned within
+    /// Creates a new Gridview which maintains control over how the conwayste universe is positioned with
     /// respect to the window.
     pub fn new(cell_size: f32, universe_width_in_cells: usize, universe_height_in_cells: usize) -> GridView {
         GridView {

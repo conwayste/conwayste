@@ -779,6 +779,7 @@ impl MainState {
         let visibility = if draw_params.player_id >= 0 {
             Some(draw_params.player_id as usize) //XXX, Player One
         } else {
+            // used for random coloring in intro
             Some(0)
         };
 
