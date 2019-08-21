@@ -61,10 +61,9 @@ impl InputManager {
     /// Adds an event to the queue.
     /// This will panic if we fill up the queue past `NUM_OF_QUEUED_INPUTS`.
     pub fn add(&mut self, input: InputAction) {
-        // Curious to see if we actually can hit this condition
         if self.events.len() >= NUM_OF_QUEUED_INPUTS {
-            println!("{:?}", self.events);
-            assert!(false);
+            // FIXME
+            panic!("BUG: Input queue is full! Queue contents: {:?}", self.events);
         }
 
         self.events.push_back(input);

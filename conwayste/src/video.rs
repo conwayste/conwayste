@@ -21,17 +21,17 @@ use std::num::Wrapping;
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 struct Resolution {
-    w: f32,
-    h: f32
+    w: u32,
+    h: u32,
 }
 
 /// For now, conwayste supports a `16:9` aspect ratio only.
 const DISPLAY_MODES: [Resolution; 5]  = [
-    Resolution {w: 1280.0, h: 720.0},
-    Resolution {w: 1366.0, h: 768.0},
-    Resolution {w: 1600.0, h: 900.0},
-    Resolution {w: 1920.0, h: 1080.0},
-    Resolution {w: 2560.0, h: 1440.0},
+    Resolution {w: 1280, h: 720},
+    Resolution {w: 1366, h: 768},
+    Resolution {w: 1600, h: 900},
+    Resolution {w: 1920, h: 1080},
+    Resolution {w: 2560, h: 1440},
 ];
 
 /// This manages the supported resolutions.
@@ -76,7 +76,7 @@ impl DisplayModeManager {
     }
 
     /// Advances to the next resolution.
-    pub fn set_next_supported_resolution(&mut self) -> (f32, f32) {
+    pub fn set_next_supported_resolution(&mut self) -> (u32, u32) {
         self.index = (self.index + Wrapping(1usize)) % Wrapping(self.modes.len());
         let display_mode = self.modes.get(self.index.0).unwrap();
         (display_mode.w, display_mode.h)
@@ -85,7 +85,7 @@ impl DisplayModeManager {
 
 #[derive(Debug, Clone)]
 pub struct VideoSettings {
-    pub resolution    : (f32, f32),
+    pub resolution    : (u32, u32),
     pub is_fullscreen :       bool,
     res_manager       : DisplayModeManager,
 
@@ -94,7 +94,8 @@ pub struct VideoSettings {
 impl VideoSettings {
     pub fn new() -> VideoSettings {
         VideoSettings {
-            resolution: (0.0, 0.0),
+            // TODO: ensure this is set on startup
+            resolution: (0, 0),
             is_fullscreen: false,
             res_manager: DisplayModeManager::new(),
         }
@@ -111,8 +112,8 @@ impl VideoSettings {
         for x in  0..num_of_display_modes {
             let display_mode = sdl_video.display_mode(0, x)?;
             let resolution = Resolution {
-                w: display_mode.w as f32,
-                h: display_mode.h as f32
+                w: display_mode.w as u32,
+                h: display_mode.h as u32,
             };
 
             self.res_manager.add_mode(resolution);
@@ -131,14 +132,14 @@ impl VideoSettings {
     }
 
     /// Gets the current active resolution.
-    pub fn get_active_resolution(&self) -> (f32, f32) {
+    pub fn get_active_resolution(&self) -> (u32, u32) {
         self.resolution
     }
 
     /// Sets the current active resolution and updates the SDL context.
-    pub fn set_active_resolution(&mut self, _ctx: &mut Context, w: f32, h: f32) {
+    pub fn set_active_resolution(&mut self, _ctx: &mut Context, w: u32, h: u32) {
         self.resolution = (w,h);
-        self.refresh_game_resolution(_ctx, w as i32, h as i32);
+        self.refresh_game_resolution(_ctx, w, h);
     }
 
     /// Advances to the next supported game resolution, in-order.
@@ -150,9 +151,9 @@ impl VideoSettings {
     }
 
     /// Updates the SDL video context to the supplied resolution.
-    fn refresh_game_resolution(&mut self, ctx: &mut Context, w: i32, h: i32) {
+    fn refresh_game_resolution(&mut self, ctx: &mut Context, w: u32, h: u32) {
         if w != 0 && h != 0 {
-            let _ = graphics::set_resolution(ctx, w as u32, h as u32);
+            let _ = graphics::set_resolution(ctx, w, h);
         }
     }
 

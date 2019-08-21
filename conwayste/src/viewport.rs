@@ -244,13 +244,11 @@ impl Viewport {
         self.adjust_panning(false, direction);
     }
 
-    /// Set dimensions of the grid. This may cause unintended consequences if modified during run-time. 
-    /// Be mindful of the window size.
-    pub fn set_dimensions(&mut self, w: f32, h: f32) {
-        self.grid_view.set_width(w);
-        self.grid_view.set_height(h);
-        self.grid_view.rect.w = w;
-        self.grid_view.rect.h = h;
+    /// Set dimensions of the grid in window coordinates (pixels). This may cause unintended
+    /// consequences if modified while a game is running.  Be mindful of the window size.
+    pub fn set_dimensions(&mut self, w: u32, h: u32) {
+        self.grid_view.set_width(w as f32);
+        self.grid_view.set_height(h as f32);
     }
 
     /// Given a point, find the nearest Cell specified by a row and column.
@@ -372,12 +370,12 @@ impl GridView {
         return None;
     }
 
-    /// Sets the width of the viewport.
+    /// Sets the width of the viewport in window coordinates (pixels).
     pub fn set_width(&mut self, width: f32) {
         self.rect.w = width;
     }
 
-    /// Sets the height of the viewport.
+    /// Sets the height of the viewport in window coordinates (pixels).
     pub fn set_height(&mut self, height: f32) {
         self.rect.h = height;
     }

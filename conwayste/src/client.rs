@@ -300,8 +300,8 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
 
     let resolution = s.video_settings.get_active_resolution();
     // let resolution = (DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT);
-    let win_width  = (resolution.0 / DEFAULT_ZOOM_LEVEL) as isize; // cells
-    let win_height = (resolution.1 / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let win_width  = (resolution.0 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let win_height = (resolution.1 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
     let player_id = 0;   // hardcoded for this intro
 
     let letter_width = 5;
