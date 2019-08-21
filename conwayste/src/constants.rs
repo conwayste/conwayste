@@ -57,8 +57,8 @@ pub enum DrawStyle {
 impl DrawStyle {
     pub fn to_draw_mode(&self) -> graphics::DrawMode {
         match self {
-            &DrawStyle::Fill => graphics::DrawMode::Fill,
-            &DrawStyle::Line => graphics::DrawMode::Line(1.0),
+            &DrawStyle::Fill => graphics::DrawMode::fill(),
+            &DrawStyle::Line => graphics::DrawMode::stroke(1.0),
         }
     }
 }

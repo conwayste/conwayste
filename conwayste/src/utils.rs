@@ -16,7 +16,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{self, Rect, Font, Text, Point2, Color};
+use ggez::graphics::{self, Rect, Font, Text, TextFragment, Scale, Color, DrawParam};
+use ggez::nalgebra::Point2;
 use ggez::{Context, GameResult};
 
 /// Provides graphic-related utilities functions that are built upon the `ggez` library.
@@ -32,10 +33,15 @@ impl Graphics {
     ///
     /// On success, an `Ok((text_width, text_height))` tuple is returned, indicating the width
     /// and height of the text in pixels.
-    pub fn draw_text(_ctx: &mut Context, font: &Font, color: Color, text: &str, coords: &Point2,
-                     adjustment: Option<&Point2>) -> GameResult<(u32, u32)> {
-        let mut graphics_text = Text::new(_ctx, text, font)?;
-        let (text_width, text_height) = (graphics_text.width(), graphics_text.height());
+    pub fn draw_text(ctx: &mut Context, font: &Font, color: Color, text: &str,
+                     coords: &Point2<f32>, adjustment: Option<&Point2<f32>>) -> GameResult<(u32, u32)> {
+        let text_fragment = TextFragment::new(text)
+            .scale(Scale::uniform(20.0))              // TODO needs refactoring so size is specified in signature, fix in UI branch
+            .color(color)
+            .font(*font);
+
+        let mut graphics_text = Text::new(text_fragment);
+        let (text_width, text_height) = (graphics_text.width(ctx), graphics_text.height(ctx));
         let dst;
 
         if let Some(offset) = adjustment {
@@ -47,14 +53,14 @@ impl Graphics {
         // We store the color being used to simplify code and aid in debuggability, since our
         // drawing code is quite complex now. We don't the caller of this `draw_text` method to
         // care what color we use to draw the text, or to clean up after calling it.
-        let previous_color = graphics::get_color(_ctx);      // store previous color
-        graphics::set_color(_ctx, color)?;                   // text foreground
-        graphics::draw(_ctx, &mut graphics_text, dst, 0.0)?; // actually draw the text!
-        graphics::set_color(_ctx, previous_color)?;          // restore previous color
+        //let previous_color = graphics::get_color(ctx);     // store previous color
+        //graphics::set_color(ctx, color)?;                  // text foreground
+        graphics::draw(ctx, &mut graphics_text, DrawParam::default().dest(dst))?; // actually draw the text!
+        //graphics::set_color(ctx, previous_color)?;         // restore previous color
         Ok((text_width, text_height))
     }
 
-    /// Determines if two rectangles overlap, and if so, 
+    /// Determines if two rectangles overlap, and if so,
     /// will return `Some` rectangle which spans that overlap.
     /// This is a clone of the SDL2 intersection API.
     pub fn intersection(a: Rect, b: Rect) -> Option<Rect> {
@@ -109,7 +115,7 @@ impl Graphics {
     }
 
     /// Provides a new `Point2` from the specified point a the specified offset.
-    pub fn point_offset(p1: Point2, x: f32, y: f32) -> Point2 {
+    pub fn point_offset(p1: Point2<f32>, x: f32, y: f32) -> Point2<f32> {
         Point2::new(p1.x + x, p1.y + y)
     }
 }

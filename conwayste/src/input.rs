@@ -18,7 +18,7 @@
 
 use std::collections::VecDeque;
 
-use ggez::event::{Keycode, MouseButton};
+use ggez::event::{KeyCode, MouseButton};
 //use ggez::event::{Button, Axis};
 
 const NUM_OF_QUEUED_INPUTS: usize = 10;
@@ -31,8 +31,8 @@ pub enum InputDeviceType {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum InputAction {
-    KeyPress(Keycode, bool),
-    KeyRelease(Keycode),
+    KeyPress(KeyCode, bool),
+    KeyRelease(KeyCode),
 
     MouseClick(MouseButton, i32, i32),
     MouseDrag(MouseButton, i32, i32),
@@ -73,7 +73,7 @@ impl InputManager {
     pub fn peek(&self) -> Option<&InputAction> {
         self.events.front()
     }
-    
+
     /// Dequeues can input event.
     pub fn remove(&mut self) -> Option<InputAction> {
         self.events.pop_front()
@@ -83,7 +83,7 @@ impl InputManager {
     pub fn expunge(&mut self) {
         self.events.clear();
     }
-    
+
     /// Checks to see if there are any more input events in this frame to process.
     pub fn has_more(&self) -> bool {
         !self.events.is_empty()
@@ -119,7 +119,7 @@ mod test {
 
         let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
         im.add(action);
-        
+
         let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
         assert_eq!(im.peek(), Some(&action));
     }
@@ -132,7 +132,7 @@ mod test {
         let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
         im.add(action);
         assert_eq!(im.has_more(), true);
-        
+
         let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
         assert_eq!(im.remove(), Some(action));
         assert_eq!(im.has_more(), false);

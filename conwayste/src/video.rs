@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::{Context, graphics, GameResult};
+use ggez::{Context, graphics, GameResult, conf::FullscreenType};
 use std::num::Wrapping;
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -101,10 +101,14 @@ impl VideoSettings {
         }
     }
 
-    /// We query the SDL context to see what resolutions are supported.
+/*
+ * FIXME
+ * as of ggez 0.5.1, there wasn't an obvious way to query the supported display modes.
+ * Likely have to dig into wininit to find the answer
+    /// We query Wininit (?) to see what resolutions are supported.
     /// This intersected with the `DISPLAY_MODES` list.
     pub fn gather_display_modes(&mut self, ctx: &Context) -> GameResult<()>  {
-        let sdl_context =  &ctx.sdl_context;
+        let sdl_context =  &ctx.gfx_context;
         let sdl_video = sdl_context.video()?;
 
         let num_of_display_modes = sdl_video.num_display_modes(0)?;
@@ -125,6 +129,7 @@ impl VideoSettings {
 
         Ok(())
     }
+*/
 
     /// For debug, we have the option to print the supported resolutions.
     pub fn print_resolutions(&self) {
@@ -137,34 +142,44 @@ impl VideoSettings {
     }
 
     /// Sets the current active resolution and updates the SDL context.
-    pub fn set_active_resolution(&mut self, _ctx: &mut Context, w: u32, h: u32) {
+    pub fn set_active_resolution(&mut self, ctx: &mut Context, w: u32, h: u32) -> GameResult<()> {
         self.resolution = (w,h);
-        self.refresh_game_resolution(_ctx, w, h);
+        self.refresh_game_resolution(ctx, w, h)?;
+        Ok(())
     }
 
     /// Advances to the next supported game resolution, in-order.
-    pub fn advance_to_next_resolution(&mut self, ctx: &mut Context) {
+    pub fn advance_to_next_resolution(&mut self, ctx: &mut Context) -> GameResult<()> {
         let (width, height) = self.res_manager.set_next_supported_resolution();
-        self.set_active_resolution(ctx, width, height);
+        self.set_active_resolution(ctx, width, height)?;
 
         info!("{:?}", (width, height));
+        Ok(())
     }
 
     /// Updates the SDL video context to the supplied resolution.
-    fn refresh_game_resolution(&mut self, ctx: &mut Context, w: u32, h: u32) {
+    fn refresh_game_resolution(&mut self, ctx: &mut Context, w: u32, h: u32) -> GameResult<()> {
         if w != 0 && h != 0 {
-            let _ = graphics::set_resolution(ctx, w, h);
+            graphics::set_drawable_size(ctx, w as f32, h as f32)?;
         }
+        Ok(())
     }
 
+/*
+ * FIXME
+ * as of ggez 0.5.1, there wasn't an obvious way to query whether the window is fullscreen or not.
+ * Likely have to dig into wininit to find the answer.
+ * */
     /// Toggles fullscreen mode within the SDL video context
     pub fn toggle_fullscreen(&mut self, ctx: &mut Context) {
-        let is_fullscreen = graphics::is_fullscreen(ctx);
-        assert_eq!(is_fullscreen, self.is_fullscreen);
-
-        let _ = graphics::set_fullscreen(ctx, !is_fullscreen);
-        self.is_fullscreen = !is_fullscreen;
+        let fs_type = if self.is_fullscreen {
+            FullscreenType::Windowed
+        } else {
+            FullscreenType::True
+        };
+        let _ = graphics::set_fullscreen(ctx, fs_type);
     }
+
 
     /// Queries if we are fullscreen or otherwise.
     pub fn is_fullscreen(&self) -> bool {
