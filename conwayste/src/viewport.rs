@@ -101,11 +101,13 @@ impl Viewport {
             let window_center = Point2::new(self.grid_view.rect.w/2.0, self.grid_view.rect.h/2.0);
 
             if let Some(cell) = self.grid_view.game_coords_from_window(window_center) {
-                let (old_cell_count_for_x, old_cell_count_for_y) = (cell.row, cell.col);
-                let delta_x = cell_size_delta * (old_cell_count_for_x as f32 * next_cell_size as f32 - old_cell_count_for_x as f32 * old_cell_size as f32);
-                let delta_y = cell_size_delta * (old_cell_count_for_y as f32 * next_cell_size as f32 - old_cell_count_for_y as f32 * old_cell_size as f32);
+                let (old_cell_center_x, old_cell_center_y) = (cell.row, cell.col);
+                let delta_x = cell_size_delta * (old_cell_center_x as f32 * next_cell_size as f32 -
+                                                 old_cell_center_x as f32 * old_cell_size as f32);
+                let delta_y = cell_size_delta * (old_cell_center_y as f32 * next_cell_size as f32 -
+                                                 old_cell_center_y as f32 * old_cell_size as f32);
 
-                //debug!("current cell count: {}, {}", old_cell_count_for_x, old_cell_count_for_x);
+                //debug!("current cell count: {}, {}", old_cell_center_x, old_cell_center_x);
                 //debug!("delta in win coords: {}, {}", delta_x, delta_y);
 
                 self.grid_view.cell_size = next_cell_size;

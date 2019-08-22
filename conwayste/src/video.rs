@@ -101,11 +101,9 @@ impl VideoSettings {
         }
     }
 
-/*
- * FIXME
- * as of ggez 0.5.1, there wasn't an obvious way to query the supported display modes.
- * Likely have to dig into wininit to find the answer
-    /// We query Wininit (?) to see what resolutions are supported.
+    /*
+     * TODO: delete this once we are sure resizable windows are OK.
+    /// We query graphics library to see what resolutions are supported.
     /// This intersected with the `DISPLAY_MODES` list.
     pub fn gather_display_modes(&mut self, ctx: &Context) -> GameResult<()>  {
         let sdl_context =  &ctx.gfx_context;
@@ -129,7 +127,7 @@ impl VideoSettings {
 
         Ok(())
     }
-*/
+    */
 
     /// For debug, we have the option to print the supported resolutions.
     pub fn print_resolutions(&self) {
@@ -165,24 +163,14 @@ impl VideoSettings {
         Ok(())
     }
 
-/*
- * FIXME
- * as of ggez 0.5.1, there wasn't an obvious way to query whether the window is fullscreen or not.
- * Likely have to dig into wininit to find the answer.
- * */
-    /// Toggles fullscreen mode within the SDL video context
-    pub fn toggle_fullscreen(&mut self, ctx: &mut Context) {
+    /// Makes us fullscreen or not based on the `is_fullscreen` field.
+    pub fn update_fullscreen(&mut self, ctx: &mut Context) -> GameResult<()> {
         let fs_type = if self.is_fullscreen {
             FullscreenType::Windowed
         } else {
-            FullscreenType::True
+            FullscreenType::Desktop
         };
-        let _ = graphics::set_fullscreen(ctx, fs_type);
-    }
-
-
-    /// Queries if we are fullscreen or otherwise.
-    pub fn is_fullscreen(&self) -> bool {
-        self.is_fullscreen
+        let _ = graphics::set_fullscreen(ctx, fs_type)?;
+        Ok(())
     }
 }

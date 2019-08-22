@@ -300,9 +300,13 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
 
     let resolution = s.video_settings.get_active_resolution();
     // let resolution = (DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT);
-    let win_width  = (resolution.0 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
-    let win_height = (resolution.1 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let mut win_width  = (resolution.0 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let mut win_height = (resolution.1 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
     let player_id = 0;   // hardcoded for this intro
+
+    let fudge_factor: f32 = 0.5; // TODO: figure out why this is needed (that is, why not 1.0)
+    win_width  = (win_width as f32 * fudge_factor) as isize;
+    win_height = (win_height as f32 * fudge_factor) as isize;
 
     let letter_width = 5;
     let letter_height = 6;
@@ -419,34 +423,30 @@ impl MainState {
         })?;
 
         let mut vs = video::VideoSettings::new();
-        //vs.gather_display_modes(ctx)?;
+        graphics::set_resizable(ctx, true)?;
 
-        vs.print_resolutions();
-
-        /*
-         *  FIXME Disabling video module temporarily as we can now leverage ggez 0.4
-         */
-        /*
-        // On first-run, use default supported resolution
-        let (w, h) = config.get_resolution();
-        if (w,h) != (0,0) {
-            vs.set_active_resolution(ctx, w, h)?;
-        } else {
-            vs.advance_to_next_resolution(ctx);
-
-            // Some duplication here to update the config file
-            // I don't want to do this every load() to avoid
-            // unnecessary file writes
-            let (w,h) = vs.get_active_resolution();
-            config.set_resolution(w,h);
-        }
-        let (w,h) = vs.get_active_resolution();
-
-        graphics::set_fullscreen(ctx, config.is_fullscreen() == true);
-        vs.is_fullscreen = config.is_fullscreen() == true;
+        /* TODO: delete this once we are sure resizable windows are OK.
+            vs.gather_display_modes(ctx)?;
+            vs.print_resolutions();
         */
 
-        let viewport = viewport::Viewport::new(config.get().gameplay.zoom, universe_width_in_cells, universe_height_in_cells);
+        // On first-run, use default supported resolution
+        let (w, h) = config.get_resolution();
+        vs.set_active_resolution(ctx, w as u32, h as u32)?;
+
+        let is_fullscreen = config.get().video.fullscreen;
+        vs.is_fullscreen = is_fullscreen;
+        vs.update_fullscreen(ctx)?;
+
+        let intro_viewport = viewport::Viewport::new(
+            DEFAULT_ZOOM_LEVEL,
+            universe_width_in_cells,
+            universe_height_in_cells);
+
+        let viewport = viewport::Viewport::new(
+            config.get().gameplay.zoom,
+            universe_width_in_cells,
+            universe_height_in_cells);
 
         let mut color_settings = ColorSettings {
             cell_colors: BTreeMap::new(),
@@ -533,7 +533,11 @@ impl MainState {
             toggle_paused_game:  false,
         };
 
+        let viewport = s.viewport; // backup
+        s.viewport = intro_viewport;
         init_patterns(&mut s).unwrap();
+        s.viewport = viewport; // restore original value
+
         init_title_screen(&mut s).unwrap();
 
         Ok(s)
@@ -712,7 +716,7 @@ impl EventHandler for MainState {
     }
 
     fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
-        println!("Resized screen to {}, {}", width, height);
+        debug!("Resized screen to {}, {}", width, height);
         let new_rect = graphics::Rect::new(
             0.0,
             0.0,
@@ -721,6 +725,10 @@ impl EventHandler for MainState {
         );
         graphics::set_screen_coordinates(ctx, new_rect).unwrap();
         self.viewport.set_dimensions(width as u32, height as u32);
+        self.config.modify(|settings| {
+            settings.video.resolution_x = width as u32;
+            settings.video.resolution_y = height as u32;
+        });
     }
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
@@ -1141,10 +1149,13 @@ impl MainState {
                                 self.menu_sys.menu_state = menu::MenuState::Options;
                             }
                             menu::MenuItemIdentifier::Fullscreen => {
-                                /* TODO/FIXME, somewhat limping fullscreen support in 0.5.1 */
                                 if !self.escape_key_pressed {
-                                    self.video_settings.toggle_fullscreen(ctx);
-                                    let is_fullscreen = self.video_settings.is_fullscreen();
+                                    // toggle
+                                    let mut is_fullscreen = !self.video_settings.is_fullscreen;
+                                    self.video_settings.is_fullscreen = is_fullscreen;
+                                    // actually update screen based on what we toggled
+                                    self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: rollback if fail
+                                    // save to persistent config storage
                                     self.config.modify(|settings| {
                                         settings.video.fullscreen = is_fullscreen;
                                     });
@@ -1157,7 +1168,7 @@ impl MainState {
                                     // Update the configuration file and resize the viewing
                                     // screen
                                     let (w,h) = self.video_settings.get_active_resolution();
-                                    self.config.set_resolution(w as i32, h as i32);
+                                    self.config.set_resolution(w, h);
                                     self.viewport.set_dimensions(w, h);
                                 }
                             }
