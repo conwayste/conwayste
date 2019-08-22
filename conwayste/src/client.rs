@@ -36,12 +36,12 @@ mod input;
 mod menu;
 mod network;
 mod ui;
+mod uimanager;
 mod video;
 mod viewport;
 
 use chrono::Local;
 use chromatica::css;
-use downcast_rs::Downcast;
 use log::LevelFilter;
 
 use conway::universe::{BigBang, Universe, CellState, Region, PlayerBuilder};
@@ -81,17 +81,15 @@ use input::{MouseAction, ScrollEvent};
 use error::{ConwaysteResult, ConwaysteError::*};
 use viewport::Cell;
 use ui::{
-    Widget,
-    Button,
-    Checkbox, ToggleState,
-    Chatbox,
     Layer,
-    Pane,
+    ToggleState,
     Screen,
-    TextField, TextInputState,
+    TextInputState,
     UIAction,
+    Widget,
     WidgetID,
 };
+use uimanager::UIManager;
 
 // All game state
 struct MainState {
@@ -117,7 +115,7 @@ struct MainState {
     toggle_paused_game:  bool,
     power_on_timestamp:  f64,
 
-    ui_layers:           HashMap<Screen, Vec<Layer>>,
+    ui_manager:          UIManager,
 }
 
 
@@ -374,53 +372,9 @@ impl MainState {
         })?;
 
         let mut vs = video::VideoSettings::new();
-
         vs.print_resolutions();
 
-        let chatrect = Rect::new(30.0, 600.0, 300.0, 150.0);
-        let mut chatpane = Box::new(Pane::new(WidgetID::InGamePane1, chatrect));
-        let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, 5);
-        chatbox.set_size(Rect::new(0.0, 0.0, 300.0, 150.0));
-        let chatbox = Box::new(chatbox);
-        let chatfield = Box::new(TextField::new( (chatrect.x, chatrect.h), WidgetID::InGamePane1ChatboxTextField));
-
-        chatpane.add(chatbox);
-        chatpane.add(chatfield);
-
-        let checkbox = Box::new(Checkbox::new(ctx, &font,
-            "Toggle FullScreen",
-            Rect::new(10.0, 210.0, 20.0, 20.0),
-            WidgetID::MainMenuTestCheckbox,
-            UIAction::Toggle( if vs.is_fullscreen { ToggleState::Enabled } else { ToggleState::Disabled } ),
-        ));
-
-
-        let mut layer_mainmenu = Layer::new(WidgetID::MainMenuLayer1);
-        let mut layer_ingame = Layer::new(WidgetID::InGameLayer1);
-
-        // Create a new pane, and add two test buttons to it. Actions do not really matter for now, WIP
-        let mut pane = Box::new(Pane::new(WidgetID::MainMenuPane1, Rect::new_i32(20, 20, 300, 250)));
-        let mut pane_button = Box::new(Button::new(ctx, &font, "ServerList", WidgetID::MainMenuPane1ButtonYes, UIAction::ScreenTransition(Screen::ServerList)));
-        pane_button.set_size(Rect::new(10.0, 10.0, 180.0, 50.0));
-        pane.add(pane_button);
-
-        let mut pane_button = Box::new(Button::new(ctx, &font, "InRoom", WidgetID::MainMenuPane1ButtonNo, UIAction::ScreenTransition(Screen::InRoom)));
-        pane_button.set_size(Rect::new(10.0, 70.0, 180.0, 50.0));
-        pane.add(pane_button);
-
-        let mut pane_button = Box::new(Button::new(ctx, &font, "StartGame", WidgetID::MainMenuTestButton, UIAction::ScreenTransition(Screen::Run)));
-        pane_button.set_size(Rect::new(10.0, 130.0, 180.0, 50.0));
-        pane.add(pane_button);
-
-        pane.add(checkbox);
-
-        layer_mainmenu.add(pane);
-        layer_ingame.add(chatpane);
-
-        let mut ui_layers = HashMap::new();
-
-        ui_layers.insert(Screen::Menu, vec![layer_mainmenu]);
-        ui_layers.insert(Screen::Run, vec![layer_ingame]);
+        let ui_manager = UIManager::new(ctx, &config);
 
         let mut s = MainState {
             screen_stack:        vec![Screen::Intro],
@@ -442,7 +396,7 @@ impl MainState {
             drag_draw:           None,
             toggle_paused_game:  false,
             power_on_timestamp:  0.0,
-            ui_layers:           ui_layers,
+            ui_manager:          ui_manager,
         };
 
         init_patterns(&mut s).unwrap();
@@ -484,7 +438,7 @@ impl EventHandler for MainState {
                 // TODO Disable FSP limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
                 let mut textfield_under_focus = false;
-                if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     textfield_under_focus = tf.state.is_some();
 
                     match tf.state {
@@ -538,9 +492,11 @@ impl EventHandler for MainState {
 
 
                 let mouse_point = Point2::new(self.inputs.mouse_info.position.0 as f32, self.inputs.mouse_info.position.1 as f32);
+                let screen = self.get_current_screen();
 
-                let layer = self.top_layer_mut().unwrap(); // safe b/c we should always have some layer present
-                layer.on_hover(&mouse_point);
+                if let Some(layer) = self.ui_manager.get_top_layer_from_screen(screen) {
+                    layer.on_hover(&mouse_point);
+                }
 
                 if self.single_step {
                     self.running = false;
@@ -584,10 +540,7 @@ impl EventHandler for MainState {
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         graphics::clear(ctx, [0.0, 0.0, 0.0, 1.0].into());
 
-        let current_screen = match self.screen_stack.last() {
-            Some(screen) => *screen,
-            None => panic!("Error in main thread draw! Screen_stack is empty!"),
-        };
+        let current_screen = self.get_current_screen();
 
         match current_screen {
             Screen::Intro => {
@@ -610,8 +563,8 @@ impl EventHandler for MainState {
             Screen::Exit => {}
         }
 
-        if let Some(ref mut ui_screen) = self.ui_layers.get_mut(&current_screen) {
-            for layer in ui_screen.iter_mut() {
+        if let Some(ref mut layers) = self.ui_manager.get_screen_layers(current_screen) {
+            for layer in layers.iter_mut() {
                 layer.draw(ctx, &self.menu_font);
             }
         }
@@ -743,7 +696,8 @@ impl EventHandler for MainState {
     /// <https://wiki.libsdl.org/SDL_TextInputEvent>
     /// <https://wiki.libsdl.org/Tutorials/TextInput>
     fn text_input_event(&mut self, _ctx: &mut Context, character: char) {
-        if let Some(tf) = self.focused_textfield_mut() {
+        let screen = self.get_current_screen();
+        if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
             if tf.state.is_some() {
                 tf.add_char_at_cursor(character);
             }
@@ -935,10 +889,9 @@ impl MainState {
 
         match keycode {
             KeyCode::Return => {
-                if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if tf.state.is_none() {
-                        let layer_vec = self.ui_layers.get_mut(&Screen::Run).unwrap();
-                        if let Some(layer) = layer_vec.last_mut() {
+                        if let Some(layer) = self.ui_manager.get_top_layer_from_screen(Screen::Run) {
                             layer.enter_focus(WidgetID::InGamePane1ChatboxTextField);
                         }
                     }
@@ -1030,38 +983,39 @@ impl MainState {
 
         match keycode {
             KeyCode::Return => {
-                if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     tf.state = Some(TextInputState::TextInputComplete);
                 }
             }
             KeyCode::Escape => {
-                if let Some(layer) = self.top_layer_mut() {
+                let screen = self.get_current_screen();
+                if let Some(layer) = self.ui_manager.get_top_layer_from_screen(screen) {
                     layer.exit_focus();
                 }
             }
             KeyCode::Back => {
-                if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.backspace_char();
                     }
                 }
             }
             KeyCode::Delete => {
-                if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.delete_char();
                     }
                 }
             }
             KeyCode::Left => {
-                if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.dec_cursor_pos();
                     }
                 }
             },
             KeyCode::Right => {
-                if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.inc_cursor_pos();
                     }
@@ -1070,14 +1024,14 @@ impl MainState {
             KeyCode::Up => {},    // ?? go up and down the message stack?
             KeyCode::Down => {},
             KeyCode::Home => {
-                if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.cursor_home();
                     }
                 }
             }
             KeyCode::End => {
-                if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.cursor_end();
                     }
@@ -1098,20 +1052,22 @@ impl MainState {
 
         let left_mouse_click = mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
 
-        let layer = self.top_layer_mut().unwrap();
-        layer.on_hover(&mouse_point);
+        let screen = self.get_current_screen();
+        if let Some(layer) = self.ui_manager.get_top_layer_from_screen(screen) {
+            layer.on_hover(&mouse_point);
 
-        if let Some(action) = mouse_action {
-            if action == MouseAction::Drag {
-                layer.on_drag(&origin_point, &mouse_point);
-            } else if action == MouseAction::Click {
-               // TODO FIXME AMEEN self.pane.update(true);
+            if let Some(action) = mouse_action {
+                if action == MouseAction::Drag {
+                    layer.on_drag(&origin_point, &mouse_point);
+                } else if action == MouseAction::Click {
+                // TODO FIXME AMEEN self.pane.update(true);
+                }
             }
-        }
 
-        if left_mouse_click {
-            if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
-                self.handle_ui_action(ctx, ui_id, ui_action);
+            if left_mouse_click {
+                if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
+                    self.handle_ui_action(ctx, ui_id, ui_action);
+                }
             }
         }
 
@@ -1310,7 +1266,7 @@ impl MainState {
         }
 
         for msg in incoming_messages {
-            if let Some(cb) = self.chatbox_from_id(WidgetID::InGamePane1Chatbox) {
+            if let Some(cb) = self.ui_manager.chatbox_from_id(WidgetID::InGamePane1Chatbox) {
                 // FIXME once ggez 0.5 lands
                 let font = graphics::Font::default();
                 cb.add_message(ctx, &font, msg)?;
@@ -1404,7 +1360,7 @@ impl MainState {
     fn handle_user_chat_complete(&mut self, ctx: &mut Context) -> GameResult<()> {
         let username = self.config.get().user.name.clone();
         let mut msg = String::new();
-        if let Some(tf) = self.textfield_from_id(WidgetID::InGamePane1ChatboxTextField) {
+        if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
             if let Some(m) = tf.text() {
                 msg = format!("{}: {}", username, m);
             }
@@ -1416,7 +1372,7 @@ impl MainState {
 
         if !msg.is_empty() {
             let font = graphics::Font::default();
-            if let Some(cb) = self.chatbox_from_id(WidgetID::InGamePane1Chatbox) {
+            if let Some(cb) = self.ui_manager.chatbox_from_id(WidgetID::InGamePane1Chatbox) {
                             // FIXME once ggez 0.5 lands
                 cb.add_message(ctx, &font, msg.clone())?;
 
@@ -1429,41 +1385,13 @@ impl MainState {
         Ok(())
     }
 
-    /// Returns a reference to the layer's currently focused text field
-    fn focused_textfield_mut(&mut self) -> Option<&mut TextField> {
-        if let Some(layer) = self.top_layer_mut() {
-            if let Some(id) = layer.focused_widget {
-                let widget = layer.get_widget_mut(id);
-                return widget.downcast_mut::<TextField>();
-            }
+    fn get_current_screen(&self) -> Screen {
+        match self.screen_stack.last() {
+            Some(screen) => *screen,
+            None => panic!("Error in main thread draw! Screen_stack is empty!"),
         }
-        None
     }
 
-    /// Get the current screen's top most layer
-    fn top_layer_mut(&mut self) -> Option<&mut Layer> {
-        if let Some(vec_layer) = self.ui_layers.get_mut(self.screen_stack.last().unwrap()) {
-            return vec_layer.last_mut();
-        }
-        None
-    }
-
-    fn textfield_from_id(&mut self, id: WidgetID) -> Option<&mut TextField> {
-        if let Some(layer) = self.top_layer_mut() {
-            // assumes ID provided is part of the top layer!
-            return layer.textfield_from_id(id);
-        }
-        None
-    }
-
-    fn chatbox_from_id(&mut self, id: WidgetID) -> Option<&mut Chatbox> {
-        if let Some(layers) = self.ui_layers.get_mut(&Screen::Run) {
-            if let Some(first_layer) = layers.first_mut() {
-                return first_layer.chatbox_from_id(id);
-            }
-        }
-        None
-    }
 }
 
 enum Orientation {
