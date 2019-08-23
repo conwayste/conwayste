@@ -84,7 +84,7 @@ enum Stage {
 // All game state
 struct MainState {
     small_font:          graphics::Font,
-    stage:              Stage,            // Where are we in the game (Intro/Menu Main/Running..)
+    stage:               Stage,            // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     intro_uni:           Universe,
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
@@ -94,8 +94,9 @@ struct MainState {
     video_settings:      video::VideoSettings,
     config:              config::Config,
     viewport:            viewport::Viewport,
+    intro_viewport:      viewport::Viewport,
     input_manager:       input::InputManager,
-    net_worker:     Option<network::ConwaysteNetWorker>,
+    net_worker:          Option<network::ConwaysteNetWorker>,
 
     // Input state
     single_step:         bool,
@@ -299,14 +300,11 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     // 4) get offset for row and column to draw at
 
     let resolution = s.video_settings.get_active_resolution();
+    debug!("init_title_screen: resolution is {:?}", resolution); //XXX
     // let resolution = (DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT);
-    let mut win_width  = (resolution.0 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
-    let mut win_height = (resolution.1 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let win_width  = (resolution.0 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let win_height = (resolution.1 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
     let player_id = 0;   // hardcoded for this intro
-
-    let fudge_factor: f32 = 0.5; // TODO: figure out why this is needed (that is, why not 1.0)
-    win_width  = (win_width as f32 * fudge_factor) as isize;
-    win_height = (win_height as f32 * fudge_factor) as isize;
 
     let letter_width = 5;
     let letter_height = 6;
@@ -512,7 +510,7 @@ impl MainState {
 
         let mut s = MainState {
             small_font:          font.clone(),
-            stage:              Stage::Intro(INTRO_DURATION),
+            stage:               Stage::Intro(INTRO_DURATION),
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
@@ -522,6 +520,7 @@ impl MainState {
             video_settings:      vs,
             config:              config,
             viewport:            viewport,
+            intro_viewport:      intro_viewport,
             input_manager:       input::InputManager::new(input::InputDeviceType::PRIMARY),
             net_worker:          None,
             single_step:         false,
@@ -533,10 +532,7 @@ impl MainState {
             toggle_paused_game:  false,
         };
 
-        let viewport = s.viewport; // backup
-        s.viewport = intro_viewport;
         init_patterns(&mut s).unwrap();
-        s.viewport = viewport; // restore original value
 
         init_title_screen(&mut s).unwrap();
 
@@ -774,17 +770,23 @@ impl MainState {
                          ) -> GameResult<()> {
 
 
-        let viewport = self.viewport.get_viewport();
+        let viewport = if draw_params.player_id >= 0 {
+            &self.viewport
+        } else {
+            // intro
+            &self.intro_viewport
+        };
+        let viewport_rect = viewport.get_viewport();
 
         // grid background
         let rectangle = graphics::Mesh::new_rectangle(ctx,
             GRID_DRAW_STYLE.to_draw_mode(),
-            graphics::Rect::new(0.0, 0.0, viewport.w, viewport.h),
+            graphics::Rect::new(0.0, 0.0, viewport_rect.w, viewport_rect.h),
             draw_params.bg_color)?;
-        graphics::draw(ctx, &rectangle, DrawParam::new().dest(viewport.point()))?;
+        graphics::draw(ctx, &rectangle, DrawParam::new().dest(viewport_rect.point()))?;
 
         // grid foreground (dead cells)
-        let full_rect = self.viewport.get_rect_from_origin();
+        let full_rect = viewport.get_rect_from_origin();
 
         let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
         let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
@@ -804,7 +806,7 @@ impl MainState {
                 self.color_settings.get_random_color()
             };
 
-            if let Some(rect) = self.viewport.get_screen_area(viewport::Cell::new(col, row)) {
+            if let Some(rect) = viewport.get_screen_area(viewport::Cell::new(col, row)) {
                 let p = graphics::DrawParam::new()
                     .dest(Point2::new(rect.x, rect.y))
                     .scale(Vector2::new(rect.w, rect.h))
@@ -848,6 +850,7 @@ impl MainState {
 
     fn draw_universe(&mut self, ctx: &mut Context) -> GameResult<()> {
 
+        // TODO: don't do this every frame
         let draw_params = GameOfLifeDrawParams {
             bg_color: self.color_settings.get_color(None),
             fg_color: self.color_settings.get_color(Some(CellState::Dead)),
