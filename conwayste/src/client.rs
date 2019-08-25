@@ -432,20 +432,24 @@ impl EventHandler for MainState {
                 }
             }
             Screen::Menu => {
-                self.update_current_screen(ctx);
+                self.update_main_menu(ctx);
             }
             Screen::Run => {
                 // TODO Disable FSP limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
                 let mut textfield_under_focus = false;
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
-                    textfield_under_focus = tf.state.is_some();
-
                     match tf.state {
                         Some(TextInputState::TextInputComplete) =>  {
+                            textfield_under_focus = false;
                             self.handle_user_chat_complete(ctx)?;
                         }
-                        None | Some(TextInputState::EnteringText) => {
+                        Some(TextInputState::EnteringText) => {
+                            textfield_under_focus = true;
+                            tf.update(ctx)?;
+                        },
+                        None => {
+                            textfield_under_focus = false;
                             tf.update(ctx)?;
                         },
                     }
@@ -696,6 +700,11 @@ impl EventHandler for MainState {
     /// <https://wiki.libsdl.org/SDL_TextInputEvent>
     /// <https://wiki.libsdl.org/Tutorials/TextInput>
     fn text_input_event(&mut self, _ctx: &mut Context, character: char) {
+        // Ignore control characters (like Esc or Del)./
+        if character.is_control() {
+            return;
+        }
+
         let screen = self.get_current_screen();
         if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
             if tf.state.is_some() {
@@ -1042,7 +1051,7 @@ impl MainState {
     }
 
     // update
-    fn update_current_screen(&mut self, ctx: &mut Context) {
+    fn update_main_menu(&mut self, ctx: &mut Context) {
         self.process_menu_inputs();
 
         let mouse_point = Point2::new(self.inputs.mouse_info.position.0 as f32, self.inputs.mouse_info.position.1 as f32);
@@ -1360,14 +1369,13 @@ impl MainState {
     fn handle_user_chat_complete(&mut self, ctx: &mut Context) -> GameResult<()> {
         let username = self.config.get().user.name.clone();
         let mut msg = String::new();
+
         if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
             if let Some(m) = tf.text() {
                 msg = format!("{}: {}", username, m);
             }
-            if let Some(TextInputState::EnteringText) = tf.state {
-                tf.state = None;
-                tf.clear();
-            }
+            tf.state = None;
+            tf.clear();
         }
 
         if !msg.is_empty() {

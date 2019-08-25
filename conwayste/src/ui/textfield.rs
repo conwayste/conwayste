@@ -31,7 +31,7 @@ use super::{
 };
 
 pub const TEXT_INPUT_BUFFER_LEN     : usize = 255;
-pub const BLINK_RATE_MS             : u64 = 1000;
+pub const BLINK_RATE_MS             : u64 = 500;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TextInputState {
@@ -208,7 +208,7 @@ impl Widget for TextField {
 
             if self.draw_cursor {
                 let mut text = Text::new(&text_with_cursor[0..self.cursor_index]);
-                let text = text.set_font(*font, Scale::uniform(10.0));
+                let text = text.set_font(*font, Scale::uniform(20.0));
                 let cursor_position_px = text.width(ctx) as f32;
                 let cursor_position = Point2::new(self.dimensions.x + cursor_position_px + CURSOR_OFFSET_PX, self.dimensions.y);
                 draw_text(ctx, font, Color::from(css::WHITESMOKE), "|", &cursor_position, None)?;

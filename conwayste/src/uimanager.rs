@@ -46,12 +46,15 @@ impl UIManager {
         let font = graphics::Font::default(); // Provides DejaVuSerif.ttf
         let mut ui_layers = HashMap::new();
 
-        let chatrect = Rect::new(30.0, 600.0, 300.0, 150.0);
-        let mut chatpane = Box::new(Pane::new(WidgetID::InGamePane1, chatrect));
+        let chat_pane_rect = Rect::new(30.0, 600.0, 300.0, 150.0);
+        let mut chatpane = Box::new(Pane::new(WidgetID::InGamePane1, chat_pane_rect));
+
+        let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
         let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, 5);
-        chatbox.set_size(Rect::new(0.0, 0.0, 300.0, 150.0));
+        chatbox.set_size(chatbox_rect);
         let chatbox = Box::new(chatbox);
-        let chatfield = Box::new(TextField::new( (chatrect.x, chatrect.h), WidgetID::InGamePane1ChatboxTextField));
+
+        let chatfield = Box::new(TextField::new( (chatbox_rect.x, chatbox_rect.h), WidgetID::InGamePane1ChatboxTextField));
 
         chatpane.add(chatbox);
         chatpane.add(chatfield);

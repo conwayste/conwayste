@@ -83,11 +83,9 @@ impl Widget for Pane {
     }
 
     fn on_hover(&mut self, point: &Point2<f32>) {
-        if within_widget(point, &self.dimensions) {
-            self.hover = true;
-            for w in self.widgets.iter_mut() {
-                w.on_hover(point);
-            }
+        self.hover = within_widget(point, &self.dimensions);
+        for w in self.widgets.iter_mut() {
+            w.on_hover(point);
         }
     }
 

@@ -157,7 +157,7 @@ impl Widget for Layer {
     fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
         if self.with_transparency {
             // TODO wait for winint to get resolution
-            let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), Rect::new(0.0, 0.0, 1920.0, 1080.0), color_with_alpha(css::HONEYDEW, 0.1))?;
+            let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), Rect::new(0.0, 0.0, 1920.0, 1080.0), color_with_alpha(css::HONEYDEW, 0.4))?;
             graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
 

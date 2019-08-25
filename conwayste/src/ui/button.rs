@@ -82,9 +82,9 @@ impl Widget for Button {
 
     fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
-        if self.hover {
-            //println!("Hovering over Button, \"{}\"", self.label.text);
-        }
+        // if self.hover {
+        //     println!("Hovering over Button, \"{}\" {:?}", self.label.text, point);
+        // }
     }
 
     fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>

@@ -107,6 +107,7 @@ impl Widget for Chatbox {
     }
 
     fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
+        let origin = self.dimensions.point();
 
         if self.hover {
             // Add in a teal border while hovered. Color checkbox differently to indicate  hovered state.
@@ -120,13 +121,11 @@ impl Widget for Chatbox {
 
         // TODO need to do width wrapping check
         for (i, msg) in self.messages.iter().enumerate() {
-            let origin = self.dimensions.point();
             let point = Point2::new(origin.x + 5.0, origin.y + i as f32*30.0);
-
             graphics::queue_text(ctx, &msg, point, Some(Color::from(css::RED)));
         }
 
-        graphics::draw_queued_text(ctx, DrawParam::default().dest(self.dimensions.point()), None, FilterMode::Linear)?;
+        graphics::draw_queued_text(ctx, DrawParam::default(), None, FilterMode::Linear)?;
 
         Ok(())
     }
