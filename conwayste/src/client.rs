@@ -1005,14 +1005,14 @@ impl MainState {
             KeyCode::Back => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.backspace_char();
+                        tf.remove_left_of_cursor();
                     }
                 }
             }
             KeyCode::Delete => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.delete_char();
+                        tf.remove_right_of_cursor();
                     }
                 }
             }

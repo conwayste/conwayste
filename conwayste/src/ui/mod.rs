@@ -47,7 +47,7 @@ pub use pane::Pane;
 pub use textfield::{TextField, TextInputState};
 pub use widget::Widget;
 
-#[derive(Clone, Copy, Debug, Hash, Eq)]
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum Screen {
     Intro,   // seconds
     Menu,
@@ -78,25 +78,4 @@ pub enum WidgetID {
     InGamePane1,
     InGamePane1Chatbox,
     InGamePane1ChatboxTextField,
-}
-
-impl PartialEq for Screen {
-    fn eq(&self, other: &Self) -> bool {
-        // Equal if all key members are equal
-        self == other
-    }
-}
-
-
-impl Ord for Screen {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.cmp(&other)
-    }
-}
-
-impl PartialOrd for Screen {
-    #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.partial_cmp(&other)
-    }
 }

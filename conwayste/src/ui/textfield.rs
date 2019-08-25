@@ -98,7 +98,8 @@ impl TextField {
         self.cursor_index += text.len();
     }
 
-    pub fn backspace_char(&mut self) {
+    /// Deletes a character to the left of the current cursor
+    pub fn remove_left_of_cursor(&mut self) {
         if self.cursor_index != 0 {
             if self.cursor_index == self.text.len() {
                 self.text.pop();
@@ -109,12 +110,14 @@ impl TextField {
         }
     }
 
-    pub fn delete_char(&mut self) {
+    /// Deletes a chracter to the right of the current cursor
+    pub fn remove_right_of_cursor(&mut self) {
         if self.text.len() != 0 && self.cursor_index != self.text.len() {
             self.text.remove(self.cursor_index);
         }
     }
 
+    /// Clears the contents of the text field
     pub fn clear(&mut self) {
         self.text.clear();
         self.cursor_index = 0;
