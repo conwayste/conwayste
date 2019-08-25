@@ -43,6 +43,25 @@ pub struct Chatbox {
 }
 
 impl Chatbox {
+
+    /// Creates a Chatbox widget.
+    ///
+    /// # Arguments
+    /// * `widget_id` - Unique widget identifier
+    /// * `len` - Len of chat history to maintain
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ui::Chatbox;
+    ///
+    /// fn new(_ctx: &mut Context) -> GameResult<MainState> {
+    ///     let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
+    ///     let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, 5);
+    ///     chatbox.set_size(chatbox_rect);
+    /// }
+    /// ```
+    ///
     pub fn new(widget_id: WidgetID, len: usize) -> Self {
         let rect = Rect::new(30.0, 600.0, 300.0, 15.0*CHAT_DISPLAY_LIMIT);
         Chatbox {
@@ -56,6 +75,29 @@ impl Chatbox {
         }
     }
 
+    /// Adds a message to the chatbox
+    ///
+    /// # Arguments
+    /// * `ctx` - GGEZ context
+    /// * `font` - font to be used when drawing the text
+    /// * `msg` - New chat message
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ui::Chatbox;
+    ///
+    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
+    ///     let font = Font::default();
+    ///     let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
+    ///     let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, 5);
+    ///     chatbox.set_size(chatbox_rect);
+    ///     chatbox.add_message(ctx, &font, String::new("Player 1: This is a new chat message");
+    ///     chatbox.add_message(ctx, &font, String::new("-- This is a Server broadcast message -- ");
+    ///     chatbox.draw(ctx, font)?;
+    /// }
+    /// ```
+    ///
     pub fn add_message(&mut self, ctx: &mut Context, font: &Font, msg: String) -> GameResult<()> {
         if self.messages.len() + 1 > self.history_len {
             self.messages.pop_front();

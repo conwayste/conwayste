@@ -49,9 +49,33 @@ pub struct TextField {
     pub draw_cursor: bool,
     pub dimensions: Rect,
     pub hover: bool,
+    pub visible_start_index: usize,
+    pub visible_end_index: usize,
 }
 
+/// A widget that can accept and display user-inputted text from the Keyboard.
 impl TextField {
+    /// Creates a TextField widget.
+    ///
+    /// # Arguments
+    /// * `(x,y)` - origin of the text field in pixels
+    /// * `widget_id` - Unique widget identifier
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ui::Button;
+    ///
+    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
+    ///     let font = Font::default();
+    ///     let chatbox = Box::new(chatbox);
+    ///
+    ///     let textfield = TextField::new( (50, 50), WidgetID::ChatboxTextField));
+    ///
+    ///     textfield.draw(ctx, font);
+    /// }
+    /// ```
+    ///
     pub fn new((x,y): (f32, f32), widget_id: WidgetID) -> TextField {
         TextField {
             state: None,
@@ -63,9 +87,12 @@ impl TextField {
             id: widget_id,
             action: UIAction::EnterText,
             hover: false,
+            visible_start_index: 0,
+            visible_end_index: 0,
         }
     }
 
+    /// Returns the a string of the inputted text
     pub fn text(&self) -> Option<String> {
         let trimmed_str = self.text.trim();
         if !trimmed_str.is_empty() {
@@ -74,11 +101,13 @@ impl TextField {
         None
     }
 
+    /// Sets the text field's string contents
     pub fn set_text(&mut self, text: String) {
         self.text = text;
         self.cursor_index = 0;
     }
 
+    /// Adds a character at the current cursor position
     pub fn add_char_at_cursor(&mut self, character: char)
     {
         if self.cursor_index == self.text.len() {
@@ -89,6 +118,7 @@ impl TextField {
         self.cursor_index += 1;
     }
 
+    /// Adds a string at the current cursor position
     pub fn add_string_at_cursor(&mut self, text: String) {
         if self.cursor_index == self.text.len() {
             self.text.push_str(&text);
@@ -125,31 +155,37 @@ impl TextField {
         self.draw_cursor = false;
     }
 
+    /// Advances the cursor to the right by one
     pub fn inc_cursor_pos(&mut self) {
         if self.cursor_index < self.text.len() {
             self.cursor_index += 1;
         }
     }
 
+    /// Advances the cursor to the left by one
     pub fn dec_cursor_pos(&mut self) {
         if self.cursor_index > 0 {
             self.cursor_index -= 1;
         }
     }
 
+    /// Moves the cursor prior to the first character in the field
     pub fn cursor_home(&mut self) {
         self.cursor_index = 0;
     }
 
+    /// Moves the cursor after the last character in the field
     pub fn cursor_end(&mut self) {
         self.cursor_index = self.text.len();
     }
 
+    /// Textfield gains focus and begins accepting user input
     pub fn enter_focus(&mut self) {
         self.state = Some(TextInputState::EnteringText);
         self.blink_timestamp = Some(Instant::now());
     }
 
+    /// Textfield loses focus and does not accept user input
     pub fn exit_focus(&mut self) {
         self.state = None;
         self.draw_cursor = false;

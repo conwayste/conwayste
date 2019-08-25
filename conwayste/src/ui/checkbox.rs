@@ -48,7 +48,34 @@ pub struct Checkbox {
 const LABEL_OFFSET_X: f32 = 30.0;
 const LABEL_OFFSET_Y: f32 = -5.0;
 
+/// A standard checkbox widget that can be enabled or disabled via the ToggleState structure.
 impl Checkbox {
+    /// Creates a Checkbox widget.
+    ///
+    /// # Arguments
+    /// * `ctx` - GGEZ context
+    /// * `font` - font to be used when drawing the text
+    /// * `text` - Label text
+    /// * `widget_id` - Unique widget identifier
+    /// * `action` - Unique action identifer
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ui::Button;
+    ///
+    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
+    ///     let font = Font::default();
+    ///     let checkbox = Box::new(Checkbox::new(ctx, &font,
+    ///         "Toggle Me",
+    ///         Rect::new(10.0, 210.0, 20.0, 20.0),
+    ///         WidgetID::TestCheckbox,
+    ///         UIAction::Toggle( if cfg!(target_os = "linux") { ToggleState::Enabled } else { ToggleState::Disabled } ),
+    ///     ));;
+    ///     checkbox.draw(ctx, font);
+    /// }
+    /// ```
+    ///
     pub fn new(ctx: &mut Context, font: &Font, text: &'static str, dimensions: Rect, widget_id: WidgetID, action: UIAction) -> Self {
         let label_origin = Point2::new(dimensions.x + dimensions.w + LABEL_OFFSET_X, dimensions.y + dimensions.h + LABEL_OFFSET_Y);
 
@@ -62,6 +89,7 @@ impl Checkbox {
         }
     }
 
+    /// Toggles the checkbox from either enabled to disasbled, or vis-a-versa.
     pub fn toggle(&mut self) -> ToggleState {
         if self.state == ToggleState::Disabled {
             self.state = ToggleState::Enabled;

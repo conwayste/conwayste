@@ -38,7 +38,9 @@ pub struct Layer {
     pub focused_widget: Option<WidgetID>,
 }
 
+/// A container of one or more widgets or panes
 impl Layer {
+    /// Specify the unique widget identifer for the layer
     pub fn new(widget_id: WidgetID) -> Self {
         Layer {
             id: widget_id,
@@ -48,10 +50,14 @@ impl Layer {
         }
     }
 
+    // TODO builder
+
+    /// Add a widget to the layer
     pub fn add(&mut self, widget: Box<dyn Widget>) {
         self.widgets.push(widget);
     }
 
+    /// Layer passes `exit_focus` request forward to its elements
     pub fn exit_focus(&mut self) {
         if let Some(other_id) = self.focused_widget {
             if let Some(other_tf) = self.textfield_from_id(other_id) {
@@ -60,6 +66,7 @@ impl Layer {
         }
     }
 
+    /// Layer passes `enter_focus` request forward to its elements
     pub fn enter_focus(&mut self, id: WidgetID) {
         self.exit_focus();
 
@@ -73,6 +80,9 @@ impl Layer {
         panic!("ERROR in Layer::enter_focus() =>  Widget (ID: {:?}) not found in layer (ID: {:?})", id, self.id);
     }
 
+    /// Iterates through all of the widgets grouped in this layer searching for the specified WidgetID.
+    /// If a Pane widget is found, it will search through all of its contained elements as well.
+    /// In either scenario, the first element found will be returned.
     pub fn get_widget_mut(&mut self, id: WidgetID) -> &mut Box<dyn Widget> {
         let mut index = None;
         let mut pane_index = None;
@@ -108,11 +118,15 @@ impl Layer {
         panic!("ERROR in Layer::get_widget_mut() => Widget (ID: {:?}) not found in layer (ID: {:?})", id, self.id);
     }
 
+    // TODO add support for other widgets
+
+    /// Returns the desired text field from the provided WidgetID, if found in the layer
     pub fn textfield_from_id(&mut self, id: WidgetID) -> Option<&mut TextField> {
         let widget = self.get_widget_mut(id);
         return widget.downcast_mut::<TextField>();
     }
 
+    /// Returns the desired chat box from the provided WidgetID, if found in the layer
     pub fn chatbox_from_id(&mut self, id: WidgetID) -> Option<&mut Chatbox> {
         let widget = self.get_widget_mut(id);
         return widget.downcast_mut::<Chatbox>();

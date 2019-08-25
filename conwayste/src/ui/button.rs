@@ -40,7 +40,33 @@ pub struct Button {
     pub action: UIAction
 }
 
+/// A named widget that can be clicked to result in an occuring action.
 impl Button {
+
+    /// Creates a Button widget.
+    ///
+    /// # Arguments
+    /// * `ctx` - GGEZ context
+    /// * `font` - font to be used when drawing the text
+    /// * `button_text` - Text to be displayed
+    /// * `widget_id` - Unique widget identifier
+    /// * `action` - Unique action identifer
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ui::Button;
+    ///
+    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
+    ///     let font = Font::default();
+    ///     let b = Button::new(ctx, font, "TestButton", WidgetID::TestButton1, UIAction::PrintHelloWorld)
+    ///         .label_color(Color::from(css::DARKCYAN))
+    ///         .button_color(Color::from(css::WHITE));
+    ///
+    ///     b.draw(ctx, font)?;
+    /// }
+    /// ```
+    ///
     pub fn new(ctx: &mut Context, font: &Font, button_text: &'static str, widget_id: WidgetID, action: UIAction) -> Self {
         const OFFSET_X: f32 = 8.0;
         const OFFSET_Y: f32 = 4.0;
@@ -64,11 +90,13 @@ impl Button {
         }
     }
 
+    /// Sets the color of the Button's text to the specified ggez `Color`
     pub fn label_color(mut self, color: Color) -> Self {
         self.label = self.label.set_color(color);
         self
     }
 
+    /// Sets the color of the button to the specified ggez `Color`
     pub fn button_color(mut self, color: Color) -> Self {
         self.button_color = color;
         self

@@ -39,7 +39,9 @@ pub struct Pane {
     // might need something to track mouse state to see if we are still clicked within the boundaries of the pane for dragging
 }
 
+/// A container of one or more widgets
 impl Pane {
+    /// Specify the unique widget identifer for the pane, and its dimensional bounds
     pub fn new(widget_id: WidgetID, dimensions: Rect) -> Self {
         Pane {
             id: widget_id,
@@ -51,12 +53,14 @@ impl Pane {
         }
     }
 
+    /// Add a widget to the pane
     pub fn add(&mut self, mut widget: Box<dyn Widget>) {
         let dims = widget.size();
         widget.set_size(Rect::new(dims.x + self.dimensions.x, dims.y + self.dimensions.y, dims.w, dims.h));
         self.widgets.push(widget);
     }
 
+    // TODO re-evaluate need? Seems to be only used for buttons now
     pub fn update(&mut self, is_mouse_released: bool) {
         if is_mouse_released {
             self.previous_pos = None;

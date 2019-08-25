@@ -26,7 +26,33 @@ pub struct Label {
     pub dimensions: Rect,
 }
 
+/// A graphical widget representation of text
 impl Label {
+    /// Creates a Label widget.
+    ///
+    /// # Arguments
+    /// * `ctx` - GGEZ context
+    /// * `font` - font to be used when drawing the text
+    /// * `text` - Label text
+    /// * `color` - Text color
+    /// * `widget_id` - Unique widget identifier
+    /// * `action` - Unique action identifer
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ui::Button;
+    ///
+    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
+    ///     let font = Font::default();
+    ///     let b = Button::new(ctx, font, "TestButton", WidgetID::TestButton1, UIAction::PrintHelloWorld)
+    ///         .label_color(Color::from(css::DARKCYAN))
+    ///         .button_color(Color::from(css::WHITE));
+    ///
+    ///     b.draw(ctx, font)?;
+    /// }
+    /// ```
+    ///
     pub fn new(ctx: &mut Context, font: &Font, string: &'static str, color: Color, origin: Point2<f32>) -> Self {
         // TODO pass in as a parameter the scale
         let mut text = Text::new(string);
