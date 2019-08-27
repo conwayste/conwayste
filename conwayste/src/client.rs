@@ -257,149 +257,6 @@ fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
 }
 
 
-enum Orientation {
-    Vertical,
-    Horizontal,
-    Diagonal
-}
-
-// Toggle a horizontal, vertical, or diagonal line, as player with index 0. This is only used for
-// the intro currently. Part or all of the line can be outside of the Universe; if this is the
-// case, only the parts inside the Universe are toggled.
-fn toggle_line(s: &mut MainState, orientation: Orientation, col: isize, row: isize, width: isize, height: isize) {
-    let player_id = 0;   // hardcode player ID, since this is just for the intro
-    match orientation {
-        Orientation::Vertical => {
-            for r in row..(height + row) {
-                if col < 0 || r < 0 { continue }
-                let _ = s.intro_uni.toggle(col as usize, r as usize, player_id);  // `let _ =`, because we don't care about errors
-            }
-        }
-        Orientation::Horizontal => {
-            for c in col..(width + col) {
-                if c < 0 || row < 0 { continue }
-                let _ = s.intro_uni.toggle(c as usize, row as usize, player_id);
-            }
-        }
-        Orientation::Diagonal => {
-            for x in 0..(width - 1) {
-                let c: isize = col+x;
-                let r: isize = row+x;
-                if c < 0 || r < 0 { continue; }
-                let _ = s.intro_uni.toggle(c as usize, r as usize, player_id);
-            }
-        }
-    }
-}
-
-fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
-
-    // 1) Calculate width and height of rectangle which represents the intro logo
-    // 2) Determine height and width of the window
-    // 3) Center it
-    // 4) get offset for row and column to draw at
-
-    let resolution = s.video_settings.get_active_resolution();
-    let win_width  = (resolution.0 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
-    let win_height = (resolution.1 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
-    let player_id = 0;   // hardcoded for this intro
-
-    let letter_width = 5;
-    let letter_height = 6;
-
-    // 9 letters; account for width and spacing
-    let logo_width = 9*5 + 9*5;
-    let logo_height = letter_height;
-
-    let mut offset_col = win_width/2  - logo_width/2;
-    let     offset_row = win_height/2 - logo_height/2;
-
-    let toggle = |s_: &mut MainState, col: isize, row: isize| {
-        if col >= 0 || row >= 0 {
-            let _ = s_.intro_uni.toggle(col as usize, row as usize, player_id); // we don't care if an error is returned
-        }
-    };
-
-    // C
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
-
-    offset_col += 2*letter_width;
-
-    // O
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col+letter_width-1, offset_row+1, letter_width,letter_height-1);
-
-    offset_col += 2*letter_width;
-
-    // N
-    toggle_line(s, Orientation::Vertical, offset_col, offset_row, letter_width,letter_height+1);
-    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
-    toggle_line(s, Orientation::Diagonal, offset_col+1, offset_row+1, letter_width,letter_height);
-
-    offset_col += 2*letter_width;
-
-    // W
-    toggle_line(s, Orientation::Vertical, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height, letter_width,letter_height);
-    toggle(s, offset_col+letter_width/2, offset_row+letter_height-1);
-    toggle(s, offset_col+letter_width/2, offset_row+letter_height-2);
-    toggle(s, offset_col+letter_width/2+1, offset_row+letter_height-1);
-    toggle(s, offset_col+letter_width/2+1, offset_row+letter_height-2);
-
-    offset_col += 2*letter_width;
-
-    // A
-    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height/2, letter_width-1,letter_height);
-
-    offset_col += 2*letter_width;
-
-    // Y
-    toggle(s, offset_col, offset_row);
-    toggle(s, offset_col, offset_row+1);
-    toggle(s, offset_col, offset_row+2);
-    toggle(s, offset_col+letter_height, offset_row);
-    toggle(s, offset_col+letter_height, offset_row+1);
-    toggle(s, offset_col+letter_height, offset_row+2);
-    toggle_line(s, Orientation::Vertical, offset_col+letter_height/2, offset_row+letter_width/2+2, letter_width,letter_height-3);
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height/2, letter_width+2,letter_height-1);
-
-    offset_col += 2*letter_width;
-
-    // S
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height, letter_width,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height/2, letter_width,letter_height);
-    toggle(s, offset_col, offset_row+1);
-    toggle(s, offset_col, offset_row+2);
-    toggle(s, offset_col+letter_width-1, offset_row+4);
-    toggle(s, offset_col+letter_width-1, offset_row+5);
-
-    offset_col += 2*letter_width;
-
-    // T
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col+letter_width/2, offset_row+1, letter_width,letter_height);
-
-    offset_col += 2*letter_width;
-
-    // E
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height/2, letter_width-2,letter_height);
-
-    Ok(())
-}
-
-
 // Then we implement the `ggez::game::GameState` trait on it, which
 // requires callbacks for creating the game state, updating it each
 // frame, and drawing it.
@@ -1278,6 +1135,148 @@ impl MainState {
             });
         }
     }
+}
+
+enum Orientation {
+    Vertical,
+    Horizontal,
+    Diagonal
+}
+
+// Toggle a horizontal, vertical, or diagonal line, as player with index 0. This is only used for
+// the intro currently. Part or all of the line can be outside of the Universe; if this is the
+// case, only the parts inside the Universe are toggled.
+fn toggle_line(s: &mut MainState, orientation: Orientation, col: isize, row: isize, width: isize, height: isize) {
+    let player_id = 0;   // hardcode player ID, since this is just for the intro
+    match orientation {
+        Orientation::Vertical => {
+            for r in row..(height + row) {
+                if col < 0 || r < 0 { continue }
+                let _ = s.intro_uni.toggle(col as usize, r as usize, player_id);  // `let _ =`, because we don't care about errors
+            }
+        }
+        Orientation::Horizontal => {
+            for c in col..(width + col) {
+                if c < 0 || row < 0 { continue }
+                let _ = s.intro_uni.toggle(c as usize, row as usize, player_id);
+            }
+        }
+        Orientation::Diagonal => {
+            for x in 0..(width - 1) {
+                let c: isize = col+x;
+                let r: isize = row+x;
+                if c < 0 || r < 0 { continue; }
+                let _ = s.intro_uni.toggle(c as usize, r as usize, player_id);
+            }
+        }
+    }
+}
+
+fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
+
+    // 1) Calculate width and height of rectangle which represents the intro logo
+    // 2) Determine height and width of the window
+    // 3) Center it
+    // 4) get offset for row and column to draw at
+
+    let resolution = s.video_settings.get_active_resolution();
+    let win_width  = (resolution.0 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let win_height = (resolution.1 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let player_id = 0;   // hardcoded for this intro
+
+    let letter_width = 5;
+    let letter_height = 6;
+
+    // 9 letters; account for width and spacing
+    let logo_width = 9*5 + 9*5;
+    let logo_height = letter_height;
+
+    let mut offset_col = win_width/2  - logo_width/2;
+    let     offset_row = win_height/2 - logo_height/2;
+
+    let toggle = |s_: &mut MainState, col: isize, row: isize| {
+        if col >= 0 || row >= 0 {
+            let _ = s_.intro_uni.toggle(col as usize, row as usize, player_id); // we don't care if an error is returned
+        }
+    };
+
+    // C
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
+
+    offset_col += 2*letter_width;
+
+    // O
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width-1, offset_row+1, letter_width,letter_height-1);
+
+    offset_col += 2*letter_width;
+
+    // N
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row, letter_width,letter_height+1);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
+    toggle_line(s, Orientation::Diagonal, offset_col+1, offset_row+1, letter_width,letter_height);
+
+    offset_col += 2*letter_width;
+
+    // W
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height, letter_width,letter_height);
+    toggle(s, offset_col+letter_width/2, offset_row+letter_height-1);
+    toggle(s, offset_col+letter_width/2, offset_row+letter_height-2);
+    toggle(s, offset_col+letter_width/2+1, offset_row+letter_height-1);
+    toggle(s, offset_col+letter_width/2+1, offset_row+letter_height-2);
+
+    offset_col += 2*letter_width;
+
+    // A
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height/2, letter_width-1,letter_height);
+
+    offset_col += 2*letter_width;
+
+    // Y
+    toggle(s, offset_col, offset_row);
+    toggle(s, offset_col, offset_row+1);
+    toggle(s, offset_col, offset_row+2);
+    toggle(s, offset_col+letter_height, offset_row);
+    toggle(s, offset_col+letter_height, offset_row+1);
+    toggle(s, offset_col+letter_height, offset_row+2);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_height/2, offset_row+letter_width/2+2, letter_width,letter_height-3);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height/2, letter_width+2,letter_height-1);
+
+    offset_col += 2*letter_width;
+
+    // S
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height/2, letter_width,letter_height);
+    toggle(s, offset_col, offset_row+1);
+    toggle(s, offset_col, offset_row+2);
+    toggle(s, offset_col+letter_width-1, offset_row+4);
+    toggle(s, offset_col+letter_width-1, offset_row+5);
+
+    offset_col += 2*letter_width;
+
+    // T
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col+letter_width/2, offset_row+1, letter_width,letter_height);
+
+    offset_col += 2*letter_width;
+
+    // E
+    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
+    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
+    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height/2, letter_width-2,letter_height);
+
+    Ok(())
 }
 
 
