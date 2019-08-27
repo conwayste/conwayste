@@ -36,7 +36,7 @@ pub enum InputAction {
 
     MouseClick(MouseButton, i32, i32),
     MouseDrag(MouseButton, i32, i32),
-    MouseRelease(MouseButton),
+    //MouseRelease(MouseButton),
     MouseMovement(i32, i32),
 
 //    Gamepad((Button, Axis)),
@@ -67,11 +67,6 @@ impl InputManager {
         }
 
         self.events.push_back(input);
-    }
-
-    /// Pokes at the head of the queue and returns an event if available.
-    pub fn peek(&self) -> Option<&InputAction> {
-        self.events.front()
     }
 
     /// Dequeues can input event.

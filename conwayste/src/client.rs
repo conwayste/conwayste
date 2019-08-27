@@ -645,8 +645,8 @@ impl EventHandler for MainState {
                           _ctx: &mut Context,
                           x: f32,
                           y: f32,
-                          dx: f32,
-                          dy: f32
+                          _dx: f32,
+                          _dy: f32
                           ) {
         match self.stage {
             Stage::Intro(_) => {}
@@ -719,10 +719,8 @@ impl EventHandler for MainState {
         );
         graphics::set_screen_coordinates(ctx, new_rect).unwrap();
         self.viewport.set_dimensions(width as u32, height as u32);
-        self.config.modify(|settings| {
-            settings.video.resolution_x = width as u32;
-            settings.video.resolution_y = height as u32;
-        });
+        self.config.set_resolution(width as u32, height as u32);
+        self.video_settings.resolution = (width as u32, height as u32);
     }
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
@@ -774,7 +772,7 @@ impl MainState {
             // intro
             &self.intro_viewport
         };
-        let viewport_rect = viewport.get_viewport();
+        let viewport_rect = viewport.get_rect();
 
         // grid background
         let rectangle = graphics::Mesh::new_rectangle(ctx,
@@ -814,7 +812,7 @@ impl MainState {
             }
         });
 
-        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
+        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, viewport_rect) {
             let origin = graphics::DrawParam::new().dest(Point2::new(0.0, 0.0));
             let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect, draw_params.fg_color)?;
 
@@ -989,7 +987,7 @@ impl MainState {
                     input::InputAction::MouseClick(MouseButton::Right, _x, _y) => {}
                     input::InputAction::MouseMovement(_x, _y) => {}
                     input::InputAction::MouseDrag(MouseButton::Left, _x, _y) => {}
-                    input::InputAction::MouseRelease(_) => {}
+                    /*input::InputAction::MouseRelease(_) => {}*/
 
                     input::InputAction::KeyPress(keycode, repeat) => {
                         if !self.menu_sys.get_controls().is_menu_key_pressed() {
@@ -1163,6 +1161,8 @@ impl MainState {
                                 }
                             }
                             menu::MenuItemIdentifier::Resolution => {
+                                // NO-OP; menu item is effectively read-only
+                                /*
                                 if !self.escape_key_pressed {
                                     self.video_settings.advance_to_next_resolution(ctx);
 
@@ -1172,6 +1172,7 @@ impl MainState {
                                     self.config.set_resolution(w, h);
                                     self.viewport.set_dimensions(w, h);
                                 }
+                                */
                             }
                             _ => {}
                         }

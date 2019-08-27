@@ -245,22 +245,23 @@ impl Viewport {
         self.grid_view.set_height(h as f32);
     }
 
-    /// Given a point, find the nearest Cell specified by a row and column.
+    /// Given a point, find the nearest Cell (game coordinates) specified by a point in window
+    /// coordinates.
     pub fn get_cell(&self, point: Point2<f32>) -> Option<Cell> {
         self.grid_view.game_coords_from_window(point)
     }
 
-    /// Get the cell size, which directly correlates to the zoom level.
+    /// Gets the cell size in pixels.
     pub fn get_cell_size(&self) -> f32 {
         self.grid_view.cell_size
     }
 
-    /// Gets a rectangle representing the grid.
-    pub fn get_viewport(&self) -> Rect {
+    /// Gets a rectangle representing the grid in game coordinates.
+    pub fn get_rect(&self) -> Rect {
         self.grid_view.rect
     }
 
-    /// Returns the origin of the grid.
+    /// Returns the origin of the grid in window coordinates.
     pub fn get_origin(&self) -> Point2<f32> {
         self.grid_view.grid_origin
     }
