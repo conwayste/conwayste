@@ -817,7 +817,7 @@ impl MainState {
         });
 
         if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
-            let origin = graphics::DrawParam::new().dest(clipped_rect.point());
+            let origin = graphics::DrawParam::new().dest(Point2::new(0.0, 0.0));
             let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect, draw_params.fg_color)?;
 
             graphics::draw(ctx, &rectangle, origin)?;
