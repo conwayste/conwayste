@@ -90,10 +90,6 @@ impl Viewport {
                 ZoomDirection::ZoomOut => ZOOM_OUT,
             };
 
-            //debug!("Window Size: ({}, {})", self.grid_view.rect.w, self.grid_view.rect.h);
-            //debug!("Origin Before: ({},{})", self.grid_view.grid_origin.x, self.grid_view.grid_origin.y);
-            //debug!("Cell Size Before: {},", self.grid_view.cell_size);
-
             let next_cell_size = self.grid_view.cell_size + zoom_dir;
             let old_cell_size = self.grid_view.cell_size;
             let cell_size_delta = next_cell_size - old_cell_size;
@@ -106,9 +102,6 @@ impl Viewport {
                                                  old_cell_center_x as f32 * old_cell_size as f32);
                 let delta_y = cell_size_delta * (old_cell_center_y as f32 * next_cell_size as f32 -
                                                  old_cell_center_y as f32 * old_cell_size as f32);
-
-                //debug!("current cell count: {}, {}", old_cell_center_x, old_cell_center_x);
-                //debug!("delta in win coords: {}, {}", delta_x, delta_y);
 
                 self.grid_view.cell_size = next_cell_size;
 
@@ -126,8 +119,6 @@ impl Viewport {
 
                 self.adjust_panning(true, NO_INPUT);
 
-                //debug!("Origin After: ({},{})\n", self.grid_view.grid_origin.x, self.grid_view.grid_origin.y);
-                //debug!("Cell Size After: {},", self.grid_view.cell_size);
             }
         }
     }
@@ -332,7 +323,7 @@ impl GridView {
         let col: isize = ((point.x - self.grid_origin.x) / self.cell_size) as isize;
         let row: isize = ((point.y - self.grid_origin.y) / self.cell_size) as isize;
 
-        (col , row)
+        (col, row)
     }
 
     /// Given a window point in pixels, we'll determine the nearest intersecting

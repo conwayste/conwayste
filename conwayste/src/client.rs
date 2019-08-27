@@ -300,8 +300,6 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     // 4) get offset for row and column to draw at
 
     let resolution = s.video_settings.get_active_resolution();
-    debug!("init_title_screen: resolution is {:?}", resolution); //XXX
-    // let resolution = (DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT);
     let win_width  = (resolution.0 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
     let win_height = (resolution.1 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
     let player_id = 0;   // hardcoded for this intro
@@ -1154,7 +1152,7 @@ impl MainState {
                             menu::MenuItemIdentifier::Fullscreen => {
                                 if !self.escape_key_pressed {
                                     // toggle
-                                    let mut is_fullscreen = !self.video_settings.is_fullscreen;
+                                    let is_fullscreen = !self.video_settings.is_fullscreen;
                                     self.video_settings.is_fullscreen = is_fullscreen;
                                     // actually update screen based on what we toggled
                                     self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: rollback if fail

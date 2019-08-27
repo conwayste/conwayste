@@ -351,19 +351,6 @@ impl MenuSystem {
                         container.text_width = max_text_width;
                     }
                 }
-
-                /*
-                // Denote Current Selection
-                ////////////////////////////////////////////////////
-                {
-                    let cur_option_str = " >";
-                    let ref container = self.menus.get(&self.menu_state).unwrap();
-                    let coords = container.get_anchor();
-                    let offset = Point2::new(-50.0, (*index) as f32 * 50.0);
-
-                    utils::Graphics::draw_text(_ctx, &self.font, self.active_color, &cur_option_str, &coords, Some(&offset))?;
-                }
-                */
             }
         }
         Ok(())
