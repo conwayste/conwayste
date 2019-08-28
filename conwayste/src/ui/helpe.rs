@@ -24,13 +24,20 @@ use ggez::{Context, GameResult};
 /// Helper function to draw text onto the screen.
 /// Given the string `str`, it will be drawn at the point coordinates specified by `coords`.
 /// An offset can be specified by an optional `adjustment` point.
-pub fn draw_text(_ctx: &mut Context, font: &Font, color: Color, text: &str, coords: &Point2<f32>, adjustment: Option<&Point2<f32>>) -> GameResult<()> {
+///
+/// # Return value
+///
+/// On success, an `Ok((text_width, text_height))` tuple is returned, indicating the width
+/// and height of the text in pixels.
+pub fn draw_text(ctx: &mut Context, font: &Font, color: Color, text: &str,
+                 coords: &Point2<f32>, adjustment: Option<&Point2<f32>>) -> GameResult<(u32, u32)> {
     let text_fragment = TextFragment::new(text)
         .scale(Scale::uniform(20.0))              // TODO needs refactoring so size is specified in signature, fix in UI branch
         .color(color)
         .font(*font);
 
     let mut graphics_text = Text::new(text_fragment);
+    let (text_width, text_height) = (graphics_text.width(ctx), graphics_text.height(ctx));
     let dst;
 
     if let Some(offset) = adjustment {
@@ -39,8 +46,8 @@ pub fn draw_text(_ctx: &mut Context, font: &Font, color: Color, text: &str, coor
     else {
         dst = Point2::new(coords.x, coords.y);
     }
-    graphics::draw(_ctx, &mut graphics_text, DrawParam::default().dest(dst))?; // actually draw the text!
-    Ok(())
+    graphics::draw(ctx, &mut graphics_text, DrawParam::default().dest(dst))?; // actually draw the text!
+    Ok((text_width, text_height))
 }
 
 /// Determines if two rectangles overlap, and if so,
