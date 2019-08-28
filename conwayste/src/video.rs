@@ -64,7 +64,6 @@ pub struct VideoSettings {
 impl VideoSettings {
     pub fn new() -> VideoSettings {
         VideoSettings {
-            // TODO: ensure this is set on startup
             resolution: (0, 0),
             is_fullscreen: false,
             res_manager: DisplayModeManager::new(),
