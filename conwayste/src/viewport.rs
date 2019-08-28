@@ -1,4 +1,4 @@
-/*  Copyright 2017-2018 the Conwayste Developers.
+/*  Copyright 2017-2019 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -21,7 +21,7 @@ extern crate ggez;
 use ggez::graphics::Rect;
 use ggez::nalgebra::Point2;
 
-use crate::utils;
+use crate::ui;
 use crate::constants::{
     DEFAULT_SCREEN_HEIGHT,
     DEFAULT_SCREEN_WIDTH,
@@ -111,10 +111,9 @@ impl Viewport {
                 let alpha = self.grid_view.rect.w as i32;
 
                 if phi > alpha {
-                    self.grid_view.grid_origin = utils::Graphics::point_offset(self.grid_view.grid_origin,
-                                                                         -cell_size_delta * delta_x,
-                                                                         -cell_size_delta * delta_y
-                                                                         );
+                    self.grid_view.grid_origin = ui::point_offset(self.grid_view.grid_origin,
+                                                                  -cell_size_delta * delta_x,
+                                                                  -cell_size_delta * delta_y);
                 }
 
                 self.adjust_panning(true, NO_INPUT);
@@ -223,7 +222,7 @@ impl Viewport {
         }
 
         if pan {
-            self.grid_view.grid_origin = utils::Graphics::point_offset(self.grid_view.grid_origin, dx_in_pixels, dy_in_pixels);
+            self.grid_view.grid_origin = ui::point_offset(self.grid_view.grid_origin, dx_in_pixels, dy_in_pixels);
         }
         else {
             // We cannot pan as we are out of bounds, but let us ensure we maintain a border
@@ -353,7 +352,7 @@ impl GridView {
 
         // The 'minus one' above for right and bottom give it that grid-like feel :)
         let rect = Rect::new(left, top, right - left, bottom - top);
-        utils::Graphics::intersection(rect, self.rect)
+        ui::intersection(rect, self.rect)
     }
 
     /// The column and row supplied lies is `None` outside of the grid.

@@ -1,4 +1,4 @@
-/*  Copyright 2017-2018 the Conwayste Developers.
+/*  Copyright 2017-2019 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -23,7 +23,7 @@ use ggez::nalgebra::Point2;
 use std::collections::HashMap;
 
 use crate::video;
-use crate::utils;
+use crate::ui;
 use crate::constants::{DEFAULT_ACTIVE_COLOR, DEFAULT_INACTIVE_COLOR};
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
@@ -339,13 +339,13 @@ impl MenuSystem {
                         }
 
                         let color = if index == i { self.active_color } else { self.inactive_color };
-                        let (w, h) = utils::Graphics::draw_text(_ctx, &self.font, color, &menu_option_str,
-                                                                 &coords, Some(&offset))?;
+                        let (w, h) = ui::draw_text(_ctx, &self.font, color, &menu_option_str,
+                                                   &coords, Some(&offset))?;
                         if max_text_width < w as f32 {
                             max_text_width = w as f32;
                         }
 
-                        offset = utils::Graphics::point_offset(offset, 0.0, h as f32 + 10.0);
+                        offset = ui::point_offset(offset, 0.0, h as f32 + 10.0);
                     }
                     if container.text_width < max_text_width {
                         container.text_width = max_text_width;
@@ -374,8 +374,8 @@ impl MenuSystem {
                 let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
 
                 // TODO: color
-                let (_w, h) = utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color,
-                                                         &is_fullscreen_str, &coords, None)?;
+                let (_w, h) = ui::draw_text(_ctx, &self.font, self.inactive_color,
+                                            &is_fullscreen_str, &coords, None)?;
                 y += h as f32 + 10.0;
 
                 ////////////////////////////////
@@ -386,10 +386,10 @@ impl MenuSystem {
                 let cur_res_str = format!("{}x{}", width, height);
 
                 // TODO: color
-                utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color, &cur_res_str,
-                                           &coords, None)?;
+                ui::draw_text(_ctx, &self.font, self.inactive_color, &cur_res_str,
+                              &coords, None)?;
             }
-             _  => {}
+            _  => {}
         }
         Ok(())
     }
