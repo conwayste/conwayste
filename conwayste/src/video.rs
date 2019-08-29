@@ -121,11 +121,11 @@ impl VideoSettings {
     /// Makes us fullscreen or not based on the `is_fullscreen` field.
     pub fn update_fullscreen(&mut self, ctx: &mut Context) -> GameResult<()> {
         let fs_type = if self.is_fullscreen {
-            FullscreenType::Windowed
-        } else {
             FullscreenType::Desktop
+        } else {
+            FullscreenType::Windowed
         };
-        let _ = graphics::set_fullscreen(ctx, fs_type)?;
+        graphics::set_fullscreen(ctx, fs_type)?;
         Ok(())
     }
 }
