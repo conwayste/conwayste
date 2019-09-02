@@ -584,7 +584,11 @@ impl EventHandler for MainState {
         );
         graphics::set_screen_coordinates(ctx, new_rect).unwrap();
         self.viewport.set_dimensions(width as u32, height as u32);
-        self.config.set_resolution(width as u32, height as u32);
+        if self.video_settings.is_fullscreen {
+            debug!("not saving resolution to config because is_fullscreen is true");
+        } else {
+            self.config.set_resolution(width as u32, height as u32);
+        }
         self.video_settings.resolution = (width as u32, height as u32);
     }
 
