@@ -97,6 +97,7 @@ struct MainState {
     intro_viewport:      viewport::Viewport,
     input_manager:       input::InputManager,
     net_worker:          Option<network::ConwaysteNetWorker>,
+    recvd_first_resize:  bool,       // work around an apparent ggez bug where the first resize event is bogus
 
     // Input state
     single_step:         bool,
@@ -378,6 +379,7 @@ impl MainState {
             intro_viewport:      intro_viewport,
             input_manager:       input::InputManager::new(input::InputDeviceType::PRIMARY),
             net_worker:          None,
+            recvd_first_resize:  false,
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -567,7 +569,13 @@ impl EventHandler for MainState {
     }
 
     fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
-        debug!("Resized screen to {}, {}", width, height);
+        if !self.recvd_first_resize {
+            // Work around apparent ggez bug -- bogus first resize_event
+            debug!("IGNORING resize_event: {}, {}", width, height);
+            self.recvd_first_resize = true;
+            return;
+        }
+        debug!("resize_event: {}, {}", width, height);
         let new_rect = graphics::Rect::new(
             0.0,
             0.0,
