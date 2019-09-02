@@ -107,8 +107,14 @@ impl TextField {
         self.cursor_index = 0;
     }
 
+    fn get_text_width_in_px(&self, ctx: &mut Context) -> f32 {
+        let mut text = Text::new(self.text.clone());
+        let text = text.set_font(Font::default(), Scale::uniform(20.0));
+        text.width(ctx) as f32
+    }
+
     /// Adds a character at the current cursor position
-    pub fn add_char_at_cursor(&mut self, character: char)
+    pub fn add_char_at_cursor(&mut self, ctx: &mut Context, character: char)
     {
         if self.cursor_index == self.text.len() {
             self.text.push(character);
@@ -118,18 +124,8 @@ impl TextField {
         self.cursor_index += 1;
     }
 
-    /// Adds a string at the current cursor position
-    pub fn add_string_at_cursor(&mut self, text: String) {
-        if self.cursor_index == self.text.len() {
-            self.text.push_str(&text);
-        } else {
-            self.text.insert_str(self.cursor_index, &text);
-        }
-        self.cursor_index += text.len();
-    }
-
     /// Deletes a character to the left of the current cursor
-    pub fn remove_left_of_cursor(&mut self) {
+    pub fn remove_left_of_cursor(&mut self, ctx: &mut Context) {
         if self.cursor_index != 0 {
             if self.cursor_index == self.text.len() {
                 self.text.pop();
@@ -141,8 +137,10 @@ impl TextField {
     }
 
     /// Deletes a chracter to the right of the current cursor
-    pub fn remove_right_of_cursor(&mut self) {
-        if self.text.len() != 0 && self.cursor_index != self.text.len() {
+    pub fn remove_right_of_cursor(&mut self, ctx: &mut Context) {
+        let text_len = self.text.len();
+
+        if text_len != 0 && self.cursor_index != text_len {
             self.text.remove(self.cursor_index);
         }
     }
@@ -151,19 +149,21 @@ impl TextField {
     pub fn clear(&mut self) {
         self.text.clear();
         self.cursor_index = 0;
+        self.visible_start_index = 0;
+        self.visible_end_index = 0;
         self.blink_timestamp = None;
         self.draw_cursor = false;
     }
 
-    /// Advances the cursor to the right by one
-    pub fn inc_cursor_pos(&mut self) {
+    /// Advances the cursor to the right by one character
+    pub fn inc_cursor_pos(&mut self, ctx: &mut Context) {
         if self.cursor_index < self.text.len() {
             self.cursor_index += 1;
         }
     }
 
-    /// Advances the cursor to the left by one
-    pub fn dec_cursor_pos(&mut self) {
+    /// Decrements the cursor to the left by one character
+    pub fn dec_cursor_pos(&mut self, ctx: &mut Context) {
         if self.cursor_index > 0 {
             self.cursor_index -= 1;
         }
@@ -243,10 +243,10 @@ impl Widget for TextField {
             let text_with_cursor = self.text.clone();
             let text_pos = Point2::new(self.dimensions.x + CURSOR_OFFSET_PX, self.dimensions.y);
 
-            draw_text(ctx, font, Color::from(css::WHITESMOKE), &text_with_cursor, &text_pos, None)?;
+            draw_text(ctx, font, Color::from(css::WHITESMOKE), &text_with_cursor[self.visible_start_index..self.visible_end_index], &text_pos, None)?;
 
             if self.draw_cursor {
-                let mut text = Text::new(&text_with_cursor[0..self.cursor_index]);
+                let mut text = Text::new(&text_with_cursor[self.visible_start_index..self.cursor_index]);
                 let text = text.set_font(*font, Scale::uniform(20.0));
                 let cursor_position_px = text.width(ctx) as f32;
                 let cursor_position = Point2::new(self.dimensions.x + cursor_position_px + CURSOR_OFFSET_PX, self.dimensions.y);

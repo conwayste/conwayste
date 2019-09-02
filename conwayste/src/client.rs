@@ -331,7 +331,11 @@ impl MainState {
         color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
         color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
 
-        let font = graphics::Font::default(); // Provides DejaVuSerif.ttf
+        let mut font = graphics::Font::default(); // Provides DejaVuSerif.ttf
+        match graphics::Font::new(ctx, path::Path::new("/telegrama_render.ttf")) {
+            Ok(f) => font = f,
+            Err(e) => return Err(GameError::FilesystemError( format!("Could not load or find font. {:?}", e) )),
+        }
 
         let bigbang =
         {
@@ -456,7 +460,7 @@ impl EventHandler for MainState {
                 }
 
                 if textfield_under_focus {
-                    self.process_text_field_inputs();
+                    self.process_text_field_inputs(ctx);
                 } else {
                     self.process_running_inputs();
                 }
@@ -699,7 +703,7 @@ impl EventHandler for MainState {
     /// <https://wiki.libsdl.org/SDL_TextEditingEvent>
     /// <https://wiki.libsdl.org/SDL_TextInputEvent>
     /// <https://wiki.libsdl.org/Tutorials/TextInput>
-    fn text_input_event(&mut self, _ctx: &mut Context, character: char) {
+    fn text_input_event(&mut self, ctx: &mut Context, character: char) {
         // Ignore control characters (like Esc or Del)./
         if character.is_control() {
             return;
@@ -708,7 +712,7 @@ impl EventHandler for MainState {
         let screen = self.get_current_screen();
         if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
             if tf.state.is_some() {
-                tf.add_char_at_cursor(character);
+                tf.add_char_at_cursor(ctx, character);
             }
         }
         // println!("[text_input_event] (text) {}", text);
@@ -981,7 +985,7 @@ impl MainState {
         }
     }
 
-    fn process_text_field_inputs(&mut self) {
+    fn process_text_field_inputs(&mut self, ctx: &mut Context) {
         let keycode;
 
         if let Some(k) = self.inputs.key_info.key {
@@ -1005,28 +1009,28 @@ impl MainState {
             KeyCode::Back => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.remove_left_of_cursor();
+                        tf.remove_left_of_cursor(ctx);
                     }
                 }
             }
             KeyCode::Delete => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.remove_right_of_cursor();
+                        tf.remove_right_of_cursor(ctx);
                     }
                 }
             }
             KeyCode::Left => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.dec_cursor_pos();
+                        tf.dec_cursor_pos(ctx);
                     }
                 }
             },
             KeyCode::Right => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.inc_cursor_pos();
+                        tf.inc_cursor_pos(ctx);
                     }
                 }
             }
