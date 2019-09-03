@@ -89,6 +89,7 @@ struct MainState {
     intro_uni:           Universe,
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
     color_settings:      ColorSettings,
+    uni_draw_params:     UniDrawParams,
     running:             bool,
     menu_sys:            menu::MenuSystem,
     video_settings:      video::VideoSettings,
@@ -360,6 +361,14 @@ impl MainState {
                 .birth()
         };
 
+        // Update universe draw parameters for intro
+        let intro_uni_draw_params = UniDrawParams {
+            bg_color: graphics::BLACK,
+            fg_color: graphics::BLACK,
+            player_id: -1,
+            draw_counter: true,
+        };
+
         /*
          * Network Initialization
          */
@@ -370,6 +379,7 @@ impl MainState {
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
+            uni_draw_params:     intro_uni_draw_params,
             color_settings:      color_settings,
             running:             false,
             menu_sys:            menu::MenuSystem::new(font),
@@ -414,8 +424,15 @@ impl EventHandler for MainState {
                     if remaining > 0.0 && remaining <= INTRO_DURATION - INTRO_PAUSE_DURATION {
                         self.intro_uni.next();
                         self.stage = Stage::Intro(remaining);
-                    }
-                    else {
+                    } else {
+                        // update universe draw params
+                        // keep in sync with other places where we transition to Run
+                        self.uni_draw_params = UniDrawParams {
+                            bg_color: self.color_settings.get_color(None),
+                            fg_color: self.color_settings.get_color(Some(CellState::Dead)),
+                            player_id: 1, // Current player, TODO sync with Server's CLIENT ID
+                            draw_counter: true,
+                        };
                         self.stage = Stage::Run; // XXX Menu Stage is disabled for the time being
                     }
                 }
@@ -545,6 +562,14 @@ impl EventHandler for MainState {
 
         match self.stage {
             Stage::Intro(_) => {
+                // update universe draw params
+                // keep in sync with other places where we transition to Run
+                self.uni_draw_params = UniDrawParams {
+                    bg_color: self.color_settings.get_color(None),
+                    fg_color: self.color_settings.get_color(Some(CellState::Dead)),
+                    player_id: 1, // Current player, TODO sync with Server's CLIENT ID
+                    draw_counter: true,
+                };
                 self.stage = Stage::Run; // TODO lets just go to the game for now...
                 self.menu_sys.reset();
             }
@@ -619,7 +644,7 @@ impl EventHandler for MainState {
 }
 
 
-struct GameOfLifeDrawParams {
+struct UniDrawParams {
     bg_color: Color,
     fg_color: Color,
     player_id: isize, // Player color >=0, Playerless < 0  // TODO: use Option<usize> instead
@@ -628,14 +653,9 @@ struct GameOfLifeDrawParams {
 
 impl MainState {
 
-    fn draw_game_of_life(&self,
-                         ctx: &mut Context,
-                         universe: &Universe,
-                         draw_params: &GameOfLifeDrawParams
-                         ) -> GameResult<()> {
+    fn draw_game_of_life(&self, ctx: &mut Context, universe: &Universe) -> GameResult<()> {
 
-
-        let viewport = if draw_params.player_id >= 0 {
+        let viewport = if self.uni_draw_params.player_id >= 0 {
             &self.viewport
         } else {
             // intro
@@ -647,7 +667,7 @@ impl MainState {
         let rectangle = graphics::Mesh::new_rectangle(ctx,
             GRID_DRAW_STYLE.to_draw_mode(),
             graphics::Rect::new(0.0, 0.0, viewport_rect.w, viewport_rect.h),
-            draw_params.bg_color)?;
+            self.uni_draw_params.bg_color)?;
         graphics::draw(ctx, &rectangle, DrawParam::new().dest(viewport_rect.point()))?;
 
         // grid foreground (dead cells)
@@ -657,15 +677,15 @@ impl MainState {
         let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
 
         // grid non-dead cells (walls, players, etc.)
-        let visibility = if draw_params.player_id >= 0 {
-            Some(draw_params.player_id as usize) //XXX, Player One
+        let visibility = if self.uni_draw_params.player_id >= 0 {
+            Some(self.uni_draw_params.player_id as usize)
         } else {
             // used for random coloring in intro
             Some(0)
         };
 
         universe.each_non_dead_full(visibility, &mut |col, row, state| {
-            let color = if draw_params.player_id >= 0 {
+            let color = if self.uni_draw_params.player_id >= 0 {
                 self.color_settings.get_color(Some(state))
             } else {
                 self.color_settings.get_random_color()
@@ -683,7 +703,8 @@ impl MainState {
 
         if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, viewport_rect) {
             let origin = graphics::DrawParam::new().dest(Point2::new(0.0, 0.0));
-            let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect, draw_params.fg_color)?;
+            let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect,
+                                                          self.uni_draw_params.fg_color)?;
 
             graphics::draw(ctx, &rectangle, origin)?;
             graphics::draw(ctx, &spritebatch, origin)?;
@@ -692,7 +713,7 @@ impl MainState {
         spritebatch.clear();
 
         ////////// draw generation counter
-        if draw_params.draw_counter {
+        if self.uni_draw_params.draw_counter {
             let gen_counter_str = universe.latest_gen().to_string();
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
             utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
@@ -702,29 +723,12 @@ impl MainState {
     }
 
     fn draw_intro(&mut self, ctx: &mut Context) -> GameResult<()>{
-
-        let draw_params = GameOfLifeDrawParams {
-            bg_color: graphics::BLACK,
-            fg_color: graphics::BLACK,
-            player_id: -1,
-            draw_counter: true,
-        };
-
-        self.draw_game_of_life(ctx, &self.intro_uni, &draw_params)
+        self.draw_game_of_life(ctx, &self.intro_uni)
     }
 
     fn draw_universe(&mut self, ctx: &mut Context) -> GameResult<()> {
-
-        // TODO: don't do this every frame
-        let draw_params = GameOfLifeDrawParams {
-            bg_color: self.color_settings.get_color(None),
-            fg_color: self.color_settings.get_color(Some(CellState::Dead)),
-            player_id: 1, // Current player, TODO sync with Server's CLIENT ID
-            draw_counter: true,
-        };
-
         self.first_gen_was_drawn = true;
-        self.draw_game_of_life(ctx, &self.uni, &draw_params)
+        self.draw_game_of_life(ctx, &self.uni)
     }
 
     fn pause_or_resume_game(&mut self) {
@@ -1190,6 +1194,7 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     // 2) Determine height and width of the window
     // 3) Center it
     // 4) get offset for row and column to draw at
+    // 5) update universe draw parameters
 
     let resolution = s.video_settings.get_active_resolution();
     let win_width  = (resolution.0 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
