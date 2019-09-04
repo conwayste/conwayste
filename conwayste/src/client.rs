@@ -94,8 +94,8 @@ struct MainState {
     menu_sys:            menu::MenuSystem,
     video_settings:      video::VideoSettings,
     config:              config::Config,
-    viewport:            viewport::Viewport,
-    intro_viewport:      viewport::Viewport,
+    viewport:            viewport::GridView,
+    intro_viewport:      viewport::GridView,
     input_manager:       input::InputManager,
     net_worker:          Option<network::ConwaysteNetWorker>,
     recvd_first_resize:  bool,       // work around an apparent ggez bug where the first resize event is bogus
@@ -293,12 +293,12 @@ impl MainState {
         vs.is_fullscreen = is_fullscreen;
         vs.update_fullscreen(ctx)?;
 
-        let intro_viewport = viewport::Viewport::new(
+        let intro_viewport = viewport::GridView::new(
             DEFAULT_ZOOM_LEVEL,
             universe_width_in_cells,
             universe_height_in_cells);
 
-        let viewport = viewport::Viewport::new(
+        let viewport = viewport::GridView::new(
             config.get().gameplay.zoom,
             universe_width_in_cells,
             universe_height_in_cells);
