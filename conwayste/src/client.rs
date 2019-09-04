@@ -1194,7 +1194,6 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     // 2) Determine height and width of the window
     // 3) Center it
     // 4) get offset for row and column to draw at
-    // 5) update universe draw parameters
 
     let resolution = s.video_settings.get_active_resolution();
     let win_width  = (resolution.0 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
