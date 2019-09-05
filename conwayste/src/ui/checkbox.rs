@@ -81,7 +81,7 @@ impl Checkbox {
 
         Checkbox {
             id: widget_id,
-            label: Label::new(ctx, font, text, Color::from(css::WHITE), label_origin),
+            label: Label::new(text, Color::from(css::WHITE), label_origin),
             state: ToggleState::Disabled,
             dimensions: dimensions,
             hover: false,
@@ -113,21 +113,20 @@ impl Widget for Checkbox {
 
     fn set_size(&mut self, new_dims: Rect) {
         self.dimensions = new_dims;
-
-        self.label.dimensions = Rect::new(new_dims.x + LABEL_OFFSET_X, new_dims.y + LABEL_OFFSET_Y, new_dims.w, new_dims.h);
     }
 
     fn translate(&mut self, point: Vector2<f32>)
     {
         self.dimensions.translate(point);
-        self.label.dimensions.translate(point);
+        self.label.translate(point);
     }
 
     fn on_hover(&mut self, point: &Point2<f32>) {
-        self.hover = within_widget(point, &self.dimensions) || within_widget(point, &self.label.dimensions);
-        //if self.hover {
-        //    println!("Hovering over Checkbox, \"{:?}\"", self.label.dimensions);
-        //}
+        let label_dimensions = self.label.size();
+        self.hover = within_widget(point, &self.dimensions) || within_widget(point, &label_dimensions);
+        if self.hover {
+            println!("Hovering over Checkbox, '{:?}'", label_dimensions);
+        }
     }
 
     fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
@@ -136,7 +135,7 @@ impl Widget for Checkbox {
         self.hover = false;
 
         if hover {
-            println!("Clicked Checkbox, \"{}\"", self.label.text);
+            println!("Clicked Checkbox, '{}'", self.label.text);
             return Some(( self.id, UIAction::Toggle(self.toggle()) ));
         }
         None
@@ -162,7 +161,8 @@ impl Widget for Checkbox {
         let label_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, self.label.color)?;
         graphics::draw(ctx, &label_border, DrawParam::default())?;
 
-        draw_text(ctx, font, self.label.color, &self.label.text, &self.label.dimensions.point().into(), None)?;
+        //draw_text(ctx, font, self.label.color, &self.label.text, &self.label.dimensions.point().into(), None)?;
+        self.label.draw(ctx, font)?;
 
         Ok(())
     }

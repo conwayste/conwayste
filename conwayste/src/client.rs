@@ -93,8 +93,7 @@ use uimanager::UIManager;
 
 // All game state
 struct MainState {
-    small_font:          graphics::Font,
-    menu_font:           graphics::Font,
+    system_font:         graphics::Font,
     screen_stack:        Vec<Screen>,       // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     intro_uni:           Universe,
@@ -334,7 +333,7 @@ impl MainState {
         let mut font = graphics::Font::default(); // Provides DejaVuSerif.ttf
         match graphics::Font::new(ctx, path::Path::new("/telegrama_render.ttf")) {
             Ok(f) => font = f,
-            Err(e) => return Err(GameError::FilesystemError( format!("Could not load or find font. {:?}", e) )),
+            Err(e) => return Err(GameError::FilesystemError(format!("Could not load or find font. {:?}", e))),
         }
 
         let bigbang =
@@ -382,8 +381,7 @@ impl MainState {
 
         let mut s = MainState {
             screen_stack:        vec![Screen::Intro],
-            small_font:          font.clone(),
-            menu_font:           font.clone(),
+            system_font:         font.clone(),
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
@@ -561,11 +559,11 @@ impl EventHandler for MainState {
                 self.draw_universe(ctx)?;
             }
             Screen::InRoom => {
-                ui::draw_text(ctx, &self.menu_font, Color::from(css::WHITE), "In Room", &Point2::new(100.0, 100.0), None)?;
+                ui::draw_text(ctx, &self.system_font, Color::from(css::WHITE), "In Room", &Point2::new(100.0, 100.0), None)?;
                 // TODO
             }
             Screen::ServerList => {
-                ui::draw_text(ctx, &self.menu_font, Color::from(css::WHITE), "Server List", &Point2::new(100.0, 100.0), None)?;
+                ui::draw_text(ctx, &self.system_font, Color::from(css::WHITE), "Server List", &Point2::new(100.0, 100.0), None)?;
                 // TODO
              },
             Screen::Exit => {}
@@ -573,7 +571,7 @@ impl EventHandler for MainState {
 
         if let Some(ref mut layers) = self.ui_manager.get_screen_layers(current_screen) {
             for layer in layers.iter_mut() {
-                layer.draw(ctx, &self.menu_font);
+                layer.draw(ctx, &self.system_font);
             }
         }
 
@@ -830,7 +828,7 @@ impl MainState {
         if draw_params.draw_counter {
             let gen_counter_str = universe.latest_gen().to_string();
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
-            ui::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
+            ui::draw_text(ctx, &self.system_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
         }
 
         Ok(())
@@ -1280,9 +1278,7 @@ impl MainState {
 
         for msg in incoming_messages {
             if let Some(cb) = self.ui_manager.chatbox_from_id(WidgetID::InGamePane1Chatbox) {
-                // FIXME once ggez 0.5 lands
-                let font = graphics::Font::default();
-                cb.add_message(ctx, &font, msg)?;
+                cb.add_message(msg)?;
             }
         }
 
@@ -1383,10 +1379,8 @@ impl MainState {
         }
 
         if !msg.is_empty() {
-            let font = graphics::Font::default();
             if let Some(cb) = self.ui_manager.chatbox_from_id(WidgetID::InGamePane1Chatbox) {
-                            // FIXME once ggez 0.5 lands
-                cb.add_message(ctx, &font, msg.clone())?;
+                cb.add_message(msg.clone())?;
 
                 if let Some(ref mut netwayste) = self.net_worker {
                     netwayste.try_send(NetwaysteEvent::ChatMessage(msg));

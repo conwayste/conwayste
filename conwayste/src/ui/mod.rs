@@ -29,8 +29,6 @@ mod pane;
 mod widget;
 mod textfield;
 
-use std::cmp::Ordering;
-
 pub use button::Button;
 pub use chatbox::Chatbox;
 pub use checkbox::{Checkbox, ToggleState};
@@ -79,3 +77,6 @@ pub enum WidgetID {
     InGamePane1Chatbox,
     InGamePane1ChatboxTextField,
 }
+
+pub const DEFAULT_UI_FONT_SCALE: f32 = 20.0;
+pub const DEFAULT_CHATBOX_FONT_SCALE: f32 = 15.0;

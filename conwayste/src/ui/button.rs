@@ -25,7 +25,7 @@ use ggez::{Context, GameResult};
 use super::{
     label::Label,
     widget::Widget,
-    helpe::{within_widget, draw_text, color_with_alpha},
+    helpe::{within_widget, draw_text, color_with_alpha, center},
     UIAction, WidgetID
 };
 
@@ -68,19 +68,18 @@ impl Button {
     /// ```
     ///
     pub fn new(ctx: &mut Context, font: &Font, button_text: &'static str, widget_id: WidgetID, action: UIAction) -> Self {
+        // TODO center text instead of these hard-coded constants
         const OFFSET_X: f32 = 8.0;
-        const OFFSET_Y: f32 = 4.0;
+        const OFFSET_Y: f32 = 16.0;
 
-        let mut text = Text::new(button_text);
-        let text = text.set_font(*font, Scale::uniform(10.0));
-        let width = text.width(ctx) as f32 + OFFSET_X*2.0;
-        let height = text.height(ctx) as f32 + OFFSET_Y*2.0;
-        let dimensions = Rect::new(30.0, 20.0, width, height);
-        let offset = Point2::new(dimensions.x + OFFSET_X, OFFSET_Y);
+        let label = Label::new(button_text, color_with_alpha(css::WHITE, 0.1), Point2::new(30.0 + OFFSET_X, 20.0 + OFFSET_Y));
+        let label_dims = label.size();
+
+        let dimensions = Rect::new(30.0, 20.0, label_dims.w, label_dims.h);
 
         Button {
             id: widget_id,
-            label: Label::new(ctx, font, button_text, color_with_alpha(css::WHITE, 0.1), offset),
+            label: label,
             button_color: color_with_alpha(css::DARKCYAN, 0.8),
             draw_mode: DrawMode::fill(),
             dimensions: dimensions,
@@ -121,7 +120,7 @@ impl Widget for Button {
         self.hover = false;
 
         if hover {
-            println!("Clicked Button, \"{}\"", self.label.text);
+            println!("Clicked Button, '{:?}'", self.label.text);
             return Some((self.id, self.action));
         }
         None
@@ -136,7 +135,12 @@ impl Widget for Button {
 
         let button = graphics::Mesh::new_rectangle(ctx, draw_mode, self.dimensions, self.button_color)?;
         graphics::draw(ctx, &button, DrawParam::default())?;
-        draw_text(ctx, font, self.label.color, &self.label.text, &self.dimensions.point().into(), None)?;
+
+        self.label.draw(ctx, font);
+        // TODO replace with Label::draw(...)
+        // let point = Point2::new(self.dimensions.point().x + self.label.dimensions.point().x,
+        //     self.dimensions.point().y + self.label.dimensions.point().y);
+        // draw_text(ctx, font, self.label.color, &self.label.text, &point, None)?;
 
         Ok(())
     }
@@ -152,5 +156,6 @@ impl Widget for Button {
     fn translate(&mut self, point: Vector2<f32>)
     {
         self.dimensions.translate(point);
+        self.label.translate(point);
     }
 }

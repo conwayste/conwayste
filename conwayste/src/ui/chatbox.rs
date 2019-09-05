@@ -24,6 +24,7 @@ use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
+    DEFAULT_CHATBOX_FONT_SCALE,
     widget::Widget,
     helpe::within_widget,
     textfield::TextField,
@@ -92,13 +93,13 @@ impl Chatbox {
     ///     let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
     ///     let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, 5);
     ///     chatbox.set_size(chatbox_rect);
-    ///     chatbox.add_message(ctx, &font, String::new("Player 1: This is a new chat message");
-    ///     chatbox.add_message(ctx, &font, String::new("-- This is a Server broadcast message -- ");
+    ///     chatbox.add_message(String::new("Player 1: This is a new chat message");
+    ///     chatbox.add_message(String::new("-- This is a Server broadcast message -- ");
     ///     chatbox.draw(ctx, font)?;
     /// }
     /// ```
     ///
-    pub fn add_message(&mut self, ctx: &mut Context, font: &Font, msg: String) -> GameResult<()> {
+    pub fn add_message(&mut self, msg: String) -> GameResult<()> {
         if self.messages.len() + 1 > self.history_len {
             self.messages.pop_front();
         }
@@ -162,8 +163,9 @@ impl Widget for Chatbox {
         graphics::draw(ctx, &border, DrawParam::default())?;
 
         // TODO need to do width wrapping check
-        for (i, msg) in self.messages.iter().enumerate() {
+        for (i, msg) in self.messages.iter_mut().enumerate() {
             let point = Point2::new(origin.x + 5.0, origin.y + i as f32*30.0);
+            msg.set_font(*font, graphics::Scale::uniform(DEFAULT_CHATBOX_FONT_SCALE));
             graphics::queue_text(ctx, &msg, point, Some(Color::from(css::RED)));
         }
 
