@@ -382,8 +382,8 @@ impl MenuSystem {
                 // Resolution
                 ///////////////////////////////
                 let coords = Point2::new(x, y);
-                let (width, height) = video_settings.get_active_resolution();
-                let cur_res_str = format!("{}x{}", width, height);
+                let res = video_settings.get_active_resolution();
+                let cur_res_str = format!("{}x{}", res.w, res.h);
 
                 // TODO: color
                 utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color, &cur_res_str,

@@ -17,12 +17,11 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::{Context, graphics, GameResult, conf::FullscreenType};
-use std::num::Wrapping;
 
-#[derive(Debug, Clone, PartialEq, Copy)]
-struct Resolution {
-    w: u32,
-    h: u32,
+#[derive(Debug, Clone, PartialEq, Copy, Default)]
+pub struct Resolution {
+    pub w: f32,
+    pub h: f32,
 }
 
 /*
@@ -35,85 +34,36 @@ const DISPLAY_MODES: [Resolution; 5]  = [
 ];
 */
 
-/// This manages the supported resolutions.
-#[derive(Debug, Clone)]
-struct DisplayModeManager {
-    index: Wrapping<usize>,
-    modes: Vec<Resolution>,
-    opt_refresh_rate: Option<i32>,
-}
-
-impl DisplayModeManager {
-    pub fn new() -> DisplayModeManager {
-        DisplayModeManager {
-            index: Wrapping(usize::max_value()),
-            modes: Vec::new(),
-            opt_refresh_rate: None,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct VideoSettings {
-    pub resolution    : (u32, u32),
-    pub is_fullscreen :       bool,
-    res_manager       : DisplayModeManager,
-
+    pub resolution:    Resolution,
+    pub is_fullscreen: bool,
 }
 
 impl VideoSettings {
     pub fn new() -> VideoSettings {
         VideoSettings {
-            resolution: (0, 0),
+            resolution: Resolution::default(),
             is_fullscreen: false,
-            res_manager: DisplayModeManager::new(),
         }
     }
-
-    /*
-     * TODO: delete this once we are sure resizable windows are OK.
-    /// We query graphics library to see what resolutions are supported.
-    /// This intersected with the `DISPLAY_MODES` list.
-    pub fn gather_display_modes(&mut self, ctx: &Context) -> GameResult<()>  {
-        let sdl_context =  &ctx.gfx_context;
-        let sdl_video = sdl_context.video()?;
-
-        let num_of_display_modes = sdl_video.num_display_modes(0)?;
-
-        for x in  0..num_of_display_modes {
-            let display_mode = sdl_video.display_mode(0, x)?;
-            let resolution = Resolution {
-                w: display_mode.w as u32,
-                h: display_mode.h as u32,
-            };
-
-            self.res_manager.add_mode(resolution);
-
-            if self.res_manager.opt_refresh_rate.is_none() {
-                self.res_manager.set_refresh_rate(display_mode.refresh_rate);
-            }
-        }
-
-        Ok(())
-    }
-    */
 
     /// Gets the current active resolution.
-    pub fn get_active_resolution(&self) -> (u32, u32) {
+    pub fn get_active_resolution(&self) -> Resolution {
         self.resolution
     }
 
     /// Sets the current active resolution and updates the SDL context.
-    pub fn set_active_resolution(&mut self, ctx: &mut Context, w: u32, h: u32) -> GameResult<()> {
-        self.resolution = (w,h);
-        self.refresh_game_resolution(ctx, w, h)?;
+    pub fn set_active_resolution(&mut self, ctx: &mut Context, res: Resolution) -> GameResult<()> {
+        self.resolution = res;
+        self.refresh_game_resolution(ctx, res.w, res.h)?;
         Ok(())
     }
 
     /// Updates the SDL video context to the supplied resolution.
-    fn refresh_game_resolution(&mut self, ctx: &mut Context, w: u32, h: u32) -> GameResult<()> {
-        if w != 0 && h != 0 {
-            graphics::set_drawable_size(ctx, w as f32, h as f32)?;
+    fn refresh_game_resolution(&mut self, ctx: &mut Context, w: f32, h: f32) -> GameResult<()> {
+        if w != 0.0 && h != 0.0 {
+            graphics::set_drawable_size(ctx, w, h)?;
         }
         Ok(())
     }

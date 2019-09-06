@@ -287,7 +287,7 @@ impl MainState {
 
         // On first-run, use default supported resolution
         let (w, h) = config.get_resolution();
-        vs.set_active_resolution(ctx, w as u32, h as u32)?;
+        vs.set_active_resolution(ctx, video::Resolution{w, h})?;
 
         let is_fullscreen = config.get().video.fullscreen;
         vs.is_fullscreen = is_fullscreen;
@@ -608,13 +608,13 @@ impl EventHandler for MainState {
             height,
         );
         graphics::set_screen_coordinates(ctx, new_rect).unwrap();
-        self.viewport.set_dimensions(width as u32, height as u32);
+        self.viewport.set_dimensions(width, height);
         if self.video_settings.is_fullscreen {
             debug!("not saving resolution to config because is_fullscreen is true");
         } else {
-            self.config.set_resolution(width as u32, height as u32);
+            self.config.set_resolution(width, height);
         }
-        self.video_settings.resolution = (width as u32, height as u32);
+        self.video_settings.resolution = video::Resolution{w: width, h: height};
     }
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
@@ -1196,8 +1196,8 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     // 4) get offset for row and column to draw at
 
     let resolution = s.video_settings.get_active_resolution();
-    let win_width  = (resolution.0 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
-    let win_height = (resolution.1 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let win_width  = (resolution.w / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let win_height = (resolution.h / DEFAULT_ZOOM_LEVEL) as isize; // cells
     let player_id = 0;   // hardcoded for this intro
 
     let letter_width = 5;

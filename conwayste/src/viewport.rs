@@ -119,10 +119,8 @@ impl GridView {
 
                 self.cell_size = next_cell_size;
 
-                let columns = self.columns as u32;
-
-                let phi = columns as i32 * old_cell_size as i32;
-                let alpha = self.rect.w as i32;
+                let phi = self.columns as f32 * old_cell_size as f32;
+                let alpha = self.rect.w;
 
                 if phi > alpha {
                     self.grid_origin = utils::Graphics::point_offset(self.grid_origin,
@@ -150,7 +148,7 @@ impl GridView {
     /// This is compared against the size of the screen, `α`, `alpha`, to see if we can
     /// adjust the grid origin.
     fn adjust_panning(&mut self, recenter_after_zoom: bool, arrow_input: (isize, isize)) {
-        let (columns, rows) = (self.columns as u32, self.rows as u32);
+        let (columns, rows) = (self.columns, self.rows);
 
         //debug!("\n\nP A N N I N G:");
         //debug!("Columns, Rows = {:?}", (columns, rows));
@@ -254,9 +252,9 @@ impl GridView {
 
     /// Set dimensions of the grid in window coordinates (pixels). This may cause unintended
     /// consequences if modified while a game is running.  Be mindful of the window size.
-    pub fn set_dimensions(&mut self, w: u32, h: u32) {
-        self.set_width(w as f32);
-        self.set_height(h as f32);
+    pub fn set_dimensions(&mut self, w: f32, h: f32) {
+        self.set_width(w);
+        self.set_height(h);
     }
 
     /// Given a point, find the nearest Cell (game coordinates) specified by a point in window
@@ -281,13 +279,13 @@ impl GridView {
     }
 
     /// Returns the width of the grid in pixels.
-    pub fn grid_width(&self) -> u32 {
-        self.columns as u32 * self.cell_size as u32
+    pub fn grid_width(&self) -> f32 {
+        self.columns as f32 * self.cell_size
     }
 
     /// Returns the height of the grid in pixels.
-    pub fn grid_height(&self) -> u32 {
-        self.rows as u32 * self.cell_size as u32
+    pub fn grid_height(&self) -> f32 {
+        self.rows as f32 * self.cell_size
     }
 
     pub fn get_rect_from_origin(&self) -> Rect {
