@@ -17,19 +17,21 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::{Context, GameResult};
-use ggez::graphics::{self, Color, Rect, Font, Text, TextFragment, Scale, DrawParam};
+use ggez::graphics::{self, Color, Rect, Font, Text, TextFragment, DrawParam, Drawable};
 use ggez::nalgebra::{Point2, Vector2};
 
+use std::rc::Rc;
+
 use super::{
-    DEFAULT_UI_FONT_SCALE,
     widget::Widget,
     WidgetID
 };
 
+use crate::constants::DEFAULT_UI_FONT_SCALE;
+
 pub struct Label {
-    pub text: &'static str,
-    pub color: Color,
-    pub destination: Point2<f32>,
+    pub textfrag: TextFragment,
+    pub dimensions: Rect,
 }
 
 /// A graphical widget representation of text
@@ -59,23 +61,31 @@ impl Label {
     /// }
     /// ```
     ///
-    pub fn new(string: &'static str, color: Color, dest: Point2<f32>) -> Self {
+    pub fn new(ctx: &mut Context, font: Rc<Font>, string: String, color: Color, dest: Point2<f32>) -> Self {
+        let font: Font = *font;
+
+        let text_fragment = TextFragment::new(string.clone())
+            .scale(*DEFAULT_UI_FONT_SCALE)
+            .color(color)
+            .font(font);
+
+        let text = Text::new(text_fragment.clone());
+        // unwrap safe b/c if this fails then the game is fundamentally broken and is not in a usable state
+        let mut dimensions = <Text as Drawable>::dimensions(&text, ctx).unwrap();
+        dimensions.move_to(dest);
 
         Label {
-            text: string,
-            color: color,
-            destination: dest,
+            textfrag: text_fragment,
+            dimensions: dimensions
         }
     }
 
-    pub fn set_color(mut self, color: Color) -> Self {
-        self.color = color;
-        self
+    pub fn set_color(&mut self, color: Color) {
+        self.textfrag.color = Some(color);
     }
 
-    pub fn set_text(mut self, string: &'static str) -> Self {
-        self.text = string;
-        self
+    pub fn set_text(&mut self, string: String) {
+        self.textfrag.text = string;
     }
 }
 
@@ -87,28 +97,27 @@ impl Widget for Label {
 
     /// Get the size of the widget. Widget must be sizable.
     fn size(&self) -> Rect {
-        let mut rect = Rect::new(0.0, 0.0, DEFAULT_UI_FONT_SCALE, DEFAULT_UI_FONT_SCALE*(self.text.len() as f32));
-        rect.move_to(self.destination);
-        rect
-    }
-
-    /// Get the size of the widget. Widget must be sizable.
-    fn set_size(&mut self, new_dimensions: Rect) {
-        ()
+        self.dimensions
     }
 
     /// Translate the widget from one location to another. Widget must be sizable.
     fn translate(&mut self, point: Vector2<f32>) {
-        let point: Point2<f32> = point.into();
-        self.destination =  Point2::new(self.destination.x + point.x, self.destination.y + point.y);
+        self.dimensions.translate(point);
     }
 
-    fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
+    fn draw(&mut self, ctx: &mut Context, _font: &Font) -> GameResult<()> {
 
-        let text = TextFragment::new(self.text).color(self.color).scale(Scale::uniform(DEFAULT_UI_FONT_SCALE)).font(*font);
-        let text = Text::new(text);
+        let text = Text::new(self.textfrag.clone());
 
-        graphics::draw(ctx, &text, DrawParam::default().dest(self.destination))?;
+        // If the text is updated, we need to refresh the dimensions of the virtual rectangle bounding it.
+        // unwrap safe b/c if this fails then the game is fundamentally broken and is not in a usable state
+        let recalculated = <Text as Drawable>::dimensions(&text, ctx).unwrap();
+        if recalculated.w != self.dimensions.w  && recalculated.h != self.dimensions.h {
+            self.dimensions.w = recalculated.w;
+            self.dimensions.h = recalculated.h;
+        }
+
+        graphics::draw(ctx, &text, DrawParam::default().dest(self.dimensions.point()))?;
 
         Ok(())
     }

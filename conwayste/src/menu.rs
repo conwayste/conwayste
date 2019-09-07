@@ -17,10 +17,10 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::{Context, GameResult};
-use ggez::graphics;
-use ggez::graphics::Color;
+use ggez::graphics::{self, Color, Font};
 use ggez::nalgebra::Point2;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::video;
 use crate::ui;
@@ -146,7 +146,7 @@ pub struct MenuSystem {
     pub    menus:          HashMap<MenuState, MenuContainer >,
     pub    menu_state:     MenuState,
            controls:       MenuControls,
-           font:           graphics::Font,
+           font:           Rc<Font>,
            inactive_color: graphics::Color,
            active_color:   graphics::Color,
 }
@@ -212,7 +212,7 @@ impl MenuMetaData {
 }
 
 impl MenuSystem {
-    pub fn new(font: graphics::Font) -> MenuSystem {
+    pub fn new(font: Rc<Font>) -> MenuSystem {
         let mut menu_sys = MenuSystem {
             menus:          HashMap::new(),
             menu_state:     MenuState::MainMenu,

@@ -22,6 +22,8 @@ use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
+use std::rc::Rc;
+
 use super::{
     label::Label,
     widget::Widget,
@@ -30,6 +32,7 @@ use super::{
     WidgetID,
 };
 
+// PR_GATE clean me up scotty (per PR feedback)
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum ToggleState {
     Disabled,
@@ -76,12 +79,12 @@ impl Checkbox {
     /// }
     /// ```
     ///
-    pub fn new(ctx: &mut Context, font: &Font, text: &'static str, dimensions: Rect, widget_id: WidgetID, action: UIAction) -> Self {
+    pub fn new(ctx: &mut Context, font: Rc<Font>, text: String, dimensions: Rect, widget_id: WidgetID, action: UIAction) -> Self {
         let label_origin = Point2::new(dimensions.x + dimensions.w + LABEL_OFFSET_X, dimensions.y + dimensions.h + LABEL_OFFSET_Y);
 
         Checkbox {
             id: widget_id,
-            label: Label::new(text, Color::from(css::WHITE), label_origin),
+            label: Label::new(ctx, font, text, Color::from(css::WHITE), label_origin),
             state: ToggleState::Disabled,
             dimensions: dimensions,
             hover: false,
@@ -135,7 +138,7 @@ impl Widget for Checkbox {
         self.hover = false;
 
         if hover {
-            println!("Clicked Checkbox, '{}'", self.label.text);
+            println!("Clicked Checkbox, '{}'", self.label.textfrag.text);
             return Some(( self.id, UIAction::Toggle(self.toggle()) ));
         }
         None
@@ -156,9 +159,10 @@ impl Widget for Checkbox {
             graphics::draw(ctx, &hovered_border, DrawParam::default())?;
         }
 
-        let border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, self.label.color)?;
+        // PR_GATE refactor color usage per PR feedback
+        let border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, Color::from(css::AZURE))?;
         graphics::draw(ctx, &border, DrawParam::default())?;
-        let label_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, self.label.color)?;
+        let label_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, Color::from(css::AZURE))?;
         graphics::draw(ctx, &label_border, DrawParam::default())?;
 
         //draw_text(ctx, font, self.label.color, &self.label.text, &self.label.dimensions.point().into(), None)?;

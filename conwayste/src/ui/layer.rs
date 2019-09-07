@@ -76,7 +76,7 @@ impl Layer {
             return;
         }
 
-        // FIXME Replace with ConwaysteResult
+        // PR_GATE Replace with ConwaysteResult
         panic!("ERROR in Layer::enter_focus() =>  Widget (ID: {:?}) not found in layer (ID: {:?})", id, self.id);
     }
 
@@ -114,11 +114,11 @@ impl Layer {
             return self.widgets.get_mut(i).unwrap();
         }
 
-        // FIXME Replace with ConwaysteResult
+        // PR_GATE Replace with ConwaysteResult
         panic!("ERROR in Layer::get_widget_mut() => Widget (ID: {:?}) not found in layer (ID: {:?})", id, self.id);
     }
 
-    // TODO add support for other widgets
+    // PR_GATE add support for other widgets
 
     /// Returns the desired text field from the provided WidgetID, if found in the layer
     pub fn textfield_from_id(&mut self, id: WidgetID) -> Option<&mut TextField> {
@@ -141,8 +141,6 @@ impl Widget for Layer {
     fn size(&self) -> Rect {
         Rect::zero()
     }
-
-    fn set_size(&mut self, _new_dimensions: Rect) {}
 
     fn translate(&mut self, _point: Vector2<f32>) {}
 

@@ -20,7 +20,7 @@ use chromatica::css;
 
 use std::time::{Instant, Duration};
 
-use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text, Scale};
+use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -29,6 +29,8 @@ use super::{
     helpe::{within_widget, draw_text, color_with_alpha},
     UIAction, WidgetID
 };
+
+use crate::constants::DEFAULT_UI_FONT_SCALE;
 
 pub const TEXT_INPUT_BUFFER_LEN     : usize = 255;
 pub const BLINK_RATE_MS             : u64 = 500;
@@ -42,7 +44,7 @@ pub enum TextInputState {
 pub struct TextField {
     pub id: WidgetID,
     pub action: UIAction,
-    pub state: Option<TextInputState>, // fixme input state
+    pub state: Option<TextInputState>, // PR_GATE input state
     text: String,
     pub cursor_index: usize,
     pub blink_timestamp: Option<Instant>,
@@ -109,7 +111,7 @@ impl TextField {
 
     fn get_text_width_in_px(&self, ctx: &mut Context) -> f32 {
         let mut text = Text::new(self.text.clone());
-        let text = text.set_font(Font::default(), Scale::uniform(20.0));
+        let text = text.set_font(Font::default(), *DEFAULT_UI_FONT_SCALE);
         text.width(ctx) as f32
     }
 
@@ -226,7 +228,7 @@ impl Widget for TextField {
     }
 
     fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
-        // TODO: If string exceeds length of pane, need to only draw what should be visible
+        // PR_GATE: If string exceeds length of pane, need to only draw what should be visible
 
         if self.state.is_some() || !self.text.is_empty() {
             const CURSOR_OFFSET_PX: f32 = 10.0;
@@ -247,7 +249,7 @@ impl Widget for TextField {
 
             if self.draw_cursor {
                 let mut text = Text::new(&text_with_cursor[self.visible_start_index..self.cursor_index]);
-                let text = text.set_font(*font, Scale::uniform(20.0));
+                let text = text.set_font(*font, *DEFAULT_UI_FONT_SCALE);
                 let cursor_position_px = text.width(ctx) as f32;
                 let cursor_position = Point2::new(self.dimensions.x + cursor_position_px + CURSOR_OFFSET_PX, self.dimensions.y);
                 draw_text(ctx, font, Color::from(css::WHITESMOKE), "|", &cursor_position, None)?;

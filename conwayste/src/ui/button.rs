@@ -16,16 +16,18 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::rc::Rc;
+
 use chromatica::css;
 
-use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text, Scale};
+use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
     label::Label,
     widget::Widget,
-    helpe::{within_widget, draw_text, color_with_alpha, center},
+    helpe::{within_widget, color_with_alpha, center},
     UIAction, WidgetID
 };
 
@@ -67,12 +69,12 @@ impl Button {
     /// }
     /// ```
     ///
-    pub fn new(ctx: &mut Context, font: &Font, button_text: &'static str, widget_id: WidgetID, action: UIAction) -> Self {
-        // TODO center text instead of these hard-coded constants
+    pub fn new(ctx: &mut Context, font: Rc<Font>, button_text: String, widget_id: WidgetID, action: UIAction) -> Self {
+        // PR_GATE center text instead of these hard-coded constants
         const OFFSET_X: f32 = 8.0;
         const OFFSET_Y: f32 = 16.0;
 
-        let label = Label::new(button_text, color_with_alpha(css::WHITE, 0.1), Point2::new(30.0 + OFFSET_X, 20.0 + OFFSET_Y));
+        let label = Label::new(ctx, font, button_text, color_with_alpha(css::WHITE, 0.1), Point2::new(30.0 + OFFSET_X, 20.0 + OFFSET_Y));
         let label_dims = label.size();
 
         let dimensions = Rect::new(30.0, 20.0, label_dims.w, label_dims.h);
@@ -91,7 +93,7 @@ impl Button {
 
     /// Sets the color of the Button's text to the specified ggez `Color`
     pub fn label_color(mut self, color: Color) -> Self {
-        self.label = self.label.set_color(color);
+        self.label.set_color(color);
         self
     }
 
@@ -120,7 +122,7 @@ impl Widget for Button {
         self.hover = false;
 
         if hover {
-            println!("Clicked Button, '{:?}'", self.label.text);
+            println!("Clicked Button, '{:?}'", self.label.textfrag);
             return Some((self.id, self.action));
         }
         None
@@ -136,11 +138,7 @@ impl Widget for Button {
         let button = graphics::Mesh::new_rectangle(ctx, draw_mode, self.dimensions, self.button_color)?;
         graphics::draw(ctx, &button, DrawParam::default())?;
 
-        self.label.draw(ctx, font);
-        // TODO replace with Label::draw(...)
-        // let point = Point2::new(self.dimensions.point().x + self.label.dimensions.point().x,
-        //     self.dimensions.point().y + self.label.dimensions.point().y);
-        // draw_text(ctx, font, self.label.color, &self.label.text, &point, None)?;
+        self.label.draw(ctx, font)?;
 
         Ok(())
     }

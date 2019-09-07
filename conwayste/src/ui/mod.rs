@@ -78,5 +78,3 @@ pub enum WidgetID {
     InGamePane1ChatboxTextField,
 }
 
-pub const DEFAULT_UI_FONT_SCALE: f32 = 20.0;
-pub const DEFAULT_CHATBOX_FONT_SCALE: f32 = 15.0;

@@ -17,9 +17,11 @@
  *  <http://www.gnu.org/licenses/>. */
 
 
-use ggez::graphics::{self, Font, Rect, Text, TextFragment, Scale, DrawParam, Color};
+use ggez::graphics::{self, Font, Rect, Text, TextFragment, DrawParam, Color};
 use ggez::nalgebra::Point2;
 use ggez::{Context, GameResult};
+
+use crate::constants::DEFAULT_UI_FONT_SCALE;
 
 /// Helper function to draw text onto the screen.
 /// Given the string `str`, it will be drawn at the point coordinates specified by `coords`.
@@ -32,7 +34,7 @@ use ggez::{Context, GameResult};
 pub fn draw_text(ctx: &mut Context, font: &Font, color: Color, text: &str,
                  coords: &Point2<f32>, adjustment: Option<&Point2<f32>>) -> GameResult<(u32, u32)> {
     let text_fragment = TextFragment::new(text)
-        .scale(Scale::uniform(20.0))              // TODO needs refactoring so size is specified in signature, fix in UI branch
+        .scale(*DEFAULT_UI_FONT_SCALE)
         .color(color)
         .font(*font);
 

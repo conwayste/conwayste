@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{self, Color};
+use ggez::graphics::{self, Color, Scale};
 use std::time::Duration;
 
 
@@ -43,6 +43,11 @@ pub const PIXELS_SCROLLED_PER_FRAME : f32   = 50.0; // pixels
 pub const CONFIG_FILE_PATH          : &str  = "conwayste.toml";
 pub const MIN_CONFIG_FLUSH_TIME     : Duration = Duration::from_millis(5000);
 
+// user interface
+lazy_static! {
+    pub static ref DEFAULT_UI_FONT_SCALE: Scale = Scale::uniform(20.0);
+    pub static ref DEFAULT_CHATBOX_FONT_SCALE: Scale = Scale::uniform(15.0);
+}
 
 //////////////////////////////////////////////////////////////////////
 

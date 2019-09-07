@@ -54,8 +54,7 @@ use netwayste::net::NetwaysteEvent;
 use ggez::conf;
 use ggez::event::*;
 use ggez::{GameError, GameResult, Context, ContextBuilder};
-use ggez::graphics::{self, Rect};
-use ggez::graphics::{Color, DrawParam};
+use ggez::graphics::{self, Rect, Color, DrawParam, Font};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::timer;
 
@@ -63,6 +62,7 @@ use std::env;
 use std::io::Write; // For env logger
 use std::path;
 use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 use std::time::Instant;
 
 use constants::{
@@ -93,7 +93,7 @@ use uimanager::UIManager;
 
 // All game state
 struct MainState {
-    system_font:         graphics::Font,
+    system_font:         Rc<Font>,
     screen_stack:        Vec<Screen>,       // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     intro_uni:           Universe,
@@ -330,11 +330,9 @@ impl MainState {
         color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
         color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
 
-        let mut font = graphics::Font::default(); // Provides DejaVuSerif.ttf
-        match graphics::Font::new(ctx, path::Path::new("/telegrama_render.ttf")) {
-            Ok(f) => font = f,
-            Err(e) => return Err(GameError::FilesystemError(format!("Could not load or find font. {:?}", e))),
-        }
+        let font = Font::new(ctx, path::Path::new("/telegrama_render.ttf"))
+                    .map_err(|e| GameError::FilesystemError(format!("Could not load or find font. {:?}", e)))?;
+        let font = Rc::new(font);
 
         let bigbang =
         {
@@ -377,11 +375,11 @@ impl MainState {
         let mut vs = video::VideoSettings::new();
         vs.print_resolutions();
 
-        let ui_manager = UIManager::new(ctx, &config);
+        let ui_manager = UIManager::new(ctx, &config, Rc::clone(&font));
 
         let mut s = MainState {
             screen_stack:        vec![Screen::Intro],
-            system_font:         font.clone(),
+            system_font:         Rc::clone(&font),
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
@@ -1071,7 +1069,7 @@ impl MainState {
                 if action == MouseAction::Drag {
                     layer.on_drag(&origin_point, &mouse_point);
                 } else if action == MouseAction::Click {
-                // TODO FIXME AMEEN self.pane.update(true);
+                // PR_GATE self.pane.update(true);
                 }
             }
 
@@ -1359,7 +1357,7 @@ impl MainState {
                 });
             },
             WidgetID::InGamePane1Chatbox | WidgetID::InGamePane1ChatboxTextField => {
-                // TODO
+                // PR_GATE
             },
         }
 

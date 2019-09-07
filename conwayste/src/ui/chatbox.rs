@@ -24,12 +24,13 @@ use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
-    DEFAULT_CHATBOX_FONT_SCALE,
     widget::Widget,
     helpe::within_widget,
     textfield::TextField,
     UIAction, WidgetID
 };
+
+use crate::constants::DEFAULT_CHATBOX_FONT_SCALE;
 
 const CHAT_DISPLAY_LIMIT: f32 = 10.0;
 
@@ -165,7 +166,7 @@ impl Widget for Chatbox {
         // TODO need to do width wrapping check
         for (i, msg) in self.messages.iter_mut().enumerate() {
             let point = Point2::new(origin.x + 5.0, origin.y + i as f32*30.0);
-            msg.set_font(*font, graphics::Scale::uniform(DEFAULT_CHATBOX_FONT_SCALE));
+            msg.set_font(*font, *DEFAULT_CHATBOX_FONT_SCALE);
             graphics::queue_text(ctx, &msg, point, Some(Color::from(css::RED)));
         }
 

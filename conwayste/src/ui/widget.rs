@@ -68,7 +68,9 @@ pub trait Widget: Downcast {
     fn size(&self) -> Rect;
 
     /// Get the size of the widget. Widget must be sizable.
-    fn set_size(&mut self, new_dimensions: Rect);
+    fn set_size(&mut self, new_dimensions: Rect) {
+        ()
+    }
 
     /// Translate the widget from one location to another. Widget must be sizable.
     fn translate(&mut self, point: Vector2<f32>);
