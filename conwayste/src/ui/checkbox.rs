@@ -22,6 +22,8 @@ use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
+use std::rc::Rc;
+
 use super::{
     label::Label,
     widget::Widget,
@@ -30,6 +32,7 @@ use super::{
     WidgetID,
 };
 
+// PR_GATE clean me up scotty (per PR feedback)
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum ToggleState {
     Disabled,
@@ -48,8 +51,35 @@ pub struct Checkbox {
 const LABEL_OFFSET_X: f32 = 30.0;
 const LABEL_OFFSET_Y: f32 = -5.0;
 
+/// A standard checkbox widget that can be enabled or disabled via the ToggleState structure.
 impl Checkbox {
-    pub fn new(ctx: &mut Context, font: &Font, text: &'static str, dimensions: Rect, widget_id: WidgetID, action: UIAction) -> Self {
+    /// Creates a Checkbox widget.
+    ///
+    /// # Arguments
+    /// * `ctx` - GGEZ context
+    /// * `font` - font to be used when drawing the text
+    /// * `text` - Label text
+    /// * `widget_id` - Unique widget identifier
+    /// * `action` - Unique action identifer
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ui::Button;
+    ///
+    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
+    ///     let font = Font::default();
+    ///     let checkbox = Box::new(Checkbox::new(ctx, &font,
+    ///         "Toggle Me",
+    ///         Rect::new(10.0, 210.0, 20.0, 20.0),
+    ///         WidgetID::TestCheckbox,
+    ///         UIAction::Toggle( if cfg!(target_os = "linux") { ToggleState::Enabled } else { ToggleState::Disabled } ),
+    ///     ));;
+    ///     checkbox.draw(ctx, font);
+    /// }
+    /// ```
+    ///
+    pub fn new(ctx: &mut Context, font: Rc<Font>, text: String, dimensions: Rect, widget_id: WidgetID, action: UIAction) -> Self {
         let label_origin = Point2::new(dimensions.x + dimensions.w + LABEL_OFFSET_X, dimensions.y + dimensions.h + LABEL_OFFSET_Y);
 
         Checkbox {
@@ -62,6 +92,7 @@ impl Checkbox {
         }
     }
 
+    /// Toggles the checkbox from either enabled to disasbled, or vis-a-versa.
     pub fn toggle(&mut self) -> ToggleState {
         if self.state == ToggleState::Disabled {
             self.state = ToggleState::Enabled;
@@ -85,21 +116,20 @@ impl Widget for Checkbox {
 
     fn set_size(&mut self, new_dims: Rect) {
         self.dimensions = new_dims;
-
-        self.label.dimensions = Rect::new(new_dims.x + LABEL_OFFSET_X, new_dims.y + LABEL_OFFSET_Y, new_dims.w, new_dims.h);
     }
 
     fn translate(&mut self, point: Vector2<f32>)
     {
         self.dimensions.translate(point);
-        self.label.dimensions.translate(point);
+        self.label.translate(point);
     }
 
     fn on_hover(&mut self, point: &Point2<f32>) {
-        self.hover = within_widget(point, &self.dimensions) || within_widget(point, &self.label.dimensions);
-        //if self.hover {
-        //    println!("Hovering over Checkbox, \"{:?}\"", self.label.dimensions);
-        //}
+        let label_dimensions = self.label.size();
+        self.hover = within_widget(point, &self.dimensions) || within_widget(point, &label_dimensions);
+        if self.hover {
+            println!("Hovering over Checkbox, '{:?}'", label_dimensions);
+        }
     }
 
     fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
@@ -108,7 +138,7 @@ impl Widget for Checkbox {
         self.hover = false;
 
         if hover {
-            println!("Clicked Checkbox, \"{}\"", self.label.text);
+            println!("Clicked Checkbox, '{}'", self.label.textfrag.text);
             return Some(( self.id, UIAction::Toggle(self.toggle()) ));
         }
         None
@@ -129,12 +159,14 @@ impl Widget for Checkbox {
             graphics::draw(ctx, &hovered_border, DrawParam::default())?;
         }
 
-        let border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, self.label.color)?;
+        // PR_GATE refactor color usage per PR feedback
+        let border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, Color::from(css::AZURE))?;
         graphics::draw(ctx, &border, DrawParam::default())?;
-        let label_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, self.label.color)?;
+        let label_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, Color::from(css::AZURE))?;
         graphics::draw(ctx, &label_border, DrawParam::default())?;
 
-        draw_text(ctx, font, self.label.color, &self.label.text, &self.label.dimensions.point().into(), None)?;
+        //draw_text(ctx, font, self.label.color, &self.label.text, &self.label.dimensions.point().into(), None)?;
+        self.label.draw(ctx, font)?;
 
         Ok(())
     }

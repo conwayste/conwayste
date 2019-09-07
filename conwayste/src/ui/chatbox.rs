@@ -30,6 +30,8 @@ use super::{
     UIAction, WidgetID
 };
 
+use crate::constants::DEFAULT_CHATBOX_FONT_SCALE;
+
 const CHAT_DISPLAY_LIMIT: f32 = 10.0;
 
 pub struct Chatbox {
@@ -43,6 +45,25 @@ pub struct Chatbox {
 }
 
 impl Chatbox {
+
+    /// Creates a Chatbox widget.
+    ///
+    /// # Arguments
+    /// * `widget_id` - Unique widget identifier
+    /// * `len` - Len of chat history to maintain
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ui::Chatbox;
+    ///
+    /// fn new(_ctx: &mut Context) -> GameResult<MainState> {
+    ///     let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
+    ///     let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, 5);
+    ///     chatbox.set_size(chatbox_rect);
+    /// }
+    /// ```
+    ///
     pub fn new(widget_id: WidgetID, len: usize) -> Self {
         let rect = Rect::new(30.0, 600.0, 300.0, 15.0*CHAT_DISPLAY_LIMIT);
         Chatbox {
@@ -56,7 +77,30 @@ impl Chatbox {
         }
     }
 
-    pub fn add_message(&mut self, ctx: &mut Context, font: &Font, msg: String) -> GameResult<()> {
+    /// Adds a message to the chatbox
+    ///
+    /// # Arguments
+    /// * `ctx` - GGEZ context
+    /// * `font` - font to be used when drawing the text
+    /// * `msg` - New chat message
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ui::Chatbox;
+    ///
+    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
+    ///     let font = Font::default();
+    ///     let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
+    ///     let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, 5);
+    ///     chatbox.set_size(chatbox_rect);
+    ///     chatbox.add_message(String::new("Player 1: This is a new chat message");
+    ///     chatbox.add_message(String::new("-- This is a Server broadcast message -- ");
+    ///     chatbox.draw(ctx, font)?;
+    /// }
+    /// ```
+    ///
+    pub fn add_message(&mut self, msg: String) -> GameResult<()> {
         if self.messages.len() + 1 > self.history_len {
             self.messages.pop_front();
         }
@@ -120,8 +164,9 @@ impl Widget for Chatbox {
         graphics::draw(ctx, &border, DrawParam::default())?;
 
         // TODO need to do width wrapping check
-        for (i, msg) in self.messages.iter().enumerate() {
+        for (i, msg) in self.messages.iter_mut().enumerate() {
             let point = Point2::new(origin.x + 5.0, origin.y + i as f32*30.0);
+            msg.set_font(*font, *DEFAULT_CHATBOX_FONT_SCALE);
             graphics::queue_text(ctx, &msg, point, Some(Color::from(css::RED)));
         }
 

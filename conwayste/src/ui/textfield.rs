@@ -20,7 +20,7 @@ use chromatica::css;
 
 use std::time::{Instant, Duration};
 
-use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text, Scale};
+use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -29,6 +29,8 @@ use super::{
     helpe::{within_widget, draw_text, color_with_alpha},
     UIAction, WidgetID
 };
+
+use crate::constants::DEFAULT_UI_FONT_SCALE;
 
 pub const TEXT_INPUT_BUFFER_LEN     : usize = 255;
 pub const BLINK_RATE_MS             : u64 = 500;
@@ -42,16 +44,40 @@ pub enum TextInputState {
 pub struct TextField {
     pub id: WidgetID,
     pub action: UIAction,
-    pub state: Option<TextInputState>, // fixme input state
+    pub state: Option<TextInputState>, // PR_GATE input state
     text: String,
     pub cursor_index: usize,
     pub blink_timestamp: Option<Instant>,
     pub draw_cursor: bool,
     pub dimensions: Rect,
     pub hover: bool,
+    pub visible_start_index: usize,
+    pub visible_end_index: usize,
 }
 
+/// A widget that can accept and display user-inputted text from the Keyboard.
 impl TextField {
+    /// Creates a TextField widget.
+    ///
+    /// # Arguments
+    /// * `(x,y)` - origin of the text field in pixels
+    /// * `widget_id` - Unique widget identifier
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ui::Button;
+    ///
+    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
+    ///     let font = Font::default();
+    ///     let chatbox = Box::new(chatbox);
+    ///
+    ///     let textfield = TextField::new( (50, 50), WidgetID::ChatboxTextField));
+    ///
+    ///     textfield.draw(ctx, font);
+    /// }
+    /// ```
+    ///
     pub fn new((x,y): (f32, f32), widget_id: WidgetID) -> TextField {
         TextField {
             state: None,
@@ -63,9 +89,12 @@ impl TextField {
             id: widget_id,
             action: UIAction::EnterText,
             hover: false,
+            visible_start_index: 0,
+            visible_end_index: 0,
         }
     }
 
+    /// Returns the a string of the inputted text
     pub fn text(&self) -> Option<String> {
         let trimmed_str = self.text.trim();
         if !trimmed_str.is_empty() {
@@ -74,12 +103,20 @@ impl TextField {
         None
     }
 
+    /// Sets the text field's string contents
     pub fn set_text(&mut self, text: String) {
         self.text = text;
         self.cursor_index = 0;
     }
 
-    pub fn add_char_at_cursor(&mut self, character: char)
+    fn get_text_width_in_px(&self, ctx: &mut Context) -> f32 {
+        let mut text = Text::new(self.text.clone());
+        let text = text.set_font(Font::default(), *DEFAULT_UI_FONT_SCALE);
+        text.width(ctx) as f32
+    }
+
+    /// Adds a character at the current cursor position
+    pub fn add_char_at_cursor(&mut self, ctx: &mut Context, character: char)
     {
         if self.cursor_index == self.text.len() {
             self.text.push(character);
@@ -89,16 +126,8 @@ impl TextField {
         self.cursor_index += 1;
     }
 
-    pub fn add_string_at_cursor(&mut self, text: String) {
-        if self.cursor_index == self.text.len() {
-            self.text.push_str(&text);
-        } else {
-            self.text.insert_str(self.cursor_index, &text);
-        }
-        self.cursor_index += text.len();
-    }
-
-    pub fn backspace_char(&mut self) {
+    /// Deletes a character to the left of the current cursor
+    pub fn remove_left_of_cursor(&mut self, ctx: &mut Context) {
         if self.cursor_index != 0 {
             if self.cursor_index == self.text.len() {
                 self.text.pop();
@@ -109,44 +138,56 @@ impl TextField {
         }
     }
 
-    pub fn delete_char(&mut self) {
-        if self.text.len() != 0 && self.cursor_index != self.text.len() {
+    /// Deletes a chracter to the right of the current cursor
+    pub fn remove_right_of_cursor(&mut self, ctx: &mut Context) {
+        let text_len = self.text.len();
+
+        if text_len != 0 && self.cursor_index != text_len {
             self.text.remove(self.cursor_index);
         }
     }
 
+    /// Clears the contents of the text field
     pub fn clear(&mut self) {
         self.text.clear();
         self.cursor_index = 0;
+        self.visible_start_index = 0;
+        self.visible_end_index = 0;
         self.blink_timestamp = None;
         self.draw_cursor = false;
     }
 
-    pub fn inc_cursor_pos(&mut self) {
+    /// Advances the cursor to the right by one character
+    pub fn inc_cursor_pos(&mut self, ctx: &mut Context) {
         if self.cursor_index < self.text.len() {
             self.cursor_index += 1;
         }
     }
 
-    pub fn dec_cursor_pos(&mut self) {
+    /// Decrements the cursor to the left by one character
+    pub fn dec_cursor_pos(&mut self, ctx: &mut Context) {
         if self.cursor_index > 0 {
             self.cursor_index -= 1;
         }
     }
 
+    /// Moves the cursor prior to the first character in the field
     pub fn cursor_home(&mut self) {
         self.cursor_index = 0;
     }
 
+    /// Moves the cursor after the last character in the field
     pub fn cursor_end(&mut self) {
         self.cursor_index = self.text.len();
     }
 
+    /// Textfield gains focus and begins accepting user input
     pub fn enter_focus(&mut self) {
         self.state = Some(TextInputState::EnteringText);
         self.blink_timestamp = Some(Instant::now());
     }
 
+    /// Textfield loses focus and does not accept user input
     pub fn exit_focus(&mut self) {
         self.state = None;
         self.draw_cursor = false;
@@ -187,7 +228,7 @@ impl Widget for TextField {
     }
 
     fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
-        // TODO: If string exceeds length of pane, need to only draw what should be visible
+        // PR_GATE: If string exceeds length of pane, need to only draw what should be visible
 
         if self.state.is_some() || !self.text.is_empty() {
             const CURSOR_OFFSET_PX: f32 = 10.0;
@@ -204,11 +245,11 @@ impl Widget for TextField {
             let text_with_cursor = self.text.clone();
             let text_pos = Point2::new(self.dimensions.x + CURSOR_OFFSET_PX, self.dimensions.y);
 
-            draw_text(ctx, font, Color::from(css::WHITESMOKE), &text_with_cursor, &text_pos, None)?;
+            draw_text(ctx, font, Color::from(css::WHITESMOKE), &text_with_cursor[self.visible_start_index..self.visible_end_index], &text_pos, None)?;
 
             if self.draw_cursor {
-                let mut text = Text::new(&text_with_cursor[0..self.cursor_index]);
-                let text = text.set_font(*font, Scale::uniform(20.0));
+                let mut text = Text::new(&text_with_cursor[self.visible_start_index..self.cursor_index]);
+                let text = text.set_font(*font, *DEFAULT_UI_FONT_SCALE);
                 let cursor_position_px = text.width(ctx) as f32;
                 let cursor_position = Point2::new(self.dimensions.x + cursor_position_px + CURSOR_OFFSET_PX, self.dimensions.y);
                 draw_text(ctx, font, Color::from(css::WHITESMOKE), "|", &cursor_position, None)?;

@@ -16,16 +16,18 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::rc::Rc;
+
 use chromatica::css;
 
-use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text, Scale};
+use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
     label::Label,
     widget::Widget,
-    helpe::{within_widget, draw_text, color_with_alpha},
+    helpe::{within_widget, color_with_alpha, center},
     UIAction, WidgetID
 };
 
@@ -40,21 +42,46 @@ pub struct Button {
     pub action: UIAction
 }
 
+/// A named widget that can be clicked to result in an occuring action.
 impl Button {
-    pub fn new(ctx: &mut Context, font: &Font, button_text: &'static str, widget_id: WidgetID, action: UIAction) -> Self {
-        const OFFSET_X: f32 = 8.0;
-        const OFFSET_Y: f32 = 4.0;
 
-        let mut text = Text::new(button_text);
-        let text = text.set_font(*font, Scale::uniform(10.0));
-        let width = text.width(ctx) as f32 + OFFSET_X*2.0;
-        let height = text.height(ctx) as f32 + OFFSET_Y*2.0;
-        let dimensions = Rect::new(30.0, 20.0, width, height);
-        let offset = Point2::new(dimensions.x + OFFSET_X, OFFSET_Y);
+    /// Creates a Button widget.
+    ///
+    /// # Arguments
+    /// * `ctx` - GGEZ context
+    /// * `font` - font to be used when drawing the text
+    /// * `button_text` - Text to be displayed
+    /// * `widget_id` - Unique widget identifier
+    /// * `action` - Unique action identifer
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ui::Button;
+    ///
+    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
+    ///     let font = Font::default();
+    ///     let b = Button::new(ctx, font, "TestButton", WidgetID::TestButton1, UIAction::PrintHelloWorld)
+    ///         .label_color(Color::from(css::DARKCYAN))
+    ///         .button_color(Color::from(css::WHITE));
+    ///
+    ///     b.draw(ctx, font)?;
+    /// }
+    /// ```
+    ///
+    pub fn new(ctx: &mut Context, font: Rc<Font>, button_text: String, widget_id: WidgetID, action: UIAction) -> Self {
+        // PR_GATE center text instead of these hard-coded constants
+        const OFFSET_X: f32 = 8.0;
+        const OFFSET_Y: f32 = 16.0;
+
+        let label = Label::new(ctx, font, button_text, color_with_alpha(css::WHITE, 0.1), Point2::new(30.0 + OFFSET_X, 20.0 + OFFSET_Y));
+        let label_dims = label.size();
+
+        let dimensions = Rect::new(30.0, 20.0, label_dims.w, label_dims.h);
 
         Button {
             id: widget_id,
-            label: Label::new(ctx, font, button_text, color_with_alpha(css::WHITE, 0.1), offset),
+            label: label,
             button_color: color_with_alpha(css::DARKCYAN, 0.8),
             draw_mode: DrawMode::fill(),
             dimensions: dimensions,
@@ -64,11 +91,13 @@ impl Button {
         }
     }
 
+    /// Sets the color of the Button's text to the specified ggez `Color`
     pub fn label_color(mut self, color: Color) -> Self {
-        self.label = self.label.set_color(color);
+        self.label.set_color(color);
         self
     }
 
+    /// Sets the color of the button to the specified ggez `Color`
     pub fn button_color(mut self, color: Color) -> Self {
         self.button_color = color;
         self
@@ -93,7 +122,7 @@ impl Widget for Button {
         self.hover = false;
 
         if hover {
-            println!("Clicked Button, \"{}\"", self.label.text);
+            println!("Clicked Button, '{:?}'", self.label.textfrag);
             return Some((self.id, self.action));
         }
         None
@@ -108,7 +137,8 @@ impl Widget for Button {
 
         let button = graphics::Mesh::new_rectangle(ctx, draw_mode, self.dimensions, self.button_color)?;
         graphics::draw(ctx, &button, DrawParam::default())?;
-        draw_text(ctx, font, self.label.color, &self.label.text, &self.dimensions.point().into(), None)?;
+
+        self.label.draw(ctx, font)?;
 
         Ok(())
     }
@@ -124,5 +154,6 @@ impl Widget for Button {
     fn translate(&mut self, point: Vector2<f32>)
     {
         self.dimensions.translate(point);
+        self.label.translate(point);
     }
 }

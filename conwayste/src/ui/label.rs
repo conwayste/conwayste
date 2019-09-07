@@ -16,38 +16,109 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::Context;
-use ggez::graphics::{Color, Rect, Font, Text, Scale};
-use ggez::nalgebra::Point2;
+use ggez::{Context, GameResult};
+use ggez::graphics::{self, Color, Rect, Font, Text, TextFragment, DrawParam, Drawable};
+use ggez::nalgebra::{Point2, Vector2};
+
+use std::rc::Rc;
+
+use super::{
+    widget::Widget,
+    WidgetID
+};
+
+use crate::constants::DEFAULT_UI_FONT_SCALE;
 
 pub struct Label {
-    pub text: &'static str,
-    pub color: Color,
+    pub textfrag: TextFragment,
     pub dimensions: Rect,
 }
 
+/// A graphical widget representation of text
 impl Label {
-    pub fn new(ctx: &mut Context, font: &Font, string: &'static str, color: Color, origin: Point2<f32>) -> Self {
-        // TODO pass in as a parameter the scale
-        let mut text = Text::new(string);
-        text.set_font(*font, Scale::uniform(10.0));
-        let w = text.width(ctx) as f32;
-        let h = text.height(ctx) as f32;
+    /// Creates a Label widget.
+    ///
+    /// # Arguments
+    /// * `ctx` - GGEZ context
+    /// * `font` - font to be used when drawing the text
+    /// * `text` - Label text
+    /// * `color` - Text color
+    /// * `widget_id` - Unique widget identifier
+    /// * `action` - Unique action identifer
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ui::Button;
+    ///
+    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
+    ///     let font = Font::default();
+    ///     let b = Button::new(ctx, font, "TestButton", WidgetID::TestButton1, UIAction::PrintHelloWorld)
+    ///         .label_color(Color::from(css::DARKCYAN))
+    ///         .button_color(Color::from(css::WHITE));
+    ///
+    ///     b.draw(ctx, font)?;
+    /// }
+    /// ```
+    ///
+    pub fn new(ctx: &mut Context, font: Rc<Font>, string: String, color: Color, dest: Point2<f32>) -> Self {
+        let font: Font = *font;
+
+        let text_fragment = TextFragment::new(string.clone())
+            .scale(*DEFAULT_UI_FONT_SCALE)
+            .color(color)
+            .font(font);
+
+        let text = Text::new(text_fragment.clone());
+        // unwrap safe b/c if this fails then the game is fundamentally broken and is not in a usable state
+        let mut dimensions = <Text as Drawable>::dimensions(&text, ctx).unwrap();
+        dimensions.move_to(dest);
 
         Label {
-            text: string,
-            color: color,
-            dimensions: Rect::new(origin.x, origin.y, w, h),
+            textfrag: text_fragment,
+            dimensions: dimensions
         }
     }
 
-    pub fn set_color(mut self, color: Color) -> Self {
-        self.color = color;
-        self
+    pub fn set_color(&mut self, color: Color) {
+        self.textfrag.color = Some(color);
     }
 
-    pub fn set_text(mut self, text: &'static str) -> Self {
-        self.text = text;
-        self
+    pub fn set_text(&mut self, string: String) {
+        self.textfrag.text = string;
+    }
+}
+
+impl Widget for Label {
+    /// Retrieves the widget's unique identifer
+    fn id(&self) -> WidgetID {
+        WidgetID::InGameLayer1
+    }
+
+    /// Get the size of the widget. Widget must be sizable.
+    fn size(&self) -> Rect {
+        self.dimensions
+    }
+
+    /// Translate the widget from one location to another. Widget must be sizable.
+    fn translate(&mut self, point: Vector2<f32>) {
+        self.dimensions.translate(point);
+    }
+
+    fn draw(&mut self, ctx: &mut Context, _font: &Font) -> GameResult<()> {
+
+        let text = Text::new(self.textfrag.clone());
+
+        // If the text is updated, we need to refresh the dimensions of the virtual rectangle bounding it.
+        // unwrap safe b/c if this fails then the game is fundamentally broken and is not in a usable state
+        let recalculated = <Text as Drawable>::dimensions(&text, ctx).unwrap();
+        if recalculated.w != self.dimensions.w  && recalculated.h != self.dimensions.h {
+            self.dimensions.w = recalculated.w;
+            self.dimensions.h = recalculated.h;
+        }
+
+        graphics::draw(ctx, &text, DrawParam::default().dest(self.dimensions.point()))?;
+
+        Ok(())
     }
 }

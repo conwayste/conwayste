@@ -54,8 +54,7 @@ use netwayste::net::NetwaysteEvent;
 use ggez::conf;
 use ggez::event::*;
 use ggez::{GameError, GameResult, Context, ContextBuilder};
-use ggez::graphics::{self, Rect};
-use ggez::graphics::{Color, DrawParam};
+use ggez::graphics::{self, Rect, Color, DrawParam, Font};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::timer;
 
@@ -63,6 +62,7 @@ use std::env;
 use std::io::Write; // For env logger
 use std::path;
 use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 use std::time::Instant;
 
 use constants::{
@@ -93,8 +93,7 @@ use uimanager::UIManager;
 
 // All game state
 struct MainState {
-    small_font:          graphics::Font,
-    menu_font:           graphics::Font,
+    system_font:         Rc<Font>,
     screen_stack:        Vec<Screen>,       // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     intro_uni:           Universe,
@@ -328,7 +327,9 @@ impl MainState {
         color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
         color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
 
-        let font = graphics::Font::default(); // Provides DejaVuSerif.ttf
+        let font = Font::new(ctx, path::Path::new("/telegrama_render.ttf"))
+                    .map_err(|e| GameError::FilesystemError(format!("Could not load or find font. {:?}", e)))?;
+        let font = Rc::new(font);
 
         let bigbang =
         {
@@ -370,12 +371,11 @@ impl MainState {
 
         let mut vs = video::VideoSettings::new();
 
-        let ui_manager = UIManager::new(ctx, &config);
+        let ui_manager = UIManager::new(ctx, &config, Rc::clone(&font));
 
         let mut s = MainState {
             screen_stack:        vec![Screen::Intro],
-            small_font:          font.clone(),
-            menu_font:           font.clone(),
+            system_font:         Rc::clone(&font),
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
@@ -454,7 +454,7 @@ impl EventHandler for MainState {
                 }
 
                 if textfield_under_focus {
-                    self.process_text_field_inputs();
+                    self.process_text_field_inputs(ctx);
                 } else {
                     self.process_running_inputs();
                 }
@@ -555,11 +555,11 @@ impl EventHandler for MainState {
                 self.draw_universe(ctx)?;
             }
             Screen::InRoom => {
-                ui::draw_text(ctx, &self.menu_font, Color::from(css::WHITE), "In Room", &Point2::new(100.0, 100.0), None)?;
+                ui::draw_text(ctx, &self.system_font, Color::from(css::WHITE), "In Room", &Point2::new(100.0, 100.0), None)?;
                 // TODO
             }
             Screen::ServerList => {
-                ui::draw_text(ctx, &self.menu_font, Color::from(css::WHITE), "Server List", &Point2::new(100.0, 100.0), None)?;
+                ui::draw_text(ctx, &self.system_font, Color::from(css::WHITE), "Server List", &Point2::new(100.0, 100.0), None)?;
                 // TODO
              },
             Screen::Exit => {}
@@ -567,7 +567,7 @@ impl EventHandler for MainState {
 
         if let Some(ref mut layers) = self.ui_manager.get_screen_layers(current_screen) {
             for layer in layers.iter_mut() {
-                layer.draw(ctx, &self.menu_font);
+                layer.draw(ctx, &self.system_font);
             }
         }
 
@@ -697,7 +697,7 @@ impl EventHandler for MainState {
     /// <https://wiki.libsdl.org/SDL_TextEditingEvent>
     /// <https://wiki.libsdl.org/SDL_TextInputEvent>
     /// <https://wiki.libsdl.org/Tutorials/TextInput>
-    fn text_input_event(&mut self, _ctx: &mut Context, character: char) {
+    fn text_input_event(&mut self, ctx: &mut Context, character: char) {
         // Ignore control characters (like Esc or Del)./
         if character.is_control() {
             return;
@@ -706,7 +706,7 @@ impl EventHandler for MainState {
         let screen = self.get_current_screen();
         if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
             if tf.state.is_some() {
-                tf.add_char_at_cursor(character);
+                tf.add_char_at_cursor(ctx, character);
             }
         }
         // println!("[text_input_event] (text) {}", text);
@@ -833,7 +833,7 @@ impl MainState {
         if draw_params.draw_counter {
             let gen_counter_str = universe.latest_gen().to_string();
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
-            ui::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
+            ui::draw_text(ctx, &self.system_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
         }
 
         Ok(())
@@ -989,7 +989,7 @@ impl MainState {
         }
     }
 
-    fn process_text_field_inputs(&mut self) {
+    fn process_text_field_inputs(&mut self, ctx: &mut Context) {
         let keycode;
 
         if let Some(k) = self.inputs.key_info.key {
@@ -1013,28 +1013,28 @@ impl MainState {
             KeyCode::Back => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.backspace_char();
+                        tf.remove_left_of_cursor(ctx);
                     }
                 }
             }
             KeyCode::Delete => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.delete_char();
+                        tf.remove_right_of_cursor(ctx);
                     }
                 }
             }
             KeyCode::Left => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.dec_cursor_pos();
+                        tf.dec_cursor_pos(ctx);
                     }
                 }
             },
             KeyCode::Right => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.inc_cursor_pos();
+                        tf.inc_cursor_pos(ctx);
                     }
                 }
             }
@@ -1077,7 +1077,7 @@ impl MainState {
                 if action == MouseAction::Drag {
                     layer.on_drag(&origin_point, &mouse_point);
                 } else if action == MouseAction::Click {
-                // TODO FIXME AMEEN self.pane.update(true);
+                // PR_GATE self.pane.update(true);
                 }
             }
 
@@ -1290,9 +1290,7 @@ impl MainState {
 
         for msg in incoming_messages {
             if let Some(cb) = self.ui_manager.chatbox_from_id(WidgetID::InGamePane1Chatbox) {
-                // FIXME once ggez 0.5 lands
-                let font = graphics::Font::default();
-                cb.add_message(ctx, &font, msg)?;
+                cb.add_message(msg)?;
             }
         }
 
@@ -1369,7 +1367,7 @@ impl MainState {
                 });
             },
             WidgetID::InGamePane1Chatbox | WidgetID::InGamePane1ChatboxTextField => {
-                // TODO
+                // PR_GATE
             },
         }
 
@@ -1389,10 +1387,8 @@ impl MainState {
         }
 
         if !msg.is_empty() {
-            let font = graphics::Font::default();
             if let Some(cb) = self.ui_manager.chatbox_from_id(WidgetID::InGamePane1Chatbox) {
-                            // FIXME once ggez 0.5 lands
-                cb.add_message(ctx, &font, msg.clone())?;
+                cb.add_message(msg.clone())?;
 
                 if let Some(ref mut netwayste) = self.net_worker {
                     netwayste.try_send(NetwaysteEvent::ChatMessage(msg));

@@ -17,6 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::collections::HashMap;
+use std::rc::Rc;
 use chromatica::css;
 
 use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text, Scale};
@@ -42,8 +43,8 @@ pub struct UIManager {
 }
 
 impl UIManager {
-    pub fn new(ctx: &mut Context, config: &Config) -> Self {
-        let font = graphics::Font::default(); // Provides DejaVuSerif.ttf
+    // PR_GATE move UI creation out of the manager per PR feedback
+    pub fn new(ctx: &mut Context, config: &Config, font: Rc<Font>) -> Self {
         let mut ui_layers = HashMap::new();
 
         let chat_pane_rect = Rect::new(30.0, 600.0, 300.0, 150.0);
@@ -59,8 +60,8 @@ impl UIManager {
         chatpane.add(chatbox);
         chatpane.add(chatfield);
 
-        let checkbox = Box::new(Checkbox::new(ctx, &font,
-            "Toggle FullScreen",
+        let checkbox = Box::new(Checkbox::new(ctx, Rc::clone(&font),
+            "Toggle FullScreen".to_owned(),
             Rect::new(10.0, 210.0, 20.0, 20.0),
             WidgetID::MainMenuTestCheckbox,
             UIAction::Toggle( if config.get().video.fullscreen { ToggleState::Enabled } else { ToggleState::Disabled } ),
@@ -72,15 +73,15 @@ impl UIManager {
 
         // Create a new pane, and add two test buttons to it. Actions do not really matter for now, WIP
         let mut pane = Box::new(Pane::new(WidgetID::MainMenuPane1, Rect::new_i32(20, 20, 300, 250)));
-        let mut pane_button = Box::new(Button::new(ctx, &font, "ServerList", WidgetID::MainMenuPane1ButtonYes, UIAction::ScreenTransition(Screen::ServerList)));
+        let mut pane_button = Box::new(Button::new(ctx, Rc::clone(&font), "ServerList".to_owned(), WidgetID::MainMenuPane1ButtonYes, UIAction::ScreenTransition(Screen::ServerList)));
         pane_button.set_size(Rect::new(10.0, 10.0, 180.0, 50.0));
         pane.add(pane_button);
 
-        let mut pane_button = Box::new(Button::new(ctx, &font, "InRoom", WidgetID::MainMenuPane1ButtonNo, UIAction::ScreenTransition(Screen::InRoom)));
+        let mut pane_button = Box::new(Button::new(ctx, Rc::clone(&font), "InRoom".to_owned(), WidgetID::MainMenuPane1ButtonNo, UIAction::ScreenTransition(Screen::InRoom)));
         pane_button.set_size(Rect::new(10.0, 70.0, 180.0, 50.0));
         pane.add(pane_button);
 
-        let mut pane_button = Box::new(Button::new(ctx, &font, "StartGame", WidgetID::MainMenuTestButton, UIAction::ScreenTransition(Screen::Run)));
+        let mut pane_button = Box::new(Button::new(ctx, Rc::clone(&font), "StartGame".to_owned(), WidgetID::MainMenuTestButton, UIAction::ScreenTransition(Screen::Run)));
         pane_button.set_size(Rect::new(10.0, 130.0, 180.0, 50.0));
         pane.add(pane_button);
 
