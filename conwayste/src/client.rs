@@ -1019,14 +1019,14 @@ impl MainState {
             KeyCode::Left => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.dec_cursor_pos(ctx);
+                        tf.move_cursor_left(ctx);
                     }
                 }
             },
             KeyCode::Right => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, WidgetID::InGamePane1ChatboxTextField) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.inc_cursor_pos(ctx);
+                        tf.move_cursor_right(ctx);
                     }
                 }
             }

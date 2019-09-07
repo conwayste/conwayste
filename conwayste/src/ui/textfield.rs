@@ -157,15 +157,15 @@ impl TextField {
         self.draw_cursor = false;
     }
 
-    /// Advances the cursor to the right by one character
-    pub fn inc_cursor_pos(&mut self, ctx: &mut Context) {
+    /// Advances the cursor position to the right by one character
+    pub fn move_cursor_right(&mut self, ctx: &mut Context) {
         if self.cursor_index < self.text.len() {
             self.cursor_index += 1;
         }
     }
 
-    /// Decrements the cursor to the left by one character
-    pub fn dec_cursor_pos(&mut self, ctx: &mut Context) {
+    /// Decrements the cursor position to the left by one character
+    pub fn move_cursor_left(&mut self, ctx: &mut Context) {
         if self.cursor_index > 0 {
             self.cursor_index -= 1;
         }
