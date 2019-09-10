@@ -99,14 +99,16 @@ struct MainState {
     intro_uni:           Universe,
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
     color_settings:      ColorSettings,
+    uni_draw_params:     UniDrawParams,
     running:             bool,
     menu_sys:            menu::MenuSystem,
     video_settings:      video::VideoSettings,
     config:              config::Config,
-    viewport:            viewport::Viewport,
-    intro_viewport:      viewport::Viewport,
+    viewport:            viewport::GridView,
+    intro_viewport:      viewport::GridView,
     inputs:              input::InputManager,
     net_worker:          Option<network::ConwaysteNetWorker>,
+    recvd_first_resize:  bool,       // work around an apparent ggez bug where the first resize event is bogus
 
     // Input state
     single_step:         bool,
@@ -294,18 +296,18 @@ impl MainState {
 
         // On first-run, use default supported resolution
         let (w, h) = config.get_resolution();
-        vs.set_active_resolution(ctx, w as u32, h as u32)?;
+        vs.set_active_resolution(ctx, video::Resolution{w, h})?;
 
         let is_fullscreen = config.get().video.fullscreen;
         vs.is_fullscreen = is_fullscreen;
         vs.update_fullscreen(ctx)?;
 
-        let intro_viewport = viewport::Viewport::new(
+        let intro_viewport = viewport::GridView::new(
             DEFAULT_ZOOM_LEVEL,
             universe_width_in_cells,
             universe_height_in_cells);
 
-        let viewport = viewport::Viewport::new(
+        let viewport = viewport::GridView::new(
             config.get().gameplay.zoom,
             universe_width_in_cells,
             universe_height_in_cells);
@@ -373,12 +375,21 @@ impl MainState {
 
         let ui_manager = UIManager::new(ctx, &config, Rc::clone(&font));
 
+        // Update universe draw parameters for intro
+        let intro_uni_draw_params = UniDrawParams {
+            bg_color: graphics::BLACK,
+            fg_color: graphics::BLACK,
+            player_id: -1,
+            draw_counter: true,
+        };
+
         let mut s = MainState {
             screen_stack:        vec![Screen::Intro],
             system_font:         Rc::clone(&font),
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
+            uni_draw_params:     intro_uni_draw_params,
             color_settings:      color_settings,
             running:             false,
             menu_sys:            menu::MenuSystem::new(font),
@@ -388,6 +399,7 @@ impl MainState {
             intro_viewport:      intro_viewport,
             inputs:              input::InputManager::new(),
             net_worker:          None,
+            recvd_first_resize:  false,
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -421,6 +433,14 @@ impl EventHandler for MainState {
                 if self.inputs.key_info.key.is_some() || (self.power_on_timestamp > INTRO_DURATION) {
                     self.screen_stack.pop();
                     self.screen_stack.push(Screen::Menu);
+
+                    // update universe draw params now that intro is gone
+                    self.uni_draw_params = UniDrawParams {
+                        bg_color: self.color_settings.get_color(None),
+                        fg_color: self.color_settings.get_color(Some(CellState::Dead)),
+                        player_id: 1, // Current player, TODO sync with Server's CLIENT ID
+                        draw_counter: true,
+                    };
                 } else {
                     self.power_on_timestamp += duration;
 
@@ -713,7 +733,13 @@ impl EventHandler for MainState {
     }
 
     fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
-        debug!("Resized screen to {}, {}", width, height);
+        if !self.recvd_first_resize {
+            // Work around apparent ggez bug -- bogus first resize_event
+            debug!("IGNORING resize_event: {}, {}", width, height);
+            self.recvd_first_resize = true;
+            return;
+        }
+        debug!("resize_event: {}, {}", width, height);
         let new_rect = graphics::Rect::new(
             0.0,
             0.0,
@@ -721,9 +747,13 @@ impl EventHandler for MainState {
             height,
         );
         graphics::set_screen_coordinates(ctx, new_rect).unwrap();
-        self.viewport.set_dimensions(width as u32, height as u32);
-        self.config.set_resolution(width as u32, height as u32);
-        self.video_settings.resolution = (width as u32, height as u32);
+        self.viewport.set_dimensions(width, height);
+        if self.video_settings.is_fullscreen {
+            debug!("not saving resolution to config because is_fullscreen is true");
+        } else {
+            self.config.set_resolution(width, height);
+        }
+        self.video_settings.resolution = video::Resolution{w: width, h: height};
     }
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
@@ -757,7 +787,7 @@ impl EventHandler for MainState {
 }
 
 
-struct GameOfLifeDrawParams {
+struct UniDrawParams {
     bg_color: Color,
     fg_color: Color,
     player_id: isize, // Player color >=0, Playerless < 0  // TODO: use Option<usize> instead
@@ -766,14 +796,9 @@ struct GameOfLifeDrawParams {
 
 impl MainState {
 
-    fn draw_game_of_life(&self,
-                         ctx: &mut Context,
-                         universe: &Universe,
-                         draw_params: &GameOfLifeDrawParams
-                         ) -> GameResult<()> {
+    fn draw_game_of_life(&self, ctx: &mut Context, universe: &Universe) -> GameResult<()> {
 
-
-        let viewport = if draw_params.player_id >= 0 {
+        let viewport = if self.uni_draw_params.player_id >= 0 {
             &self.viewport
         } else {
             // intro
@@ -785,7 +810,7 @@ impl MainState {
         let rectangle = graphics::Mesh::new_rectangle(ctx,
             GRID_DRAW_STYLE.to_draw_mode(),
             graphics::Rect::new(0.0, 0.0, viewport_rect.w, viewport_rect.h),
-            draw_params.bg_color)?;
+            self.uni_draw_params.bg_color)?;
         graphics::draw(ctx, &rectangle, DrawParam::new().dest(viewport_rect.point()))?;
 
         // grid foreground (dead cells)
@@ -795,15 +820,15 @@ impl MainState {
         let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
 
         // grid non-dead cells (walls, players, etc.)
-        let visibility = if draw_params.player_id >= 0 {
-            Some(draw_params.player_id as usize) //XXX, Player One
+        let visibility = if self.uni_draw_params.player_id >= 0 {
+            Some(self.uni_draw_params.player_id as usize)
         } else {
             // used for random coloring in intro
             Some(0)
         };
 
         universe.each_non_dead_full(visibility, &mut |col, row, state| {
-            let color = if draw_params.player_id >= 0 {
+            let color = if self.uni_draw_params.player_id >= 0 {
                 self.color_settings.get_color(Some(state))
             } else {
                 self.color_settings.get_random_color()
@@ -821,7 +846,8 @@ impl MainState {
 
         if let Some(clipped_rect) = ui::intersection(full_rect, viewport_rect) {
             let origin = graphics::DrawParam::new().dest(Point2::new(0.0, 0.0));
-            let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect, draw_params.fg_color)?;
+            let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect,
+                                                          self.uni_draw_params.fg_color)?;
 
             graphics::draw(ctx, &rectangle, origin)?;
             graphics::draw(ctx, &spritebatch, origin)?;
@@ -830,7 +856,7 @@ impl MainState {
         spritebatch.clear();
 
         ////////// draw generation counter
-        if draw_params.draw_counter {
+        if self.uni_draw_params.draw_counter {
             let gen_counter_str = universe.latest_gen().to_string();
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
             ui::draw_text(ctx, &self.system_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
@@ -840,29 +866,12 @@ impl MainState {
     }
 
     fn draw_intro(&mut self, ctx: &mut Context) -> GameResult<()>{
-
-        let draw_params = GameOfLifeDrawParams {
-            bg_color: graphics::BLACK,
-            fg_color: graphics::BLACK,
-            player_id: -1,
-            draw_counter: true,
-        };
-
-        self.draw_game_of_life(ctx, &self.intro_uni, &draw_params)
+        self.draw_game_of_life(ctx, &self.intro_uni)
     }
 
     fn draw_universe(&mut self, ctx: &mut Context) -> GameResult<()> {
-
-        // TODO: don't do this every frame
-        let draw_params = GameOfLifeDrawParams {
-            bg_color: self.color_settings.get_color(None),
-            fg_color: self.color_settings.get_color(Some(CellState::Dead)),
-            player_id: 1, // Current player, TODO sync with Server's CLIENT ID
-            draw_counter: true,
-        };
-
         self.first_gen_was_drawn = true;
-        self.draw_game_of_life(ctx, &self.uni, &draw_params)
+        self.draw_game_of_life(ctx, &self.uni)
     }
 
     fn pause_or_resume_game(&mut self) {
@@ -1451,8 +1460,8 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     // 4) get offset for row and column to draw at
 
     let resolution = s.video_settings.get_active_resolution();
-    let win_width  = (resolution.0 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
-    let win_height = (resolution.1 as f32 / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let win_width  = (resolution.w / DEFAULT_ZOOM_LEVEL) as isize; // cells
+    let win_height = (resolution.h / DEFAULT_ZOOM_LEVEL) as isize; // cells
     let player_id = 0;   // hardcoded for this intro
 
     let letter_width = 5;
