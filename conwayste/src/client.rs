@@ -279,6 +279,8 @@ impl MainState {
     fn new(ctx: &mut Context) -> GameResult<MainState> {
         let universe_width_in_cells  = 256;
         let universe_height_in_cells = 120;
+        let intro_universe_width_in_cells  = 256;
+        let intro_universe_height_in_cells = 256;
 
         let mut config = config::Config::new();
         config.load_or_create_default().map_err(|e| {
@@ -304,8 +306,8 @@ impl MainState {
 
         let intro_viewport = viewport::GridView::new(
             DEFAULT_ZOOM_LEVEL,
-            universe_width_in_cells,
-            universe_height_in_cells);
+            intro_universe_width_in_cells,
+            intro_universe_height_in_cells);
 
         let viewport = viewport::GridView::new(
             config.get().gameplay.zoom,
@@ -358,8 +360,8 @@ impl MainState {
         {
             let player = PlayerBuilder::new(Region::new(0, 0, 256, 256));
             BigBang::new()
-                .width(256)
-                .height(256)
+                .width(intro_universe_width_in_cells)
+                .height(intro_universe_height_in_cells)
                 .fog_radius(100)
                 .add_players(vec![player])
                 .birth()
@@ -1452,6 +1454,7 @@ fn toggle_line(s: &mut MainState, orientation: Orientation, col: isize, row: isi
     }
 }
 
+// TODO: this should really have "intro" in its name!
 fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
 
     // 1) Calculate width and height of rectangle which represents the intro logo
