@@ -373,8 +373,6 @@ impl MainState {
             GameError::ConfigError(msg)
         })?;
 
-        let mut vs = video::VideoSettings::new();
-
         let ui_manager = UIManager::new(ctx, &config, Rc::clone(&font));
 
         // Update universe draw parameters for intro
