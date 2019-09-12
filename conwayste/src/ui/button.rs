@@ -42,6 +42,9 @@ pub struct Button {
     pub action: UIAction
 }
 
+const BUTTON_LABEL_PADDING_W: f32 = 16.0;   // in pixels
+const BUTTON_LABEL_PADDING_H: f32 = 16.0;   // in pixels
+
 /// A named widget that can be clicked to result in an occuring action.
 impl Button {
 
@@ -70,16 +73,13 @@ impl Button {
     /// ```
     ///
     pub fn new(ctx: &mut Context, font: Rc<Font>, button_text: String, widget_id: WidgetID, action: UIAction) -> Self {
-        // PR_GATE center text instead of these hard-coded constants
-        const OFFSET_X: f32 = 8.0;
-        const OFFSET_Y: f32 = 16.0;
-
-        let label = Label::new(ctx, font, button_text, color_with_alpha(css::WHITE, 0.1), Point2::new(30.0 + OFFSET_X, 20.0 + OFFSET_Y));
+        let label_position = Point2::new(0.0, 0.0); // label positioning defined an offset to button origin after centering
+        let label = Label::new(ctx, font, button_text, color_with_alpha(css::WHITE, 0.1), label_position);
         let label_dims = label.size();
 
-        let dimensions = Rect::new(30.0, 20.0, label_dims.w, label_dims.h);
+        let dimensions = Rect::new(30.0, 20.0, label_dims.w + BUTTON_LABEL_PADDING_W, label_dims.h + BUTTON_LABEL_PADDING_H);
 
-        Button {
+        let mut b = Button {
             id: widget_id,
             label: label,
             button_color: color_with_alpha(css::DARKCYAN, 0.8),
@@ -88,7 +88,9 @@ impl Button {
             hover: false,
             borderless: false,
             action: action,
-        }
+        };
+        b.center_label_text();
+        b
     }
 
     /// Sets the color of the Button's text to the specified ggez `Color`
@@ -101,6 +103,18 @@ impl Button {
     pub fn button_color(mut self, color: Color) -> Self {
         self.button_color = color;
         self
+    }
+
+    fn center_label_text(&mut self) {
+        let text_dims = self.label.size();
+        let tmp_label_rect = Rect::new(self.dimensions.x, self.dimensions.y, text_dims.w, text_dims.h);
+        let label_center_point = center(&tmp_label_rect);
+        let button_center = center(&self.dimensions);
+
+        self.label.set_size(Rect::new(self.dimensions.x + (button_center.x - label_center_point.x),
+            self.dimensions.y + (button_center.y - label_center_point.y),
+            text_dims.w,
+            text_dims.h));
     }
 }
 
@@ -148,7 +162,14 @@ impl Widget for Button {
     }
 
     fn set_size(&mut self, new_dims: Rect) {
+        if new_dims.w < self.label.dimensions.w + BUTTON_LABEL_PADDING_W
+        || new_dims.h < self.label.dimensions.h + BUTTON_LABEL_PADDING_H {
+            // PR_GATE add error handling
+            // cannot set the size of a button to anything smaller than the self-containing text plus some margin
+            return;
+        }
         self.dimensions = new_dims;
+        self.center_label_text();
     }
 
     fn translate(&mut self, point: Vector2<f32>)

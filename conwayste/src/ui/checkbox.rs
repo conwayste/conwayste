@@ -128,7 +128,7 @@ impl Widget for Checkbox {
         let label_dimensions = self.label.size();
         self.hover = within_widget(point, &self.dimensions) || within_widget(point, &label_dimensions);
         if self.hover {
-            println!("Hovering over Checkbox, '{:?}'", label_dimensions);
+            //println!("Hovering over Checkbox, '{:?}'", label_dimensions);
         }
     }
 
@@ -138,7 +138,7 @@ impl Widget for Checkbox {
         self.hover = false;
 
         if hover {
-            println!("Clicked Checkbox, '{}'", self.label.textfrag.text);
+            //println!("Clicked Checkbox, '{}'", self.label.textfrag.text);
             return Some(( self.id, UIAction::Toggle(self.toggle()) ));
         }
         None

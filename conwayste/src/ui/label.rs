@@ -100,6 +100,10 @@ impl Widget for Label {
         self.dimensions
     }
 
+    fn set_size(&mut self, new_dims: Rect) {
+        self.dimensions = new_dims;
+    }
+
     /// Translate the widget from one location to another. Widget must be sizable.
     fn translate(&mut self, point: Vector2<f32>) {
         self.dimensions.translate(point);
