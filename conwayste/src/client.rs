@@ -112,7 +112,7 @@ struct MainState {
     arrow_input:         (isize, isize),
     drag_draw:           Option<CellState>,
     toggle_paused_game:  bool,
-    power_on_timestamp:  f64,
+    current_intro_duration:  f64,
 
     ui_manager:          UIManager,
 }
@@ -395,7 +395,7 @@ impl MainState {
             arrow_input:         (0, 0),
             drag_draw:           None,
             toggle_paused_game:  false,
-            power_on_timestamp:  0.0,
+            current_intro_duration:  0.0,
             ui_manager:          ui_manager,
         };
 
@@ -420,13 +420,13 @@ impl EventHandler for MainState {
         match current_screen {
             Screen::Intro => {
                 // Any key should skip the intro
-                if self.inputs.key_info.key.is_some() || (self.power_on_timestamp > INTRO_DURATION) {
+                if self.inputs.key_info.key.is_some() || (self.current_intro_duration > INTRO_DURATION) {
                     self.screen_stack.pop();
                     self.screen_stack.push(Screen::Menu);
                 } else {
-                    self.power_on_timestamp += duration;
+                    self.current_intro_duration += duration;
 
-                    if self.power_on_timestamp >= (INTRO_DURATION - INTRO_PAUSE_DURATION) {
+                    if self.current_intro_duration >= (INTRO_DURATION - INTRO_PAUSE_DURATION) {
                         self.intro_uni.next();
                     }
                 }
@@ -648,10 +648,12 @@ impl EventHandler for MainState {
     fn key_down_event(&mut self, _ctx: &mut Context, keycode: KeyCode, keymod: KeyMods, repeat: bool ) {
         let key_as_int32 = keycode as i32;
 
-        // Support just the basics for now by ignoring everything after the last arrow key in the key code list
+        // Winit's KeyCode definition has no perceptible ordering so I'm selectively defining what keys we'll accept...
+        // for now at least
         if key_as_int32 < (KeyCode::Numlock as i32)
             || (key_as_int32 >= KeyCode::LAlt as i32 && key_as_int32 <= KeyCode::LWin as i32)
-            || (key_as_int32 >= KeyCode::RAlt as i32 && key_as_int32 <= KeyCode::RWin as i32) {
+            || (key_as_int32 >= KeyCode::RAlt as i32 && key_as_int32 <= KeyCode::RWin as i32)
+            || (key_as_int32 == KeyCode::Equals as i32 || key_as_int32 == KeyCode::Subtract as i32) {
             if self.inputs.key_info.key.is_none() {
                 self.inputs.key_info.key = Some(keycode);
             }
@@ -867,17 +869,12 @@ impl MainState {
         match current_screen {
             Screen::Menu => {
                 if cur_menu_state == menu::MenuState::MainMenu {
-                    // If at 1, then we haven't started the game yet
-                    if self.screen_stack.len() == 1 {
-                        self.screen_stack.push(Screen::Run);
-                    } else {
-                        self.screen_stack.pop();
-                    }
+                    self.screen_stack.push(Screen::Run);
                     self.running = true;
                 }
             }
             Screen::Run => {
-                self.screen_stack.push(Screen::Menu);
+                self.screen_stack.pop();
                 self.menu_sys.menu_state = menu::MenuState::MainMenu;
                 self.running = false;
             }
