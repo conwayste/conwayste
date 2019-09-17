@@ -24,6 +24,12 @@ pub struct Resolution {
     pub h: f32,
 }
 
+impl From<(f32, f32)> for Resolution {
+    fn from(src: (f32, f32)) -> Resolution {
+        Resolution{ w: src.0, h: src.1 }
+    }
+}
+
 /*
 const DISPLAY_MODES: [Resolution; 5]  = [
     Resolution {w: 1280, h: 720},
@@ -36,7 +42,7 @@ const DISPLAY_MODES: [Resolution; 5]  = [
 
 #[derive(Debug, Clone)]
 pub struct VideoSettings {
-    pub resolution:    Resolution,
+    resolution:        Resolution,
     pub is_fullscreen: bool,
 }
 
@@ -49,26 +55,28 @@ impl VideoSettings {
     }
 
     /// Gets the current active resolution.
-    pub fn get_active_resolution(&self) -> Resolution {
+    pub fn get_resolution(&self) -> Resolution {
         self.resolution
     }
 
-    /// Sets the current active resolution and updates the SDL context.
-    pub fn set_active_resolution(&mut self, ctx: &mut Context, res: Resolution) -> GameResult<()> {
+    /// Sets the `resolution` field.
+    /// If `refresh` is true, calls `update_resolution` to actually resize the window.
+    pub fn set_resolution(&mut self, ctx: &mut Context, res: Resolution, refresh: bool) -> GameResult<()> {
         self.resolution = res;
-        self.refresh_game_resolution(ctx, res.w, res.h)?;
-        Ok(())
-    }
-
-    /// Updates the SDL video context to the supplied resolution.
-    fn refresh_game_resolution(&mut self, ctx: &mut Context, w: f32, h: f32) -> GameResult<()> {
-        if w != 0.0 && h != 0.0 {
-            graphics::set_drawable_size(ctx, w, h)?;
+        if refresh {
+            self.update_resolution(ctx, res.w, res.h)?;
         }
         Ok(())
     }
 
-    /// Makes us fullscreen or not based on the `is_fullscreen` field.
+    /// Resizes the window based on the `resolution` field.
+    fn update_resolution(&mut self, ctx: &mut Context, w: f32, h: f32) -> GameResult<()> {
+        graphics::set_drawable_size(ctx, w, h)?;
+        Ok(())
+    }
+
+    /// Makes us fullscreen or not based on the `is_fullscreen` field. If we are fullscreen, also
+    /// updates the `resolution` field based on the actual screen resolution.
     pub fn update_fullscreen(&mut self, ctx: &mut Context) -> GameResult<()> {
         let fs_type = if self.is_fullscreen {
             FullscreenType::Desktop
@@ -76,6 +84,14 @@ impl VideoSettings {
             FullscreenType::Windowed
         };
         graphics::set_fullscreen(ctx, fs_type)?;
+
+        // Also update `resolution`
+        if self.is_fullscreen {
+            self.resolution = graphics::drawable_size(ctx).into();
+        } else {
+            // Don't update here because ggez 0.5.1 gives us the wrong resolution!
+        }
+
         Ok(())
     }
 }

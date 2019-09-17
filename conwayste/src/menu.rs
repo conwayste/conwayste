@@ -382,7 +382,7 @@ impl MenuSystem {
                 // Resolution
                 ///////////////////////////////
                 let coords = Point2::new(x, y);
-                let res = video_settings.get_active_resolution();
+                let res = video_settings.get_resolution();
                 let cur_res_str = format!("{}x{}", res.w, res.h);
 
                 // TODO: color

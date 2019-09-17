@@ -298,7 +298,7 @@ impl MainState {
 
         // On first-run, use default supported resolution
         let (w, h) = config.get_resolution();
-        vs.set_active_resolution(ctx, video::Resolution{w, h})?;
+        vs.set_resolution(ctx, video::Resolution{w, h}, true)?;
 
         let is_fullscreen = config.get().video.fullscreen;
         vs.is_fullscreen = is_fullscreen;
@@ -753,7 +753,7 @@ impl EventHandler for MainState {
         } else {
             self.config.set_resolution(width, height);
         }
-        self.video_settings.resolution = video::Resolution{w: width, h: height};
+        self.video_settings.set_resolution(ctx, video::Resolution{w: width, h: height}, false).unwrap();
     }
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
@@ -1229,7 +1229,7 @@ impl MainState {
 
                                     // Update the configuration file and resize the viewing
                                     // screen
-                                    let (w,h) = self.video_settings.get_active_resolution();
+                                    let (w,h) = self.video_settings.get_resolution();
                                     self.config.set_resolution(w, h);
                                     self.viewport.set_dimensions(w, h);
                                 }
@@ -1460,7 +1460,7 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     // 3) Center it
     // 4) get offset for row and column to draw at
 
-    let resolution = s.video_settings.get_active_resolution();
+    let resolution = s.video_settings.get_resolution();
     let win_width  = (resolution.w / DEFAULT_ZOOM_LEVEL) as isize; // cells
     let win_height = (resolution.h / DEFAULT_ZOOM_LEVEL) as isize; // cells
     let player_id = 0;   // hardcoded for this intro
