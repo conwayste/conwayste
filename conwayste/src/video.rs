@@ -75,7 +75,8 @@ impl VideoSettings {
         Ok(())
     }
 
-    /// Makes us fullscreen or not based on the `is_fullscreen` field.
+    /// Makes us fullscreen or not based on the `is_fullscreen` field. If we are fullscreen, also
+    /// updates the `resolution` field based on the actual screen resolution.
     pub fn update_fullscreen(&mut self, ctx: &mut Context) -> GameResult<()> {
         let fs_type = if self.is_fullscreen {
             FullscreenType::Desktop
@@ -83,6 +84,14 @@ impl VideoSettings {
             FullscreenType::Windowed
         };
         graphics::set_fullscreen(ctx, fs_type)?;
+
+        // Also update `resolution`
+        if self.is_fullscreen {
+            self.resolution = graphics::drawable_size(ctx).into();
+        } else {
+            // Don't update here because ggez 0.5.1 gives us the wrong resolution!
+        }
+
         Ok(())
     }
 }
