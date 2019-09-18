@@ -34,14 +34,14 @@ impl Graphics {
     /// On success, an `Ok((text_width, text_height))` tuple is returned, indicating the width
     /// and height of the text in pixels.
     pub fn draw_text(ctx: &mut Context, font: &Font, color: Color, text: &str,
-                     coords: &Point2<f32>, adjustment: Option<&Point2<f32>>) -> GameResult<(u32, u32)> {
+                     coords: &Point2<f32>, adjustment: Option<&Point2<f32>>) -> GameResult<(f32, f32)> {
         let text_fragment = TextFragment::new(text)
             .scale(Scale::uniform(20.0))              // TODO needs refactoring so size is specified in signature, fix in UI branch
             .color(color)
             .font(*font);
 
         let mut graphics_text = Text::new(text_fragment);
-        let (text_width, text_height) = (graphics_text.width(ctx), graphics_text.height(ctx));
+        let (text_width, text_height) = (graphics_text.width(ctx) as f32, graphics_text.height(ctx) as f32);
         let dst;
 
         if let Some(offset) = adjustment {
