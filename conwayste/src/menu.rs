@@ -86,6 +86,8 @@ pub struct MenuControls {
 #[derive(Debug, Clone)]
 pub struct MenuContainer {
     anchor:     Point2<f32>,
+    width:      f32,
+    height:     f32,
     text_width: f32,            // maximum width in pixels of any option
     menu_items: Vec<MenuItem>,
     metadata:   MenuMetaData,
@@ -94,9 +96,11 @@ pub struct MenuContainer {
 }
 
 impl MenuContainer {
-    pub fn new(x: f32, y: f32) -> MenuContainer {
+    pub fn new(width: f32, height: f32) -> MenuContainer {
         MenuContainer {
-            anchor: Point2::new(x, y),
+            anchor: Point2::new(0.0, 0.0),   // uninitialized; see adjust_anchors()
+            width,
+            height,
             text_width: 0.0,
             menu_items: Vec::<MenuItem>::new(),
             metadata: MenuMetaData::new(0, 0),
@@ -222,11 +226,14 @@ impl MenuSystem {
             active_color:   DEFAULT_ACTIVE_COLOR,
         };
 
-        menu_sys.menus.insert(MenuState::MainMenu, MenuContainer::new(400.0, 300.0));
-        menu_sys.menus.insert(MenuState::Options,  MenuContainer::new(400.0, 300.0));
-        menu_sys.menus.insert(MenuState::Video,    MenuContainer::new(200.0, 100.0));
-        menu_sys.menus.insert(MenuState::Audio,    MenuContainer::new(200.0, 100.0));
-        menu_sys.menus.insert(MenuState::Gameplay, MenuContainer::new(200.0, 100.0));
+        // FIXME: Hardcoded width and height. This is very hacky, but I expect this code to be
+        // replaced soon.  Note also that there is nothing stopping the contents from overflowing
+        // this container if they are larger.
+        menu_sys.menus.insert(MenuState::MainMenu, MenuContainer::new(159.0, 120.0));
+        menu_sys.menus.insert(MenuState::Options,  MenuContainer::new( 87.0, 120.0));
+        menu_sys.menus.insert(MenuState::Video,    MenuContainer::new(192.0,  50.0));
+        menu_sys.menus.insert(MenuState::Audio,    MenuContainer::new( 44.0,  30.0));
+        menu_sys.menus.insert(MenuState::Gameplay, MenuContainer::new( 44.0,  30.0));
 
         let start_game  = MenuItem::new(MenuItemIdentifier::StartGame,            String ::from("Start Game"), false, MenuItemValue::ValNone());
         let connect     = MenuItem::new(MenuItemIdentifier::Connect,              String ::from("Connect to Server"), false, MenuItemValue::ValNone());
@@ -315,6 +322,17 @@ impl MenuSystem {
         &mut self.controls
     }
 
+    /// Per-frame adjustment of anchors based on screen dims and width and height of MenuContainers
+    fn adjust_anchors(&mut self, ctx: &mut Context) -> GameResult<()> {
+        // get screen dims
+        let window_rect = graphics::window(ctx).get_inner_size().unwrap();
+        for menu in self.menus.values_mut() {
+            menu.anchor.x = (window_rect.width as f32 - menu.width) as f32 / 2.0;
+            menu.anchor.y = (window_rect.height as f32 - menu.height) as f32 / 2.0;
+        }
+        Ok(())
+    }
+
     fn draw_general_menu_view(&mut self, _ctx: &mut Context, has_game_started: bool) -> GameResult<()> {
         let index = self.get_menu_container().get_menu_item_index(); // current position in this menu
         // Menu Navigation
@@ -341,11 +359,11 @@ impl MenuSystem {
                         let color = if index == i { self.active_color } else { self.inactive_color };
                         let (w, h) = ui::draw_text(_ctx, &self.font, color, &menu_option_str,
                                                    &coords, Some(&offset))?;
-                        if max_text_width < w as f32 {
-                            max_text_width = w as f32;
+                        if max_text_width < w {
+                            max_text_width = w;
                         }
 
-                        offset = ui::point_offset(offset, 0.0, h as f32 + 10.0);
+                        offset = ui::point_offset(offset, 0.0, h + 10.0);
                     }
                     if container.text_width < max_text_width {
                         container.text_width = max_text_width;
@@ -376,7 +394,7 @@ impl MenuSystem {
                 // TODO: color
                 let (_w, h) = ui::draw_text(_ctx, &self.font, self.inactive_color,
                                             &is_fullscreen_str, &coords, None)?;
-                y += h as f32 + 10.0;
+                y += h + 10.0;
 
                 ////////////////////////////////
                 // Resolution
@@ -394,9 +412,10 @@ impl MenuSystem {
         Ok(())
     }
 
-    pub fn draw_menu(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context, has_game_started: bool) -> GameResult<()> {
-        self.draw_general_menu_view(_ctx, has_game_started)?;
-        self.draw_specific_menu_view(video_settings, _ctx)?;
+    pub fn draw_menu(&mut self, video_settings: &video::VideoSettings, ctx: &mut Context, has_game_started: bool) -> GameResult<()> {
+        self.adjust_anchors(ctx)?;
+        self.draw_general_menu_view(ctx, has_game_started)?;
+        self.draw_specific_menu_view(video_settings, ctx)?;
         Ok(())
     }
 
