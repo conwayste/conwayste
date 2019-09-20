@@ -102,16 +102,16 @@ impl Default for UserNetSettings {
 /// Graphics-related settings like resolution, fullscreen, and more!
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct VideoSettings {
-    pub resolution_x: i32,
-    pub resolution_y: i32,
+    pub resolution_x: f32,
+    pub resolution_y: f32,
     pub fullscreen: bool,
 }
 
 impl Default for VideoSettings {
     fn default() -> Self {
         VideoSettings {
-            resolution_x: 1024,
-            resolution_y: 768,
+            resolution_x: 1024.0,
+            resolution_y: 768.0,
             fullscreen: false,
         }
     }
@@ -396,7 +396,11 @@ impl Config {
     }
 
     /////////// Convenience Methods ///////////
-    pub fn set_resolution(&mut self, w: i32, h: i32) {
+    pub fn get_resolution(&self) -> (f32, f32) {
+        (self.settings.video.resolution_x, self.settings.video.resolution_y)
+    }
+
+    pub fn set_resolution(&mut self, w: f32, h: f32) {
         self.modify(|settings| {
             settings.video.resolution_x = w;
             settings.video.resolution_y = h;

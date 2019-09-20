@@ -36,7 +36,7 @@ pub enum InputAction {
 
     MouseClick(MouseButton, i32, i32),
     MouseDrag(MouseButton, i32, i32),
-    MouseRelease(MouseButton),
+    //MouseRelease(MouseButton),
     MouseMovement(i32, i32),
 
 //    Gamepad((Button, Axis)),
@@ -61,18 +61,12 @@ impl InputManager {
     /// Adds an event to the queue.
     /// This will panic if we fill up the queue past `NUM_OF_QUEUED_INPUTS`.
     pub fn add(&mut self, input: InputAction) {
-        // Curious to see if we actually can hit this condition
         if self.events.len() >= NUM_OF_QUEUED_INPUTS {
-            println!("{:?}", self.events);
-            assert!(false);
+            // FIXME
+            panic!("BUG: Input queue is full! Queue contents: {:?}", self.events);
         }
 
         self.events.push_back(input);
-    }
-
-    /// Pokes at the head of the queue and returns an event if available.
-    pub fn peek(&self) -> Option<&InputAction> {
-        self.events.front()
     }
 
     /// Dequeues can input event.
