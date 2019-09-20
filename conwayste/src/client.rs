@@ -557,11 +557,11 @@ impl EventHandler for MainState {
                 self.draw_universe(ctx)?;
             }
             Screen::InRoom => {
-                ui::draw_text(ctx, &self.system_font, Color::from(css::WHITE), "In Room", &Point2::new(100.0, 100.0), None)?;
+                ui::draw_text(ctx, Rc::clone(&self.system_font), Color::from(css::WHITE), String::from("In Room"), &Point2::new(100.0, 100.0))?;
                 // TODO
             }
             Screen::ServerList => {
-                ui::draw_text(ctx, &self.system_font, Color::from(css::WHITE), "Server List", &Point2::new(100.0, 100.0), None)?;
+                ui::draw_text(ctx, Rc::clone(&self.system_font), Color::from(css::WHITE), String::from("Server List"), &Point2::new(100.0, 100.0))?;
                 // TODO
              },
             Screen::Exit => {}
@@ -569,7 +569,7 @@ impl EventHandler for MainState {
 
         if let Some(ref mut layers) = self.ui_manager.get_screen_layers(current_screen) {
             for layer in layers.iter_mut() {
-                layer.draw(ctx, &self.system_font);
+                layer.draw(ctx)?;
             }
         }
 
@@ -826,9 +826,9 @@ impl MainState {
 
         ////////// draw generation counter
         if draw_params.draw_counter {
-            let gen_counter_str = universe.latest_gen().to_string();
+            let gen_counter = universe.latest_gen().to_string();
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
-            ui::draw_text(ctx, &self.system_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
+            ui::draw_text(ctx, Rc::clone(&self.system_font), color, gen_counter, &Point2::new(0.0, 0.0))?;
         }
 
         Ok(())
@@ -1319,7 +1319,9 @@ impl MainState {
 
     fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> ConwaysteResult<()> {
         match widget_id {
-            WidgetID::MainMenuPane1ButtonYes | WidgetID::MainMenuPane1ButtonNo | WidgetID::MainMenuTestButton  => {
+            WidgetID::MainMenuPane1ButtonYes
+            | WidgetID::MainMenuPane1ButtonNo
+            | WidgetID::MainMenuTestButton  => {
                 match action {
                     UIAction::ScreenTransition(s) => {
                         self.screen_stack.push(s);
@@ -1348,12 +1350,19 @@ impl MainState {
                      }
                 }
             },
-            WidgetID::MainMenuPane1 | WidgetID::MainMenuLayer1 | WidgetID::InGameLayer1 | WidgetID::InGamePane1 => {
+            WidgetID::MainMenuPane1
+            | WidgetID::MainMenuLayer1
+            | WidgetID::InGameLayer1
+            | WidgetID::InGamePane1 => {
                 return Err(NoAssociatedUIAction{
                     reason: format!("Widget: {:?} is a Pane or Layer element and has no associated action", widget_id)
                 });
             },
-            WidgetID::InGamePane1Chatbox | WidgetID::InGamePane1ChatboxTextField => {
+            WidgetID::InGamePane1Chatbox
+            | WidgetID::InGamePane1ChatboxTextField
+            | WidgetID::MainMenuPane1ButtonNoLabel
+            | WidgetID::MainMenuPane1ButtonYesLabel
+            | WidgetID::MainMenuTestButtonLabel => {
                 // PR_GATE
             },
         }

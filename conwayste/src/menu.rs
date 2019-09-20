@@ -327,43 +327,28 @@ impl MenuSystem {
                 ////////////////////////////////////////////////
                 {
                     let container = self.menus.get_mut(&self.menu_state).unwrap();
-                    let coords = container.get_anchor();
-                    let mut offset = Point2::new(0.0,0.0);
+                    let mut coords = container.get_anchor();
 
                     let mut max_text_width = container.text_width;
                     for (i, menu_item) in container.get_menu_item_list().iter().enumerate() {
-                        let mut menu_option_str: &str = &menu_item.text;
+                        let mut menu_option = menu_item.text.clone();
 
                         if menu_item.id == MenuItemIdentifier::StartGame && has_game_started {
-                            menu_option_str = "Resume Game";
+                            menu_option = String::from("Resume Game");
                         }
 
                         let color = if index == i { self.active_color } else { self.inactive_color };
-                        let (w, h) = ui::draw_text(_ctx, &self.font, color, &menu_option_str,
-                                                   &coords, Some(&offset))?;
+                        let (w, h) = ui::draw_text(_ctx, Rc::clone(&self.font), color, menu_option, &coords)?;
                         if max_text_width < w as f32 {
                             max_text_width = w as f32;
                         }
 
-                        offset = ui::point_offset(offset, 0.0, h as f32 + 10.0);
+                        coords.y += h + 10.0;
                     }
                     if container.text_width < max_text_width {
                         container.text_width = max_text_width;
                     }
                 }
-
-                /*
-                // Denote Current Selection
-                ////////////////////////////////////////////////////
-                {
-                    let cur_option_str = " >";
-                    let ref container = self.menus.get(&self.menu_state).unwrap();
-                    let coords = container.get_anchor();
-                    let offset = Point2::new(-50.0, (*index) as f32 * 50.0);
-
-                    utils::Graphics::draw_text(_ctx, &self.font, self.active_color, &cur_option_str, &coords, Some(&offset))?;
-                }
-                */
             }
         }
         Ok(())
@@ -378,29 +363,24 @@ impl MenuSystem {
                 let ref container = self.menus.get(&MenuState::Video).unwrap();
                 let anchor = container.get_anchor();
                 let x = anchor.x + container.text_width + 10.0;
-                let mut y = anchor.y;
+                let y = anchor.y;
 
                 ///////////////////////////////
                 // Fullscreen
                 ///////////////////////////////
-                let coords = Point2::new(x, y);
+                let mut coords = Point2::new(x, y);
                 let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
 
-                // TODO: color
-                let (_w, h) = ui::draw_text(_ctx, &self.font, self.inactive_color,
-                                            &is_fullscreen_str, &coords, None)?;
-                y += h as f32 + 10.0;
+                let (_w, h) = ui::draw_text(_ctx, Rc::clone(&self.font), self.inactive_color, is_fullscreen_str.to_owned(), &coords)?;
 
                 ////////////////////////////////
                 // Resolution
                 ///////////////////////////////
-                let coords = Point2::new(x, y);
+                coords.y += h + 10.0;
                 let (width, height) = video_settings.get_active_resolution();
-                let cur_res_str = format!("{}x{}", width, height);
+                let cur_resolution = format!("{}x{}", width, height);
 
-                // TODO: color
-                ui::draw_text(_ctx, &self.font, self.inactive_color, &cur_res_str,
-                              &coords, None)?;
+                ui::draw_text(_ctx, Rc::clone(&self.font), self.inactive_color, cur_resolution, &coords)?;
             }
             _  => {}
         }
@@ -411,10 +391,6 @@ impl MenuSystem {
         self.draw_general_menu_view(_ctx, has_game_started)?;
         self.draw_specific_menu_view(video_settings, _ctx)?;
         Ok(())
-    }
-
-    pub fn reset(&mut self) {
-        self.menu_state = MenuState::MainMenu;
     }
 }
 

@@ -66,11 +66,14 @@ pub enum UIAction {
 pub enum WidgetID {
     MainMenuLayer1,
     MainMenuTestButton,
+    MainMenuTestButtonLabel,
     MainMenuTestCheckbox,
 
     MainMenuPane1,
     MainMenuPane1ButtonYes,
+    MainMenuPane1ButtonYesLabel,
     MainMenuPane1ButtonNo,
+    MainMenuPane1ButtonNoLabel,
 
     InGameLayer1,
     InGamePane1,

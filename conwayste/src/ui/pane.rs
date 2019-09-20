@@ -54,13 +54,15 @@ impl Pane {
     }
 
     /// Add a widget to the pane
+    /// TODO: ensure that the widget being added fits inside the pane's bounds
     pub fn add(&mut self, mut widget: Box<dyn Widget>) {
         let dims = widget.size();
         widget.set_size(Rect::new(dims.x + self.dimensions.x, dims.y + self.dimensions.y, dims.w, dims.h));
         self.widgets.push(widget);
     }
 
-    // TODO re-evaluate need? Seems to be only used for buttons now
+    // TODO: Currently used to reset previous position on mouse release after dragging completes.
+    //      Re-evaluate design if this is the best way to do it.
     pub fn update(&mut self, is_mouse_released: bool) {
         if is_mouse_released {
             self.previous_pos = None;
@@ -156,12 +158,12 @@ impl Widget for Pane {
         }
     }
 
-    fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
+    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(1.0), self.dimensions, Color::from(css::FIREBRICK))?;
         graphics::draw(ctx, &mesh, DrawParam::default())?;
 
         for widget in self.widgets.iter_mut() {
-            widget.draw(ctx, font)?;
+            widget.draw(ctx)?;
         }
 
         Ok(())

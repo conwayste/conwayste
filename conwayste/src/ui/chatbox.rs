@@ -17,6 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 use chromatica::css;
 
+use std::rc::Rc;
 use std::collections::VecDeque;
 
 use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text, BlendMode, FilterMode, TextFragment};
@@ -42,6 +43,7 @@ pub struct Chatbox {
     pub dimensions: Rect,
     pub hover: bool,
     pub action: UIAction,
+    pub font: Rc<Font>,
 }
 
 impl Chatbox {
@@ -50,21 +52,26 @@ impl Chatbox {
     ///
     /// # Arguments
     /// * `widget_id` - Unique widget identifier
+    /// * `font` - Font-type of chat text
     /// * `len` - Len of chat history to maintain
     ///
     /// # Examples
     ///
     /// ```rust
+    /// use ggez::graphics::Font;
     /// use ui::Chatbox;
     ///
-    /// fn new(_ctx: &mut Context) -> GameResult<MainState> {
+    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
+    ///     let font = Rc::new(Font::default());
     ///     let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
-    ///     let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, 5);
+    ///     let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, font, 5);
     ///     chatbox.set_size(chatbox_rect);
+    ///     chatbox.draw(ctx)?;
     /// }
     /// ```
     ///
-    pub fn new(widget_id: WidgetID, len: usize) -> Self {
+    pub fn new(widget_id: WidgetID, font: Rc<Font>, len: usize) -> Self {
+        // TODO: affix to bottom left corner once "anchoring"/"gravity" is implemented
         let rect = Rect::new(30.0, 600.0, 300.0, 15.0*CHAT_DISPLAY_LIMIT);
         Chatbox {
             id: widget_id,
@@ -74,6 +81,7 @@ impl Chatbox {
             dimensions: rect,
             hover: false,
             action: UIAction::EnterText,
+            font: font,
         }
     }
 
@@ -81,7 +89,6 @@ impl Chatbox {
     ///
     /// # Arguments
     /// * `ctx` - GGEZ context
-    /// * `font` - font to be used when drawing the text
     /// * `msg` - New chat message
     ///
     /// # Examples
@@ -90,13 +97,13 @@ impl Chatbox {
     /// use ui::Chatbox;
     ///
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Font::default();
+    ///     let font = Rc::new(Font::default());
     ///     let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
-    ///     let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, 5);
+    ///     let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, font, 5);
     ///     chatbox.set_size(chatbox_rect);
     ///     chatbox.add_message(String::new("Player 1: This is a new chat message");
     ///     chatbox.add_message(String::new("-- This is a Server broadcast message -- ");
-    ///     chatbox.draw(ctx, font)?;
+    ///     chatbox.draw(ctx)?;
     /// }
     /// ```
     ///
@@ -150,7 +157,7 @@ impl Widget for Chatbox {
         None
     }
 
-    fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
+    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         let origin = self.dimensions.point();
 
         if self.hover {
@@ -166,7 +173,7 @@ impl Widget for Chatbox {
         // TODO need to do width wrapping check
         for (i, msg) in self.messages.iter_mut().enumerate() {
             let point = Point2::new(origin.x + 5.0, origin.y + i as f32*30.0);
-            msg.set_font(*font, *DEFAULT_CHATBOX_FONT_SCALE);
+            msg.set_font(*self.font, *DEFAULT_CHATBOX_FONT_SCALE);
             graphics::queue_text(ctx, &msg, point, Some(Color::from(css::RED)));
         }
 

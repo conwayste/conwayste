@@ -27,7 +27,7 @@ use std::rc::Rc;
 use super::{
     label::Label,
     widget::Widget,
-    helpe::{within_widget, draw_text},
+    helpe::within_widget,
     UIAction,
     WidgetID,
 };
@@ -57,34 +57,37 @@ impl Checkbox {
     ///
     /// # Arguments
     /// * `ctx` - GGEZ context
-    /// * `font` - font to be used when drawing the text
-    /// * `text` - Label text
     /// * `widget_id` - Unique widget identifier
     /// * `action` - Unique action identifer
+    /// * `font` - font to be used when drawing the text
+    /// * `text` - Label text
+    /// * `dimensions` - Size of checkbox (currently a hollor or filled rectangle)
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use ui::Button;
+    /// use ggez::graphics::Font;
+    /// use ui::Checkbox;
     ///
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Font::default();
-    ///     let checkbox = Box::new(Checkbox::new(ctx, &font,
-    ///         "Toggle Me",
-    ///         Rect::new(10.0, 210.0, 20.0, 20.0),
+    ///     let font = Rc::new(Font::default());
+    ///     let checkbox = Box::new(Checkbox::new(ctx,
     ///         WidgetID::TestCheckbox,
     ///         UIAction::Toggle( if cfg!(target_os = "linux") { ToggleState::Enabled } else { ToggleState::Disabled } ),
-    ///     ));;
-    ///     checkbox.draw(ctx, font);
+    ///         font,
+    ///         "Toggle Me",
+    ///         Rect::new(10.0, 210.0, 20.0, 20.0)
+    ///     ));
+    ///     checkbox.draw(ctx)?;
     /// }
     /// ```
     ///
-    pub fn new(ctx: &mut Context, font: Rc<Font>, text: String, dimensions: Rect, widget_id: WidgetID, action: UIAction) -> Self {
+    pub fn new(ctx: &mut Context, widget_id: WidgetID, action: UIAction, font: Rc<Font>, text: String, dimensions: Rect) -> Self {
         let label_origin = Point2::new(dimensions.x + dimensions.w + LABEL_OFFSET_X, dimensions.y + dimensions.h + LABEL_OFFSET_Y);
 
         Checkbox {
             id: widget_id,
-            label: Label::new(ctx, font, text, Color::from(css::WHITE), label_origin),
+            label: Label::new(ctx, widget_id, font, text, Color::from(css::WHITE), label_origin),
             state: ToggleState::Disabled,
             dimensions: dimensions,
             hover: false,
@@ -144,7 +147,7 @@ impl Widget for Checkbox {
         None
     }
 
-    fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
+    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
 
         let draw_mode = if self.state == ToggleState::Enabled {
             DrawMode::fill()
@@ -165,8 +168,7 @@ impl Widget for Checkbox {
         let label_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, Color::from(css::AZURE))?;
         graphics::draw(ctx, &label_border, DrawParam::default())?;
 
-        //draw_text(ctx, font, self.label.color, &self.label.text, &self.label.dimensions.point().into(), None)?;
-        self.label.draw(ctx, font)?;
+        self.label.draw(ctx)?;
 
         Ok(())
     }

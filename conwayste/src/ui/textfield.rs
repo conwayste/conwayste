@@ -18,6 +18,7 @@
  *  <http://www.gnu.org/licenses/>. */
 use chromatica::css;
 
+use std::rc::Rc;
 use std::time::{Instant, Duration};
 
 use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text};
@@ -53,6 +54,7 @@ pub struct TextField {
     pub hover: bool,
     pub visible_start_index: usize,
     pub visible_end_index: usize,
+    font: Rc<Font>,
 }
 
 /// A widget that can accept and display user-inputted text from the Keyboard.
@@ -60,37 +62,39 @@ impl TextField {
     /// Creates a TextField widget.
     ///
     /// # Arguments
-    /// * `(x,y)` - origin of the text field in pixels
     /// * `widget_id` - Unique widget identifier
+    /// * `font` - font-type for drawn text
+    /// * `dimensions` - rectangle describing the size of the text field
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use ui::Button;
+    /// use ui::TextField;
     ///
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Font::default();
-    ///     let chatbox = Box::new(chatbox);
+    ///     let font = Rc::new(Font::default());
+    ///     let dimensions = Rect::new(0.0, 0.0, 300.0, 20.0);
     ///
-    ///     let textfield = TextField::new( (50, 50), WidgetID::ChatboxTextField));
+    ///     let textfield = TextField::new(WidgetID::ChatboxTextField, font, dimensions);
     ///
-    ///     textfield.draw(ctx, font);
+    ///     textfield.draw(ctx)?;
     /// }
     /// ```
     ///
-    pub fn new((x,y): (f32, f32), widget_id: WidgetID) -> TextField {
+    pub fn new(widget_id: WidgetID, font: Rc<Font>, dimensions: Rect) -> TextField {
         TextField {
             state: None,
             text: String::with_capacity(TEXT_INPUT_BUFFER_LEN),
             cursor_index: 0,
             blink_timestamp: None,
             draw_cursor: false,
-            dimensions: Rect::new(x, y, 300.0, 30.0),
+            dimensions: dimensions,
             id: widget_id,
             action: UIAction::EnterText,
             hover: false,
             visible_start_index: 0,
             visible_end_index: 0,
+            font: font,
         }
     }
 
@@ -227,7 +231,7 @@ impl Widget for TextField {
         Ok(())
     }
 
-    fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
+    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         // PR_GATE: If string exceeds length of pane, need to only draw what should be visible
 
         if self.state.is_some() || !self.text.is_empty() {
@@ -243,16 +247,20 @@ impl Widget for TextField {
             graphics::draw(ctx, &colored_rect, DrawParam::default())?;
 
             let text_with_cursor = self.text.clone();
-            let text_pos = Point2::new(self.dimensions.x + CURSOR_OFFSET_PX, self.dimensions.y);
+            let mut text_pos = Point2::new(self.dimensions.x + CURSOR_OFFSET_PX, self.dimensions.y + 3.0);
 
-            draw_text(ctx, font, Color::from(css::WHITESMOKE), &text_with_cursor[self.visible_start_index..self.visible_end_index], &text_pos, None)?;
+            // PR_GATE fix how this works overall now that we have fixed width fonts
+            let visible_text = text_with_cursor.clone();// [self.visible_start_index..self.visible_end_index].to_owned();
+
+            draw_text(ctx, Rc::clone(&self.font), Color::from(css::WHITESMOKE), visible_text, &text_pos)?;
 
             if self.draw_cursor {
                 let mut text = Text::new(&text_with_cursor[self.visible_start_index..self.cursor_index]);
-                let text = text.set_font(*font, *DEFAULT_UI_FONT_SCALE);
+                let text = text.set_font(*self.font, *DEFAULT_UI_FONT_SCALE);
                 let cursor_position_px = text.width(ctx) as f32;
-                let cursor_position = Point2::new(self.dimensions.x + cursor_position_px + CURSOR_OFFSET_PX, self.dimensions.y);
-                draw_text(ctx, font, Color::from(css::WHITESMOKE), "|", &cursor_position, None)?;
+
+                text_pos.x += cursor_position_px;
+                draw_text(ctx, Rc::clone(&self.font), Color::from(css::WHITESMOKE), String::from("|"), &text_pos)?;
             }
         }
 

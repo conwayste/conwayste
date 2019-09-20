@@ -50,21 +50,30 @@ impl UIManager {
         let chat_pane_rect = Rect::new(30.0, 600.0, 300.0, 150.0);
         let mut chatpane = Box::new(Pane::new(WidgetID::InGamePane1, chat_pane_rect));
 
+        const CHATBOX_HISTORY: usize = 5;
         let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
-        let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, 5);
+        let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox,
+            Rc::clone(&font),
+            CHATBOX_HISTORY
+        );
         chatbox.set_size(chatbox_rect);
         let chatbox = Box::new(chatbox);
 
-        let chatfield = Box::new(TextField::new( (chatbox_rect.x, chatbox_rect.h), WidgetID::InGamePane1ChatboxTextField));
+        const CHAT_TEXTFIELD_HEIGHT: f32 = (20.0 + 5.0);
+        let chatfield_rect = Rect::new(chatbox_rect.x, chatbox_rect.bottom(), chatbox_rect.w, CHAT_TEXTFIELD_HEIGHT);
+        let chatfield = Box::new(TextField::new(WidgetID::InGamePane1ChatboxTextField,
+            Rc::clone(&font),
+            chatfield_rect
+        ));
 
         chatpane.add(chatbox);
         chatpane.add(chatfield);
 
-        let checkbox = Box::new(Checkbox::new(ctx, Rc::clone(&font),
+        let checkbox = Box::new(Checkbox::new(ctx, WidgetID::MainMenuTestCheckbox,
+            UIAction::Toggle( if config.get().video.fullscreen { ToggleState::Enabled } else { ToggleState::Disabled } ),
+            Rc::clone(&font),
             "Toggle FullScreen".to_owned(),
             Rect::new(10.0, 210.0, 20.0, 20.0),
-            WidgetID::MainMenuTestCheckbox,
-            UIAction::Toggle( if config.get().video.fullscreen { ToggleState::Enabled } else { ToggleState::Disabled } ),
         ));
 
 
@@ -73,15 +82,30 @@ impl UIManager {
 
         // Create a new pane, and add two test buttons to it. Actions do not really matter for now, WIP
         let mut pane = Box::new(Pane::new(WidgetID::MainMenuPane1, Rect::new_i32(20, 20, 300, 250)));
-        let mut pane_button = Box::new(Button::new(ctx, Rc::clone(&font), "ServerList".to_owned(), WidgetID::MainMenuPane1ButtonYes, UIAction::ScreenTransition(Screen::ServerList)));
+        let mut pane_button = Box::new(Button::new(ctx, WidgetID::MainMenuPane1ButtonYes,
+            UIAction::ScreenTransition(Screen::ServerList),
+            WidgetID::MainMenuPane1ButtonYesLabel,
+            Rc::clone(&font),
+            "ServerList".to_owned()
+        ));
         pane_button.set_size(Rect::new(10.0, 10.0, 180.0, 50.0));
         pane.add(pane_button);
 
-        let mut pane_button = Box::new(Button::new(ctx, Rc::clone(&font), "InRoom".to_owned(), WidgetID::MainMenuPane1ButtonNo, UIAction::ScreenTransition(Screen::InRoom)));
+        let mut pane_button = Box::new(Button::new(ctx, WidgetID::MainMenuPane1ButtonNo,
+            UIAction::ScreenTransition(Screen::InRoom),
+            WidgetID::MainMenuPane1ButtonNoLabel,
+            Rc::clone(&font),
+            "InRoom".to_owned()
+        ));
         pane_button.set_size(Rect::new(10.0, 70.0, 180.0, 50.0));
         pane.add(pane_button);
 
-        let mut pane_button = Box::new(Button::new(ctx, Rc::clone(&font), "StartGame".to_owned(), WidgetID::MainMenuTestButton, UIAction::ScreenTransition(Screen::Run)));
+        let mut pane_button = Box::new(Button::new(ctx, WidgetID::MainMenuTestButton,
+            UIAction::ScreenTransition(Screen::Run),
+            WidgetID::MainMenuTestButtonLabel,
+            Rc::clone(&font),
+            "StartGame".to_owned()
+        ));
         pane_button.set_size(Rect::new(10.0, 130.0, 180.0, 50.0));
         pane.add(pane_button);
 

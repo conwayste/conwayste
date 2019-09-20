@@ -60,21 +60,28 @@ impl Button {
     /// # Examples
     ///
     /// ```rust
+    /// use ggez::graphics::Font;
     /// use ui::Button;
     ///
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Font::default();
-    ///     let b = Button::new(ctx, font, "TestButton", WidgetID::TestButton1, UIAction::PrintHelloWorld)
+    ///     let font = Rc::new(Font::default());
+    ///     let b = Button::new(ctx, WidgetID::TestButton1,
+    ///             UIAction::PrintHelloWorld,
+    ///             WidgetID::TestButton1Label,
+    ///             font,
+    ///             "TestButton")
     ///         .label_color(Color::from(css::DARKCYAN))
     ///         .button_color(Color::from(css::WHITE));
     ///
-    ///     b.draw(ctx, font)?;
+    ///     b.draw(ctx)?;
     /// }
     /// ```
     ///
-    pub fn new(ctx: &mut Context, font: Rc<Font>, button_text: String, widget_id: WidgetID, action: UIAction) -> Self {
+    pub fn new(ctx: &mut Context, widget_id: WidgetID, action: UIAction, label_id: WidgetID,
+        font: Rc<Font>, button_text: String) -> Self
+    {
         let label_position = Point2::new(0.0, 0.0); // label positioning defined an offset to button origin after centering
-        let label = Label::new(ctx, font, button_text, color_with_alpha(css::WHITE, 0.1), label_position);
+        let label = Label::new(ctx, label_id, font, button_text, color_with_alpha(css::WHITE, 0.1), label_position);
         let label_dims = label.size();
 
         let dimensions = Rect::new(30.0, 20.0, label_dims.w + BUTTON_LABEL_PADDING_W, label_dims.h + BUTTON_LABEL_PADDING_H);
@@ -142,7 +149,7 @@ impl Widget for Button {
         None
     }
 
-    fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
+    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         let draw_mode = if self.hover {
             DrawMode::fill()
         } else {
@@ -152,7 +159,7 @@ impl Widget for Button {
         let button = graphics::Mesh::new_rectangle(ctx, draw_mode, self.dimensions, self.button_color)?;
         graphics::draw(ctx, &button, DrawParam::default())?;
 
-        self.label.draw(ctx, font)?;
+        self.label.draw(ctx)?;
 
         Ok(())
     }

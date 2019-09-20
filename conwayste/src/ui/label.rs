@@ -30,6 +30,7 @@ use super::{
 use crate::constants::DEFAULT_UI_FONT_SCALE;
 
 pub struct Label {
+    pub id: WidgetID,
     pub textfrag: TextFragment,
     pub dimensions: Rect,
 }
@@ -40,28 +41,32 @@ impl Label {
     ///
     /// # Arguments
     /// * `ctx` - GGEZ context
-    /// * `font` - font to be used when drawing the text
-    /// * `text` - Label text
-    /// * `color` - Text color
     /// * `widget_id` - Unique widget identifier
-    /// * `action` - Unique action identifer
+    /// * `font` - font to be used when drawing the text
+    /// * `string` - Label text
+    /// * `color` - Text color
+    /// * `dest` - Destination point
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use ui::Button;
+    /// use ui::Label;
     ///
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Font::default();
-    ///     let b = Button::new(ctx, font, "TestButton", WidgetID::TestButton1, UIAction::PrintHelloWorld)
-    ///         .label_color(Color::from(css::DARKCYAN))
-    ///         .button_color(Color::from(css::WHITE));
+    ///     let font = Rc::new(Font::default());
+    ///     let label = Label::new(ctx,
+    ///         WidgetID::TestLabel,
+    ///         font,
+    ///         "TestButton",
+    ///         Color::from(css::DARKCYAN),
+    ///         Color::from(css::WHITE)
+    ///     );
     ///
-    ///     b.draw(ctx, font)?;
+    ///     label.draw(ctx)?;
     /// }
     /// ```
     ///
-    pub fn new(ctx: &mut Context, font: Rc<Font>, string: String, color: Color, dest: Point2<f32>) -> Self {
+    pub fn new(ctx: &mut Context, widget_id: WidgetID, font: Rc<Font>, string: String, color: Color, dest: Point2<f32>) -> Self {
         let font: Font = *font;
 
         let text_fragment = TextFragment::new(string.clone())
@@ -75,6 +80,7 @@ impl Label {
         dimensions.move_to(dest);
 
         Label {
+            id: widget_id,
             textfrag: text_fragment,
             dimensions: dimensions
         }
@@ -92,7 +98,7 @@ impl Label {
 impl Widget for Label {
     /// Retrieves the widget's unique identifer
     fn id(&self) -> WidgetID {
-        WidgetID::InGameLayer1
+        self.id
     }
 
     /// Get the size of the widget. Widget must be sizable.
@@ -109,7 +115,7 @@ impl Widget for Label {
         self.dimensions.translate(point);
     }
 
-    fn draw(&mut self, ctx: &mut Context, _font: &Font) -> GameResult<()> {
+    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
 
         let text = Text::new(self.textfrag.clone());
 

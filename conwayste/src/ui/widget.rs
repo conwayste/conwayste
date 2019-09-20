@@ -51,7 +51,7 @@ pub trait Widget: Downcast {
     }
 
     /// Called upon each graphical draw tick. This should be where the widget's graphics takes place.
-    fn draw(&mut self, _ctx: &mut Context, _font: &Font) -> GameResult<()> {
+    fn draw(&mut self, _ctx: &mut Context) -> GameResult<()> {
         Ok(())
     }
 

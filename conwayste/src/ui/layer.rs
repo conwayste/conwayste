@@ -166,7 +166,7 @@ impl Widget for Layer {
         }
     }
 
-    fn draw(&mut self, ctx: &mut Context, font: &Font) -> GameResult<()> {
+    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         if self.with_transparency {
             // TODO wait for winint to get resolution
             let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), Rect::new(0.0, 0.0, 1920.0, 1080.0), color_with_alpha(css::HONEYDEW, 0.4))?;
@@ -174,7 +174,7 @@ impl Widget for Layer {
         }
 
         for widget in self.widgets.iter_mut() {
-            widget.draw(ctx, font)?;
+            widget.draw(ctx)?;
         }
 
         Ok(())
