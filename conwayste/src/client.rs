@@ -746,6 +746,10 @@ impl EventHandler for MainState {
             width,
             height,
         );
+        if self.uni_draw_params.player_id < 0 {
+            self.intro_viewport.set_dimensions(width, height);
+            self.center_intro_viewport(width, height);
+        }
         graphics::set_screen_coordinates(ctx, new_rect).unwrap();
         self.viewport.set_dimensions(width, height);
         if self.video_settings.is_fullscreen {
@@ -834,7 +838,7 @@ impl MainState {
                 self.color_settings.get_random_color()
             };
 
-            if let Some(rect) = viewport.get_screen_area(viewport::Cell::new(col, row)) {
+            if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col, row)) {
                 let p = graphics::DrawParam::new()
                     .dest(Point2::new(rect.x, rect.y))
                     .scale(Vector2::new(rect.w, rect.h))
@@ -863,6 +867,14 @@ impl MainState {
         }
 
         Ok(())
+    }
+
+    fn center_intro_viewport(&mut self, win_width: f32, win_height: f32) {
+        let grid_width = self.intro_viewport.grid_width();
+        let grid_height = self.intro_viewport.grid_height();
+        let target_center_x = win_width/2.0 - grid_width/2.0;
+        let target_center_y = win_height/2.0 - grid_height/2.0;
+        self.intro_viewport.set_origin(Point2::new(target_center_x, target_center_y));
     }
 
     fn draw_intro(&mut self, ctx: &mut Context) -> GameResult<()>{
@@ -1460,9 +1472,6 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     // 3) Center it
     // 4) get offset for row and column to draw at
 
-    let resolution = s.video_settings.get_resolution();
-    let win_width  = (resolution.w / DEFAULT_ZOOM_LEVEL) as isize; // cells
-    let win_height = (resolution.h / DEFAULT_ZOOM_LEVEL) as isize; // cells
     let player_id = 0;   // hardcoded for this intro
 
     let letter_width = 5;
@@ -1472,8 +1481,11 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     let logo_width = 9*5 + 9*5;
     let logo_height = letter_height;
 
-    let mut offset_col = win_width/2  - logo_width/2;
-    let     offset_row = win_height/2 - logo_height/2;
+    let uni_width = s.intro_uni.width() as isize;
+    let uni_height = s.intro_uni.height() as isize;
+
+    let mut offset_col = uni_width/2  - logo_width/2;
+    let     offset_row = uni_height/2 - logo_height/2;
 
     let toggle = |s_: &mut MainState, col: isize, row: isize| {
         if col >= 0 || row >= 0 {

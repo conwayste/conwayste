@@ -277,6 +277,11 @@ impl GridView {
         self.grid_origin
     }
 
+    /// Sets the origin of the grid in window coordinates.
+    pub fn set_origin(&mut self, point: Point2<f32>) {
+        self.grid_origin = point;
+    }
+
     /// Returns the width of the grid in pixels.
     pub fn grid_width(&self) -> f32 {
         self.columns as f32 * self.cell_size
@@ -293,10 +298,6 @@ impl GridView {
         let full_height = self.grid_height() as f32;
 
         Rect::new(origin.x, origin.y, full_width, full_height)
-    }
-
-    pub fn get_screen_area(&self, cell: Cell) -> Option<Rect> {
-        self.window_coords_from_game(cell)
     }
 
     /// Attempt to return a tuple of cell coordinates within the game space.
@@ -324,7 +325,7 @@ impl GridView {
     /// Attempt to return a rectangle for the on-screen area of the specified cell.
     /// If partially in view, will be clipped by the bounding rectangle.
     /// Caller must ensure that column and row are within bounds.
-    fn window_coords_from_game_unchecked(&self, col: isize, row: isize) -> Option<Rect> {
+    pub fn window_coords_from_game_unchecked(&self, col: isize, row: isize) -> Option<Rect> {
         let left   = self.grid_origin.x + (col as f32)     * self.cell_size;
         let right  = self.grid_origin.x + (col + 1) as f32 * self.cell_size - 1.0;
         let top    = self.grid_origin.y + (row as f32)     * self.cell_size;
@@ -340,7 +341,7 @@ impl GridView {
 
     /// The column and row supplied lies is `None` outside of the grid.
     /// Otherwise we'll translate a row/column pair into its representative rectangle.
-    fn window_coords_from_game(&self, cell: Cell) -> Option<Rect> {
+    pub fn window_coords_from_game(&self, cell: Cell) -> Option<Rect> {
         if cell.row < self.rows && cell.col < self.columns {
             return self.window_coords_from_game_unchecked( cell.col as isize, cell.row as isize);
         }
