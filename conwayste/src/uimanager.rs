@@ -25,6 +25,7 @@ use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use crate::config::Config;
+use crate::Screen;
 use crate::ui::{
     Widget,
     Button,
@@ -32,7 +33,6 @@ use crate::ui::{
     Chatbox,
     Layer,
     Pane,
-    Screen,
     TextField, TextInputState,
     UIAction,
     WidgetID,

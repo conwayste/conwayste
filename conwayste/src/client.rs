@@ -83,13 +83,23 @@ use viewport::Cell;
 use ui::{
     Layer,
     ToggleState,
-    Screen,
     TextInputState,
     UIAction,
     Widget,
     WidgetID,
 };
 use uimanager::UIManager;
+
+
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+pub enum Screen {
+    Intro,   // seconds
+    Menu,
+    ServerList,
+    InRoom,
+    Run,          // TODO: break it out more to indicate whether waiting for game or playing game
+    Exit,         // We're getting ready to quit the game, WRAP IT UP SON
+}
 
 // All game state
 struct MainState {

@@ -29,6 +29,8 @@ mod pane;
 mod widget;
 mod textfield;
 
+use crate::Screen;
+
 pub use button::Button;
 pub use chatbox::Chatbox;
 pub use checkbox::{Checkbox, ToggleState};
@@ -44,16 +46,6 @@ pub use layer::Layer;
 pub use pane::Pane;
 pub use textfield::{TextField, TextInputState};
 pub use widget::Widget;
-
-#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
-pub enum Screen {
-    Intro,   // seconds
-    Menu,
-    ServerList,
-    InRoom,
-    Run,          // TODO: break it out more to indicate whether waiting for game or playing game
-    Exit,         // We're getting ready to quit the game, WRAP IT UP SON
-}
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum UIAction {
