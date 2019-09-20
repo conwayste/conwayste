@@ -610,6 +610,7 @@ impl EventHandler for MainState {
             height,
         );
         if self.uni_draw_params.player_id < 0 {
+            self.intro_viewport.set_dimensions(width, height);
             self.center_intro_viewport(width, height);
         }
         graphics::set_screen_coordinates(ctx, new_rect).unwrap();
