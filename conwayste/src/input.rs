@@ -109,5 +109,4 @@ impl InputManager {
             key_info: KeyInfo::new(),
         }
     }
-
 }

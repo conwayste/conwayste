@@ -109,13 +109,16 @@ struct MainState {
     intro_uni:           Universe,
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
     color_settings:      ColorSettings,
+    uni_draw_params:     UniDrawParams,
     running:             bool,
     menu_sys:            menu::MenuSystem,
     video_settings:      video::VideoSettings,
     config:              config::Config,
-    viewport:            viewport::Viewport,
+    viewport:            viewport::GridView,
+    intro_viewport:      viewport::GridView,
     inputs:              input::InputManager,
     net_worker:          Option<network::ConwaysteNetWorker>,
+    recvd_first_resize:  bool,       // work around an apparent ggez bug where the first resize event is bogus
 
     // Input state
     single_step:         bool,
@@ -286,6 +289,8 @@ impl MainState {
     fn new(ctx: &mut Context) -> GameResult<MainState> {
         let universe_width_in_cells  = 256;
         let universe_height_in_cells = 120;
+        let intro_universe_width_in_cells  = 256;
+        let intro_universe_height_in_cells = 256;
 
         let mut config = config::Config::new();
         config.load_or_create_default().map_err(|e| {
@@ -294,34 +299,30 @@ impl MainState {
         })?;
 
         let mut vs = video::VideoSettings::new();
-        //vs.gather_display_modes(ctx)?;
+        graphics::set_resizable(ctx, true)?;
 
-        vs.print_resolutions();
-
-        /*
-         *  FIXME Disabling video module temporarily as we can now leverage ggez 0.4
-         */
-        /*
-        // On first-run, use default supported resolution
-        let (w, h) = config.get_resolution();
-        if (w,h) != (0,0) {
-            vs.set_active_resolution(ctx, w, h);
-        } else {
-            vs.advance_to_next_resolution(ctx);
-
-            // Some duplication here to update the config file
-            // I don't want to do this every load() to avoid
-            // unnecessary file writes
-            let (w,h) = vs.get_active_resolution();
-            config.set_resolution(w,h);
-        }
-        let (w,h) = vs.get_active_resolution();
-
-        graphics::set_fullscreen(ctx, config.is_fullscreen() == true);
-        vs.is_fullscreen = config.is_fullscreen() == true;
+        /* TODO: delete this once we are sure resizable windows are OK.
+            vs.gather_display_modes(ctx)?;
+            vs.print_resolutions();
         */
 
-        let viewport = viewport::Viewport::new(config.get().gameplay.zoom, universe_width_in_cells, universe_height_in_cells);
+        // On first-run, use default supported resolution
+        let (w, h) = config.get_resolution();
+        vs.set_resolution(ctx, video::Resolution{w, h}, true)?;
+
+        let is_fullscreen = config.get().video.fullscreen;
+        vs.is_fullscreen = is_fullscreen;
+        vs.update_fullscreen(ctx)?;
+
+        let intro_viewport = viewport::GridView::new(
+            DEFAULT_ZOOM_LEVEL,
+            intro_universe_width_in_cells,
+            intro_universe_height_in_cells);
+
+        let viewport = viewport::GridView::new(
+            config.get().gameplay.zoom,
+            universe_width_in_cells,
+            universe_height_in_cells);
 
         let mut color_settings = ColorSettings {
             cell_colors: BTreeMap::new(),
@@ -369,8 +370,8 @@ impl MainState {
         {
             let player = PlayerBuilder::new(Region::new(0, 0, 256, 256));
             BigBang::new()
-                .width(256)
-                .height(256)
+                .width(intro_universe_width_in_cells)
+                .height(intro_universe_height_in_cells)
                 .fog_radius(100)
                 .add_players(vec![player])
                 .birth()
@@ -382,10 +383,15 @@ impl MainState {
             GameError::ConfigError(msg)
         })?;
 
-        let mut vs = video::VideoSettings::new();
-        vs.print_resolutions();
-
         let ui_manager = UIManager::new(ctx, &config, Rc::clone(&font));
+
+        // Update universe draw parameters for intro
+        let intro_uni_draw_params = UniDrawParams {
+            bg_color: graphics::BLACK,
+            fg_color: graphics::BLACK,
+            player_id: -1,
+            draw_counter: true,
+        };
 
         let mut s = MainState {
             screen_stack:        vec![Screen::Intro],
@@ -393,14 +399,17 @@ impl MainState {
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
+            uni_draw_params:     intro_uni_draw_params,
             color_settings:      color_settings,
             running:             false,
             menu_sys:            menu::MenuSystem::new(font),
             video_settings:      vs,
             config:              config,
             viewport:            viewport,
+            intro_viewport:      intro_viewport,
             inputs:              input::InputManager::new(),
             net_worker:          None,
+            recvd_first_resize:  false,
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
@@ -410,6 +419,7 @@ impl MainState {
         };
 
         init_patterns(&mut s).unwrap();
+
         init_title_screen(&mut s).unwrap();
 
         Ok(s)
@@ -433,6 +443,14 @@ impl EventHandler for MainState {
                 if self.inputs.key_info.key.is_some() || (self.current_intro_duration > INTRO_DURATION) {
                     self.screen_stack.pop();
                     self.screen_stack.push(Screen::Menu);
+
+                    // update universe draw params now that intro is gone
+                    self.uni_draw_params = UniDrawParams {
+                        bg_color: self.color_settings.get_color(None),
+                        fg_color: self.color_settings.get_color(Some(CellState::Dead)),
+                        player_id: 1, // Current player, TODO sync with Server's CLIENT ID
+                        draw_counter: true,
+                    };
                 } else {
                     self.current_intro_duration += duration;
 
@@ -606,7 +624,7 @@ impl EventHandler for MainState {
         }
     }
 
-    fn mouse_motion_event(&mut self, _ctx: &mut Context, x: f32, y: f32, dx: f32, dy: f32) {
+    fn mouse_motion_event(&mut self, _ctx: &mut Context, x: f32, y: f32, _dx: f32, _dy: f32) {
         self.inputs.mouse_info.position = (x, y);
 
         if self.inputs.mouse_info.mousebutton != MouseButton::Other(0)
@@ -727,15 +745,31 @@ impl EventHandler for MainState {
     }
 
     fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
-        println!("Resized screen to {}, {}", width, height);
+        if !self.recvd_first_resize {
+            // Work around apparent ggez bug -- bogus first resize_event
+            debug!("IGNORING resize_event: {}, {}", width, height);
+            self.recvd_first_resize = true;
+            return;
+        }
+        debug!("resize_event: {}, {}", width, height);
         let new_rect = graphics::Rect::new(
             0.0,
             0.0,
             width,
             height,
         );
+        if self.uni_draw_params.player_id < 0 {
+            self.intro_viewport.set_dimensions(width, height);
+            self.center_intro_viewport(width, height);
+        }
         graphics::set_screen_coordinates(ctx, new_rect).unwrap();
         self.viewport.set_dimensions(width, height);
+        if self.video_settings.is_fullscreen {
+            debug!("not saving resolution to config because is_fullscreen is true");
+        } else {
+            self.config.set_resolution(width, height);
+        }
+        self.video_settings.set_resolution(ctx, video::Resolution{w: width, h: height}, false).unwrap();
     }
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
@@ -769,7 +803,7 @@ impl EventHandler for MainState {
 }
 
 
-struct GameOfLifeDrawParams {
+struct UniDrawParams {
     bg_color: Color,
     fg_color: Color,
     player_id: isize, // Player color >=0, Playerless < 0  // TODO: use Option<usize> instead
@@ -778,43 +812,45 @@ struct GameOfLifeDrawParams {
 
 impl MainState {
 
-    fn draw_game_of_life(&self,
-                         ctx: &mut Context,
-                         universe: &Universe,
-                         draw_params: &GameOfLifeDrawParams
-                         ) -> GameResult<()> {
+    fn draw_game_of_life(&self, ctx: &mut Context, universe: &Universe) -> GameResult<()> {
 
-
-        let viewport = self.viewport.get_viewport();
+        let viewport = if self.uni_draw_params.player_id >= 0 {
+            &self.viewport
+        } else {
+            // intro
+            &self.intro_viewport
+        };
+        let viewport_rect = viewport.get_rect();
 
         // grid background
         let rectangle = graphics::Mesh::new_rectangle(ctx,
             GRID_DRAW_STYLE.to_draw_mode(),
-            graphics::Rect::new(0.0, 0.0, viewport.w, viewport.h),
-            draw_params.bg_color)?;
-        graphics::draw(ctx, &rectangle, DrawParam::new().dest(viewport.point()))?;
+            graphics::Rect::new(0.0, 0.0, viewport_rect.w, viewport_rect.h),
+            self.uni_draw_params.bg_color)?;
+        graphics::draw(ctx, &rectangle, DrawParam::new().dest(viewport_rect.point()))?;
 
         // grid foreground (dead cells)
-        let full_rect = self.viewport.get_rect_from_origin();
+        let full_rect = viewport.get_rect_from_origin();
 
         let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
         let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
 
         // grid non-dead cells (walls, players, etc.)
-        let visibility = if draw_params.player_id >= 0 {
-            Some(draw_params.player_id as usize) //XXX, Player One
+        let visibility = if self.uni_draw_params.player_id >= 0 {
+            Some(self.uni_draw_params.player_id as usize)
         } else {
+            // used for random coloring in intro
             Some(0)
         };
 
         universe.each_non_dead_full(visibility, &mut |col, row, state| {
-            let color = if draw_params.player_id >= 0 {
+            let color = if self.uni_draw_params.player_id >= 0 {
                 self.color_settings.get_color(Some(state))
             } else {
                 self.color_settings.get_random_color()
             };
 
-            if let Some(rect) = self.viewport.get_screen_area(viewport::Cell::new(col, row)) {
+            if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col, row)) {
                 let p = graphics::DrawParam::new()
                     .dest(Point2::new(rect.x, rect.y))
                     .scale(Vector2::new(rect.w, rect.h))
@@ -824,9 +860,10 @@ impl MainState {
             }
         });
 
-        if let Some(clipped_rect) = ui::intersection(full_rect, self.viewport.get_viewport()) {
-            let origin = graphics::DrawParam::new().dest(clipped_rect.point());
-            let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect, draw_params.fg_color)?;
+        if let Some(clipped_rect) = ui::intersection(full_rect, viewport_rect) {
+            let origin = graphics::DrawParam::new().dest(Point2::new(0.0, 0.0));
+            let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect,
+                                                          self.uni_draw_params.fg_color)?;
 
             graphics::draw(ctx, &rectangle, origin)?;
             graphics::draw(ctx, &spritebatch, origin)?;
@@ -835,7 +872,7 @@ impl MainState {
         spritebatch.clear();
 
         ////////// draw generation counter
-        if draw_params.draw_counter {
+        if self.uni_draw_params.draw_counter {
             let gen_counter = universe.latest_gen().to_string();
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
             ui::draw_text(ctx, Rc::clone(&self.system_font), color, gen_counter, &Point2::new(0.0, 0.0))?;
@@ -844,29 +881,21 @@ impl MainState {
         Ok(())
     }
 
+    fn center_intro_viewport(&mut self, win_width: f32, win_height: f32) {
+        let grid_width = self.intro_viewport.grid_width();
+        let grid_height = self.intro_viewport.grid_height();
+        let target_center_x = win_width/2.0 - grid_width/2.0;
+        let target_center_y = win_height/2.0 - grid_height/2.0;
+        self.intro_viewport.set_origin(Point2::new(target_center_x, target_center_y));
+    }
+
     fn draw_intro(&mut self, ctx: &mut Context) -> GameResult<()>{
-
-        let draw_params = GameOfLifeDrawParams {
-            bg_color: graphics::BLACK,
-            fg_color: graphics::BLACK,
-            player_id: -1,
-            draw_counter: true,
-        };
-
-        self.draw_game_of_life(ctx, &self.intro_uni, &draw_params)
+        self.draw_game_of_life(ctx, &self.intro_uni)
     }
 
     fn draw_universe(&mut self, ctx: &mut Context) -> GameResult<()> {
-
-        let draw_params = GameOfLifeDrawParams {
-            bg_color: self.color_settings.get_color(None),
-            fg_color: self.color_settings.get_color(Some(CellState::Dead)),
-            player_id: 1, // Current player, TODO sync with Server's CLIENT ID
-            draw_counter: true,
-        };
-
         self.first_gen_was_drawn = true;
-        self.draw_game_of_life(ctx, &self.uni, &draw_params)
+        self.draw_game_of_life(ctx, &self.uni)
     }
 
     fn pause_or_resume_game(&mut self) {
@@ -1199,25 +1228,31 @@ impl MainState {
                                 self.menu_sys.menu_state = menu::MenuState::Options;
                             }
                             menu::MenuItemIdentifier::Fullscreen => {
-                                /* TODO/FIXME, somewhat limping fullscreen support in 0.5.1 */
                                 if !escape_key_pressed {
-                                    self.video_settings.toggle_fullscreen(ctx);
-                                    let is_fullscreen = self.video_settings.is_fullscreen;
+                                    // toggle
+                                    let is_fullscreen = !self.video_settings.is_fullscreen;
+                                    self.video_settings.is_fullscreen = is_fullscreen;
+                                    // actually update screen based on what we toggled
+                                    self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: rollback if fail
+                                    // save to persistent config storage
                                     self.config.modify(|settings| {
                                         settings.video.fullscreen = is_fullscreen;
                                     });
                                 }
                             }
                             menu::MenuItemIdentifier::Resolution => {
+                                // NO-OP; menu item is effectively read-only
+                                /*
                                 if !escape_key_pressed {
                                     self.video_settings.advance_to_next_resolution(ctx);
 
                                     // Update the configuration file and resize the viewing
                                     // screen
-                                    let (w,h) = self.video_settings.get_active_resolution();
-                                    self.config.set_resolution(w as i32, h as i32);
+                                    let (w,h) = self.video_settings.get_resolution();
+                                    self.config.set_resolution(w, h);
                                     self.viewport.set_dimensions(w, h);
                                 }
+                                */
                             }
                             _ => {}
                         }
@@ -1344,16 +1379,12 @@ impl MainState {
             WidgetID::MainMenuTestCheckbox => {
                 match action {
                     UIAction::Toggle(t) => {
-                        if t == ToggleState::Disabled {
-                            self.config.modify(|settings| {
-                                settings.video.fullscreen = false;
-                            });
-                        } else {
-                            self.config.modify(|settings| {
-                                settings.video.fullscreen = true;
-                            });
-                        }
-                        self.video_settings.toggle_fullscreen(ctx);
+                        let is_fullscreen = t == ToggleState::Disabled;
+                        self.config.modify(|settings| {
+                            settings.video.fullscreen = is_fullscreen;
+                        });
+                        self.video_settings.is_fullscreen = is_fullscreen;
+                        self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
                     }
                     _ => {
                         return Err(InvalidUIAction{reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)});
@@ -1449,6 +1480,7 @@ fn toggle_line(s: &mut MainState, orientation: Orientation, col: isize, row: isi
     }
 }
 
+// TODO: this should really have "intro" in its name!
 fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
 
     // 1) Calculate width and height of rectangle which represents the intro logo
@@ -1456,10 +1488,6 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     // 3) Center it
     // 4) get offset for row and column to draw at
 
-    let resolution = s.video_settings.get_active_resolution();
-    // let resolution = (DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT);
-    let win_width  = (resolution.0 / DEFAULT_ZOOM_LEVEL) as isize; // cells
-    let win_height = (resolution.1 / DEFAULT_ZOOM_LEVEL) as isize; // cells
     let player_id = 0;   // hardcoded for this intro
 
     let letter_width = 5;
@@ -1469,8 +1497,11 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     let logo_width = 9*5 + 9*5;
     let logo_height = letter_height;
 
-    let mut offset_col = win_width/2  - logo_width/2;
-    let     offset_row = win_height/2 - logo_height/2;
+    let uni_width = s.intro_uni.width() as isize;
+    let uni_height = s.intro_uni.height() as isize;
+
+    let mut offset_col = uni_width/2  - logo_width/2;
+    let     offset_row = uni_height/2 - logo_height/2;
 
     let toggle = |s_: &mut MainState, col: isize, row: isize| {
         if col >= 0 || row >= 0 {
