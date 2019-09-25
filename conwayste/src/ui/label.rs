@@ -85,14 +85,6 @@ impl Label {
             dimensions: dimensions
         }
     }
-
-    pub fn set_color(&mut self, color: Color) {
-        self.textfrag.color = Some(color);
-    }
-
-    pub fn set_text(&mut self, string: String) {
-        self.textfrag.text = string;
-    }
 }
 
 impl Widget for Label {
@@ -111,8 +103,8 @@ impl Widget for Label {
     }
 
     /// Translate the widget from one location to another. Widget must be sizable.
-    fn translate(&mut self, point: Vector2<f32>) {
-        self.dimensions.translate(point);
+    fn translate(&mut self, dest: Vector2<f32>) {
+        self.dimensions.translate(dest);
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
@@ -122,7 +114,7 @@ impl Widget for Label {
         // If the text is updated, we need to refresh the dimensions of the virtual rectangle bounding it.
         // unwrap safe b/c if this fails then the game is fundamentally broken and is not in a usable state
         let recalculated = <Text as Drawable>::dimensions(&text, ctx).unwrap();
-        if recalculated.w != self.dimensions.w  && recalculated.h != self.dimensions.h {
+        if recalculated.w != self.dimensions.w  || recalculated.h != self.dimensions.h {
             self.dimensions.w = recalculated.w;
             self.dimensions.h = recalculated.h;
         }

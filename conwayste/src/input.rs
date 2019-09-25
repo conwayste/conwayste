@@ -18,6 +18,7 @@
 
 use std::time::{Instant};
 use ggez::event::{KeyCode, KeyMods, MouseButton};
+use ggez::nalgebra::Point2;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum ScrollEvent {
@@ -38,8 +39,8 @@ pub struct MouseInfo {
     pub action: Option<MouseAction>,
     pub scroll_event: Option<ScrollEvent>,
     pub down_timestamp: Option<Instant>,
-    pub down_position: (f32, f32),
-    pub position: (f32, f32),
+    pub down_position: Point2<f32>,
+    pub position: Point2<f32>,
     pub debug_print: bool
 }
 
@@ -50,8 +51,8 @@ impl MouseInfo {
             action: None,
             scroll_event: None,
             down_timestamp: None,
-            down_position: (0.0, 0.0),
-            position: (0.0, 0.0),
+            down_position: Point2::new(0.0, 0.0),
+            position: Point2::new(0.0, 0.0),
             debug_print: false,
         }
     }
@@ -59,12 +60,12 @@ impl MouseInfo {
     #[allow(unused)]
     pub fn print_mouse_state(&mut self) {
         if self.debug_print {
-            println!("Button: {:?}", self.mousebutton);
-            println!("Action: {:?}", self.action);
-            println!("Scroll: {:?}", self.scroll_event);
-            println!("Down TS: {:?}", self.down_timestamp);
-            println!("Down Pos: {:?}", self.down_position);
-            println!("Position: {:?}", self.position);
+            debug!("Button: {:?}", self.mousebutton);
+            debug!("Action: {:?}", self.action);
+            debug!("Scroll: {:?}", self.scroll_event);
+            debug!("Down TS: {:?}", self.down_timestamp);
+            debug!("Down Pos: {:?}", self.down_position);
+            debug!("Position: {:?}", self.position);
         }
     }
 }
@@ -89,9 +90,9 @@ impl KeyInfo {
     #[allow(unused)]
     pub fn print_keyboard_state(&mut self) {
         if self.debug_print {
-            println!("Key: {:?}", self.key);
-            println!("Modifier: {:?}", self.modifier);
-            println!("Repeating: {:?}", self.repeating);
+            debug!("Key: {:?}", self.key);
+            debug!("Modifier: {:?}", self.modifier);
+            debug!("Repeating: {:?}", self.repeating);
         }
     }
 }

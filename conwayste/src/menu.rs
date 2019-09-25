@@ -396,7 +396,7 @@ impl MenuSystem {
                 ///////////////////////////////
                 coords.y += h + 10.0;
                 let res = video_settings.get_resolution();
-                let cur_res_str = format!("{}x{}", res.w, res.h);
+                let cur_resolution = format!("{}x{}", res.w, res.h);
 
                 ui::draw_text(_ctx, Rc::clone(&self.font), self.inactive_color, cur_resolution, &coords)?;
             }

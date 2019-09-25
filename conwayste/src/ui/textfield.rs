@@ -275,8 +275,8 @@ impl Widget for TextField {
         self.dimensions = new_dimensions;
     }
 
-    fn translate(&mut self, point: Vector2<f32>) {
-        self.dimensions.translate(point);
+    fn translate(&mut self, dest: Vector2<f32>) {
+        self.dimensions.translate(dest);
     }
 
     fn id(&self) -> WidgetID {

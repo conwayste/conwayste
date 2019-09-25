@@ -142,7 +142,7 @@ impl Widget for Layer {
         Rect::zero()
     }
 
-    fn translate(&mut self, _point: Vector2<f32>) {}
+    fn translate(&mut self, dest: Vector2<f32>) {}
 
     fn on_hover(&mut self, point: &Point2<f32>) {
         for w in self.widgets.iter_mut() {

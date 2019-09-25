@@ -69,9 +69,7 @@ impl Button {
     ///             UIAction::PrintHelloWorld,
     ///             WidgetID::TestButton1Label,
     ///             font,
-    ///             "TestButton")
-    ///         .label_color(Color::from(css::DARKCYAN))
-    ///         .button_color(Color::from(css::WHITE));
+    ///             "TestButton");
     ///
     ///     b.draw(ctx)?;
     /// }
@@ -100,18 +98,6 @@ impl Button {
         b
     }
 
-    /// Sets the color of the Button's text to the specified ggez `Color`
-    pub fn label_color(mut self, color: Color) -> Self {
-        self.label.set_color(color);
-        self
-    }
-
-    /// Sets the color of the button to the specified ggez `Color`
-    pub fn button_color(mut self, color: Color) -> Self {
-        self.button_color = color;
-        self
-    }
-
     fn center_label_text(&mut self) {
         let text_dims = self.label.size();
         let tmp_label_rect = Rect::new(self.dimensions.x, self.dimensions.y, text_dims.w, text_dims.h);
@@ -133,17 +119,17 @@ impl Widget for Button {
     fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
         // if self.hover {
-        //     println!("Hovering over Button, \"{}\" {:?}", self.label.text, point);
+        //     debug!("Hovering over Button, \"{}\" {:?}", self.label.text, point);
         // }
     }
 
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
+    fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
     {
         let hover = self.hover;
         self.hover = false;
 
         if hover {
-            println!("Clicked Button, '{:?}'", self.label.textfrag);
+            debug!("Clicked Button, '{:?}'", self.label.textfrag);
             return Some((self.id, self.action));
         }
         None
@@ -179,9 +165,9 @@ impl Widget for Button {
         self.center_label_text();
     }
 
-    fn translate(&mut self, point: Vector2<f32>)
+    fn translate(&mut self, dest: Vector2<f32>)
     {
-        self.dimensions.translate(point);
-        self.label.translate(point);
+        self.dimensions.translate(dest);
+        self.label.translate(dest);
     }
 }

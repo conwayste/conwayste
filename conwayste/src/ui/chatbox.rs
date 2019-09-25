@@ -132,15 +132,15 @@ impl Widget for Chatbox {
         self.dimensions = new_dims;
     }
 
-    fn translate(&mut self, point: Vector2<f32>)
+    fn translate(&mut self, dest: Vector2<f32>)
     {
-        self.dimensions.translate(point);
+        self.dimensions.translate(dest);
     }
 
     fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
         //if self.hover {
-        //    println!("Hovering over Chatbox, \"{:?}\"", self.label.dimensions);
+        //    debug!("Hovering over Chatbox, \"{:?}\"", self.label.dimensions);
         //}
     }
 
@@ -150,7 +150,7 @@ impl Widget for Chatbox {
         self.hover = false;
 
         if hover {
-            println!("Clicked within Chatbox");
+            debug!("Clicked within Chatbox");
             return Some((self.id, self.action));
         }
 

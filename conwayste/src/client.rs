@@ -430,7 +430,7 @@ impl EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
         let duration = timer::duration_to_f64(timer::delta(ctx)); // seconds
 
-        self.receive_net_updates(ctx)?;
+        self.receive_net_updates()?;
 
         let current_screen = match self.screen_stack.last() {
             Some(screen) => screen,
@@ -490,8 +490,7 @@ impl EventHandler for MainState {
                 }
 
                 if self.inputs.mouse_info.mousebutton == MouseButton::Left {
-                    let (x,y) = self.inputs.mouse_info.position;
-                    let mouse_pos = Point2::new(x as f32, y as f32);
+                    let mouse_pos = self.inputs.mouse_info.position;
 
                     fn flip_cell(ms: &mut MainState, cell: Cell) {
                         // Make dead cells alive or alive cells dead
@@ -523,7 +522,7 @@ impl EventHandler for MainState {
                 }
 
 
-                let mouse_point = Point2::new(self.inputs.mouse_info.position.0 as f32, self.inputs.mouse_info.position.1 as f32);
+                let mouse_point = self.inputs.mouse_info.position;
                 let screen = self.get_current_screen();
 
                 if let Some(layer) = self.ui_manager.get_top_layer_from_screen(screen) {
@@ -548,13 +547,13 @@ impl EventHandler for MainState {
             Screen::InRoom => {
                 // TODO implement
                 if let Some(_k) = self.inputs.key_info.key {
-                    println!("Leaving InRoom to ServerList");
+                    debug!("Leaving InRoom to ServerList");
                     self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
                 }
             }
             Screen::ServerList => {
                 if let Some(_k) = self.inputs.key_info.key {
-                    println!("Leaving ServerList to MainMenu");
+                    debug!("Leaving ServerList to MainMenu");
                     self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
                 }
                 // TODO implement
@@ -615,24 +614,27 @@ impl EventHandler for MainState {
             self.inputs.mouse_info.mousebutton = button;
             self.inputs.mouse_info.down_timestamp = Some(Instant::now());
             self.inputs.mouse_info.action = Some(MouseAction::Held);
-            self.inputs.mouse_info.position = (x,y);
-            self.inputs.mouse_info.down_position = (x,y);
+            self.inputs.mouse_info.position = Point2::new(x,y);
+            self.inputs.mouse_info.down_position = Point2::new(x,y);
 
             if self.inputs.mouse_info.debug_print {
-                println!("{:?} Down", button);
+                debug!("{:?} Down", button);
             }
         }
     }
 
     fn mouse_motion_event(&mut self, _ctx: &mut Context, x: f32, y: f32, _dx: f32, _dy: f32) {
-        self.inputs.mouse_info.position = (x, y);
+        self.inputs.mouse_info.position = Point2::new(x, y);
 
+        // Check that a valid mouse button was held down (but no motion yet), or that we are already
+        // dragging the mouse. If either case is true, update the action to reflect that the mouse
+        // is being dragged around
         if self.inputs.mouse_info.mousebutton != MouseButton::Other(0)
             && (self.inputs.mouse_info.action == Some(MouseAction::Held) || self.inputs.mouse_info.action == Some(MouseAction::Drag)) {
             self.inputs.mouse_info.action = Some(MouseAction::Drag);
 
             if self.inputs.mouse_info.debug_print {
-                println!("Dragging {:?}, Current Position {:?}, Time Held: {:?}",
+                debug!("Dragging {:?}, Current Position {:?}, Time Held: {:?}",
                     self.inputs.mouse_info.mousebutton,
                     self.inputs.mouse_info.position,
                     self.inputs.mouse_info.down_timestamp.unwrap().elapsed());
@@ -641,13 +643,13 @@ impl EventHandler for MainState {
     }
 
     fn mouse_button_up_event(&mut self, _ctx: &mut Context, button: MouseButton, x: f32, y: f32) {
-        // Register as a click if we ended near where we started
+        // Register as a click if the same mouse button that clicked down is what triggered the event
         if self.inputs.mouse_info.mousebutton == button {
             self.inputs.mouse_info.action = Some(MouseAction::Click);
-            self.inputs.mouse_info.position = (x, y);
+            self.inputs.mouse_info.position = Point2::new(x, y);
 
             if self.inputs.mouse_info.debug_print {
-                println!("Clicked {:?}, Current Position {:?}, Time Held: {:?}",
+                debug!("Clicked {:?}, Current Position {:?}, Time Held: {:?}",
                     button,
                     (x, y),
                     self.inputs.mouse_info.down_timestamp.unwrap().elapsed());
@@ -669,7 +671,7 @@ impl EventHandler for MainState {
             };
 
         if self.inputs.mouse_info.debug_print {
-            println!("Wheel Event {:?}", self.inputs.mouse_info.scroll_event);
+            debug!("Wheel Event {:?}", self.inputs.mouse_info.scroll_event);
         }
     }
 
@@ -702,7 +704,7 @@ impl EventHandler for MainState {
         }
 
         if self.inputs.key_info.debug_print {
-            println!("Key_Down K: {:?}, M: {:?}, R: {}", self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating);
+            debug!("Key_Down K: {:?}, M: {:?}, R: {}", self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating);
         }
     }
 
@@ -720,7 +722,7 @@ impl EventHandler for MainState {
         self.inputs.key_info.repeating = false;
 
         if self.inputs.key_info.debug_print {
-            println!("Key_Up K: {:?}, M: {:?}, R: {}", self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating);
+            debug!("Key_Up K: {:?}, M: {:?}, R: {}", self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating);
         }
     }
 
@@ -741,7 +743,6 @@ impl EventHandler for MainState {
                 tf.add_char_at_cursor(ctx, character);
             }
         }
-        // println!("[text_input_event] (text) {}", text);
     }
 
     fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
@@ -1090,8 +1091,8 @@ impl MainState {
     fn update_main_menu(&mut self, ctx: &mut Context) {
         self.process_menu_inputs();
 
-        let mouse_point = Point2::new(self.inputs.mouse_info.position.0 as f32, self.inputs.mouse_info.position.1 as f32);
-        let origin_point = Point2::new(self.inputs.mouse_info.down_position.0 as f32, self.inputs.mouse_info.down_position.1 as f32);
+        let mouse_point = self.inputs.mouse_info.position;
+        let origin_point = self.inputs.mouse_info.down_position;
 
         let mouse_action = self.inputs.mouse_info.action;
 
@@ -1263,7 +1264,7 @@ impl MainState {
     }
 
     // update
-    fn receive_net_updates(&mut self, ctx: &mut Context) -> GameResult<()> {
+    fn receive_net_updates(&mut self) -> GameResult<()> {
         if self.net_worker.is_none() {
             return Ok(());
         }
@@ -1332,7 +1333,7 @@ impl MainState {
                     self.inputs.mouse_info.down_timestamp = None;
                     self.inputs.mouse_info.action = None;
                     self.inputs.mouse_info.mousebutton = MouseButton::Other(0);
-                    self.inputs.mouse_info.down_position = (0.0, 0.0);
+                    self.inputs.mouse_info.down_position = Point2::new(0.0, 0.0);
                 }
                 MouseAction::Drag | MouseAction::Held | MouseAction::DoubleClick => {}
             }

@@ -586,7 +586,7 @@ mod test {
         });
         assert_eq!(config.flush().unwrap(), true);
         config.modify(|settings: &mut Settings| {
-            settings.video.resolution_x = 123;
+            settings.video.resolution_x = 123.0;
         });
         assert_eq!(config.flush().unwrap(), false);
     }
@@ -599,7 +599,7 @@ mod test {
         });
         assert_eq!(config.flush().unwrap(), true);
         config.modify(|settings: &mut Settings| {
-            settings.video.resolution_x = 123;
+            settings.video.resolution_x = 123.0;
         });
         assert_eq!(config.is_dirty(), true);
         adjust_flush_time(&mut config,

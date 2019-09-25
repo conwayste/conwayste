@@ -83,9 +83,9 @@ impl Widget for Pane {
         self.dimensions = new_dims;
     }
 
-    fn translate(&mut self, point: Vector2<f32>)
+    fn translate(&mut self, dest: Vector2<f32>)
     {
-        self.dimensions.translate(point);
+        self.dimensions.translate(dest);
     }
 
     fn on_hover(&mut self, point: &Point2<f32>) {

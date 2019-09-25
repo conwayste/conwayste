@@ -54,8 +54,12 @@ pub const MIN_CONFIG_FLUSH_TIME: Duration = Duration::from_millis(5000);
 
 // user interface
 lazy_static! {
+    // In pixels, used for any UI element containing text (except for chatbox)
     pub static ref DEFAULT_UI_FONT_SCALE: Scale = Scale::uniform(20.0);
+    // In pixels, used for the message container of the chatbox. Currently different from other UI
+    // elements for experimentation.
     pub static ref DEFAULT_CHATBOX_FONT_SCALE: Scale = Scale::uniform(15.0);
+
 }
 
 //////////////////////////////////////////////////////////////////////
