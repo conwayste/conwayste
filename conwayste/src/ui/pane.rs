@@ -18,7 +18,7 @@
 
 use chromatica::css;
 
-use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam};
+use ggez::graphics::{self, Rect, Color, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 

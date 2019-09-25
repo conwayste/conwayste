@@ -17,7 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::{Context, GameResult};
-use ggez::graphics::{Font, Rect};
+use ggez::graphics::{Rect};
 use ggez::nalgebra::{Point2, Vector2};
 
 use downcast_rs::Downcast;

@@ -20,14 +20,13 @@ use chromatica::css;
 use std::rc::Rc;
 use std::collections::VecDeque;
 
-use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text, BlendMode, FilterMode, TextFragment};
+use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text, FilterMode};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
     widget::Widget,
     helpe::within_widget,
-    textfield::TextField,
     UIAction, WidgetID
 };
 

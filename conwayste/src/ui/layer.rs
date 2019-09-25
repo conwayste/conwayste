@@ -17,7 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use chromatica::css;
-use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam};
+use ggez::graphics::{self, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -142,7 +142,7 @@ impl Widget for Layer {
         Rect::zero()
     }
 
-    fn translate(&mut self, dest: Vector2<f32>) {}
+    fn translate(&mut self, _dest: Vector2<f32>) {}
 
     fn on_hover(&mut self, point: &Point2<f32>) {
         for w in self.widgets.iter_mut() {

@@ -54,14 +54,14 @@ use netwayste::net::NetwaysteEvent;
 use ggez::conf;
 use ggez::event::*;
 use ggez::{GameError, GameResult, Context, ContextBuilder};
-use ggez::graphics::{self, Rect, Color, DrawParam, Font};
+use ggez::graphics::{self, Color, DrawParam, Font};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::timer;
 
 use std::env;
 use std::io::Write; // For env logger
 use std::path;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap};
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -81,7 +81,6 @@ use input::{MouseAction, ScrollEvent};
 use error::{ConwaysteResult, ConwaysteError::*};
 use viewport::Cell;
 use ui::{
-    Layer,
     ToggleState,
     TextInputState,
     UIAction,
@@ -466,7 +465,7 @@ impl EventHandler for MainState {
                 // TODO Disable FSP limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
                 let mut textfield_under_focus = false;
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
                     match tf.state {
                         Some(TextInputState::TextInputComplete) =>  {
                             textfield_under_focus = false;
@@ -935,10 +934,10 @@ impl MainState {
 
         match keycode {
             KeyCode::Return => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if tf.state.is_none() {
                         if let Some(layer) = self.ui_manager.get_top_layer_from_screen(Screen::Run) {
-                            layer.enter_focus(ui::InGamePane1ChatboxTextField);
+                            layer.enter_focus(ui::INGAME_PANE1_CHATBOXTEXTFIELD);
                         }
                     }
                 }
@@ -1029,7 +1028,7 @@ impl MainState {
 
         match keycode {
             KeyCode::Return => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
                     tf.state = Some(TextInputState::TextInputComplete);
                 }
             }
@@ -1040,28 +1039,28 @@ impl MainState {
                 }
             }
             KeyCode::Back => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.remove_left_of_cursor(ctx);
                     }
                 }
             }
             KeyCode::Delete => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.remove_right_of_cursor(ctx);
                     }
                 }
             }
             KeyCode::Left => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.move_cursor_left(ctx);
                     }
                 }
             },
             KeyCode::Right => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.move_cursor_right(ctx);
                     }
@@ -1070,14 +1069,14 @@ impl MainState {
             KeyCode::Up => {},    // ?? go up and down the message stack?
             KeyCode::Down => {},
             KeyCode::Home => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.cursor_home();
                     }
                 }
             }
             KeyCode::End => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::InGamePane1ChatboxTextField) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.cursor_end();
                     }
@@ -1318,7 +1317,7 @@ impl MainState {
         }
 
         for msg in incoming_messages {
-            if let Some(cb) = self.ui_manager.chatbox_from_id(ui::InGamePane1Chatbox) {
+            if let Some(cb) = self.ui_manager.chatbox_from_id(ui::INGAME_PANE1_CHATBOX) {
                 cb.add_message(msg)?;
             }
         }
@@ -1365,9 +1364,9 @@ impl MainState {
 
     fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> ConwaysteResult<()> {
         match widget_id {
-            ui::MainMenuPane1ButtonYes
-            | ui::MainMenuPane1ButtonNo
-            | ui::MainMenuTestButton  => {
+            ui::MAINMENU_PANE1_BUTTONYES
+            | ui::MAINMENU_PANE1_BUTTONNO
+            | ui::MAINMENU_TESTBUTTON  => {
                 match action {
                     UIAction::ScreenTransition(s) => {
                         self.screen_stack.push(s);
@@ -1377,7 +1376,7 @@ impl MainState {
                     }
                 }
             },
-            ui::MainMenuTestCheckbox => {
+            ui::MAINMENU_TESTCHECKBOX => {
                 match action {
                     UIAction::Toggle(t) => {
                         let is_fullscreen = t == ToggleState::Disabled;
@@ -1392,19 +1391,19 @@ impl MainState {
                      }
                 }
             },
-            ui::MainMenuPane1
-            | ui::MainMenuLayer1
-            | ui::InGameLayer1
-            | ui::InGamePane1 => {
+            ui::MAINMENU_PANE1
+            | ui::MAINMENU_LAYER1
+            | ui::INGAME_LAYER1
+            | ui::INGAME_PANE1 => {
                 return Err(NoAssociatedUIAction{
                     reason: format!("Widget: {:?} is a Pane or Layer element and has no associated action", widget_id)
                 });
             },
-            ui::InGamePane1Chatbox
-            | ui::InGamePane1ChatboxTextField
-            | ui::MainMenuPane1ButtonNoLabel
-            | ui::MainMenuPane1ButtonYesLabel
-            | ui::MainMenuTestButtonLabel => {
+            ui::INGAME_PANE1_CHATBOX
+            | ui::INGAME_PANE1_CHATBOXTEXTFIELD
+            | ui::MAINMENU_PANE1_BUTTONNOLABEL
+            | ui::MAINMENU_PANE1_BUTTONYESLABEL
+            | ui::MAINMENU_TESTBUTTONLABEL => {
                 // PR_GATE
             },
             ui::WidgetID(_) => {},
@@ -1413,11 +1412,11 @@ impl MainState {
         Ok(())
     }
 
-    fn handle_user_chat_complete(&mut self, ctx: &mut Context) -> GameResult<()> {
+    fn handle_user_chat_complete(&mut self, _ctx: &mut Context) -> GameResult<()> {
         let username = self.config.get().user.name.clone();
         let mut msg = String::new();
 
-        if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::InGamePane1ChatboxTextField) {
+        if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
             if let Some(m) = tf.text() {
                 msg = format!("{}: {}", username, m);
             }
@@ -1426,7 +1425,7 @@ impl MainState {
         }
 
         if !msg.is_empty() {
-            if let Some(cb) = self.ui_manager.chatbox_from_id(ui::InGamePane1Chatbox) {
+            if let Some(cb) = self.ui_manager.chatbox_from_id(ui::INGAME_PANE1_CHATBOX) {
                 cb.add_message(msg.clone())?;
 
                 if let Some(ref mut netwayste) = self.net_worker {

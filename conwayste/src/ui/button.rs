@@ -123,7 +123,7 @@ impl Widget for Button {
         // }
     }
 
-    fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
     {
         let hover = self.hover;
         self.hover = false;

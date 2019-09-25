@@ -120,7 +120,7 @@ impl TextField {
     }
 
     /// Adds a character at the current cursor position
-    pub fn add_char_at_cursor(&mut self, ctx: &mut Context, character: char)
+    pub fn add_char_at_cursor(&mut self, _ctx: &mut Context, character: char)
     {
         if self.cursor_index == self.text.len() {
             self.text.push(character);
@@ -131,7 +131,7 @@ impl TextField {
     }
 
     /// Deletes a character to the left of the current cursor
-    pub fn remove_left_of_cursor(&mut self, ctx: &mut Context) {
+    pub fn remove_left_of_cursor(&mut self, _ctx: &mut Context) {
         if self.cursor_index != 0 {
             if self.cursor_index == self.text.len() {
                 self.text.pop();
@@ -143,7 +143,7 @@ impl TextField {
     }
 
     /// Deletes a chracter to the right of the current cursor
-    pub fn remove_right_of_cursor(&mut self, ctx: &mut Context) {
+    pub fn remove_right_of_cursor(&mut self, _ctx: &mut Context) {
         let text_len = self.text.len();
 
         if text_len != 0 && self.cursor_index != text_len {
@@ -162,14 +162,14 @@ impl TextField {
     }
 
     /// Advances the cursor position to the right by one character
-    pub fn move_cursor_right(&mut self, ctx: &mut Context) {
+    pub fn move_cursor_right(&mut self, _ctx: &mut Context) {
         if self.cursor_index < self.text.len() {
             self.cursor_index += 1;
         }
     }
 
     /// Decrements the cursor position to the left by one character
-    pub fn move_cursor_left(&mut self, ctx: &mut Context) {
+    pub fn move_cursor_left(&mut self, _ctx: &mut Context) {
         if self.cursor_index > 0 {
             self.cursor_index -= 1;
         }
