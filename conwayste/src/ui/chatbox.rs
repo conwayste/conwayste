@@ -64,7 +64,7 @@ impl Chatbox {
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
     ///     let font = Rc::new(Font::default());
     ///     let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
-    ///     let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, font, 5);
+    ///     let mut chatbox = Chatbox::new(ui::InGamePane1Chatbox, font, 5);
     ///     chatbox.set_size(chatbox_rect);
     ///     chatbox.draw(ctx)?;
     /// }
@@ -99,7 +99,7 @@ impl Chatbox {
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
     ///     let font = Rc::new(Font::default());
     ///     let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
-    ///     let mut chatbox = Chatbox::new(WidgetID::InGamePane1Chatbox, font, 5);
+    ///     let mut chatbox = Chatbox::new(ui::InGamePane1Chatbox, font, 5);
     ///     chatbox.set_size(chatbox_rect);
     ///     chatbox.add_message(String::new("Player 1: This is a new chat message");
     ///     chatbox.add_message(String::new("-- This is a Server broadcast message -- ");

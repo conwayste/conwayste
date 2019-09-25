@@ -72,7 +72,7 @@ impl Checkbox {
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
     ///     let font = Rc::new(Font::default());
     ///     let checkbox = Box::new(Checkbox::new(ctx,
-    ///         WidgetID::TestCheckbox,
+    ///         ui::TestCheckbox,
     ///         UIAction::Toggle( if cfg!(target_os = "linux") { ToggleState::Enabled } else { ToggleState::Disabled } ),
     ///         font,
     ///         "Toggle Me",
@@ -131,7 +131,7 @@ impl Widget for Checkbox {
         let label_dimensions = self.label.size();
         self.hover = within_widget(point, &self.dimensions) || within_widget(point, &label_dimensions);
         if self.hover {
-            //println!("Hovering over Checkbox, '{:?}'", label_dimensions);
+            //debug!("Hovering over Checkbox, '{:?}'", label_dimensions);
         }
     }
 
@@ -141,7 +141,7 @@ impl Widget for Checkbox {
         self.hover = false;
 
         if hover {
-            //println!("Clicked Checkbox, '{}'", self.label.textfrag.text);
+            //debug!("Clicked Checkbox, '{}'", self.label.textfrag.text);
             return Some(( self.id, UIAction::Toggle(self.toggle()) ));
         }
         None

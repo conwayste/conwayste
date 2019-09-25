@@ -55,7 +55,7 @@ impl Label {
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
     ///     let font = Rc::new(Font::default());
     ///     let label = Label::new(ctx,
-    ///         WidgetID::TestLabel,
+    ///         ui::TestLabel,
     ///         font,
     ///         "TestButton",
     ///         Color::from(css::DARKCYAN),

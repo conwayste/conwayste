@@ -65,9 +65,9 @@ impl Button {
     ///
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
     ///     let font = Rc::new(Font::default());
-    ///     let b = Button::new(ctx, WidgetID::TestButton1,
+    ///     let b = Button::new(ctx, ui::TestButton1,
     ///             UIAction::PrintHelloWorld,
-    ///             WidgetID::TestButton1Label,
+    ///             ui::TestButton1Label,
     ///             font,
     ///             "TestButton");
     ///

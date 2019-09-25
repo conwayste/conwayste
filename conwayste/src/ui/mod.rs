@@ -54,22 +54,21 @@ pub enum UIAction {
     EnterText,
 }
 
-#[derive(PartialEq, Debug, Copy, Clone)]
-pub enum WidgetID {
-    MainMenuLayer1,
-    MainMenuTestButton,
-    MainMenuTestButtonLabel,
-    MainMenuTestCheckbox,
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+pub struct WidgetID(pub usize);
 
-    MainMenuPane1,
-    MainMenuPane1ButtonYes,
-    MainMenuPane1ButtonYesLabel,
-    MainMenuPane1ButtonNo,
-    MainMenuPane1ButtonNoLabel,
+pub const MainMenuLayer1: WidgetID = WidgetID(0x100);
+pub const MainMenuTestButton: WidgetID = WidgetID(0x101);
+pub const MainMenuTestButtonLabel: WidgetID = WidgetID(0x102);
+pub const MainMenuTestCheckbox: WidgetID = WidgetID(0x103);
 
-    InGameLayer1,
-    InGamePane1,
-    InGamePane1Chatbox,
-    InGamePane1ChatboxTextField,
-}
+pub const MainMenuPane1: WidgetID = WidgetID(0x104);
+pub const MainMenuPane1ButtonYes: WidgetID = WidgetID(0x105);
+pub const MainMenuPane1ButtonYesLabel: WidgetID = WidgetID(0x106);
+pub const MainMenuPane1ButtonNo: WidgetID = WidgetID(0x107);
+pub const MainMenuPane1ButtonNoLabel: WidgetID = WidgetID(0x108);
 
+pub const InGameLayer1: WidgetID = WidgetID(0x109);
+pub const InGamePane1: WidgetID = WidgetID(0x10A);
+pub const InGamePane1Chatbox: WidgetID = WidgetID(0x10B);
+pub const InGamePane1ChatboxTextField: WidgetID = WidgetID(0x10C);

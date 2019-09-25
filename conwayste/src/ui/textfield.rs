@@ -75,7 +75,7 @@ impl TextField {
     ///     let font = Rc::new(Font::default());
     ///     let dimensions = Rect::new(0.0, 0.0, 300.0, 20.0);
     ///
-    ///     let textfield = TextField::new(WidgetID::ChatboxTextField, font, dimensions);
+    ///     let textfield = TextField::new(ui::ChatboxTextField, font, dimensions);
     ///
     ///     textfield.draw(ctx)?;
     /// }
