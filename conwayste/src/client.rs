@@ -1078,7 +1078,7 @@ impl MainState {
             KeyCode::End => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.cursor_end();
+                        tf.cursor_end(ctx);
                     }
                 }
             }

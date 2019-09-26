@@ -36,6 +36,8 @@ use crate::constants::DEFAULT_UI_FONT_SCALE;
 pub const TEXT_INPUT_BUFFER_LEN     : usize = 255;
 pub const BLINK_RATE_MS             : u64 = 500;
 
+const AVERAGE_CHARACTER_WIDTH_PX     : f32 = 9.0; // in pixels
+
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TextInputState {
     EnteringText,
@@ -53,7 +55,6 @@ pub struct TextField {
     pub dimensions: Rect,
     pub hover: bool,
     pub visible_start_index: usize,
-    pub visible_end_index: usize,
     font: Rc<Font>,
 }
 
@@ -93,7 +94,6 @@ impl TextField {
             action: UIAction::EnterText,
             hover: false,
             visible_start_index: 0,
-            visible_end_index: 0,
             font: font,
         }
     }
@@ -115,7 +115,7 @@ impl TextField {
 
     fn get_text_width_in_px(&self, ctx: &mut Context) -> f32 {
         let mut text = Text::new(self.text.clone());
-        let text = text.set_font(Font::default(), *DEFAULT_UI_FONT_SCALE);
+        let text = text.set_font(*self.font, *DEFAULT_UI_FONT_SCALE);
         text.width(ctx) as f32
     }
 
@@ -156,7 +156,6 @@ impl TextField {
         self.text.clear();
         self.cursor_index = 0;
         self.visible_start_index = 0;
-        self.visible_end_index = 0;
         self.blink_timestamp = None;
         self.draw_cursor = false;
     }
@@ -165,6 +164,12 @@ impl TextField {
     pub fn move_cursor_right(&mut self, _ctx: &mut Context) {
         if self.cursor_index < self.text.len() {
             self.cursor_index += 1;
+
+            let last_visible_index = DEFAULT_UI_FONT_SCALE.x as usize;
+            if self.cursor_index - self.visible_start_index > last_visible_index + 1 {
+                self.visible_start_index += 1;
+                println!("move cursor right moves start index")
+            }
         }
     }
 
@@ -172,17 +177,37 @@ impl TextField {
     pub fn move_cursor_left(&mut self, _ctx: &mut Context) {
         if self.cursor_index > 0 {
             self.cursor_index -= 1;
+
+            if self.visible_start_index != 0 && self.cursor_index == self.visible_start_index {
+                self.visible_start_index -= 1;
+            }
         }
     }
 
     /// Moves the cursor prior to the first character in the field
     pub fn cursor_home(&mut self) {
         self.cursor_index = 0;
+        self.visible_start_index = 0;
     }
 
     /// Moves the cursor after the last character in the field
-    pub fn cursor_end(&mut self) {
-        self.cursor_index = self.text.len();
+    pub fn cursor_end(&mut self, ctx: &mut Context) {
+        let text_length = self.text.len();
+        self.cursor_index = text_length;
+
+        // TODO Reverify functionality once https://github.com/ggez/ggez/issues/583 is fixed.
+        //      We should then just be able to use DEFAULT_UI_FONT_SCALE.x to calculate the length
+        //      and remove the need to pass down context to get the width.
+        let scale_width_px = self.get_text_width_in_px(ctx);
+        if scale_width_px > self.dimensions.x {
+            // This is a bit of a hack because we cannot assume a font size of 20.0 per character
+            // due to the ggez issue mentioned above. In the meantime, the average character length
+            // of the following string will be used:
+            // 'abcdefghijklmnopqrstuvwxyz01234567890.\"\"\\//_ '
+            // It is hardcoded here for readibility and was calculated offline.
+            let index = (scale_width_px - self.dimensions.w)/AVERAGE_CHARACTER_WIDTH_PX;
+            self.visible_start_index = index as usize;
+        }
     }
 
     /// Textfield gains focus and begins accepting user input
@@ -235,7 +260,7 @@ impl Widget for TextField {
         // PR_GATE: If string exceeds length of pane, need to only draw what should be visible
 
         if self.state.is_some() || !self.text.is_empty() {
-            const CURSOR_OFFSET_PX: f32 = 10.0;
+            const CURSOR_OFFSET_PX: f32 = 5.0;
 
             let colored_rect;
             if !self.text.is_empty() && self.state.is_none() {
@@ -250,7 +275,13 @@ impl Widget for TextField {
             let mut text_pos = Point2::new(self.dimensions.x + CURSOR_OFFSET_PX, self.dimensions.y + 3.0);
 
             // PR_GATE fix how this works overall now that we have fixed width fonts
-            let visible_text = text_with_cursor.clone();// [self.visible_start_index..self.visible_end_index].to_owned();
+            let visible_text;
+            if (self.text.len() - self.visible_start_index) as f32 > self.dimensions.w {
+                let end_index = self.visible_start_index as f32 + self.dimensions.w/DEFAULT_UI_FONT_SCALE.x - 1.0;
+                visible_text = text_with_cursor[self.visible_start_index..end_index as usize].to_owned();
+            } else {
+                visible_text = text_with_cursor[self.visible_start_index..self.text.len()].to_owned();
+            }
 
             draw_text(ctx, Rc::clone(&self.font), Color::from(css::WHITESMOKE), visible_text, &text_pos)?;
 
