@@ -923,6 +923,9 @@ impl MainState {
         self.toggle_paused_game = false;
     }
 
+    /// Handles keyboard and mouse input stored in `self.inputs` by the ggez callbacks. This is
+    /// called from update() when we are in the Run screen, and the focus is not captured by, for
+    /// example, a text dialog.
     fn process_running_inputs(&mut self) {
         let keycode;
 

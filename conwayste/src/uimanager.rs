@@ -48,7 +48,7 @@ impl UIManager {
     pub fn new(ctx: &mut Context, config: &Config, font: Rc<Font>) -> Self {
         let mut ui_layers = HashMap::new();
 
-        let chat_pane_rect = Rect::new(30.0, 600.0, 300.0, 150.0);
+        let chat_pane_rect = Rect::new(30.0, 40.0, 300.0, 150.0);
         let mut chatpane = Box::new(Pane::new(ui::INGAME_PANE1, chat_pane_rect));
 
         const CHATBOX_HISTORY: usize = 5;
