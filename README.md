@@ -65,8 +65,6 @@ I ended up adding these to my `~/.profile` .
 
 ```
 cargo build
-ln -s ../resources target    # Needed only for the Client
-                             # Run this if you are getting a ResourceNotFound error
 ```
 
 ## Running the server
