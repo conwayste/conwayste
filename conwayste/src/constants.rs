@@ -16,8 +16,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{self, Color, Scale};
 use std::time::Duration;
+use ggez::graphics::{self, Color, Scale};
 
 // game play
 pub const CURRENT_PLAYER_ID: usize = 1; // TODO:  get the player ID from server rather than hardcoding
@@ -64,6 +64,23 @@ lazy_static! {
 // FIXME This is a temporary hack! Relies on ggez/issue/583 to be fixed so we can calculate the
 // last index a character will occupy for any sized text-field.
 pub const CHATBOX_INPUT_VISIBILE_END_INDEX : usize = 22;
+
+pub mod widget_ids {
+    use crate::ui::WidgetID;
+    pub const MAINMENU_LAYER1: WidgetID = WidgetID(0);
+    pub const MAINMENU_TESTBUTTON: WidgetID = WidgetID(1);
+    pub const MAINMENU_TESTBUTTONLABEL: WidgetID = WidgetID(2);
+    pub const MAINMENU_TESTCHECKBOX: WidgetID = WidgetID(3);
+    pub const MAINMENU_PANE1: WidgetID = WidgetID(4);
+    pub const MAINMENU_PANE1_BUTTONYES: WidgetID = WidgetID(5);
+    pub const MAINMENU_PANE1_BUTTONYESLABEL: WidgetID = WidgetID(6);
+    pub const MAINMENU_PANE1_BUTTONNO: WidgetID = WidgetID(7);
+    pub const MAINMENU_PANE1_BUTTONNOLABEL: WidgetID = WidgetID(8);
+    pub const INGAME_LAYER1: WidgetID = WidgetID(9);
+    pub const INGAME_PANE1: WidgetID = WidgetID(10);
+    pub const INGAME_PANE1_CHATBOX: WidgetID = WidgetID(11);
+    pub const INGAME_PANE1_CHATBOXTEXTFIELD: WidgetID = WidgetID(12);
+}
 
 //////////////////////////////////////////////////////////////////////
 

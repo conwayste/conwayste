@@ -76,6 +76,7 @@ use constants::{
     HISTORY_SIZE,
     INTRO_DURATION,
     INTRO_PAUSE_DURATION,
+    widget_ids::*,
 };
 use input::{MouseAction, ScrollEvent};
 use error::{ConwaysteResult, ConwaysteError::*};
@@ -465,7 +466,7 @@ impl EventHandler for MainState {
                 // TODO Disable FSP limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
                 let mut textfield_under_focus = false;
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     match tf.state {
                         Some(TextInputState::TextInputComplete) =>  {
                             textfield_under_focus = false;
@@ -937,10 +938,10 @@ impl MainState {
 
         match keycode {
             KeyCode::Return => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if tf.state.is_none() {
                         if let Some(layer) = self.ui_manager.get_top_layer_from_screen(Screen::Run) {
-                            layer.enter_focus(ui::INGAME_PANE1_CHATBOXTEXTFIELD);
+                            layer.enter_focus(INGAME_PANE1_CHATBOXTEXTFIELD);
                         }
                     }
                 }
@@ -1031,7 +1032,7 @@ impl MainState {
 
         match keycode {
             KeyCode::Return => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     tf.state = Some(TextInputState::TextInputComplete);
                 }
             }
@@ -1042,28 +1043,28 @@ impl MainState {
                 }
             }
             KeyCode::Back => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.remove_left_of_cursor(ctx);
                     }
                 }
             }
             KeyCode::Delete => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.remove_right_of_cursor(ctx);
                     }
                 }
             }
             KeyCode::Left => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.move_cursor_left(ctx);
                     }
                 }
             },
             KeyCode::Right => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.move_cursor_right(ctx);
                     }
@@ -1072,14 +1073,14 @@ impl MainState {
             KeyCode::Up => {},    // ?? go up and down the message stack?
             KeyCode::Down => {},
             KeyCode::Home => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.cursor_home();
                     }
                 }
             }
             KeyCode::End => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.cursor_end(ctx);
                     }
@@ -1320,7 +1321,7 @@ impl MainState {
         }
 
         for msg in incoming_messages {
-            if let Some(cb) = self.ui_manager.chatbox_from_id(ui::INGAME_PANE1_CHATBOX) {
+            if let Some(cb) = self.ui_manager.chatbox_from_id(INGAME_PANE1_CHATBOX) {
                 cb.add_message(msg)?;
             }
         }
@@ -1367,9 +1368,9 @@ impl MainState {
 
     fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> ConwaysteResult<()> {
         match widget_id {
-            ui::MAINMENU_PANE1_BUTTONYES
-            | ui::MAINMENU_PANE1_BUTTONNO
-            | ui::MAINMENU_TESTBUTTON  => {
+            MAINMENU_PANE1_BUTTONYES
+            | MAINMENU_PANE1_BUTTONNO
+            | MAINMENU_TESTBUTTON  => {
                 match action {
                     UIAction::ScreenTransition(s) => {
                         self.screen_stack.push(s);
@@ -1379,7 +1380,7 @@ impl MainState {
                     }
                 }
             },
-            ui::MAINMENU_TESTCHECKBOX => {
+            MAINMENU_TESTCHECKBOX => {
                 match action {
                     UIAction::Toggle(t) => {
                         let is_fullscreen = t == ToggleState::Disabled;
@@ -1394,19 +1395,19 @@ impl MainState {
                      }
                 }
             },
-            ui::MAINMENU_PANE1
-            | ui::MAINMENU_LAYER1
-            | ui::INGAME_LAYER1
-            | ui::INGAME_PANE1 => {
+            MAINMENU_PANE1
+            | MAINMENU_LAYER1
+            | INGAME_LAYER1
+            | INGAME_PANE1 => {
                 return Err(NoAssociatedUIAction{
                     reason: format!("Widget: {:?} is a Pane or Layer element and has no associated action", widget_id)
                 });
             },
-            ui::INGAME_PANE1_CHATBOX
-            | ui::INGAME_PANE1_CHATBOXTEXTFIELD
-            | ui::MAINMENU_PANE1_BUTTONNOLABEL
-            | ui::MAINMENU_PANE1_BUTTONYESLABEL
-            | ui::MAINMENU_TESTBUTTONLABEL => {
+            INGAME_PANE1_CHATBOX
+            | INGAME_PANE1_CHATBOXTEXTFIELD
+            | MAINMENU_PANE1_BUTTONNOLABEL
+            | MAINMENU_PANE1_BUTTONYESLABEL
+            | MAINMENU_TESTBUTTONLABEL => {
                 // PR_GATE
             },
             ui::WidgetID(_) => {},
@@ -1419,7 +1420,7 @@ impl MainState {
         let username = self.config.get().user.name.clone();
         let mut msg = String::new();
 
-        if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, ui::INGAME_PANE1_CHATBOXTEXTFIELD) {
+        if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
             if let Some(m) = tf.text() {
                 msg = format!("{}: {}", username, m);
             }
@@ -1428,7 +1429,7 @@ impl MainState {
         }
 
         if !msg.is_empty() {
-            if let Some(cb) = self.ui_manager.chatbox_from_id(ui::INGAME_PANE1_CHATBOX) {
+            if let Some(cb) = self.ui_manager.chatbox_from_id(INGAME_PANE1_CHATBOX) {
                 cb.add_message(msg.clone())?;
 
                 if let Some(ref mut netwayste) = self.net_worker {
