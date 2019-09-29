@@ -108,7 +108,7 @@ impl TextField {
     }
 
     /// Sets the text field's string contents
-    pub fn set_text(&mut self, text: String) {
+    pub fn _set_text(&mut self, text: String) {
         self.text = text;
         self.cursor_index = 0;
     }
@@ -198,15 +198,13 @@ impl TextField {
         // TODO Reverify functionality once https://github.com/ggez/ggez/issues/583 is fixed.
         //      We should then just be able to use DEFAULT_UI_FONT_SCALE.x to calculate the length
         //      and remove the need to pass down context to get the width.
-        let scale_width_px = self.get_text_width_in_px(ctx);
-        if scale_width_px > self.dimensions.x {
-            // This is a bit of a hack because we cannot assume a font size of 20.0 per character
-            // due to the ggez issue mentioned above. In the meantime, the average character length
-            // of the following string will be used:
-            // 'abcdefghijklmnopqrstuvwxyz01234567890.\"\"\\//_ '
-            // It is hardcoded here for readibility and was calculated offline.
-            let index = (scale_width_px - self.dimensions.w)/AVERAGE_CHARACTER_WIDTH_PX;
-            self.visible_start_index = index as usize;
+        let text_width_px = self.get_text_width_in_px(ctx);
+        if text_width_px > self.dimensions.w {
+            let avg_character_length = text_width_px / self.text.len() as f32;
+            let index = (text_width_px - self.dimensions.w)/avg_character_length;
+
+            // Add one to ensure visible text remains fully bounded by self.dimensions.w
+            self.visible_start_index = index as usize + 1;
         }
     }
 
