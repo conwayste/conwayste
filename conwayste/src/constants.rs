@@ -61,6 +61,9 @@ lazy_static! {
     pub static ref DEFAULT_CHATBOX_FONT_SCALE: Scale = Scale::uniform(15.0);
 
 }
+// FIXME This is a temporary hack! Relies on ggez/issue/583 to be fixed so we can calculate the
+// last index a character will occupy for any sized text-field.
+pub const CHATBOX_INPUT_VISIBILE_END_INDEX : usize = 22;
 
 //////////////////////////////////////////////////////////////////////
 

@@ -24,6 +24,7 @@ use ggez::graphics::{Rect, Font};
 
 use ggez::{Context};
 
+use crate::constants::CHATBOX_INPUT_VISIBILE_END_INDEX;
 use crate::config::Config;
 use crate::Screen;
 use crate::ui::{
@@ -64,7 +65,8 @@ impl UIManager {
         let chatfield_rect = Rect::new(chatbox_rect.x, chatbox_rect.bottom(), chatbox_rect.w, CHAT_TEXTFIELD_HEIGHT);
         let chatfield = Box::new(TextField::new(ui::INGAME_PANE1_CHATBOXTEXTFIELD,
             Rc::clone(&font),
-            chatfield_rect
+            chatfield_rect,
+            CHATBOX_INPUT_VISIBILE_END_INDEX
         ));
 
         chatpane.add(chatbox);

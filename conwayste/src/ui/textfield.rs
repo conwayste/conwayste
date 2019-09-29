@@ -36,11 +36,6 @@ use crate::constants::DEFAULT_UI_FONT_SCALE;
 pub const TEXT_INPUT_BUFFER_LEN     : usize = 255;
 pub const BLINK_RATE_MS             : u64 = 500;
 
-// FIXME Currently we only have support for the chatbox as it's the first user of TextField.
-// Boo! Huge hack for chatbox. Boo again! To correctly implement for general usage, we need
-// ggez/issues/583 to be fixed. Thought about supplying this value in `new()` until then.
-const LAST_VISIBLE_CHAT_INPUT_INDEX : usize = 22;
-
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TextInputState {
     EnteringText,
@@ -59,6 +54,7 @@ pub struct TextField {
     pub hover: bool,
     pub visible_start_index: usize,
     font: Rc<Font>,
+    last_visible_index: usize,
 }
 
 /// A widget that can accept and display user-inputted text from the Keyboard.
@@ -85,7 +81,7 @@ impl TextField {
     /// }
     /// ```
     ///
-    pub fn new(widget_id: WidgetID, font: Rc<Font>, dimensions: Rect) -> TextField {
+    pub fn new(widget_id: WidgetID, font: Rc<Font>, dimensions: Rect, last_visible_index: usize) -> TextField {
         TextField {
             state: None,
             text: String::with_capacity(TEXT_INPUT_BUFFER_LEN),
@@ -98,6 +94,7 @@ impl TextField {
             hover: false,
             visible_start_index: 0,
             font: font,
+            last_visible_index: last_visible_index,
         }
     }
 
@@ -168,7 +165,7 @@ impl TextField {
         if self.cursor_index < self.text.len() {
             self.cursor_index += 1;
 
-            let last_visible_index = LAST_VISIBLE_CHAT_INPUT_INDEX;
+            let last_visible_index = self.last_visible_index;
             if self.cursor_index > last_visible_index {
                 self.visible_start_index += 1;
             }
@@ -281,10 +278,10 @@ impl Widget for TextField {
             let text_width_px = self.get_text_width_in_px(ctx);
             if text_width_px > self.dimensions.w {
                 // Are there more characters after visible_start_index than we can fit in the box?
-                if self.text.len() - self.visible_start_index <= LAST_VISIBLE_CHAT_INPUT_INDEX {
+                if self.text.len() - self.visible_start_index <= self.last_visible_index {
                     visible_text = self.text[self.visible_start_index..self.text.len()].to_owned();
                 } else {
-                    visible_text = self.text[self.visible_start_index..self.visible_start_index + LAST_VISIBLE_CHAT_INPUT_INDEX].to_owned();
+                    visible_text = self.text[self.visible_start_index..self.visible_start_index + self.last_visible_index].to_owned();
                 }
             } else {
                 visible_text = self.text.to_owned();
