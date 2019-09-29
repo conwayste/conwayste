@@ -161,14 +161,15 @@ impl TextField {
     }
 
     /// Advances the cursor position to the right by one character
-    pub fn move_cursor_right(&mut self, _ctx: &mut Context) {
+    pub fn move_cursor_right(&mut self, ctx: &mut Context) {
         if self.cursor_index < self.text.len() {
             self.cursor_index += 1;
 
-            let last_visible_index = DEFAULT_UI_FONT_SCALE.x as usize;
-            if self.cursor_index - self.visible_start_index > last_visible_index + 1 {
+            // TODO `21` was determined offline.
+            // Needs ggez/issues/583 fixed for proper implementation.
+            let last_visible_index = 21;
+            if self.cursor_index > last_visible_index {
                 self.visible_start_index += 1;
-                println!("move cursor right moves start index")
             }
         }
     }
