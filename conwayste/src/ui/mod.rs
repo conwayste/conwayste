@@ -22,7 +22,7 @@ extern crate chromatica;
 mod button;
 mod chatbox;
 mod checkbox;
-mod helpe;
+pub(crate) mod helpe;
 mod label;
 mod layer;
 mod pane;

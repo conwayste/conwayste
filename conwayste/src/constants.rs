@@ -18,25 +18,36 @@
 
 use std::time::Duration;
 use ggez::graphics::{self, Color, Scale};
+use chromatica::css;
+use crate::ui::helpe::color_with_alpha;
 
 // game play
 pub const CURRENT_PLAYER_ID: usize = 1; // TODO:  get the player ID from server rather than hardcoding
 pub const FOG_RADIUS: usize = 4; // cells
 pub const HISTORY_SIZE: usize = 16;
 
-// display
+// Colors
+// Menu active color
 pub const DEFAULT_ACTIVE_COLOR: Color = Color {
     r: 0.0,
     g: 1.0,
     b: 0.0,
     a: 1.0,
 }; // menu
+// Menu inactive color
 pub const DEFAULT_INACTIVE_COLOR: Color = Color {
     r: 0.75,
     g: 0.75,
     b: 0.75,
     a: 1.0,
 }; // menu
+lazy_static! {
+    pub static ref INPUT_TEXT_COLOR: Color = Color::from(css::DARKRED);
+    pub static ref CHATBOX_TEXT_COLOR: Color = Color::from(css::DARKRED);
+    pub static ref CHATBOX_BORDER_COLOR: Color = Color::from(css::VIOLET);
+    pub static ref CHATBOX_INACTIVE_BORDER_COLOR: Color = color_with_alpha(css::VIOLET, 0.5);
+}
+
 pub const DEFAULT_SCREEN_HEIGHT: f32     =  800.0; // pixels
 pub const DEFAULT_SCREEN_WIDTH: f32      = 1200.0; // pixels
 pub const DEFAULT_ZOOM_LEVEL: f32        =    5.0; // default cell size in pixels
@@ -61,9 +72,11 @@ lazy_static! {
     pub static ref DEFAULT_CHATBOX_FONT_SCALE: Scale = Scale::uniform(15.0);
 
 }
+// Border thickness of chatbox in pixels.
+pub const CHATBOX_BORDER_PIXELS: f32 = 4.0;
 // FIXME This is a temporary hack! Relies on ggez/issue/583 to be fixed so we can calculate the
 // last index a character will occupy for any sized text-field.
-pub const CHATBOX_INPUT_VISIBILE_END_INDEX : usize = 22;
+pub const CHATBOX_INPUT_VISIBLE_END_INDEX : usize = 22;
 
 pub mod widget_ids {
     use crate::ui::WidgetID;

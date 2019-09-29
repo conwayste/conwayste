@@ -16,22 +16,21 @@
  *  You should have received a copy of the GNU General Public License
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
-use chromatica::css;
 
 use std::rc::Rc;
 use std::time::{Instant, Duration};
 
-use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text};
+use ggez::graphics::{self, Rect, Font, DrawMode, DrawParam, Text};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
     widget::Widget,
-    helpe::{within_widget, draw_text, color_with_alpha},
+    helpe::{within_widget, draw_text},
     UIAction, WidgetID
 };
 
-use crate::constants::DEFAULT_UI_FONT_SCALE;
+use crate::constants::{self, DEFAULT_UI_FONT_SCALE};
 
 pub const TEXT_INPUT_BUFFER_LEN     : usize = 255;
 pub const BLINK_RATE_MS             : u64 = 500;
@@ -259,19 +258,22 @@ impl Widget for TextField {
         if self.state.is_some() || !self.text.is_empty() {
             let colored_rect;
             if !self.text.is_empty() && self.state.is_none() {
-                colored_rect = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(4.0), self.dimensions, color_with_alpha(css::VIOLET, 0.5))?;
+                colored_rect = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(constants::CHATBOX_BORDER_PIXELS), self.dimensions,
+                                                             *constants::CHATBOX_INACTIVE_BORDER_COLOR)?;
             } else {
-                colored_rect = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(4.0), self.dimensions, Color::from(css::VIOLET))?;
+                colored_rect = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(constants::CHATBOX_BORDER_PIXELS), self.dimensions,
+                                                             *constants::CHATBOX_BORDER_COLOR)?;
             }
 
             graphics::draw(ctx, &colored_rect, DrawParam::default())?;
 
-            // 3.0 px added to Y for central aligment
-            let mut text_pos = Point2::new(self.dimensions.x, self.dimensions.y + 3.0);
+            // 3.0 px added to Y for central alignment
+            let mut text_pos = Point2::new(self.dimensions.x + constants::CHATBOX_BORDER_PIXELS/2.0,
+                                           self.dimensions.y + 3.0);
             let mut cursor_pos = text_pos.clone();
 
             // Add in a slight offset so the text is not drawn on the left border
-            text_pos.x += 5.0;
+            text_pos.x += 1.0;
 
             // PR_GATE fix how this works overall now that we have fixed width fonts
             let visible_text;
@@ -287,7 +289,7 @@ impl Widget for TextField {
                 visible_text = self.text.to_owned();
             }
 
-            draw_text(ctx, Rc::clone(&self.font), Color::from(css::WHITESMOKE), visible_text, &text_pos)?;
+            draw_text(ctx, Rc::clone(&self.font), *constants::INPUT_TEXT_COLOR, visible_text, &text_pos)?;
 
             if self.draw_cursor {
                 if self.cursor_index != 0 {
@@ -300,7 +302,7 @@ impl Widget for TextField {
                     cursor_pos.x += cursor_position_px;
                 }
 
-                draw_text(ctx, Rc::clone(&self.font), Color::from(css::WHITESMOKE), String::from("|"), &cursor_pos)?;
+                draw_text(ctx, Rc::clone(&self.font), *constants::INPUT_TEXT_COLOR, String::from("|"), &cursor_pos)?;
             }
         }
 
