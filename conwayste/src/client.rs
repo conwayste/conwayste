@@ -726,12 +726,7 @@ impl EventHandler for MainState {
         }
     }
 
-    /// Resulting text (usually a unicode character) is passed by the OS (via Input Method Editor).
-    /// Refer to:
-    /// <https://wiki.libsdl.org/SDL_TextEditingEvent>
-    /// <https://wiki.libsdl.org/SDL_TextInputEvent>
-    /// <https://wiki.libsdl.org/Tutorials/TextInput>
-    fn text_input_event(&mut self, ctx: &mut Context, character: char) {
+    fn text_input_event(&mut self, _ctx: &mut Context, character: char) {
         // Ignore control characters (like Esc or Del)./
         if character.is_control() {
             return;
@@ -740,7 +735,7 @@ impl EventHandler for MainState {
         let screen = self.get_current_screen();
         if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
             if tf.state.is_some() {
-                tf.add_char_at_cursor(ctx, character);
+                tf.add_char_at_cursor(character);
             }
         }
     }
@@ -1045,28 +1040,28 @@ impl MainState {
             KeyCode::Back => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.remove_left_of_cursor(ctx);
+                        tf.remove_left_of_cursor();
                     }
                 }
             }
             KeyCode::Delete => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.remove_right_of_cursor(ctx);
+                        tf.remove_right_of_cursor();
                     }
                 }
             }
             KeyCode::Left => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.move_cursor_left(ctx);
+                        tf.move_cursor_left();
                     }
                 }
             },
             KeyCode::Right => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.move_cursor_right(ctx);
+                        tf.move_cursor_right();
                     }
                 }
             }
