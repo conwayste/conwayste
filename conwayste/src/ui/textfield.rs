@@ -259,8 +259,6 @@ impl Widget for TextField {
         // PR_GATE: If string exceeds length of pane, need to only draw what should be visible
 
         if self.state.is_some() || !self.text.is_empty() {
-            const CURSOR_OFFSET_PX: f32 = 5.0;
-
             let colored_rect;
             if !self.text.is_empty() && self.state.is_none() {
                 colored_rect = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(4.0), self.dimensions, color_with_alpha(css::VIOLET, 0.5))?;
@@ -271,7 +269,13 @@ impl Widget for TextField {
             graphics::draw(ctx, &colored_rect, DrawParam::default())?;
 
             let text_with_cursor = self.text.clone();
-            let mut text_pos = Point2::new(self.dimensions.x + CURSOR_OFFSET_PX, self.dimensions.y + 3.0);
+
+            // 3.0 px added to Y for central aligment
+            let mut text_pos = Point2::new(self.dimensions.x, self.dimensions.y + 3.0);
+            let mut cursor_pos = text_pos.clone();
+
+            // Add in a slight offset so the text is not drawn on the left border
+            text_pos.x += 5.0;
 
             // PR_GATE fix how this works overall now that we have fixed width fonts
             let visible_text;
@@ -285,12 +289,17 @@ impl Widget for TextField {
             draw_text(ctx, Rc::clone(&self.font), Color::from(css::WHITESMOKE), visible_text, &text_pos)?;
 
             if self.draw_cursor {
-                let mut text = Text::new(&text_with_cursor[self.visible_start_index..self.cursor_index]);
-                let text = text.set_font(*self.font, *DEFAULT_UI_FONT_SCALE);
-                let cursor_position_px = text.width(ctx) as f32;
+                if self.cursor_index != 0 {
+                    let mut text = Text::new(&text_with_cursor[self.visible_start_index..self.cursor_index]);
+                    let text = text.set_font(*self.font, *DEFAULT_UI_FONT_SCALE);
+                    let cursor_position_px = text.width(ctx) as f32;
 
-                text_pos.x += cursor_position_px;
-                draw_text(ctx, Rc::clone(&self.font), Color::from(css::WHITESMOKE), String::from("|"), &text_pos)?;
+                    // TODO Trailing whitespaces aren't factored in the calculation.
+                    // See issue https://github.com/ggez/ggez/issues/687
+                    cursor_pos.x += cursor_position_px;
+                }
+
+                draw_text(ctx, Rc::clone(&self.font), Color::from(css::WHITESMOKE), String::from("|"), &cursor_pos)?;
             }
         }
 
