@@ -22,6 +22,8 @@ custom_error! {pub ConwaysteError
 
 pub type ConwaysteResult<T> = ::std::result::Result<T, ConwaysteError>;
 
+/*
+
 impl PartialEq for ConwaysteError {
     fn eq(&self, other: &ConwaysteError) -> bool {
         use ConwaysteError::*;
@@ -43,3 +45,4 @@ impl PartialEq for ConwaysteError {
         }
     }
 }
+*/
