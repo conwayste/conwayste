@@ -36,7 +36,10 @@ use crate::constants::DEFAULT_UI_FONT_SCALE;
 pub const TEXT_INPUT_BUFFER_LEN     : usize = 255;
 pub const BLINK_RATE_MS             : u64 = 500;
 
-const AVERAGE_CHARACTER_WIDTH_PX     : f32 = 9.0; // in pixels
+// FIXME Currently we only have support for the chatbox as it's the first user of TextField.
+// Boo! Huge hack for chatbox. Boo again! To correctly implement for general usage, we need
+// ggez/issues/583 to be fixed. Thought about supplying this value in `new()` until then.
+const LAST_VISIBLE_CHAT_INPUT_INDEX : usize = 22;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TextInputState {
@@ -165,9 +168,7 @@ impl TextField {
         if self.cursor_index < self.text.len() {
             self.cursor_index += 1;
 
-            // TODO `21` was determined offline.
-            // Needs ggez/issues/583 fixed for proper implementation.
-            let last_visible_index = 21;
+            let last_visible_index = LAST_VISIBLE_CHAT_INPUT_INDEX;
             if self.cursor_index > last_visible_index {
                 self.visible_start_index += 1;
             }
@@ -268,8 +269,6 @@ impl Widget for TextField {
 
             graphics::draw(ctx, &colored_rect, DrawParam::default())?;
 
-            let text_with_cursor = self.text.clone();
-
             // 3.0 px added to Y for central aligment
             let mut text_pos = Point2::new(self.dimensions.x, self.dimensions.y + 3.0);
             let mut cursor_pos = text_pos.clone();
@@ -279,18 +278,23 @@ impl Widget for TextField {
 
             // PR_GATE fix how this works overall now that we have fixed width fonts
             let visible_text;
-            if (self.text.len() - self.visible_start_index) as f32 > self.dimensions.w {
-                let end_index = self.visible_start_index as f32 + self.dimensions.w/DEFAULT_UI_FONT_SCALE.x - 1.0;
-                visible_text = text_with_cursor[self.visible_start_index..end_index as usize].to_owned();
+            let text_width_px = self.get_text_width_in_px(ctx);
+            if text_width_px > self.dimensions.w {
+                // Are there more characters after visible_start_index than we can fit in the box?
+                if self.text.len() - self.visible_start_index <= LAST_VISIBLE_CHAT_INPUT_INDEX {
+                    visible_text = self.text[self.visible_start_index..self.text.len()].to_owned();
+                } else {
+                    visible_text = self.text[self.visible_start_index..self.visible_start_index + LAST_VISIBLE_CHAT_INPUT_INDEX].to_owned();
+                }
             } else {
-                visible_text = text_with_cursor[self.visible_start_index..self.text.len()].to_owned();
+                visible_text = self.text.to_owned();
             }
 
             draw_text(ctx, Rc::clone(&self.font), Color::from(css::WHITESMOKE), visible_text, &text_pos)?;
 
             if self.draw_cursor {
                 if self.cursor_index != 0 {
-                    let mut text = Text::new(&text_with_cursor[self.visible_start_index..self.cursor_index]);
+                    let mut text = Text::new(&self.text[self.visible_start_index..self.cursor_index]);
                     let text = text.set_font(*self.font, *DEFAULT_UI_FONT_SCALE);
                     let cursor_position_px = text.width(ctx) as f32;
 
