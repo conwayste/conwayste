@@ -19,7 +19,7 @@
 use std::rc::Rc;
 
 use ggez::graphics::{self, Font, Rect, Text, TextFragment, DrawParam, Color};
-use ggez::nalgebra::Point2;
+use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use crate::constants::DEFAULT_UI_FONT_SCALE;
@@ -43,6 +43,19 @@ pub fn draw_text(ctx: &mut Context, font: Rc<Font>, color: Color, text: String, 
 
     graphics::draw(ctx, &mut graphics_text, DrawParam::default().dest(*coords))?; // actually draw the text!
     Ok((text_width as f32, text_height as f32))
+}
+
+/// Get the height and width of one character with the given `Font` at a size of
+/// `DEFAULT_UI_FONT_SCALE`. Use the `x` and `y` fields of the return value for the width and
+/// height of a single character.
+/// NOTE: this assumes a fixed width font!
+pub fn get_char_dimensions(ctx: &mut Context, font: Font) -> Vector2<f32> {
+    let text = "xxxxxxxxxx"; // 10 arbitrary characters
+    let text_fragment = TextFragment::new(text)
+        .scale(*DEFAULT_UI_FONT_SCALE)
+        .font(font);
+    let graphics_text = Text::new(text_fragment);
+    Vector2::new(graphics_text.width(ctx) as f32 / text.len() as f32, graphics_text.height(ctx) as f32)
 }
 
 /// Determines if two rectangles overlap, and if so,

@@ -74,9 +74,6 @@ lazy_static! {
 }
 // Border thickness of chatbox in pixels.
 pub const CHATBOX_BORDER_PIXELS: f32 = 4.0;
-// FIXME This is a temporary hack! Relies on ggez/issue/583 to be fixed so we can calculate the
-// last index a character will occupy for any sized text-field.
-pub const CHATBOX_INPUT_VISIBLE_END_INDEX : usize = 22;
 
 pub mod widget_ids {
     use crate::ui::WidgetID;

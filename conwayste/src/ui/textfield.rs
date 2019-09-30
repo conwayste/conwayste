@@ -1,4 +1,3 @@
-
 /*  Copyright 2019 the Conwayste Developers.
  *
  *  This file is part of conwayste.
@@ -18,22 +17,21 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::rc::Rc;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
-use ggez::graphics::{self, Rect, Font, DrawMode, DrawParam, Text};
+use ggez::graphics::{self, DrawMode, DrawParam, Font, Rect, Text};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
+    helpe::{draw_text, within_widget},
     widget::Widget,
-    helpe::{within_widget, draw_text},
-    UIAction, WidgetID
+    UIAction, WidgetID,
 };
 
-use crate::constants::{self, DEFAULT_UI_FONT_SCALE};
+use crate::constants;
 
-pub const TEXT_INPUT_BUFFER_LEN     : usize = 255;
-pub const BLINK_RATE_MS             : u64 = 500;
+pub const BLINK_RATE_MS: u64 = 500;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TextInputState {
@@ -46,14 +44,15 @@ pub struct TextField {
     pub action: UIAction,
     pub state: Option<TextInputState>, // PR_GATE input state
     text: String,
-    pub cursor_index: usize,
+    pub cursor_index: usize, // Position of the cursor: 0 means before first character; it's at the end when equal to text.len()
+    // `blink_timestamp` and `draw_cursor` are used to control the blinking of the cursor.
     pub blink_timestamp: Option<Instant>,
     pub draw_cursor: bool,
     pub dimensions: Rect,
     pub hover: bool,
-    pub visible_start_index: usize,
+    pub visible_start_index: usize,  // The index of the first character in `self.text` that is visible.
     font: Rc<Font>,
-    last_visible_index: usize,
+    single_char_width: f32, // width of one character (assuming the font really is fixed-width)
 }
 
 /// A widget that can accept and display user-inputted text from the Keyboard.
@@ -74,16 +73,23 @@ impl TextField {
     ///     let font = Rc::new(Font::default());
     ///     let dimensions = Rect::new(0.0, 0.0, 300.0, 20.0);
     ///
-    ///     let textfield = TextField::new(ui::ChatboxTextField, font, dimensions);
+    ///     let single_char_width = helpe::get_char_dimensions(ctx, *font).x;
+    ///     let textfield = TextField::new(ui::ChatboxTextField, font, dimensions,
+    ///                                    single_char_width);
     ///
     ///     textfield.draw(ctx)?;
     /// }
     /// ```
     ///
-    pub fn new(widget_id: WidgetID, font: Rc<Font>, dimensions: Rect, last_visible_index: usize) -> TextField {
+    pub fn new(
+        widget_id: WidgetID,
+        font: Rc<Font>,
+        dimensions: Rect,
+        single_char_width: f32,
+    ) -> TextField {
         TextField {
             state: None,
-            text: String::with_capacity(TEXT_INPUT_BUFFER_LEN),
+            text: String::new(),
             cursor_index: 0,
             blink_timestamp: None,
             draw_cursor: false,
@@ -93,8 +99,13 @@ impl TextField {
             hover: false,
             visible_start_index: 0,
             font: font,
-            last_visible_index: last_visible_index,
+            single_char_width,
         }
+    }
+
+    /// Maximum number of characters that can be visible at once. Computed from `dimensions` and `single_char_width`.
+    fn max_visible_chars(&self) -> usize {
+        (self.dimensions.w / self.single_char_width) as usize
     }
 
     /// Returns the a string of the inputted text
@@ -112,32 +123,28 @@ impl TextField {
         self.cursor_index = 0;
     }
 
-    fn get_text_width_in_px(&self, ctx: &mut Context) -> f32 {
-        let mut text = Text::new(self.text.clone());
-        let text = text.set_font(*self.font, *DEFAULT_UI_FONT_SCALE);
-        text.width(ctx) as f32
-    }
-
     /// Adds a character at the current cursor position
-    pub fn add_char_at_cursor(&mut self, character: char)
-    {
+    pub fn add_char_at_cursor(&mut self, character: char) {
+        self.blink_timestamp = None;
         if self.cursor_index == self.text.len() {
             self.text.push(character);
         } else {
             self.text.insert(self.cursor_index, character);
         }
         self.cursor_index += 1;
+        if self.visible_start_index + self.max_visible_chars() < self.cursor_index {
+            self.visible_start_index = self.cursor_index - self.max_visible_chars();
+        }
     }
 
     /// Deletes a character to the left of the current cursor
     pub fn remove_left_of_cursor(&mut self) {
         if self.cursor_index != 0 {
-            if self.cursor_index == self.text.len() {
-                self.text.pop();
-            } else {
-                self.text.remove(self.cursor_index);
-            }
+            self.text.remove(self.cursor_index - 1);
             self.cursor_index -= 1;
+            if self.visible_start_index > self.cursor_index {
+                self.visible_start_index = self.cursor_index;
+            }
         }
     }
 
@@ -159,50 +166,39 @@ impl TextField {
         self.draw_cursor = false;
     }
 
-    /// Advances the cursor position to the right by one character
+    /// Moves the cursor position to the right by one character
     pub fn move_cursor_right(&mut self) {
         if self.cursor_index < self.text.len() {
             self.cursor_index += 1;
 
-            let last_visible_index = self.last_visible_index;
-            if self.cursor_index > last_visible_index {
-                self.visible_start_index += 1;
+            if self.visible_start_index + self.max_visible_chars() < self.cursor_index {
+                self.visible_start_index = self.cursor_index - self.max_visible_chars();
             }
         }
     }
 
-    /// Decrements the cursor position to the left by one character
+    /// Moves the cursor position to the left by one character
     pub fn move_cursor_left(&mut self) {
         if self.cursor_index > 0 {
             self.cursor_index -= 1;
 
-            if self.visible_start_index != 0 && self.cursor_index == self.visible_start_index {
-                self.visible_start_index -= 1;
+            if self.visible_start_index > self.cursor_index {
+                self.visible_start_index = self.cursor_index;
             }
         }
     }
 
-    /// Moves the cursor prior to the first character in the field
+    /// Moves the cursor before to the first character in the field
     pub fn cursor_home(&mut self) {
         self.cursor_index = 0;
         self.visible_start_index = 0;
     }
 
     /// Moves the cursor after the last character in the field
-    pub fn cursor_end(&mut self, ctx: &mut Context) {
-        let text_length = self.text.len();
-        self.cursor_index = text_length;
-
-        // TODO Reverify functionality once https://github.com/ggez/ggez/issues/583 is fixed.
-        //      We should then just be able to use DEFAULT_UI_FONT_SCALE.x to calculate the length
-        //      and remove the need to pass down context to get the width.
-        let text_width_px = self.get_text_width_in_px(ctx);
-        if text_width_px > self.dimensions.w {
-            let avg_character_length = text_width_px / self.text.len() as f32;
-            let index = (text_width_px - self.dimensions.w)/avg_character_length;
-
-            // Add one to ensure visible text remains fully bounded by self.dimensions.w
-            self.visible_start_index = index as usize + 1;
+    pub fn cursor_end(&mut self) {
+        self.cursor_index = self.text.len();
+        if self.text.len() - self.visible_start_index > self.max_visible_chars() {
+            self.visible_start_index = self.text.len() - self.max_visible_chars();
         }
     }
 
@@ -230,7 +226,7 @@ impl Widget for TextField {
 
         if hover {
             self.enter_focus();
-            return Some( (self.id, self.action) );
+            return Some((self.id, self.action));
         }
         None
     }
@@ -258,51 +254,59 @@ impl Widget for TextField {
         if self.state.is_some() || !self.text.is_empty() {
             let colored_rect;
             if !self.text.is_empty() && self.state.is_none() {
-                colored_rect = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(constants::CHATBOX_BORDER_PIXELS), self.dimensions,
-                                                             *constants::CHATBOX_INACTIVE_BORDER_COLOR)?;
+                colored_rect = graphics::Mesh::new_rectangle(
+                    ctx,
+                    DrawMode::stroke(constants::CHATBOX_BORDER_PIXELS),
+                    self.dimensions,
+                    *constants::CHATBOX_INACTIVE_BORDER_COLOR,
+                )?;
             } else {
-                colored_rect = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(constants::CHATBOX_BORDER_PIXELS), self.dimensions,
-                                                             *constants::CHATBOX_BORDER_COLOR)?;
+                colored_rect = graphics::Mesh::new_rectangle(
+                    ctx,
+                    DrawMode::stroke(constants::CHATBOX_BORDER_PIXELS),
+                    self.dimensions,
+                    *constants::CHATBOX_BORDER_COLOR,
+                )?;
             }
 
             graphics::draw(ctx, &colored_rect, DrawParam::default())?;
 
-            // 3.0 px added to Y for central alignment
-            let mut text_pos = Point2::new(self.dimensions.x + constants::CHATBOX_BORDER_PIXELS/2.0,
-                                           self.dimensions.y + 3.0);
-            let mut cursor_pos = text_pos.clone();
+            // 3.0 px added to y for central alignment
+            let text_pos = Point2::new(
+                self.dimensions.x + constants::CHATBOX_BORDER_PIXELS / 2.0 + 1.0,
+                self.dimensions.y + 3.0,
+            );
 
-            // Add in a slight offset so the text is not drawn on the left border
-            text_pos.x += 1.0;
-
-            // PR_GATE fix how this works overall now that we have fixed width fonts
-            let visible_text;
-            let text_width_px = self.get_text_width_in_px(ctx);
-            if text_width_px > self.dimensions.w {
-                // Are there more characters after visible_start_index than we can fit in the box?
-                if self.text.len() - self.visible_start_index <= self.last_visible_index {
-                    visible_text = self.text[self.visible_start_index..self.text.len()].to_owned();
-                } else {
-                    visible_text = self.text[self.visible_start_index..self.visible_start_index + self.last_visible_index].to_owned();
-                }
-            } else {
-                visible_text = self.text.to_owned();
+            let mut end = self.text.len();
+            if self.visible_start_index + self.max_visible_chars() < end {
+                end = self.visible_start_index + self.max_visible_chars();
             }
+            let visible_text = self.text[self.visible_start_index..end].to_owned();
 
-            draw_text(ctx, Rc::clone(&self.font), *constants::INPUT_TEXT_COLOR, visible_text, &text_pos)?;
+            draw_text(
+                ctx,
+                Rc::clone(&self.font),
+                *constants::INPUT_TEXT_COLOR,
+                visible_text,
+                &text_pos,
+            )?;
 
             if self.draw_cursor {
-                if self.cursor_index != 0 {
-                    let mut text = Text::new(&self.text[self.visible_start_index..self.cursor_index]);
-                    let text = text.set_font(*self.font, *DEFAULT_UI_FONT_SCALE);
-                    let cursor_position_px = text.width(ctx) as f32;
+                let mut cursor_pos = text_pos.clone();
 
-                    // TODO Trailing whitespaces aren't factored in the calculation.
-                    // See issue https://github.com/ggez/ggez/issues/687
-                    cursor_pos.x += cursor_position_px;
-                }
+                cursor_pos.x += (self.cursor_index - self.visible_start_index) as f32 * self.single_char_width;
 
-                draw_text(ctx, Rc::clone(&self.font), *constants::INPUT_TEXT_COLOR, String::from("|"), &cursor_pos)?;
+                // Remove half the width of a character so the pipe character is at the beginning
+                // of its area (like a cursor), not the center (like a character).
+                cursor_pos.x -= self.single_char_width / 2.0;
+
+                draw_text(
+                    ctx,
+                    Rc::clone(&self.font),
+                    *constants::INPUT_TEXT_COLOR,
+                    String::from("|"),
+                    &cursor_pos,
+                )?;
             }
         }
 

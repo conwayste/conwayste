@@ -26,7 +26,6 @@ use ggez::{Context};
 
 use crate::constants::{
     widget_ids::*,
-    CHATBOX_INPUT_VISIBLE_END_INDEX
 };
 use crate::config::Config;
 use crate::Screen;
@@ -40,6 +39,7 @@ use crate::ui::{
     TextField,
     UIAction,
     WidgetID,
+    helpe,
 };
 
 pub struct UIManager {
@@ -64,15 +64,16 @@ impl UIManager {
         let chatbox = Box::new(chatbox);
 
         const CHAT_TEXTFIELD_HEIGHT: f32 = (20.0 + 5.0);
-        let chatfield_rect = Rect::new(chatbox_rect.x, chatbox_rect.bottom(), chatbox_rect.w, CHAT_TEXTFIELD_HEIGHT);
-        let chatfield = Box::new(TextField::new(INGAME_PANE1_CHATBOXTEXTFIELD,
+        let textfield_rect = Rect::new(chatbox_rect.x, chatbox_rect.bottom(), chatbox_rect.w, CHAT_TEXTFIELD_HEIGHT);
+        let char_dimensions = helpe::get_char_dimensions(ctx, *font);
+        let textfield = Box::new(TextField::new(INGAME_PANE1_CHATBOXTEXTFIELD,
             Rc::clone(&font),
-            chatfield_rect,
-            CHATBOX_INPUT_VISIBLE_END_INDEX
+            textfield_rect,
+            char_dimensions.x,
         ));
 
         chatpane.add(chatbox);
-        chatpane.add(chatfield);
+        chatpane.add(textfield);
 
         let checkbox = Box::new(Checkbox::new(ctx, MAINMENU_TESTCHECKBOX,
             UIAction::Toggle( if config.get().video.fullscreen { ToggleState::Enabled } else { ToggleState::Disabled } ),

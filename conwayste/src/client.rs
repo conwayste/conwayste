@@ -341,6 +341,7 @@ impl MainState {
         color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
         color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
 
+        // Note: fixed-width fonts are required!
         let font = Font::new(ctx, path::Path::new("/telegrama_render.ttf"))
                     .map_err(|e| GameError::FilesystemError(format!("Could not load or find font. {:?}", e)))?;
         let font = Rc::new(font);
@@ -484,7 +485,7 @@ impl EventHandler for MainState {
                 }
 
                 if textfield_under_focus {
-                    self.process_text_field_inputs(ctx);
+                    self.process_text_field_inputs();
                 } else {
                     self.process_running_inputs();
                 }
@@ -1016,7 +1017,7 @@ impl MainState {
         }
     }
 
-    fn process_text_field_inputs(&mut self, ctx: &mut Context) {
+    fn process_text_field_inputs(&mut self) {
         let keycode;
 
         if let Some(k) = self.inputs.key_info.key {
@@ -1077,7 +1078,7 @@ impl MainState {
             KeyCode::End => {
                 if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if let Some(TextInputState::EnteringText) = tf.state {
-                        tf.cursor_end(ctx);
+                        tf.cursor_end();
                     }
                 }
             }
