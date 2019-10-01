@@ -165,10 +165,6 @@ impl MenuControls {
     pub fn set_menu_key_pressed(&mut self, state: bool) {
         self.dir_key_pressed = state;
     }
-
-    pub fn is_menu_key_pressed(&self) -> bool {
-        self.dir_key_pressed
-    }
 }
 
 impl MenuItem {

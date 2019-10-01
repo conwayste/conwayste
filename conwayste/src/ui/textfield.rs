@@ -19,7 +19,7 @@
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use ggez::graphics::{self, DrawMode, DrawParam, Font, Rect, Text};
+use ggez::graphics::{self, DrawMode, DrawParam, Font, Rect};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 

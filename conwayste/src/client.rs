@@ -461,7 +461,7 @@ impl EventHandler for MainState {
                 }
             }
             Screen::Menu => {
-                self.update_main_menu(ctx);
+                self.update_main_menu(ctx)?;
             }
             Screen::Run => {
                 // TODO Disable FSP limit until we decide if we need it
@@ -1087,7 +1087,7 @@ impl MainState {
     }
 
     // update
-    fn update_main_menu(&mut self, ctx: &mut Context) {
+    fn update_main_menu(&mut self, ctx: &mut Context) -> GameResult<()> {
         self.process_menu_inputs();
 
         let mouse_point = self.inputs.mouse_info.position;
@@ -1111,7 +1111,10 @@ impl MainState {
 
             if left_mouse_click {
                 if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
-                    self.handle_ui_action(ctx, ui_id, ui_action);
+                    self.handle_ui_action(ctx, ui_id, ui_action).or_else(|e| -> ConwaysteResult<()> {
+                        error!("Failed to handle UI action: {:?}", e);
+                        Ok(())
+                    }).unwrap();
                 }
             }
         }
@@ -1137,7 +1140,7 @@ impl MainState {
                 let return_key_pressed = k == KeyCode::Return && !self.inputs.key_info.repeating;
 
                 if !escape_key_pressed && !return_key_pressed {
-                    return;
+                    return Ok(());
                 }
 
                 let mut id = {
@@ -1260,6 +1263,7 @@ impl MainState {
                 }
             }
         }
+        Ok(())
     }
 
     // update
