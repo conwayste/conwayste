@@ -17,22 +17,16 @@
  *  <http://www.gnu.org/licenses/>. */
 use chromatica::css;
 
-use std::rc::Rc;
 use std::collections::VecDeque;
+use std::rc::Rc;
 
-use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam, Text, FilterMode};
+use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Font, Rect, Text};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
-use super::{
-    widget::Widget,
-    helpe::within_widget,
-    UIAction, WidgetID
-};
+use super::{helpe::within_widget, widget::Widget, UIAction, WidgetID};
 
-use crate::constants::{self, DEFAULT_CHATBOX_FONT_SCALE};
-
-const CHAT_DISPLAY_LIMIT: f32 = 10.0;
+use crate::constants;
 
 pub struct Chatbox {
     pub id: WidgetID,
@@ -46,13 +40,12 @@ pub struct Chatbox {
 }
 
 impl Chatbox {
-
     /// Creates a Chatbox widget.
     ///
     /// # Arguments
     /// * `widget_id` - Unique widget identifier
     /// * `font` - Font-type of chat text
-    /// * `len` - Len of chat history to maintain
+    /// * `history_lines` - Number of lines of chat history to maintain
     ///
     /// # Examples
     ///
@@ -71,7 +64,7 @@ impl Chatbox {
     ///
     pub fn new(widget_id: WidgetID, font: Rc<Font>, history_lines: usize) -> Self {
         // TODO: affix to bottom left corner once "anchoring"/"gravity" is implemented
-        let rect = Rect::new(30.0, 600.0, 300.0, 15.0*CHAT_DISPLAY_LIMIT);
+        let rect = *constants::DEFAULT_CHATBOX_RECT;
         Chatbox {
             id: widget_id,
             history_lines,
@@ -107,16 +100,16 @@ impl Chatbox {
     /// ```
     ///
     pub fn add_message(&mut self, msg: String) -> GameResult<()> {
-        if self.messages.len() + 1 > self.history_lines {
+        // FIXME ggez0.5
+        let mut text = Text::new(msg);
+        text.set_font(*self.font, *constants::DEFAULT_CHATBOX_FONT_SCALE);
+        self.messages.push_back(text);
+        while self.messages.len() > self.history_lines {
             self.messages.pop_front();
         }
-        // FIXME ggez0.5
-        let text = Text::new(msg);
-        self.messages.push_back(text);
         Ok(())
     }
 }
-
 
 impl Widget for Chatbox {
     fn id(&self) -> WidgetID {
@@ -131,8 +124,7 @@ impl Widget for Chatbox {
         self.dimensions = new_dims;
     }
 
-    fn translate(&mut self, dest: Vector2<f32>)
-    {
+    fn translate(&mut self, dest: Vector2<f32>) {
         self.dimensions.translate(dest);
     }
 
@@ -143,8 +135,7 @@ impl Widget for Chatbox {
         //}
     }
 
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
-    {
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
         let hover = self.hover;
         self.hover = false;
 
@@ -160,22 +151,37 @@ impl Widget for Chatbox {
         let origin = self.dimensions.point();
 
         if self.hover {
-            // Add in a teal border while hovered. Color checkbox differently to indicate  hovered state.
-            let border_rect = Rect::new(self.dimensions.x-1.0, self.dimensions.y-1.0,
-                                        self.dimensions.w + constants::CHATBOX_BORDER_PIXELS/2.0 + 2.0,
-                                        self.dimensions.h + constants::CHATBOX_BORDER_PIXELS/2.0 + 2.0);
-            let hovered_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), border_rect, Color::from(css::TEAL))?;
+            // Add in a teal border while hovered. Color checkbox differently to indicate hovered state.
+            let border_rect = Rect::new(
+                self.dimensions.x - 1.0,
+                self.dimensions.y - 1.0,
+                self.dimensions.w + constants::CHATBOX_BORDER_PIXELS / 2.0 + 2.0,
+                self.dimensions.h + constants::CHATBOX_BORDER_PIXELS / 2.0 + 2.0,
+            );
+            let hovered_border = graphics::Mesh::new_rectangle(
+                ctx,
+                DrawMode::stroke(2.0),
+                border_rect,
+                Color::from(css::TEAL),
+            )?;
             graphics::draw(ctx, &hovered_border, DrawParam::default())?;
         }
 
-        let border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(constants::CHATBOX_BORDER_PIXELS), self.dimensions, self.color)?;
+        let border = graphics::Mesh::new_rectangle(
+            ctx,
+            DrawMode::stroke(constants::CHATBOX_BORDER_PIXELS),
+            self.dimensions,
+            self.color,
+        )?;
         graphics::draw(ctx, &border, DrawParam::default())?;
 
         // TODO need to do width wrapping check
         for (i, msg) in self.messages.iter_mut().enumerate() {
-            let point = Point2::new(origin.x + constants::CHATBOX_BORDER_PIXELS + 1.0, origin.y + i as f32*30.0);
-            msg.set_font(*self.font, *DEFAULT_CHATBOX_FONT_SCALE);
-            graphics::queue_text(ctx, &msg, point, Some(Color::from(css::RED)));
+            let point = Point2::new(
+                origin.x + constants::CHATBOX_BORDER_PIXELS + 1.0,
+                origin.y + i as f32 * 30.0,
+            );
+            graphics::queue_text(ctx, &msg, point, Some(*constants::CHATBOX_TEXT_COLOR));
         }
 
         graphics::draw_queued_text(ctx, DrawParam::default(), None, FilterMode::Linear)?;

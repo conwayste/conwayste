@@ -17,7 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::time::Duration;
-use ggez::graphics::{self, Color, Scale};
+use ggez::graphics::{self, Color, Scale, Rect};
 use chromatica::css;
 use crate::ui::helpe::color_with_alpha;
 
@@ -70,6 +70,7 @@ lazy_static! {
     // In pixels, used for the message container of the chatbox. Currently different from other UI
     // elements for experimentation.
     pub static ref DEFAULT_CHATBOX_FONT_SCALE: Scale = Scale::uniform(15.0);
+    pub static ref DEFAULT_CHATBOX_RECT: Rect = Rect::new(30.0, 600.0, 300.0, 150.0);
 
 }
 // Border thickness of chatbox in pixels.
