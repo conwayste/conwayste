@@ -30,17 +30,10 @@ use super::{
 
 use crate::constants::colors::*;
 
-// PR_GATE clean me up scotty (per PR feedback)
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub enum ToggleState {
-    Disabled,
-    Enabled
-}
-
 pub struct Checkbox {
     pub id:     WidgetID,
     pub label: Label,
-    pub state: ToggleState,
+    pub enabled: bool,
     pub dimensions: Rect,
     pub hover: bool,
     pub action: UIAction
@@ -49,7 +42,7 @@ pub struct Checkbox {
 const LABEL_OFFSET_X: f32 = 30.0;
 const LABEL_OFFSET_Y: f32 = -5.0;
 
-/// A standard checkbox widget that can be enabled or disabled via the ToggleState structure.
+/// A standard checkbox widget that can be toggled between enabled or disabled
 impl Checkbox {
     /// Creates a Checkbox widget.
     ///
@@ -71,7 +64,7 @@ impl Checkbox {
     ///     let font = Font::default();
     ///     let checkbox = Box::new(Checkbox::new(ctx,
     ///         ui::TestCheckbox,
-    ///         UIAction::Toggle( if cfg!(target_os = "linux") { ToggleState::Enabled } else { ToggleState::Disabled } ),
+    ///         false,
     ///         font,
     ///         "Toggle Me",
     ///         Rect::new(10.0, 210.0, 20.0, 20.0)
@@ -80,29 +73,24 @@ impl Checkbox {
     /// }
     /// ```
     ///
-    pub fn new(ctx: &mut Context, widget_id: WidgetID, action: UIAction, font: Font, text: String, dimensions: Rect) -> Self {
+    pub fn new(ctx: &mut Context, widget_id: WidgetID, enabled: bool, font: Font, text: String, dimensions: Rect) -> Self {
         let label_origin = Point2::new(dimensions.x + dimensions.w + LABEL_OFFSET_X, dimensions.y + dimensions.h + LABEL_OFFSET_Y);
 
         Checkbox {
             id: widget_id,
             label: Label::new(ctx, widget_id, font, text, *CHECKBOX_TEXT_COLOR, label_origin),
-            state: ToggleState::Disabled,
+            enabled: enabled,
             dimensions: dimensions,
             hover: false,
-            action: action
+            action: UIAction::Toggle(enabled)
         }
     }
 
-    /// Toggles the checkbox from either enabled to disasbled, or vis-a-versa.
-    pub fn toggle(&mut self) -> ToggleState {
-        if self.state == ToggleState::Disabled {
-            self.state = ToggleState::Enabled;
-        } else {
-            self.state = ToggleState::Disabled;
-        }
-        self.state
+    /// Toggles the checkbox between enabled & disabled.
+    pub fn toggle_checkbox(&mut self) -> bool {
+        self.enabled ^= true;
+        self.enabled
     }
-
 }
 
 
@@ -140,7 +128,7 @@ impl Widget for Checkbox {
 
         if hover {
             //debug!("Clicked Checkbox, '{}'", self.label.textfrag.text);
-            return Some(( self.id, UIAction::Toggle(self.toggle()) ));
+            return Some(( self.id, UIAction::Toggle(self.toggle_checkbox()) ));
         }
         None
     }
@@ -154,9 +142,15 @@ impl Widget for Checkbox {
             graphics::draw(ctx, &hovered_border, DrawParam::default())?;
         }
 
-        // PR_GATE refactor color usage per PR feedback
-        let border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, *CHECKBOX_TOGGLED_FILL_COLOR)?;
+        let draw_mode = if self.enabled {
+            DrawMode::fill()
+        } else {
+            DrawMode::stroke(2.0)
+        };
+
+        let border = graphics::Mesh::new_rectangle(ctx, draw_mode, self.dimensions, *CHECKBOX_TOGGLED_FILL_COLOR)?;
         graphics::draw(ctx, &border, DrawParam::default())?;
+
         let label_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, *CHECKBOX_TOGGLED_FILL_COLOR)?;
         graphics::draw(ctx, &label_border, DrawParam::default())?;
 

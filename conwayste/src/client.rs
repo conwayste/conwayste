@@ -83,7 +83,6 @@ use input::{MouseAction, ScrollEvent};
 use error::{ConwaysteResult, ConwaysteError::*};
 use viewport::Cell;
 use ui::{
-    ToggleState,
     TextInputState,
     UIAction,
     Widget,
@@ -1381,12 +1380,11 @@ impl MainState {
             },
             MAINMENU_TESTCHECKBOX => {
                 match action {
-                    UIAction::Toggle(t) => {
-                        let is_fullscreen = t == ToggleState::Disabled;
+                    UIAction::Toggle(enabled) => {
                         self.config.modify(|settings| {
-                            settings.video.fullscreen = is_fullscreen;
+                            settings.video.fullscreen = enabled;
                         });
-                        self.video_settings.is_fullscreen = is_fullscreen;
+                        self.video_settings.is_fullscreen = enabled;
                         self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
                     }
                     _ => {

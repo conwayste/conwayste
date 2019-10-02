@@ -33,7 +33,7 @@ use crate::Screen;
 
 pub use button::Button;
 pub use chatbox::Chatbox;
-pub use checkbox::{Checkbox, ToggleState};
+pub use checkbox::Checkbox;
 pub use helpe::{
     within_widget,
     center,
@@ -50,7 +50,7 @@ pub use widget::Widget;
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum UIAction {
     ScreenTransition(Screen),
-    Toggle(ToggleState),
+    Toggle(bool),
     EnterText,
 }
 

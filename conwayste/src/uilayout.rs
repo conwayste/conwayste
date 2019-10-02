@@ -30,7 +30,7 @@ use crate::Screen;
 use crate::ui::{
     Widget,
     Button,
-    Checkbox, ToggleState,
+    Checkbox,
     Chatbox,
     Layer,
     Pane,
@@ -72,7 +72,7 @@ impl UILayout {
         chatpane.add(textfield);
 
         let checkbox = Box::new(Checkbox::new(ctx, MAINMENU_TESTCHECKBOX,
-            UIAction::Toggle( if config.get().video.fullscreen { ToggleState::Enabled } else { ToggleState::Disabled } ),
+            config.get().video.fullscreen,
             font.clone(),
             "Toggle FullScreen".to_owned(),
             Rect::new(10.0, 210.0, 20.0, 20.0),
