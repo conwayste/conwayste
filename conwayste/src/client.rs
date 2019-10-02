@@ -460,7 +460,36 @@ impl EventHandler for MainState {
                 }
             }
             Screen::Menu => {
-                self.update_main_menu(ctx)?;
+                let mouse_point = self.inputs.mouse_info.position;
+                let origin_point = self.inputs.mouse_info.down_position;
+
+                let mouse_action = self.inputs.mouse_info.action;
+
+                let left_mouse_click = mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
+
+                let screen = self.get_current_screen();
+                if let Some(layer) = self.ui_manager.get_top_layer_from_screen(screen) {
+                    layer.on_hover(&mouse_point);
+
+                    if let Some(action) = mouse_action {
+                        if action == MouseAction::Drag {
+                            layer.on_drag(&origin_point, &mouse_point);
+                        } else if action == MouseAction::Click {
+                        // PR_GATE self.pane.update(true);
+                        }
+                    }
+
+                    if left_mouse_click {
+                        if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
+                            self.handle_ui_action(ctx, ui_id, ui_action).or_else(|e| -> ConwaysteResult<()> {
+                                error!("Failed to handle UI action: {:?}", e);
+                                Ok(())
+                            }).unwrap();
+                        }
+                    }
+                }
+
+                self.update_main_menu_selection(ctx)?;
             }
             Screen::Run => {
                 // TODO Disable FSP limit until we decide if we need it
@@ -1025,57 +1054,56 @@ impl MainState {
             return;
         }
 
+        let screen = self.get_current_screen();
+
         match keycode {
             KeyCode::Return => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
                     tf.state = Some(TextInputState::TextInputComplete);
                 }
             }
             KeyCode::Escape => {
-                let screen = self.get_current_screen();
                 if let Some(layer) = self.ui_manager.get_top_layer_from_screen(screen) {
                     layer.exit_focus();
                 }
             }
             KeyCode::Back => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.remove_left_of_cursor();
                     }
                 }
             }
             KeyCode::Delete => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.remove_right_of_cursor();
                     }
                 }
             }
             KeyCode::Left => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.move_cursor_left();
                     }
                 }
             },
             KeyCode::Right => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.move_cursor_right();
                     }
                 }
             }
-            KeyCode::Up => {},    // ?? go up and down the message stack?
-            KeyCode::Down => {},
             KeyCode::Home => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.cursor_home();
                     }
                 }
             }
             KeyCode::End => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.cursor_end();
                     }
@@ -1085,39 +1113,10 @@ impl MainState {
         }
     }
 
-    // update
-    fn update_main_menu(&mut self, ctx: &mut Context) -> GameResult<()> {
+    fn update_main_menu_selection(&mut self, ctx: &mut Context) -> GameResult<()> {
         self.process_menu_inputs();
 
-        let mouse_point = self.inputs.mouse_info.position;
-        let origin_point = self.inputs.mouse_info.down_position;
-
-        let mouse_action = self.inputs.mouse_info.action;
-
-        let left_mouse_click = mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
-
-        let screen = self.get_current_screen();
-        if let Some(layer) = self.ui_manager.get_top_layer_from_screen(screen) {
-            layer.on_hover(&mouse_point);
-
-            if let Some(action) = mouse_action {
-                if action == MouseAction::Drag {
-                    layer.on_drag(&origin_point, &mouse_point);
-                } else if action == MouseAction::Click {
-                // PR_GATE self.pane.update(true);
-                }
-            }
-
-            if left_mouse_click {
-                if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
-                    self.handle_ui_action(ctx, ui_id, ui_action).or_else(|e| -> ConwaysteResult<()> {
-                        error!("Failed to handle UI action: {:?}", e);
-                        Ok(())
-                    }).unwrap();
-                }
-            }
-        }
-
+        ////////////////////////////////////////
         //// Directional Key / Menu movement
         ////////////////////////////////////////
         if self.arrow_input != (0,0) && self.inputs.key_info.key.is_some() {
