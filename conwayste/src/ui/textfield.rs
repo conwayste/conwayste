@@ -18,12 +18,12 @@
 
 use std::time::{Duration, Instant};
 
-use ggez::graphics::{self, DrawMode, DrawParam, Font, Rect};
+use ggez::graphics::{self, DrawMode, DrawParam, Rect};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
-    helpe::{draw_text, within_widget},
+    helpe::{draw_text, within_widget, FontInfo},
     widget::Widget,
     UIAction, WidgetID,
 };
@@ -49,9 +49,8 @@ pub struct TextField {
     pub draw_cursor: bool,
     pub dimensions: Rect,
     pub hover: bool,
-    pub visible_start_index: usize,  // The index of the first character in `self.text` that is visible.
-    font: Font,
-    single_char_width: f32, // width of one character (assuming the font really is fixed-width)
+    pub visible_start_index: usize, // The index of the first character in `self.text` that is visible.
+    font_info: FontInfo,
 }
 
 /// A widget that can accept and display user-inputted text from the Keyboard.
@@ -60,7 +59,7 @@ impl TextField {
     ///
     /// # Arguments
     /// * `widget_id` - Unique widget identifier
-    /// * `font` - font-type for drawn text
+    /// * `font` - font-type for drawn text; must be fixed width!
     /// * `dimensions` - rectangle describing the size of the text field
     ///
     /// # Examples
@@ -80,12 +79,7 @@ impl TextField {
     /// }
     /// ```
     ///
-    pub fn new(
-        widget_id: WidgetID,
-        font: Font,
-        dimensions: Rect,
-        single_char_width: f32,
-    ) -> TextField {
+    pub fn new(widget_id: WidgetID, font_info: FontInfo, dimensions: Rect) -> TextField {
         TextField {
             state: None,
             text: String::new(),
@@ -97,14 +91,13 @@ impl TextField {
             action: UIAction::EnterText,
             hover: false,
             visible_start_index: 0,
-            font: font,
-            single_char_width,
+            font_info,
         }
     }
 
     /// Maximum number of characters that can be visible at once. Computed from `dimensions` and `single_char_width`.
     fn max_visible_chars(&self) -> usize {
-        (self.dimensions.w / self.single_char_width) as usize
+        (self.dimensions.w / self.font_info.char_dimensions.x) as usize
     }
 
     /// Returns the a string of the inputted text
@@ -305,7 +298,7 @@ impl Widget for TextField {
 
             draw_text(
                 ctx,
-                self.font,
+                self.font_info.font,
                 *INPUT_TEXT_COLOR,
                 visible_text,
                 &text_pos,
@@ -314,15 +307,16 @@ impl Widget for TextField {
             if self.draw_cursor {
                 let mut cursor_pos = text_pos.clone();
 
-                cursor_pos.x += (self.cursor_index - self.visible_start_index) as f32 * self.single_char_width;
+                cursor_pos.x += (self.cursor_index - self.visible_start_index) as f32
+                    * self.font_info.char_dimensions.x;
 
                 // Remove half the width of a character so the pipe character is at the beginning
                 // of its area (like a cursor), not the center (like a character).
-                cursor_pos.x -= self.single_char_width / 2.0;
+                cursor_pos.x -= self.font_info.char_dimensions.x / 2.0;
 
                 draw_text(
                     ctx,
-                    self.font,
+                    self.font_info.font,
                     *INPUT_TEXT_COLOR,
                     String::from("|"),
                     &cursor_pos,

@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{self, Font, Rect, Text, TextFragment, DrawParam, Color};
+use ggez::graphics::{self, Font, Rect, Text, TextFragment, DrawParam, Color, Scale};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -43,17 +43,35 @@ pub fn draw_text(ctx: &mut Context, font: Font, color: Color, text: String, coor
     Ok((text_width as f32, text_height as f32))
 }
 
-/// Get the height and width of one character with the given `Font` at a size of
-/// `DEFAULT_UI_FONT_SCALE`. Use the `x` and `y` fields of the return value for the width and
-/// height of a single character.
-/// NOTE: this assumes a fixed width font!
-pub fn get_char_dimensions(ctx: &mut Context, font: Font) -> Vector2<f32> {
-    let text = "xxxxxxxxxx"; // 10 arbitrary characters
-    let text_fragment = TextFragment::new(text)
-        .scale(*DEFAULT_UI_FONT_SCALE)
-        .font(font);
-    let graphics_text = Text::new(text_fragment);
-    Vector2::new(graphics_text.width(ctx) as f32 / text.len() as f32, graphics_text.height(ctx) as f32)
+/// Represents a font at a particular scale. Besides the ID of the font, it also includes the scale
+/// at which to draw it, and the dimensions of one character at that scale (this is only useful if
+/// the font is fixed width!).
+#[derive(Clone)]
+pub struct FontInfo {
+    /// ID of the font.
+    pub font: Font,
+    /// Scale at which to draw this font.
+    pub scale: Scale,
+    /// Use the `x` and `y` fields for the width and height of a single character.
+    pub char_dimensions: Vector2<f32>,
+}
+
+impl FontInfo {
+    /// Creates a FontInfo. If `scale` is `None`, uses `DEFAULT_UI_FONT_SCALE`.
+    pub fn new(ctx: &mut Context, font: Font, scale: Option<Scale>) -> Self {
+        let scale = scale.unwrap_or(*DEFAULT_UI_FONT_SCALE);
+        let text = "xxxxxxxxxx"; // 10 arbitrary characters
+        let text_fragment = TextFragment::new(text)
+            .scale(scale)
+            .font(font);
+        let graphics_text = Text::new(text_fragment);
+        let char_dimensions = Vector2::new(graphics_text.width(ctx) as f32 / text.len() as f32, graphics_text.height(ctx) as f32);
+        FontInfo {
+            font,
+            scale,
+            char_dimensions,
+        }
+    }
 }
 
 /// Determines if two rectangles overlap, and if so,

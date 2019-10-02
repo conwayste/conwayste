@@ -17,11 +17,11 @@
  *  <http://www.gnu.org/licenses/>. */
 use std::collections::VecDeque;
 
-use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Font, Rect, Text};
+use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Rect, Text};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
-use super::{helpe::within_widget, widget::Widget, UIAction, WidgetID};
+use super::{helpe::{within_widget, FontInfo}, widget::Widget, UIAction, WidgetID};
 
 use crate::constants::{self, colors::*};
 
@@ -33,7 +33,7 @@ pub struct Chatbox {
     pub dimensions: Rect,
     pub hover: bool,
     pub action: UIAction,
-    pub font: Font,
+    font_info: FontInfo,
 }
 
 impl Chatbox {
@@ -59,7 +59,7 @@ impl Chatbox {
     /// }
     /// ```
     ///
-    pub fn new(widget_id: WidgetID, font: Font, history_lines: usize) -> Self {
+    pub fn new(widget_id: WidgetID, font_info: FontInfo, history_lines: usize) -> Self {
         // TODO: affix to bottom left corner once "anchoring"/"gravity" is implemented
         let rect = *constants::DEFAULT_CHATBOX_RECT;
         Chatbox {
@@ -70,7 +70,7 @@ impl Chatbox {
             dimensions: rect,
             hover: false,
             action: UIAction::EnterText,
-            font: font,
+            font_info,
         }
     }
 
@@ -97,9 +97,8 @@ impl Chatbox {
     /// ```
     ///
     pub fn add_message(&mut self, msg: String) -> GameResult<()> {
-        // FIXME ggez0.5
         let mut text = Text::new(msg);
-        text.set_font(self.font, *constants::DEFAULT_CHATBOX_FONT_SCALE);
+        text.set_font(self.font_info.font, self.font_info.scale);
         self.messages.push_back(text);
         while self.messages.len() > self.history_lines {
             self.messages.pop_front();
