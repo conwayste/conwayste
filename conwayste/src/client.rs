@@ -36,6 +36,7 @@ mod input;
 mod menu;
 mod network;
 mod ui;
+mod uilayout;
 mod uimanager;
 mod video;
 mod viewport;
@@ -88,7 +89,8 @@ use ui::{
     Widget,
     WidgetID,
 };
-use uimanager::UIManager;
+use uilayout::UILayout;
+use uimanager::LayoutManager;
 
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
@@ -127,7 +129,7 @@ struct MainState {
     toggle_paused_game:  bool,
     current_intro_duration:  f64,
 
-    ui_manager:          UIManager,
+    ui_layout:           UILayout,
 }
 
 
@@ -383,7 +385,7 @@ impl MainState {
             GameError::ConfigError(msg)
         })?;
 
-        let ui_manager = UIManager::new(ctx, &config, font.clone());
+        let ui_layout = UILayout::new(ctx, &config, font.clone());
 
         // Update universe draw parameters for intro
         let intro_uni_draw_params = UniDrawParams {
@@ -415,7 +417,7 @@ impl MainState {
             drag_draw:           None,
             toggle_paused_game:  false,
             current_intro_duration:  0.0,
-            ui_manager:          ui_manager,
+            ui_layout:           ui_layout,
         };
 
         init_patterns(&mut s).unwrap();
@@ -468,7 +470,7 @@ impl EventHandler for MainState {
                 let left_mouse_click = mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
 
                 let screen = self.get_current_screen();
-                if let Some(layer) = self.ui_manager.get_top_layer_from_screen(screen) {
+                if let Some(layer) = LayoutManager::get_top_layer_from_screen(&mut self.ui_layout, screen) {
                     layer.on_hover(&mouse_point);
 
                     if let Some(action) = mouse_action {
@@ -495,7 +497,7 @@ impl EventHandler for MainState {
                 // TODO Disable FSP limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
                 let mut textfield_under_focus = false;
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = LayoutManager::textfield_from_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     match tf.state {
                         Some(TextInputState::TextInputComplete) =>  {
                             textfield_under_focus = false;
@@ -554,7 +556,7 @@ impl EventHandler for MainState {
                 let mouse_point = self.inputs.mouse_info.position;
                 let screen = self.get_current_screen();
 
-                if let Some(layer) = self.ui_manager.get_top_layer_from_screen(screen) {
+                if let Some(layer) = LayoutManager::get_top_layer_from_screen(&mut self.ui_layout, screen) {
                     layer.on_hover(&mouse_point);
                 }
 
@@ -623,7 +625,7 @@ impl EventHandler for MainState {
             Screen::Exit => {}
         }
 
-        if let Some(ref mut layers) = self.ui_manager.get_screen_layers(current_screen) {
+        if let Some(ref mut layers) = LayoutManager::get_screen_layers(&mut self.ui_layout, current_screen) {
             for layer in layers.iter_mut() {
                 layer.draw(ctx)?;
             }
@@ -762,7 +764,7 @@ impl EventHandler for MainState {
         }
 
         let screen = self.get_current_screen();
-        if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
+        if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
             if tf.state.is_some() {
                 tf.add_char_at_cursor(character);
             }
@@ -962,9 +964,9 @@ impl MainState {
 
         match keycode {
             KeyCode::Return => {
-                if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = LayoutManager::textfield_from_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if tf.state.is_none() {
-                        if let Some(layer) = self.ui_manager.get_top_layer_from_screen(Screen::Run) {
+                        if let Some(layer) = LayoutManager::get_top_layer_from_screen(&mut self.ui_layout, Screen::Run) {
                             layer.enter_focus(INGAME_PANE1_CHATBOXTEXTFIELD);
                         }
                     }
@@ -1058,52 +1060,52 @@ impl MainState {
 
         match keycode {
             KeyCode::Return => {
-                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
+                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
                     tf.state = Some(TextInputState::TextInputComplete);
                 }
             }
             KeyCode::Escape => {
-                if let Some(layer) = self.ui_manager.get_top_layer_from_screen(screen) {
+                if let Some(layer) = LayoutManager::get_top_layer_from_screen(&mut self.ui_layout, screen) {
                     layer.exit_focus();
                 }
             }
             KeyCode::Back => {
-                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
+                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.remove_left_of_cursor();
                     }
                 }
             }
             KeyCode::Delete => {
-                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
+                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.remove_right_of_cursor();
                     }
                 }
             }
             KeyCode::Left => {
-                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
+                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.move_cursor_left();
                     }
                 }
             },
             KeyCode::Right => {
-                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
+                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.move_cursor_right();
                     }
                 }
             }
             KeyCode::Home => {
-                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
+                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.cursor_home();
                     }
                 }
             }
             KeyCode::End => {
-                if let Some(tf) = self.ui_manager.focused_textfield_mut(screen) {
+                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
                     if let Some(TextInputState::EnteringText) = tf.state {
                         tf.cursor_end();
                     }
@@ -1319,7 +1321,7 @@ impl MainState {
         }
 
         for msg in incoming_messages {
-            if let Some(cb) = self.ui_manager.chatbox_from_id(INGAME_PANE1_CHATBOX) {
+            if let Some(cb) = LayoutManager::chatbox_from_id(&mut self.ui_layout, INGAME_PANE1_CHATBOX) {
                 cb.add_message(msg)?;
             }
         }
@@ -1418,7 +1420,7 @@ impl MainState {
         let username = self.config.get().user.name.clone();
         let mut msg = String::new();
 
-        if let Some(tf) = self.ui_manager.textfield_from_id(Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+        if let Some(tf) = LayoutManager::textfield_from_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
             if let Some(m) = tf.text() {
                 msg = format!("{}: {}", username, m);
             }
@@ -1427,7 +1429,7 @@ impl MainState {
         }
 
         if !msg.is_empty() {
-            if let Some(cb) = self.ui_manager.chatbox_from_id(INGAME_PANE1_CHATBOX) {
+            if let Some(cb) = LayoutManager::chatbox_from_id(&mut self.ui_layout, INGAME_PANE1_CHATBOX) {
                 cb.add_message(msg.clone())?;
 
                 if let Some(ref mut netwayste) = self.net_worker {
