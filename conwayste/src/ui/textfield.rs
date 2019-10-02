@@ -16,7 +16,6 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use ggez::graphics::{self, DrawMode, DrawParam, Font, Rect};
@@ -51,7 +50,7 @@ pub struct TextField {
     pub dimensions: Rect,
     pub hover: bool,
     pub visible_start_index: usize,  // The index of the first character in `self.text` that is visible.
-    font: Rc<Font>,
+    font: Font,
     single_char_width: f32, // width of one character (assuming the font really is fixed-width)
 }
 
@@ -70,7 +69,7 @@ impl TextField {
     /// use ui::TextField;
     ///
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Rc::new(Font::default());
+    ///     let font = Font::default();
     ///     let dimensions = Rect::new(0.0, 0.0, 300.0, 20.0);
     ///
     ///     let single_char_width = helpe::get_char_dimensions(ctx, *font).x;
@@ -83,7 +82,7 @@ impl TextField {
     ///
     pub fn new(
         widget_id: WidgetID,
-        font: Rc<Font>,
+        font: Font,
         dimensions: Rect,
         single_char_width: f32,
     ) -> TextField {
@@ -306,7 +305,7 @@ impl Widget for TextField {
 
             draw_text(
                 ctx,
-                Rc::clone(&self.font),
+                self.font,
                 *constants::INPUT_TEXT_COLOR,
                 visible_text,
                 &text_pos,
@@ -323,7 +322,7 @@ impl Widget for TextField {
 
                 draw_text(
                     ctx,
-                    Rc::clone(&self.font),
+                    self.font,
                     *constants::INPUT_TEXT_COLOR,
                     String::from("|"),
                     &cursor_pos,

@@ -20,7 +20,6 @@ use ggez::{Context, GameResult};
 use ggez::graphics::{self, Color, Font};
 use ggez::nalgebra::Point2;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use crate::video;
 use crate::ui;
@@ -150,7 +149,7 @@ pub struct MenuSystem {
     pub    menus:          HashMap<MenuState, MenuContainer >,
     pub    menu_state:     MenuState,
            controls:       MenuControls,
-           font:           Rc<Font>,
+           font:           Font,
            inactive_color: graphics::Color,
            active_color:   graphics::Color,
 }
@@ -212,7 +211,7 @@ impl MenuMetaData {
 }
 
 impl MenuSystem {
-    pub fn new(font: Rc<Font>) -> MenuSystem {
+    pub fn new(font: Font) -> MenuSystem {
         let mut menu_sys = MenuSystem {
             menus:          HashMap::new(),
             menu_state:     MenuState::MainMenu,
@@ -352,7 +351,7 @@ impl MenuSystem {
                         }
 
                         let color = if index == i { self.active_color } else { self.inactive_color };
-                        let (w, h) = ui::draw_text(_ctx, Rc::clone(&self.font), color, menu_option, &coords)?;
+                        let (w, h) = ui::draw_text(_ctx, self.font.clone(), color, menu_option, &coords)?;
                         if max_text_width < w {
                             max_text_width = w;
                         }
@@ -385,7 +384,7 @@ impl MenuSystem {
                 let mut coords = Point2::new(x, y);
                 let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
 
-                let (_w, h) = ui::draw_text(_ctx, Rc::clone(&self.font), self.inactive_color, is_fullscreen_str.to_owned(), &coords)?;
+                let (_w, h) = ui::draw_text(_ctx, self.font, self.inactive_color, is_fullscreen_str.to_owned(), &coords)?;
 
                 ////////////////////////////////
                 // Resolution
@@ -394,7 +393,7 @@ impl MenuSystem {
                 let res = video_settings.get_resolution();
                 let cur_resolution = format!("{}x{}", res.w, res.h);
 
-                ui::draw_text(_ctx, Rc::clone(&self.font), self.inactive_color, cur_resolution, &coords)?;
+                ui::draw_text(_ctx, self.font.clone(), self.inactive_color, cur_resolution, &coords)?;
             }
             _  => {}
         }

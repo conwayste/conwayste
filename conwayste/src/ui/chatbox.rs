@@ -18,7 +18,6 @@
 use chromatica::css;
 
 use std::collections::VecDeque;
-use std::rc::Rc;
 
 use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Font, Rect, Text};
 use ggez::nalgebra::{Point2, Vector2};
@@ -36,7 +35,7 @@ pub struct Chatbox {
     pub dimensions: Rect,
     pub hover: bool,
     pub action: UIAction,
-    pub font: Rc<Font>,
+    pub font: Font,
 }
 
 impl Chatbox {
@@ -54,7 +53,7 @@ impl Chatbox {
     /// use ui::Chatbox;
     ///
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Rc::new(Font::default());
+    ///     let font = Font::default();
     ///     let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
     ///     let mut chatbox = Chatbox::new(ui::InGamePane1Chatbox, font, 5);
     ///     chatbox.set_size(chatbox_rect);
@@ -62,7 +61,7 @@ impl Chatbox {
     /// }
     /// ```
     ///
-    pub fn new(widget_id: WidgetID, font: Rc<Font>, history_lines: usize) -> Self {
+    pub fn new(widget_id: WidgetID, font: Font, history_lines: usize) -> Self {
         // TODO: affix to bottom left corner once "anchoring"/"gravity" is implemented
         let rect = *constants::DEFAULT_CHATBOX_RECT;
         Chatbox {
@@ -89,7 +88,7 @@ impl Chatbox {
     /// use ui::Chatbox;
     ///
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Rc::new(Font::default());
+    ///     let font = Font::default();
     ///     let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
     ///     let mut chatbox = Chatbox::new(ui::InGamePane1Chatbox, font, 5);
     ///     chatbox.set_size(chatbox_rect);
@@ -102,7 +101,7 @@ impl Chatbox {
     pub fn add_message(&mut self, msg: String) -> GameResult<()> {
         // FIXME ggez0.5
         let mut text = Text::new(msg);
-        text.set_font(*self.font, *constants::DEFAULT_CHATBOX_FONT_SCALE);
+        text.set_font(self.font, *constants::DEFAULT_CHATBOX_FONT_SCALE);
         self.messages.push_back(text);
         while self.messages.len() > self.history_lines {
             self.messages.pop_front();

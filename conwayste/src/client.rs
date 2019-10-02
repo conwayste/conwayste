@@ -62,7 +62,7 @@ use std::env;
 use std::io::Write; // For env logger
 use std::path;
 use std::collections::{BTreeMap};
-use std::rc::Rc;
+
 use std::time::Instant;
 
 use constants::{
@@ -103,7 +103,7 @@ pub enum Screen {
 
 // All game state
 struct MainState {
-    system_font:         Rc<Font>,
+    system_font:         Font,
     screen_stack:        Vec<Screen>,       // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     intro_uni:           Universe,
@@ -344,7 +344,6 @@ impl MainState {
         // Note: fixed-width fonts are required!
         let font = Font::new(ctx, path::Path::new("/telegrama_render.ttf"))
                     .map_err(|e| GameError::FilesystemError(format!("Could not load or find font. {:?}", e)))?;
-        let font = Rc::new(font);
 
         let bigbang =
         {
@@ -384,7 +383,7 @@ impl MainState {
             GameError::ConfigError(msg)
         })?;
 
-        let ui_manager = UIManager::new(ctx, &config, Rc::clone(&font));
+        let ui_manager = UIManager::new(ctx, &config, font.clone());
 
         // Update universe draw parameters for intro
         let intro_uni_draw_params = UniDrawParams {
@@ -396,7 +395,7 @@ impl MainState {
 
         let mut s = MainState {
             screen_stack:        vec![Screen::Intro],
-            system_font:         Rc::clone(&font),
+            system_font:         font.clone(),
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
@@ -585,11 +584,11 @@ impl EventHandler for MainState {
                 self.draw_universe(ctx)?;
             }
             Screen::InRoom => {
-                ui::draw_text(ctx, Rc::clone(&self.system_font), Color::from(css::WHITE), String::from("In Room"), &Point2::new(100.0, 100.0))?;
+                ui::draw_text(ctx, self.system_font.clone(), Color::from(css::WHITE), String::from("In Room"), &Point2::new(100.0, 100.0))?;
                 // TODO
             }
             Screen::ServerList => {
-                ui::draw_text(ctx, Rc::clone(&self.system_font), Color::from(css::WHITE), String::from("Server List"), &Point2::new(100.0, 100.0))?;
+                ui::draw_text(ctx, self.system_font.clone(), Color::from(css::WHITE), String::from("Server List"), &Point2::new(100.0, 100.0))?;
                 // TODO
              },
             Screen::Exit => {}
@@ -872,7 +871,7 @@ impl MainState {
         if self.uni_draw_params.draw_counter {
             let gen_counter = universe.latest_gen().to_string();
             let color = Color::new(1.0, 0.0, 0.0, 1.0);
-            ui::draw_text(ctx, Rc::clone(&self.system_font), color, gen_counter, &Point2::new(0.0, 0.0))?;
+            ui::draw_text(ctx, self.system_font.clone(), color, gen_counter, &Point2::new(0.0, 0.0))?;
         }
 
         Ok(())
@@ -1173,7 +1172,7 @@ impl MainState {
                                     self.pause_or_resume_game();
                                 }
                                 menu::MenuItemIdentifier::ExitGame => {
-                                    self.screen_stack.push(Screen::Exit);;
+                                    self.screen_stack.push(Screen::Exit);
                                 }
                                 menu::MenuItemIdentifier::Options => {
                                     self.menu_sys.menu_state = menu::MenuState::Options;

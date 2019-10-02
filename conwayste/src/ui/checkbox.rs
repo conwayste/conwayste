@@ -22,8 +22,6 @@ use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
-use std::rc::Rc;
-
 use super::{
     label::Label,
     widget::Widget,
@@ -70,7 +68,7 @@ impl Checkbox {
     /// use ui::Checkbox;
     ///
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Rc::new(Font::default());
+    ///     let font = Font::default();
     ///     let checkbox = Box::new(Checkbox::new(ctx,
     ///         ui::TestCheckbox,
     ///         UIAction::Toggle( if cfg!(target_os = "linux") { ToggleState::Enabled } else { ToggleState::Disabled } ),
@@ -82,7 +80,7 @@ impl Checkbox {
     /// }
     /// ```
     ///
-    pub fn new(ctx: &mut Context, widget_id: WidgetID, action: UIAction, font: Rc<Font>, text: String, dimensions: Rect) -> Self {
+    pub fn new(ctx: &mut Context, widget_id: WidgetID, action: UIAction, font: Font, text: String, dimensions: Rect) -> Self {
         let label_origin = Point2::new(dimensions.x + dimensions.w + LABEL_OFFSET_X, dimensions.y + dimensions.h + LABEL_OFFSET_Y);
 
         Checkbox {

@@ -16,8 +16,6 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use std::rc::Rc;
-
 use chromatica::css;
 
 use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam};
@@ -64,7 +62,7 @@ impl Button {
     /// use ui::Button;
     ///
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Rc::new(Font::default());
+    ///     let font = Font::default();
     ///     let b = Button::new(ctx, ui::TestButton1,
     ///             UIAction::PrintHelloWorld,
     ///             ui::TestButton1Label,
@@ -76,7 +74,7 @@ impl Button {
     /// ```
     ///
     pub fn new(ctx: &mut Context, widget_id: WidgetID, action: UIAction, label_id: WidgetID,
-        font: Rc<Font>, button_text: String) -> Self
+        font: Font, button_text: String) -> Self
     {
         let label_position = Point2::new(0.0, 0.0); // label positioning defined an offset to button origin after centering
         let label = Label::new(ctx, label_id, font, button_text, color_with_alpha(css::WHITE, 0.1), label_position);

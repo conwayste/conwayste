@@ -17,8 +17,6 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::collections::HashMap;
-use std::rc::Rc;
-
 
 use ggez::graphics::{Rect, Font};
 
@@ -48,7 +46,7 @@ pub struct UIManager {
 
 impl UIManager {
     // PR_GATE move UI creation out of the manager per PR feedback
-    pub fn new(ctx: &mut Context, config: &Config, font: Rc<Font>) -> Self {
+    pub fn new(ctx: &mut Context, config: &Config, font: Font) -> Self {
         let mut ui_layers = HashMap::new();
 
         let chat_pane_rect = Rect::new(30.0, 40.0, 300.0, 150.0);
@@ -57,7 +55,7 @@ impl UIManager {
         const CHATBOX_HISTORY: usize = 5;
         let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
         let mut chatbox = Chatbox::new(INGAME_PANE1_CHATBOX,
-            Rc::clone(&font),
+            font.clone(),
             CHATBOX_HISTORY
         );
         chatbox.set_size(chatbox_rect);
@@ -65,9 +63,9 @@ impl UIManager {
 
         const CHAT_TEXTFIELD_HEIGHT: f32 = (20.0 + 5.0);
         let textfield_rect = Rect::new(chatbox_rect.x, chatbox_rect.bottom(), chatbox_rect.w, CHAT_TEXTFIELD_HEIGHT);
-        let char_dimensions = helpe::get_char_dimensions(ctx, *font);
+        let char_dimensions = helpe::get_char_dimensions(ctx, font);
         let textfield = Box::new(TextField::new(INGAME_PANE1_CHATBOXTEXTFIELD,
-            Rc::clone(&font),
+            font.clone(),
             textfield_rect,
             char_dimensions.x,
         ));
@@ -77,7 +75,7 @@ impl UIManager {
 
         let checkbox = Box::new(Checkbox::new(ctx, MAINMENU_TESTCHECKBOX,
             UIAction::Toggle( if config.get().video.fullscreen { ToggleState::Enabled } else { ToggleState::Disabled } ),
-            Rc::clone(&font),
+            font.clone(),
             "Toggle FullScreen".to_owned(),
             Rect::new(10.0, 210.0, 20.0, 20.0),
         ));
@@ -91,7 +89,7 @@ impl UIManager {
         let mut pane_button = Box::new(Button::new(ctx, MAINMENU_PANE1_BUTTONYES,
             UIAction::ScreenTransition(Screen::ServerList),
             MAINMENU_PANE1_BUTTONYESLABEL,
-            Rc::clone(&font),
+            font.clone(),
             "ServerList".to_owned()
         ));
         pane_button.set_size(Rect::new(10.0, 10.0, 180.0, 50.0));
@@ -100,7 +98,7 @@ impl UIManager {
         let mut pane_button = Box::new(Button::new(ctx, MAINMENU_PANE1_BUTTONNO,
             UIAction::ScreenTransition(Screen::InRoom),
             MAINMENU_PANE1_BUTTONNOLABEL,
-            Rc::clone(&font),
+            font.clone(),
             "InRoom".to_owned()
         ));
         pane_button.set_size(Rect::new(10.0, 70.0, 180.0, 50.0));
@@ -109,7 +107,7 @@ impl UIManager {
         let mut pane_button = Box::new(Button::new(ctx, MAINMENU_TESTBUTTON,
             UIAction::ScreenTransition(Screen::Run),
             MAINMENU_TESTBUTTONLABEL,
-            Rc::clone(&font),
+            font.clone(),
             "StartGame".to_owned()
         ));
         pane_button.set_size(Rect::new(10.0, 130.0, 180.0, 50.0));

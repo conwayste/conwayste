@@ -20,8 +20,6 @@ use ggez::{Context, GameResult};
 use ggez::graphics::{self, Color, Rect, Font, Text, TextFragment, DrawParam, Drawable};
 use ggez::nalgebra::{Point2, Vector2};
 
-use std::rc::Rc;
-
 use super::{
     widget::Widget,
     WidgetID
@@ -53,7 +51,7 @@ impl Label {
     /// use ui::Label;
     ///
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Rc::new(Font::default());
+    ///     let font = Font::default();
     ///     let label = Label::new(ctx,
     ///         ui::TestLabel,
     ///         font,
@@ -66,8 +64,8 @@ impl Label {
     /// }
     /// ```
     ///
-    pub fn new(ctx: &mut Context, widget_id: WidgetID, font: Rc<Font>, string: String, color: Color, dest: Point2<f32>) -> Self {
-        let font: Font = *font;
+    pub fn new(ctx: &mut Context, widget_id: WidgetID, font: Font, string: String, color: Color, dest: Point2<f32>) -> Self {
+        let font: Font = font;
 
         let text_fragment = TextFragment::new(string.clone())
             .scale(*DEFAULT_UI_FONT_SCALE)

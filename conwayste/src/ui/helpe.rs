@@ -16,8 +16,6 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use std::rc::Rc;
-
 use ggez::graphics::{self, Font, Rect, Text, TextFragment, DrawParam, Color};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
@@ -32,11 +30,11 @@ use crate::constants::DEFAULT_UI_FONT_SCALE;
 ///
 /// On success, an `Ok((text_width, text_height))` tuple is returned, indicating the width
 /// and height of the text in pixels.
-pub fn draw_text(ctx: &mut Context, font: Rc<Font>, color: Color, text: String, coords: &Point2<f32>) -> GameResult<(f32, f32)> {
+pub fn draw_text(ctx: &mut Context, font: Font, color: Color, text: String, coords: &Point2<f32>) -> GameResult<(f32, f32)> {
     let text_fragment = TextFragment::new(text)
         .scale(*DEFAULT_UI_FONT_SCALE)
         .color(color)
-        .font(*font);
+        .font(font);
 
     let mut graphics_text = Text::new(text_fragment);
     let (text_width, text_height) = (graphics_text.width(ctx), graphics_text.height(ctx));
