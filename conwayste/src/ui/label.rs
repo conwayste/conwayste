@@ -49,6 +49,7 @@ impl Label {
     ///
     /// ```rust
     /// use ui::Label;
+    /// use chromatica::css;
     ///
     /// fn new(ctx: &mut Context) -> GameResult<MainState> {
     ///     let font = Font::default();

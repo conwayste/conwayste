@@ -15,8 +15,6 @@
  *  You should have received a copy of the GNU General Public License
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
-use chromatica::css;
-
 use std::collections::VecDeque;
 
 use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Font, Rect, Text};
@@ -25,7 +23,7 @@ use ggez::{Context, GameResult};
 
 use super::{helpe::within_widget, widget::Widget, UIAction, WidgetID};
 
-use crate::constants;
+use crate::constants::{self, colors::*};
 
 pub struct Chatbox {
     pub id: WidgetID,
@@ -67,7 +65,7 @@ impl Chatbox {
         Chatbox {
             id: widget_id,
             history_lines,
-            color: *constants::CHATBOX_BORDER_COLOR,
+            color: *CHATBOX_BORDER_COLOR,
             messages: VecDeque::with_capacity(history_lines),
             dimensions: rect,
             hover: false,
@@ -161,7 +159,7 @@ impl Widget for Chatbox {
                 ctx,
                 DrawMode::stroke(2.0),
                 border_rect,
-                Color::from(css::TEAL),
+                *CHATBOX_BORDER_ON_HOVER_COLOR,
             )?;
             graphics::draw(ctx, &hovered_border, DrawParam::default())?;
         }
@@ -180,7 +178,7 @@ impl Widget for Chatbox {
                 origin.x + constants::CHATBOX_BORDER_PIXELS + 1.0,
                 origin.y + i as f32 * 30.0,
             );
-            graphics::queue_text(ctx, &msg, point, Some(*constants::CHATBOX_TEXT_COLOR));
+            graphics::queue_text(ctx, &msg, point, Some(*CHATBOX_TEXT_COLOR));
         }
 
         graphics::draw_queued_text(ctx, DrawParam::default(), None, FilterMode::Linear)?;

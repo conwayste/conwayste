@@ -17,13 +17,13 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::{Context, GameResult};
-use ggez::graphics::{self, Color, Font};
+use ggez::graphics::{self, Font};
 use ggez::nalgebra::Point2;
 use std::collections::HashMap;
 
 use crate::video;
 use crate::ui;
-use crate::constants::{DEFAULT_ACTIVE_COLOR, DEFAULT_INACTIVE_COLOR};
+use crate::constants::colors::*;
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub enum MenuState {
@@ -90,8 +90,6 @@ pub struct MenuContainer {
     text_width: f32,            // maximum width in pixels of any option
     menu_items: Vec<MenuItem>,
     metadata:   MenuMetaData,
-    bg_color:   Color,
-    fg_color:   Color,
 }
 
 impl MenuContainer {
@@ -103,8 +101,6 @@ impl MenuContainer {
             text_width: 0.0,
             menu_items: Vec::<MenuItem>::new(),
             metadata: MenuMetaData::new(0, 0),
-            bg_color: Color::new(1.0, 1.0, 1.0, 1.0),
-            fg_color: Color::new(0.0, 1.0, 1.0, 1.0),
         }
     }
 
@@ -217,8 +213,8 @@ impl MenuSystem {
             menu_state:     MenuState::MainMenu,
             controls:       MenuControls::new(),
             font,
-            inactive_color: DEFAULT_INACTIVE_COLOR,
-            active_color:   DEFAULT_ACTIVE_COLOR,
+            inactive_color: *MENU_TEXT_COLOR,
+            active_color:   *MENU_TEXT_SELECTED_COLOR,
         };
 
         // FIXME: Hardcoded width and height. This is very hacky, but I expect this code to be

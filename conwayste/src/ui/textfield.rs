@@ -28,7 +28,7 @@ use super::{
     UIAction, WidgetID,
 };
 
-use crate::constants;
+use crate::constants::{colors::*, CHATBOX_BORDER_PIXELS};
 
 pub const BLINK_RATE_MS: u64 = 500;
 
@@ -276,16 +276,16 @@ impl Widget for TextField {
             if !self.text.is_empty() && self.state.is_none() {
                 colored_rect = graphics::Mesh::new_rectangle(
                     ctx,
-                    DrawMode::stroke(constants::CHATBOX_BORDER_PIXELS),
+                    DrawMode::stroke(CHATBOX_BORDER_PIXELS),
                     self.dimensions,
-                    *constants::CHATBOX_INACTIVE_BORDER_COLOR,
+                    *CHATBOX_INACTIVE_BORDER_COLOR,
                 )?;
             } else {
                 colored_rect = graphics::Mesh::new_rectangle(
                     ctx,
-                    DrawMode::stroke(constants::CHATBOX_BORDER_PIXELS),
+                    DrawMode::stroke(CHATBOX_BORDER_PIXELS),
                     self.dimensions,
-                    *constants::CHATBOX_BORDER_COLOR,
+                    *CHATBOX_BORDER_COLOR,
                 )?;
             }
 
@@ -293,7 +293,7 @@ impl Widget for TextField {
 
             // 3.0 px added to y for central alignment
             let text_pos = Point2::new(
-                self.dimensions.x + constants::CHATBOX_BORDER_PIXELS / 2.0 + 1.0,
+                self.dimensions.x + CHATBOX_BORDER_PIXELS / 2.0 + 1.0,
                 self.dimensions.y + 3.0,
             );
 
@@ -306,7 +306,7 @@ impl Widget for TextField {
             draw_text(
                 ctx,
                 self.font,
-                *constants::INPUT_TEXT_COLOR,
+                *INPUT_TEXT_COLOR,
                 visible_text,
                 &text_pos,
             )?;
@@ -323,7 +323,7 @@ impl Widget for TextField {
                 draw_text(
                     ctx,
                     self.font,
-                    *constants::INPUT_TEXT_COLOR,
+                    *INPUT_TEXT_COLOR,
                     String::from("|"),
                     &cursor_pos,
                 )?;

@@ -16,9 +16,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
-use chromatica::css;
-
-use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam};
+use ggez::graphics::{self, Rect, Font, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -29,6 +27,8 @@ use super::{
     UIAction,
     WidgetID,
 };
+
+use crate::constants::colors::*;
 
 // PR_GATE clean me up scotty (per PR feedback)
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -85,7 +85,7 @@ impl Checkbox {
 
         Checkbox {
             id: widget_id,
-            label: Label::new(ctx, widget_id, font, text, Color::from(css::WHITE), label_origin),
+            label: Label::new(ctx, widget_id, font, text, *CHECKBOX_TEXT_COLOR, label_origin),
             state: ToggleState::Disabled,
             dimensions: dimensions,
             hover: false,
@@ -150,14 +150,14 @@ impl Widget for Checkbox {
         if self.hover {
             // Add in a violet border/fill while hovered. Color checkbox differently to indicate  hovered state.
             let border_rect = Rect::new(self.dimensions.x-1.0, self.dimensions.y-1.0, self.dimensions.w + 4.0, self.dimensions.h + 4.0);
-            let hovered_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), border_rect, Color::from(css::VIOLET))?;
+            let hovered_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), border_rect, *CHECKBOX_BORDER_ON_HOVER_COLOR)?;
             graphics::draw(ctx, &hovered_border, DrawParam::default())?;
         }
 
         // PR_GATE refactor color usage per PR feedback
-        let border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, Color::from(css::AZURE))?;
+        let border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, *CHECKBOX_TOGGLED_FILL_COLOR)?;
         graphics::draw(ctx, &border, DrawParam::default())?;
-        let label_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, Color::from(css::AZURE))?;
+        let label_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, *CHECKBOX_TOGGLED_FILL_COLOR)?;
         graphics::draw(ctx, &label_border, DrawParam::default())?;
 
         self.label.draw(ctx)?;

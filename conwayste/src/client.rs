@@ -42,7 +42,6 @@ mod video;
 mod viewport;
 
 use chrono::Local;
-use chromatica::css;
 use log::LevelFilter;
 
 use conway::universe::{BigBang, Universe, CellState, Region, PlayerBuilder};
@@ -78,6 +77,7 @@ use constants::{
     INTRO_DURATION,
     INTRO_PAUSE_DURATION,
     widget_ids::*,
+    colors::*,
 };
 use input::{MouseAction, ScrollEvent};
 use error::{ConwaysteResult, ConwaysteError::*};
@@ -328,20 +328,20 @@ impl MainState {
 
         let mut color_settings = ColorSettings {
             cell_colors: BTreeMap::new(),
-            background:  Color::new( 0.25,  0.25,  0.25, 1.0),
+            background:  *UNIVERSE_BG_COLOR,
         };
-        color_settings.cell_colors.insert(CellState::Dead,           Color::new(0.875, 0.875, 0.875, 1.0));
+        color_settings.cell_colors.insert(CellState::Dead, *CELL_STATE_DEAD_COLOR);
         if GRID_DRAW_STYLE == DrawStyle::Line {
-            // black background - "tetris-like"
-            color_settings.cell_colors.insert(CellState::Alive(None), Color::new( 1.0, 1.0, 1.0, 1.0));
+            // black background - for a "tetris-like" effect
+            color_settings.cell_colors.insert(CellState::Alive(None), *CELL_STATE_BG_FILL_HOLLOW_COLOR);
         } else {
-            // light background
-            color_settings.cell_colors.insert(CellState::Alive(None), Color::new( 0.0, 0.0, 0.0, 1.0));
+            // light background - default setting
+            color_settings.cell_colors.insert(CellState::Alive(None), *CELL_STATE_BG_FILL_SOLID_COLOR);
         }
-        color_settings.cell_colors.insert(CellState::Alive(Some(0)), Color::new(  1.0,   0.0,   0.0, 1.0));  // 0 is red
-        color_settings.cell_colors.insert(CellState::Alive(Some(1)), Color::new(  0.0,   0.0,   1.0, 1.0));  // 1 is blue
-        color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
-        color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
+        color_settings.cell_colors.insert(CellState::Alive(Some(0)), *CELL_STATE_ALIVE_PLAYER_0_COLOR);  // 0 is red
+        color_settings.cell_colors.insert(CellState::Alive(Some(1)), *CELL_STATE_ALIVE_PLAYER_1_COLOR);  // 1 is blue
+        color_settings.cell_colors.insert(CellState::Wall, *CELL_STATE_WALL_COLOR);
+        color_settings.cell_colors.insert(CellState::Fog, *CELL_STATE_FOG_COLOR);
 
         // Note: fixed-width fonts are required!
         let font = Font::new(ctx, path::Path::new("/telegrama_render.ttf"))
@@ -615,11 +615,11 @@ impl EventHandler for MainState {
                 self.draw_universe(ctx)?;
             }
             Screen::InRoom => {
-                ui::draw_text(ctx, self.system_font.clone(), Color::from(css::WHITE), String::from("In Room"), &Point2::new(100.0, 100.0))?;
+                ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("In Room"), &Point2::new(100.0, 100.0))?;
                 // TODO
             }
             Screen::ServerList => {
-                ui::draw_text(ctx, self.system_font.clone(), Color::from(css::WHITE), String::from("Server List"), &Point2::new(100.0, 100.0))?;
+                ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("Server List"), &Point2::new(100.0, 100.0))?;
                 // TODO
              },
             Screen::Exit => {}
@@ -901,8 +901,7 @@ impl MainState {
         ////////// draw generation counter
         if self.uni_draw_params.draw_counter {
             let gen_counter = universe.latest_gen().to_string();
-            let color = Color::new(1.0, 0.0, 0.0, 1.0);
-            ui::draw_text(ctx, self.system_font.clone(), color, gen_counter, &Point2::new(0.0, 0.0))?;
+            ui::draw_text(ctx, self.system_font.clone(), *GEN_COUNTER_COLOR, gen_counter, &Point2::new(0.0, 0.0))?;
         }
 
         Ok(())

@@ -17,9 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::time::Duration;
-use ggez::graphics::{self, Color, Scale, Rect};
-use chromatica::css;
-use crate::ui::helpe::color_with_alpha;
+use ggez::graphics::{self, Scale, Rect};
 
 // game play
 pub const CURRENT_PLAYER_ID: usize = 1; // TODO:  get the player ID from server rather than hardcoding
@@ -27,25 +25,34 @@ pub const FOG_RADIUS: usize = 4; // cells
 pub const HISTORY_SIZE: usize = 16;
 
 // Colors
-// Menu active color
-pub const DEFAULT_ACTIVE_COLOR: Color = Color {
-    r: 0.0,
-    g: 1.0,
-    b: 0.0,
-    a: 1.0,
-}; // menu
-// Menu inactive color
-pub const DEFAULT_INACTIVE_COLOR: Color = Color {
-    r: 0.75,
-    g: 0.75,
-    b: 0.75,
-    a: 1.0,
-}; // menu
-lazy_static! {
-    pub static ref INPUT_TEXT_COLOR: Color = Color::from(css::DARKRED);
-    pub static ref CHATBOX_TEXT_COLOR: Color = Color::from(css::DARKRED);
-    pub static ref CHATBOX_BORDER_COLOR: Color = Color::from(css::VIOLET);
-    pub static ref CHATBOX_INACTIVE_BORDER_COLOR: Color = color_with_alpha(css::VIOLET, 0.5);
+pub mod colors {
+    use ggez::graphics::Color;
+    use chromatica::css;
+    use crate::ui::helpe::color_with_alpha;
+
+    lazy_static! {
+        // TODO: probably can consoldate/remove many of these once the design is fleshed out more
+        pub static ref INPUT_TEXT_COLOR: Color = Color::from(css::DARKRED);
+        pub static ref CHATBOX_TEXT_COLOR: Color = Color::from(css::DARKRED);
+        pub static ref CHATBOX_BORDER_COLOR: Color = Color::from(css::VIOLET);
+        pub static ref CHATBOX_INACTIVE_BORDER_COLOR: Color = color_with_alpha(css::VIOLET, 0.5);
+        pub static ref CHATBOX_BORDER_ON_HOVER_COLOR: Color = Color::from(css::TEAL);
+        pub static ref MENU_TEXT_COLOR: Color = Color::from(css::WHITE);
+        pub static ref MENU_TEXT_SELECTED_COLOR: Color = Color::from(css::LIME);
+        pub static ref CHECKBOX_TEXT_COLOR: Color = Color::from(css::WHITE);
+        pub static ref CHECKBOX_BORDER_ON_HOVER_COLOR: Color = Color::from(css::VIOLET);
+        pub static ref CHECKBOX_TOGGLED_FILL_COLOR: Color = Color::from(css::AZURE);
+        pub static ref PANE_BG_FILL_COLOR: Color = Color::from(css::FIREBRICK);
+        pub static ref CELL_STATE_DEAD_COLOR: Color = Color::new(0.875, 0.875, 0.875, 1.0);
+        pub static ref CELL_STATE_BG_FILL_SOLID_COLOR: Color = Color::from(css::WHITE);
+        pub static ref CELL_STATE_BG_FILL_HOLLOW_COLOR: Color = Color::from(css::BLACK);
+        pub static ref CELL_STATE_ALIVE_PLAYER_0_COLOR: Color = Color::from(css::RED);
+        pub static ref CELL_STATE_ALIVE_PLAYER_1_COLOR: Color = Color::from(css::BLUE);
+        pub static ref CELL_STATE_WALL_COLOR: Color = Color::new(0.617, 0.55, 0.41, 1.0);
+        pub static ref CELL_STATE_FOG_COLOR: Color = Color::new(0.780, 0.780, 0.780, 1.0);
+        pub static ref GEN_COUNTER_COLOR: Color = Color::from(css::RED);
+        pub static ref UNIVERSE_BG_COLOR: Color = Color::new( 0.25,  0.25,  0.25, 1.0);
+    }
 }
 
 pub const DEFAULT_SCREEN_HEIGHT: f32     =  800.0; // pixels

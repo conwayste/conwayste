@@ -16,9 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use chromatica::css;
-
-use ggez::graphics::{self, Rect, Color, DrawMode, DrawParam};
+use ggez::graphics::{self, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -26,7 +24,9 @@ use super::{
     widget::Widget,
     helpe::{within_widget},
     UIAction, WidgetID
-    };
+};
+
+use crate::constants::colors::*;
 
 pub struct Pane {
     pub id: WidgetID,
@@ -159,7 +159,7 @@ impl Widget for Pane {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(1.0), self.dimensions, Color::from(css::FIREBRICK))?;
+        let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(1.0), self.dimensions, *PANE_BG_FILL_COLOR)?;
         graphics::draw(ctx, &mesh, DrawParam::default())?;
 
         for widget in self.widgets.iter_mut() {
