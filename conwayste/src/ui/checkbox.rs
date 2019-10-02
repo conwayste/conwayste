@@ -86,9 +86,9 @@ impl Checkbox {
         }
     }
 
-    /// Toggles the checkbox between enabled & disabled.
+    /// Toggles the checkbox between enabled & disabled and returns the its state
     pub fn toggle_checkbox(&mut self) -> bool {
-        self.enabled ^= true;
+        self.enabled = !self.enabled;
         self.enabled
     }
 }
