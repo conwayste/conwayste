@@ -82,6 +82,7 @@ lazy_static! {
 }
 // Border thickness of chatbox in pixels.
 pub const CHATBOX_BORDER_PIXELS: f32 = 4.0;
+pub const CHATBOX_LINE_SPACING: f32 = 2.0;
 
 pub mod widget_ids {
     use crate::ui::WidgetID;

@@ -17,7 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 use std::collections::VecDeque;
 
-use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Rect, Text, Align};
+use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Rect, Text};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -29,7 +29,8 @@ pub struct Chatbox {
     pub id: WidgetID,
     pub history_lines: usize,
     pub color: Color,
-    pub messages: VecDeque<Text>,
+    pub messages: VecDeque<String>,
+    pub wrapped: VecDeque<(bool, Text)>,
     pub dimensions: Rect,
     pub hover: bool,
     pub action: UIAction,
@@ -67,6 +68,7 @@ impl Chatbox {
             history_lines,
             color: *CHATBOX_BORDER_COLOR,
             messages: VecDeque::with_capacity(history_lines),
+            wrapped: VecDeque::new(),
             dimensions: rect,
             hover: false,
             action: UIAction::EnterText,
@@ -97,24 +99,110 @@ impl Chatbox {
     /// ```
     ///
     pub fn add_message(&mut self, msg: String) -> GameResult<()> {
-        let mut text = Text::new(msg);
-        text.set_font(self.font_info.font, self.font_info.scale);
-        self.reflow_message(&mut text);
-        self.messages.push_back(text);
+        self.messages.push_back(msg.clone());
+
+        let mut texts = Chatbox::reflow_message(&msg, self.dimensions.w, &self.font_info);
+        self.wrapped.append(&mut texts);
+
+        // Remove any message(s) that exceed the alloted history. Any wrapped texts created from the
+        // message(s) also need to be removed
         while self.messages.len() > self.history_lines {
             self.messages.pop_front();
+
+            let mut count = 0;
+            for (has_more, _) in self.wrapped.iter() {
+                if *has_more {
+                    count += 1;
+                } else {
+                    break;
+                }
+            }
+            for _ in 0..count + 1 {
+                self.wrapped.remove(0);
+            }
         }
+
         Ok(())
     }
 
     fn reflow_messages(&mut self) {
+        self.wrapped.clear();
         for msg in self.messages.iter_mut() {
-            self.reflow_message(&mut msg);
+            let mut texts = Chatbox::reflow_message(msg, self.dimensions.w, &self.font_info);
+            self.wrapped.append(&mut texts);
         }
     }
 
-    fn reflow_message(&mut self, msg: &mut Text) {
-        msg.set_bounds(self.dimensions, Align::Left);
+    fn count_chars(msg: &str) -> usize {
+        let mut count = 0;
+        for _ in msg.chars() {
+            count += 1;
+        }
+        count
+    }
+
+    fn reflow_message(msg: &str, width: f32, font_info: &FontInfo) -> VecDeque<(bool, Text)> {
+        let mut texts = VecDeque::new();
+        let max_chars_per_line = (width / font_info.char_dimensions.x) as usize;
+        let mut s = String::with_capacity(max_chars_per_line);
+
+        let mut chars_added = 0;
+        for word in msg.split_whitespace() {
+
+            // plus 1 to ensure we don't draw the last character of the word on the border
+            if chars_added != 0 && chars_added + 1 + Chatbox::count_chars(word) > max_chars_per_line {
+                let mut text = Text::new(s.clone());
+                text.set_font(font_info.font, font_info.scale);
+                texts.push_back((true, text));
+                s.clear();
+                chars_added = 0;
+            }
+
+            if chars_added == 0 && Chatbox::count_chars(word) > max_chars_per_line {
+                // If word is longer than a line, then break the word into multiple lines
+                for ch in word.chars() {
+                    // plus 1 to ensure we don't draw the last character of the word on the border
+                    if chars_added + 1 == max_chars_per_line {
+                        let mut text = Text::new(s.clone());
+                        text.set_font(font_info.font, font_info.scale);
+                        texts.push_back((true, text));
+                        s.clear();
+                        chars_added = 0;
+                    }
+
+                    s.push(ch);
+                    chars_added += 1;
+                }
+                // add a space after the long word and continue forward
+                if !s.is_empty() {
+                    s.push(' ');
+                    chars_added += 1;
+                }
+                continue;
+            }
+
+            for ch in word.chars() {
+                s.push(ch);
+                chars_added += 1;
+            }
+
+            if chars_added + 1 <= max_chars_per_line {
+                s.push(' ');
+                chars_added += 1;
+            }
+        }
+
+        if !s.is_empty() {
+            let mut text = Text::new(s.clone());
+            text.set_font(font_info.font, font_info.scale);
+            texts.push_back((true, text));
+        }
+
+        if let Some((ref mut has_more_texts, _)) = texts.back_mut() {
+            *has_more_texts = false;
+        }
+
+        texts
     }
 }
 
@@ -156,7 +244,6 @@ impl Widget for Chatbox {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        let origin = self.dimensions.point();
 
         if self.hover {
             // Add in a teal border while hovered. Color checkbox differently to indicate hovered state.
@@ -183,13 +270,22 @@ impl Widget for Chatbox {
         )?;
         graphics::draw(ctx, &border, DrawParam::default())?;
 
-        // TODO need to do width wrapping check
-        for (i, msg) in self.messages.iter_mut().enumerate() {
+        let mut max_lines = (self.dimensions.h / (self.font_info.char_dimensions.y + constants::CHATBOX_LINE_SPACING)) as u32;
+        assert_ne!(max_lines, 0);
+
+        let mut i = 0;
+        let bottom_left_corner = Point2::new(self.dimensions.x, self.dimensions.y + self.dimensions.h - self.font_info.char_dimensions.y);
+        for (_, wrapped_text) in self.wrapped.iter().rev() {
+            if max_lines == 0 {
+                break;
+            }
             let point = Point2::new(
-                origin.x + constants::CHATBOX_BORDER_PIXELS + 1.0,
-                origin.y + i as f32 * 30.0,
+                bottom_left_corner.x + constants::CHATBOX_BORDER_PIXELS + 1.0,
+                bottom_left_corner.y - (i as f32 * self.font_info.char_dimensions.y)
             );
-            graphics::queue_text(ctx, &msg, point, Some(*CHATBOX_TEXT_COLOR));
+            graphics::queue_text(ctx, wrapped_text, point, Some(*CHATBOX_TEXT_COLOR));
+            max_lines -= 1;
+            i += 1;
         }
 
         graphics::draw_queued_text(ctx, DrawParam::default(), None, FilterMode::Linear)?;
