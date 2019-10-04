@@ -17,7 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 use std::collections::VecDeque;
 
-use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Rect, Text};
+use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Rect, Text, Align};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -99,11 +99,22 @@ impl Chatbox {
     pub fn add_message(&mut self, msg: String) -> GameResult<()> {
         let mut text = Text::new(msg);
         text.set_font(self.font_info.font, self.font_info.scale);
+        self.reflow_message(&mut text);
         self.messages.push_back(text);
         while self.messages.len() > self.history_lines {
             self.messages.pop_front();
         }
         Ok(())
+    }
+
+    fn reflow_messages(&mut self) {
+        for msg in self.messages.iter_mut() {
+            self.reflow_message(&mut msg);
+        }
+    }
+
+    fn reflow_message(&mut self, msg: &mut Text) {
+        msg.set_bounds(self.dimensions, Align::Left);
     }
 }
 
@@ -118,6 +129,7 @@ impl Widget for Chatbox {
 
     fn set_size(&mut self, new_dims: Rect) {
         self.dimensions = new_dims;
+        self.reflow_messages();
     }
 
     fn translate(&mut self, dest: Vector2<f32>) {
