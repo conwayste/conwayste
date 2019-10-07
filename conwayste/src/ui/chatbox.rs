@@ -99,10 +99,10 @@ impl Chatbox {
     /// ```
     ///
     pub fn add_message(&mut self, msg: String) -> GameResult<()> {
-        self.messages.push_back(msg.clone());
-
         let mut texts = Chatbox::reflow_message(&msg, self.dimensions.w, &self.font_info);
         self.wrapped.append(&mut texts);
+
+        self.messages.push_back(msg);
 
         // Remove any message(s) that exceed the alloted history. Any wrapped texts created from the
         // message(s) also need to be removed
