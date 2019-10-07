@@ -49,28 +49,56 @@ pub fn draw_text(ctx: &mut Context, font: Font, color: Color, text: String, coor
 #[derive(Clone)]
 pub struct FontInfo {
     /// ID of the font.
+    #[cfg(not(test))]
     pub font: Font,
     /// Scale at which to draw this font.
     pub scale: Scale,
     /// Use the `x` and `y` fields for the width and height of a single character.
     pub char_dimensions: Vector2<f32>,
+
+    // Testing only
+    #[cfg(test)]
+    pub font: (),
 }
 
 impl FontInfo {
     /// Creates a FontInfo. If `scale` is `None`, uses `DEFAULT_UI_FONT_SCALE`.
     pub fn new(ctx: &mut Context, font: Font, scale: Option<Scale>) -> Self {
         let scale = scale.unwrap_or(*DEFAULT_UI_FONT_SCALE);
-        let text = "xxxxxxxxxx"; // 10 arbitrary characters
-        let text_fragment = TextFragment::new(text)
-            .scale(scale)
-            .font(font);
-        let graphics_text = Text::new(text_fragment);
-        let char_dimensions = Vector2::new(graphics_text.width(ctx) as f32 / text.len() as f32, graphics_text.height(ctx) as f32);
-        FontInfo {
-            font,
-            scale,
-            char_dimensions,
+        #[cfg(not(test))]
+        {
+            let text = "xxxxxxxxxx"; // 10 arbitrary characters
+            let text_fragment = TextFragment::new(text)
+                .scale(scale)
+                .font(font);
+            let graphics_text = Text::new(text_fragment);
+            let char_dimensions = Vector2::new(graphics_text.width(ctx) as f32 / text.len() as f32,
+                                               graphics_text.height(ctx) as f32);
+            FontInfo {
+                font,
+                scale,
+                char_dimensions,
+            }
         }
+        #[cfg(test)]
+        {
+            let (_, _) = (ctx, font); // suppress unused var warnings
+            FontInfo {
+                font: (),
+                scale,
+                char_dimensions: Vector2::new(1.0, 1.0), // dummy
+            }
+        }
+    }
+
+    /// Applies the font and scale of this `FontInfo` to `text`.
+    pub fn apply(&self, text: &mut Text) {
+        #[cfg(not(test))]
+        text.set_font(self.font, self.scale);
+
+        // no-op if cfg(test)
+        #[cfg(test)]
+        let _ = text;
     }
 }
 

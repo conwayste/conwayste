@@ -152,7 +152,7 @@ impl Chatbox {
             // plus 1 to ensure we don't draw the last character of the word on the border
             if chars_added != 0 && chars_added + 1 + Chatbox::count_chars(word) > max_chars_per_line {
                 let mut text = Text::new(s.clone());
-                text.set_font(font_info.font, font_info.scale);
+                font_info.apply(&mut text);
                 texts.push_back((true, text));
                 s.clear();
                 chars_added = 0;
@@ -164,7 +164,7 @@ impl Chatbox {
                     // plus 1 to ensure we don't draw the last character of the word on the border
                     if chars_added + 1 == max_chars_per_line {
                         let mut text = Text::new(s.clone());
-                        text.set_font(font_info.font, font_info.scale);
+                        font_info.apply(&mut text);
                         texts.push_back((true, text));
                         s.clear();
                         chars_added = 0;
@@ -194,7 +194,7 @@ impl Chatbox {
 
         if !s.is_empty() {
             let mut text = Text::new(s.clone());
-            text.set_font(font_info.font, font_info.scale);
+            font_info.apply(&mut text);
             texts.push_back((true, text));
         }
 

@@ -23,10 +23,12 @@ use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
-    helpe::{draw_text, within_widget, FontInfo},
+    helpe::{within_widget, FontInfo},
     widget::Widget,
     UIAction, WidgetID,
 };
+#[cfg(not(test))]
+use super::helpe::draw_text;
 
 use crate::constants::{colors::*, CHATBOX_BORDER_PIXELS};
 
@@ -296,13 +298,20 @@ impl Widget for TextField {
             }
             let visible_text = self.text[self.visible_start_index..end].to_owned();
 
-            draw_text(
-                ctx,
-                self.font_info.font,
-                *INPUT_TEXT_COLOR,
-                visible_text,
-                &text_pos,
-            )?;
+            #[cfg(not(test))]
+            {
+                draw_text(
+                    ctx,
+                    self.font_info.font,
+                    *INPUT_TEXT_COLOR,
+                    visible_text,
+                    &text_pos,
+                )?;
+            }
+            #[cfg(test)]
+            {
+                let _ = visible_text;  // suppress warning
+            }
 
             if self.draw_cursor {
                 let mut cursor_pos = text_pos.clone();
@@ -314,13 +323,16 @@ impl Widget for TextField {
                 // of its area (like a cursor), not the center (like a character).
                 cursor_pos.x -= self.font_info.char_dimensions.x / 2.0;
 
-                draw_text(
-                    ctx,
-                    self.font_info.font,
-                    *INPUT_TEXT_COLOR,
-                    String::from("|"),
-                    &cursor_pos,
-                )?;
+                #[cfg(not(test))]
+                {
+                    draw_text(
+                        ctx,
+                        self.font_info.font,
+                        *INPUT_TEXT_COLOR,
+                        String::from("|"),
+                        &cursor_pos,
+                    )?;
+                }
             }
         }
 
