@@ -146,9 +146,10 @@ impl Chatbox {
 
         let mut chars_added = 0;
         for word in msg.split_whitespace() {
+            let word_chars = Chatbox::count_chars(word);
 
-            // plus 1 to ensure we don't draw the last character of the word on the border
-            if chars_added != 0 && chars_added + 1 + Chatbox::count_chars(word) > max_chars_per_line {
+            // Create a new line if word could fit all on a new line but doesn't fit on this line.
+            if chars_added != 0 && chars_added + word_chars > max_chars_per_line && word_chars <= max_chars_per_line {
                 let mut text = Text::new(s.clone());
                 font_info.apply(&mut text);
                 texts.push_back((true, text));
@@ -156,11 +157,10 @@ impl Chatbox {
                 chars_added = 0;
             }
 
-            if chars_added == 0 && Chatbox::count_chars(word) > max_chars_per_line {
-                // If word is longer than a line, then break the word into multiple lines
+            if word_chars > max_chars_per_line {
+                // If word is too long to fit on a line, then break the word into multiple lines
                 for ch in word.chars() {
-                    // plus 1 to ensure we don't draw the last character of the word on the border
-                    if chars_added + 1 == max_chars_per_line {
+                    if chars_added == max_chars_per_line {
                         let mut text = Text::new(s.clone());
                         font_info.apply(&mut text);
                         texts.push_back((true, text));
