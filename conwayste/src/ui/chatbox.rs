@@ -98,7 +98,7 @@ impl Chatbox {
     /// }
     /// ```
     ///
-    pub fn add_message(&mut self, msg: String) -> GameResult<()> {
+    pub fn add_message(&mut self, msg: String) {
         let mut texts = Chatbox::reflow_message(&msg, self.dimensions.w, &self.font_info);
         self.wrapped.append(&mut texts);
 
@@ -121,8 +121,6 @@ impl Chatbox {
                 self.wrapped.remove(0);
             }
         }
-
-        Ok(())
     }
 
     fn reflow_messages(&mut self) {
@@ -291,5 +289,113 @@ impl Widget for Chatbox {
         graphics::draw_queued_text(ctx, DrawParam::default(), None, FilterMode::Linear)?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ggez::graphics::Scale;
+    use std::collections::vec_deque;
+
+    // Utilities
+    fn max_chars_chatbox(max_chars_per_line: usize) -> Chatbox {
+        let history_lines = 20;
+        let font_info = FontInfo {
+            font: (), //dummy font because we can't create a real Font without ggez
+            scale: Scale::uniform(1.0), // I don't think this matters
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
+        };
+        let height = 123.0; // doesn't matter
+        // The following must be the reverse of the `max_chars_per_line` calculation in
+        // `reflow_message`, plus 0.01 padding.
+        let width = font_info.char_dimensions.x * (max_chars_per_line as f32) + 0.01;
+        let mut cb = Chatbox::new(WidgetID(0), font_info, history_lines);
+        cb.set_size(Rect::new(0.0, 0.0, width, height));
+        cb
+    }
+
+    // Read the next item from the iterator and compare it. Trailing whitespace is removed before
+    // comparison.
+    fn compare_next(text_iter: &mut vec_deque::Iter<(bool, Text)>, expected: &str) {
+        assert_eq!(text_iter.next().unwrap().1.contents().trim_end(), expected.trim_end());
+    }
+
+    // Tests
+    #[test]
+    fn chatbox_reflow_all_fit() {
+        let mut cb = max_chars_chatbox(20);
+        cb.add_message("what a great game".to_owned());
+        cb.reflow_messages();
+        let mut text_iter = cb.wrapped.iter();
+        compare_next(&mut text_iter, "what a great game");
+        assert!(text_iter.next().is_none());
+    }
+
+    #[test]
+    fn chatbox_reflow_just_barely_fit() {
+        let s = "what a great game".to_owned();
+        let mut cb = max_chars_chatbox(s.len()); // note: won't work if any multi-byte characters
+        cb.add_message(s.clone());
+        cb.reflow_messages();
+        let mut text_iter = cb.wrapped.iter();
+        compare_next(&mut text_iter, &s);
+        assert!(text_iter.next().is_none());
+    }
+
+    #[test]
+    fn chatbox_reflow_short_words_no_fit_bound_at_end_of_word() {
+        let mut cb = max_chars_chatbox(12);
+        cb.add_message("what a great game".to_owned());
+        cb.reflow_messages();
+        let mut text_iter = cb.wrapped.iter();
+        compare_next(&mut text_iter, "what a great");
+        compare_next(&mut text_iter, "game");
+        assert!(text_iter.next().is_none());
+    }
+
+    #[test]
+    fn chatbox_reflow_short_words_no_fit_bound_in_middle_of_word() {
+        let mut cb = max_chars_chatbox(15);
+        cb.add_message("what a great game".to_owned());
+        cb.reflow_messages();
+        let mut text_iter = cb.wrapped.iter();
+        compare_next(&mut text_iter, "what a great");
+        compare_next(&mut text_iter, "game");
+        assert!(text_iter.next().is_none());
+    }
+
+    #[test]
+    fn chatbox_reflow_short_words_no_fit_bound_at_start_of_word() {
+        let mut cb = max_chars_chatbox(13);
+        cb.add_message("what a great game".to_owned());
+        cb.reflow_messages();
+        let mut text_iter = cb.wrapped.iter();
+        compare_next(&mut text_iter, "what a great");
+        compare_next(&mut text_iter, "game");
+        assert!(text_iter.next().is_none());
+    }
+
+    #[test]
+    fn chatbox_reflow_short_words_plus_long_word_on_same_line() {
+        let mut cb = max_chars_chatbox(9);
+        cb.add_message("what an entertaining game".to_owned());
+        cb.reflow_messages();
+        let mut text_iter = cb.wrapped.iter();
+        compare_next(&mut text_iter, "what an e");
+        compare_next(&mut text_iter, "ntertaini");
+        compare_next(&mut text_iter, "ng game");
+        assert!(text_iter.next().is_none());
+    }
+
+    #[test]
+    fn chatbox_reflow_long_word_at_start() {
+        let mut cb = max_chars_chatbox(10);
+        cb.add_message("entertaining".to_owned());
+        cb.reflow_messages();
+        let mut text_iter = cb.wrapped.iter();
+        compare_next(&mut text_iter, "entertaini");
+        compare_next(&mut text_iter, "ng");
+        assert!(text_iter.next().is_none());
     }
 }

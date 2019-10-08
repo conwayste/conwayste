@@ -51,7 +51,7 @@ impl UILayout {
         let chat_pane_rect = Rect::new(30.0, 40.0, 300.0, 150.0);
         let mut chatpane = Box::new(Pane::new(INGAME_PANE1, chat_pane_rect));
 
-        const CHATBOX_HISTORY: usize = 5;
+        const CHATBOX_HISTORY: usize = 20;
         let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
         let chatbox_font_info = helpe::FontInfo::new(ctx, font, Some(*constants::DEFAULT_CHATBOX_FONT_SCALE));
         let mut chatbox = Chatbox::new(INGAME_PANE1_CHATBOX,

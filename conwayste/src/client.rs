@@ -1320,7 +1320,7 @@ impl MainState {
 
         for msg in incoming_messages {
             if let Some(cb) = LayoutManager::chatbox_from_id(&mut self.ui_layout, INGAME_PANE1_CHATBOX) {
-                cb.add_message(msg)?;
+                cb.add_message(msg);
             }
         }
 
@@ -1427,7 +1427,7 @@ impl MainState {
 
         if !msg.is_empty() {
             if let Some(cb) = LayoutManager::chatbox_from_id(&mut self.ui_layout, INGAME_PANE1_CHATBOX) {
-                cb.add_message(msg.clone())?;
+                cb.add_message(msg.clone());
 
                 if let Some(ref mut netwayste) = self.net_worker {
                     netwayste.try_send(NetwaysteEvent::ChatMessage(msg));
