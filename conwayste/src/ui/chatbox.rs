@@ -273,7 +273,6 @@ impl Widget for Chatbox {
         graphics::draw(ctx, &border, DrawParam::default())?;
 
         let mut max_lines = (self.dimensions.h / (self.font_info.char_dimensions.y + constants::CHATBOX_LINE_SPACING)) as u32;
-        assert_ne!(max_lines, 0);
 
         let mut i = 0;
         let bottom_left_corner = Point2::new(self.dimensions.x, self.dimensions.y + self.dimensions.h - self.font_info.char_dimensions.y);
