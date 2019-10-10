@@ -41,17 +41,17 @@ pub enum TextInputState {
 }
 
 pub struct TextField {
-    pub id: WidgetID,
-    pub action: UIAction,
+    id: WidgetID,
+    action: UIAction,
     pub state: Option<TextInputState>, // PR_GATE input state
     text: String,
-    pub cursor_index: usize, // Position of the cursor: 0 means before first character; it's at the end when equal to text.len()
+    cursor_index: usize, // Position of the cursor: 0 means before first character; it's at the end when equal to text.len()
     // `blink_timestamp` and `draw_cursor` are used to control the blinking of the cursor.
-    pub blink_timestamp: Option<Instant>,
-    pub draw_cursor: bool,
-    pub dimensions: Rect,
-    pub hover: bool,
-    pub visible_start_index: usize, // The index of the first character in `self.text` that is visible.
+    blink_timestamp: Option<Instant>,
+    draw_cursor: bool,
+    dimensions: Rect,
+    hover: bool,
+    visible_start_index: usize, // The index of the first character in `self.text` that is visible.
     font_info: FontInfo,
 }
 

@@ -26,14 +26,14 @@ use super::{helpe::{within_widget, FontInfo}, widget::Widget, UIAction, WidgetID
 use crate::constants::{self, colors::*};
 
 pub struct Chatbox {
-    pub id: WidgetID,
-    pub history_lines: usize,
-    pub color: Color,
-    pub messages: VecDeque<String>,
-    pub wrapped: VecDeque<(bool, Text)>,
-    pub dimensions: Rect,
-    pub hover: bool,
-    pub action: UIAction,
+    id: WidgetID,
+    history_lines: usize,
+    color: Color,
+    messages: VecDeque<String>,
+    wrapped: VecDeque<(bool, Text)>,
+    dimensions: Rect,
+    hover: bool,
+    action: UIAction,
     font_info: FontInfo,
 }
 
