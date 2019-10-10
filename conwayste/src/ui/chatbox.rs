@@ -214,8 +214,12 @@ impl Widget for Chatbox {
     }
 
     fn set_size(&mut self, new_dims: Rect) {
+        let old_dims = self.dimensions;
         self.dimensions = new_dims;
-        self.reflow_messages();
+        if old_dims.w != new_dims.w {
+            // width changed
+            self.reflow_messages();
+        }
     }
 
     fn translate(&mut self, dest: Vector2<f32>) {
