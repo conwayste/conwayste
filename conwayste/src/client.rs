@@ -81,7 +81,6 @@ use constants::{
 };
 use input::{MouseAction, ScrollEvent};
 use error::{ConwaysteResult, ConwaysteError::*};
-use viewport::Cell;
 use ui::{
     TextInputState,
     UIAction,
@@ -522,32 +521,26 @@ impl EventHandler for MainState {
                 if self.inputs.mouse_info.mousebutton == MouseButton::Left {
                     let mouse_pos = self.inputs.mouse_info.position;
 
-                    fn flip_cell(ms: &mut MainState, cell: Cell) {
-                        // Make dead cells alive or alive cells dead
-                        let result = ms.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID);
-                        ms.drag_draw = match result {
-                            Ok(state) => Some(state),
-                            Err(_)    => None,
-                        };
-                    }
-
                     match self.inputs.mouse_info.action {
                         Some(MouseAction::Click) => {
-                            if let Some(cell) = self.viewport.get_cell(mouse_pos) {
-                                flip_cell(self, cell)
-                            }
+                            self.drag_draw = None;
                         }
                         Some(MouseAction::Drag) => {
                             if let Some(cell) = self.viewport.get_cell(mouse_pos) {
                                 // Only make dead cells alive
                                 if let Some(cell_state) = self.drag_draw {
                                     self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
-                                } else {
-                                    flip_cell(self, cell)
                                 }
                             }
                         }
-                        Some(MouseAction::Held) | Some(MouseAction::DoubleClick) | None => {} // do nothing
+                        Some(MouseAction::Held) => {
+                            if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                                if self.drag_draw.is_none() {
+                                    self.drag_draw = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
+                                }
+                            }
+                        }
+                        Some(MouseAction::DoubleClick) | None => {} // do nothing
                     }
                 }
 
