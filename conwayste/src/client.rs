@@ -474,8 +474,6 @@ impl EventHandler for MainState {
                     if let Some(action) = mouse_action {
                         if action == MouseAction::Drag {
                             layer.on_drag(&origin_point, &mouse_point);
-                        } else if action == MouseAction::Click {
-                        // PR_GATE self.pane.update(true);
                         }
                     }
 

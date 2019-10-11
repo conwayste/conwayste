@@ -61,13 +61,15 @@ impl Pane {
         self.widgets.push(widget);
     }
 
+    /*
     // TODO: Currently used to reset previous position on mouse release after dragging completes.
-    //      Re-evaluate design if this is the best way to do it.
+    //      Re-evaluate design if this is the best way to do it. See issue #71 (dragging).
     pub fn update(&mut self, is_mouse_released: bool) {
         if is_mouse_released {
             self.previous_pos = None;
         }
     }
+    */
 }
 
 impl Widget for Pane {
@@ -111,6 +113,7 @@ impl Widget for Pane {
     }
 
 
+    /* TODO: fix all the drag issues
     /// original_pos is the mouse position at which the button was held before any dragging occurred
     /// current_pos is the latest mouse position after any movement
     fn on_drag(&mut self, original_pos: &Point2<f32>, current_pos: &Point2<f32>) {
@@ -157,6 +160,7 @@ impl Widget for Pane {
             self.previous_pos = Some(*current_pos);
         }
     }
+    */
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(1.0), self.dimensions, *PANE_BG_FILL_COLOR)?;

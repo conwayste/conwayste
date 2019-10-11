@@ -264,8 +264,6 @@ impl Widget for TextField {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        // PR_GATE: If string exceeds length of pane, need to only draw what should be visible
-
         if self.state.is_some() || !self.text.is_empty() {
             let colored_rect;
             if !self.text.is_empty() && self.state.is_none() {
