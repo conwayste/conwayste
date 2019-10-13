@@ -43,7 +43,7 @@ pub enum TextInputState {
 pub struct TextField {
     id: WidgetID,
     action: UIAction,
-    pub state: Option<TextInputState>, // PR_GATE input state
+    pub input_state: Option<TextInputState>,
     text: String,
     cursor_index: usize, // Position of the cursor: 0 means before first character; it's at the end when equal to text.len()
     // `blink_timestamp` and `draw_cursor` are used to control the blinking of the cursor.
@@ -81,7 +81,7 @@ impl TextField {
     ///
     pub fn new(widget_id: WidgetID, font_info: FontInfo, dimensions: Rect) -> TextField {
         TextField {
-            state: None,
+            input_state: None,
             text: String::new(),
             cursor_index: 0,
             blink_timestamp: None,
@@ -216,14 +216,14 @@ impl TextField {
 
     /// Textfield gains focus and begins accepting user input
     pub fn enter_focus(&mut self) {
-        self.state = Some(TextInputState::EnteringText);
+        self.input_state = Some(TextInputState::EnteringText);
         self.draw_cursor = true;
         self.blink_timestamp = Some(Instant::now());
     }
 
     /// Textfield loses focus and does not accept user input
     pub fn exit_focus(&mut self) {
-        self.state = None;
+        self.input_state = None;
         self.draw_cursor = false;
     }
 }
@@ -245,7 +245,7 @@ impl Widget for TextField {
     }
 
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        if Some(TextInputState::EnteringText) == self.state {
+        if Some(TextInputState::EnteringText) == self.input_state {
             if let Some(prev_blink_ms) = self.blink_timestamp {
                 if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
                     self.draw_cursor ^= true;
@@ -257,9 +257,9 @@ impl Widget for TextField {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        if self.state.is_some() || !self.text.is_empty() {
+        if self.input_state.is_some() || !self.text.is_empty() {
             let colored_rect;
-            if !self.text.is_empty() && self.state.is_none() {
+            if !self.text.is_empty() && self.input_state.is_none() {
                 colored_rect = graphics::Mesh::new_rectangle(
                     ctx,
                     DrawMode::stroke(CHATBOX_BORDER_PIXELS),

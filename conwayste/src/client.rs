@@ -494,7 +494,7 @@ impl EventHandler for MainState {
                 // while timer::check_update_time(ctx, FPS) {
                 let mut textfield_under_focus = false;
                 if let Some(tf) = LayoutManager::textfield_from_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
-                    match tf.state {
+                    match tf.input_state {
                         Some(TextInputState::TextInputComplete) =>  {
                             textfield_under_focus = false;
                             self.handle_user_chat_complete(ctx)?;
@@ -755,7 +755,7 @@ impl EventHandler for MainState {
 
         let screen = self.get_current_screen();
         if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-            if tf.state.is_some() {
+            if tf.input_state.is_some() {
                 tf.add_char_at_cursor(character);
             }
         }
@@ -954,7 +954,7 @@ impl MainState {
         match keycode {
             KeyCode::Return => {
                 if let Some(tf) = LayoutManager::textfield_from_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
-                    if tf.state.is_none() {
+                    if tf.input_state.is_none() {
                         if let Some(layer) = LayoutManager::get_top_layer_from_screen(&mut self.ui_layout, Screen::Run) {
                             layer.enter_focus(INGAME_PANE1_CHATBOXTEXTFIELD);
                         }
@@ -1050,7 +1050,7 @@ impl MainState {
         match keycode {
             KeyCode::Return => {
                 if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    tf.state = Some(TextInputState::TextInputComplete);
+                    tf.input_state = Some(TextInputState::TextInputComplete);
                 }
             }
             KeyCode::Escape => {
@@ -1060,42 +1060,42 @@ impl MainState {
             }
             KeyCode::Back => {
                 if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    if let Some(TextInputState::EnteringText) = tf.state {
+                    if let Some(TextInputState::EnteringText) = tf.input_state {
                         tf.remove_left_of_cursor();
                     }
                 }
             }
             KeyCode::Delete => {
                 if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    if let Some(TextInputState::EnteringText) = tf.state {
+                    if let Some(TextInputState::EnteringText) = tf.input_state {
                         tf.remove_right_of_cursor();
                     }
                 }
             }
             KeyCode::Left => {
                 if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    if let Some(TextInputState::EnteringText) = tf.state {
+                    if let Some(TextInputState::EnteringText) = tf.input_state {
                         tf.move_cursor_left();
                     }
                 }
             },
             KeyCode::Right => {
                 if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    if let Some(TextInputState::EnteringText) = tf.state {
+                    if let Some(TextInputState::EnteringText) = tf.input_state {
                         tf.move_cursor_right();
                     }
                 }
             }
             KeyCode::Home => {
                 if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    if let Some(TextInputState::EnteringText) = tf.state {
+                    if let Some(TextInputState::EnteringText) = tf.input_state {
                         tf.cursor_home();
                     }
                 }
             }
             KeyCode::End => {
                 if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    if let Some(TextInputState::EnteringText) = tf.state {
+                    if let Some(TextInputState::EnteringText) = tf.input_state {
                         tf.cursor_end();
                     }
                 }
@@ -1412,7 +1412,7 @@ impl MainState {
             if let Some(m) = tf.text() {
                 msg = format!("{}: {}", username, m);
             }
-            tf.state = None;
+            tf.input_state = None;
             tf.clear();
         }
 
