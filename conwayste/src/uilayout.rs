@@ -63,9 +63,9 @@ impl UILayout {
 
         const CHAT_TEXTFIELD_HEIGHT: f32 = (20.0 + 5.0);
         let textfield_rect = Rect::new(chatbox_rect.x, chatbox_rect.bottom(), chatbox_rect.w, CHAT_TEXTFIELD_HEIGHT);
-        let textfield_font_info = helpe::FontInfo::new(ctx, font, None);
+        let default_font_info = helpe::FontInfo::new(ctx, font, None);
         let textfield = Box::new(TextField::new(INGAME_PANE1_CHATBOXTEXTFIELD,
-            textfield_font_info,
+            default_font_info,
             textfield_rect,
         ));
 
@@ -74,7 +74,7 @@ impl UILayout {
 
         let checkbox = Box::new(Checkbox::new(ctx, MAINMENU_TESTCHECKBOX,
             config.get().video.fullscreen,
-            font.clone(),
+            default_font_info,
             "Toggle FullScreen".to_owned(),
             Rect::new(10.0, 210.0, 20.0, 20.0),
         ));
@@ -88,7 +88,7 @@ impl UILayout {
         let mut pane_button = Box::new(Button::new(ctx, MAINMENU_PANE1_BUTTONYES,
             UIAction::ScreenTransition(Screen::ServerList),
             MAINMENU_PANE1_BUTTONYESLABEL,
-            font.clone(),
+            default_font_info,
             "ServerList".to_owned()
         ));
         pane_button.set_size(Rect::new(10.0, 10.0, 180.0, 50.0));
@@ -97,7 +97,7 @@ impl UILayout {
         let mut pane_button = Box::new(Button::new(ctx, MAINMENU_PANE1_BUTTONNO,
             UIAction::ScreenTransition(Screen::InRoom),
             MAINMENU_PANE1_BUTTONNOLABEL,
-            font.clone(),
+            default_font_info,
             "InRoom".to_owned()
         ));
         pane_button.set_size(Rect::new(10.0, 70.0, 180.0, 50.0));
@@ -106,7 +106,7 @@ impl UILayout {
         let mut pane_button = Box::new(Button::new(ctx, MAINMENU_TESTBUTTON,
             UIAction::ScreenTransition(Screen::Run),
             MAINMENU_TESTBUTTONLABEL,
-            font.clone(),
+            default_font_info,
             "StartGame".to_owned()
         ));
         pane_button.set_size(Rect::new(10.0, 130.0, 180.0, 50.0));

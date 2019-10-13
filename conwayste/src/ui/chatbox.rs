@@ -45,6 +45,18 @@ impl Chatbox {
     /// * `font_info` - a `FontInfo` struct to represent that chat text's font
     /// * `history_lines` - Number of lines of chat history to maintain
     ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ggez::graphics::Font;
+    /// use ui::{self, Checkbox, helpe};
+    ///
+    /// let font = Font::Default;
+    /// let chatbox_font_info = helpe::FontInfo::new(ctx, font, Some(20.0));
+    /// let chatbox = Chatbox::new(ui::TestChatbox, chatbox_font_info, 20);
+    /// checkbox.draw(ctx);
+    /// ```
+    ///
     pub fn new(widget_id: WidgetID, font_info: FontInfo, history_lines: usize) -> Self {
         // TODO: affix to bottom left corner once "anchoring"/"gravity" is implemented
         let rect = *constants::DEFAULT_CHATBOX_RECT;
@@ -69,20 +81,19 @@ impl Chatbox {
     /// # Examples
     ///
     /// ```rust
-    /// use ui::Chatbox;
+    /// use ggez::graphics::Font;
+    /// use ui::{Chatbox, helpe};
     ///
-    /// let chatbox_font_info = helpe::FontInfo::new(ctx, font, Some(*constants::DEFAULT_CHATBOX_FONT_SCALE));
-    /// let mut chatbox = Chatbox::new(SOME_CHATBOX_WIDGET_ID,
-    ///     chatbox_font_info,
-    ///     200,
-    /// );
+    /// let font = Font::Default;
+    /// let font_info = helpe::FontInfo::new(ctx, font, Some(20.0));
+    /// let mut chatbox = Chatbox::new(SOME_CHATBOX_WIDGET_ID, font_info, 200);
     /// chatbox.add_message(String::new("Player 1: This is a new chat message");
     /// chatbox.add_message(String::new("-- This is a Server broadcast message -- ");
     /// chatbox.set_size(chatbox_rect);
     /// chatpane.add(Box::new(chatbox));
     ///
     /// //...
-    /// chatbox.draw(ctx)?;
+    /// chatbox.draw(ctx);
     /// ```
     ///
     pub fn add_message(&mut self, msg: String) {
@@ -126,6 +137,7 @@ impl Chatbox {
         count
     }
 
+    /// Breaks the message up into segments that are at most `width` long for the provided `font_info`
     fn reflow_message(msg: &str, width: f32, font_info: &FontInfo) -> VecDeque<(bool, Text)> {
         let mut texts = VecDeque::new();
         let max_chars_per_line = (width / font_info.char_dimensions.x) as usize;
@@ -135,7 +147,7 @@ impl Chatbox {
         for word in msg.split_whitespace() {
             let word_chars = Chatbox::count_chars(word);
 
-            // Create a new line if word could fit all on a new line but doesn't fit on this line.
+            // If the word can fit on the next line, but not the current line
             if chars_added != 0 && chars_added + word_chars > max_chars_per_line && word_chars <= max_chars_per_line {
                 let mut text = Text::new(s.clone());
                 font_info.apply(&mut text);

@@ -16,14 +16,14 @@
  *  You should have received a copy of the GNU General Public License
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
-use ggez::graphics::{self, Rect, Font, DrawMode, DrawParam};
+use ggez::graphics::{self, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
     label::Label,
     widget::Widget,
-    helpe::within_widget,
+    helpe::{within_widget, FontInfo},
     UIAction,
     WidgetID,
 };
@@ -49,8 +49,8 @@ impl Checkbox {
     /// # Arguments
     /// * `ctx` - GGEZ context
     /// * `widget_id` - Unique widget identifier
-    /// * `action` - Unique action identifer
-    /// * `font` - font to be used when drawing the text
+    /// * `enabled` - initial to checked or unchecked
+    /// * `font_info` - font descriptor to be used when drawing the text
     /// * `text` - Label text
     /// * `dimensions` - Size of checkbox (currently a hollor or filled rectangle)
     ///
@@ -58,27 +58,26 @@ impl Checkbox {
     ///
     /// ```rust
     /// use ggez::graphics::Font;
-    /// use ui::Checkbox;
+    /// use ui::{self, Checkbox, helpe};
     ///
-    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Font::default();
-    ///     let checkbox = Box::new(Checkbox::new(ctx,
-    ///         ui::TestCheckbox,
-    ///         false,
-    ///         font,
-    ///         "Toggle Me",
-    ///         Rect::new(10.0, 210.0, 20.0, 20.0)
-    ///     ));
-    ///     checkbox.draw(ctx)?;
-    /// }
+    /// let font = Font::default();
+    /// let font_info = helpe::FontInfo::new(ctx, font, Some(20.0));
+    /// let checkbox = Checkbox::new(ctx,
+    ///    ui::TestCheckbox,
+    ///    false,
+    ///    font_info,
+    ///    "Toggle Me",
+    ///    Rect::new(10.0, 210.0, 20.0, 20.0)
+    /// );
+    /// checkbox.draw(ctx);
     /// ```
     ///
-    pub fn new(ctx: &mut Context, widget_id: WidgetID, enabled: bool, font: Font, text: String, dimensions: Rect) -> Self {
+    pub fn new(ctx: &mut Context, widget_id: WidgetID, enabled: bool, font_info: FontInfo, text: String, dimensions: Rect) -> Self {
         let label_origin = Point2::new(dimensions.x + dimensions.w + LABEL_OFFSET_X, dimensions.y + dimensions.h + LABEL_OFFSET_Y);
 
         Checkbox {
             id: widget_id,
-            label: Label::new(ctx, widget_id, font, text, *CHECKBOX_TEXT_COLOR, label_origin),
+            label: Label::new(ctx, widget_id, font_info, text, *CHECKBOX_TEXT_COLOR, label_origin),
             enabled: enabled,
             dimensions: dimensions,
             hover: false,
@@ -86,7 +85,7 @@ impl Checkbox {
         }
     }
 
-    /// Toggles the checkbox between enabled & disabled and returns the its state
+    /// Toggles the checkbox between enabled or disabled, and returns its new state
     pub fn toggle_checkbox(&mut self) -> bool {
         self.enabled = !self.enabled;
         self.enabled

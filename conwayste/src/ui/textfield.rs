@@ -61,24 +61,22 @@ impl TextField {
     ///
     /// # Arguments
     /// * `widget_id` - Unique widget identifier
-    /// * `font` - font-type for drawn text; must be fixed width!
+    /// * `font_info` - font descriptor to be used when drawing the text
     /// * `dimensions` - rectangle describing the size of the text field
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use ui::TextField;
+    /// use ggez::graphics::Font;
+    /// use ui::{self, TextField};
     ///
-    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Font::default();
-    ///     let dimensions = Rect::new(0.0, 0.0, 300.0, 20.0);
+    /// let font = Font::Default;
+    /// let font_info = helpe::FontInfo::new(ctx, font, Some(20.0));
+    /// let dimensions = Rect::new(0.0, 0.0, 300.0, 20.0);
     ///
-    ///     let single_char_width = helpe::get_char_dimensions(ctx, *font).x;
-    ///     let textfield = TextField::new(ui::ChatboxTextField, font, dimensions,
-    ///                                    single_char_width);
+    /// let textfield = TextField::new(ui::ChatboxTextField, font_info, dimensions);
     ///
-    ///     textfield.draw(ctx)?;
-    /// }
+    /// textfield.draw(ctx);
     /// ```
     ///
     pub fn new(widget_id: WidgetID, font_info: FontInfo, dimensions: Rect) -> TextField {
@@ -244,11 +242,6 @@ impl Widget for TextField {
             return Some((self.id, self.action));
         }
         None
-    }
-
-    fn on_drag(&mut self, _original_point: &Point2<f32>, _point: &Point2<f32>) {
-        // Any point to implementing highlighting in 1.0?
-        ()
     }
 
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {

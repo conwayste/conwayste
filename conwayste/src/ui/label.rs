@@ -17,15 +17,16 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::{Context, GameResult};
-use ggez::graphics::{self, Color, Rect, Font, Text, TextFragment, DrawParam, Drawable};
+use ggez::graphics::{self, Color, Rect, Text, TextFragment, DrawParam, Drawable};
 use ggez::nalgebra::{Point2, Vector2};
+#[cfg(test)]
+use ggez::graphics::Font;
 
 use super::{
+    helpe::FontInfo,
     widget::Widget,
     WidgetID
 };
-
-use crate::constants::DEFAULT_UI_FONT_SCALE;
 
 pub struct Label {
     pub id: WidgetID,
@@ -48,30 +49,38 @@ impl Label {
     /// # Examples
     ///
     /// ```rust
-    /// use ui::Label;
+    /// use ui::{self, Label, helpe};
     /// use chromatica::css;
     ///
-    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Font::default();
-    ///     let label = Label::new(ctx,
-    ///         ui::TestLabel,
-    ///         font,
-    ///         "TestButton",
-    ///         Color::from(css::DARKCYAN),
-    ///         Color::from(css::WHITE)
-    ///     );
+    /// let font = Font::default();
+    /// let font_info = FontInfo::new(font, Some(20.0));
+    /// let label = Label::new(ctx,
+    ///     ui::TestLabel,
+    ///     font_info,
+    ///     "TestButton",
+    ///     Color::from(css::DARKCYAN),
+    ///     Color::from(css::WHITE)
+    /// );
     ///
-    ///     label.draw(ctx)?;
-    /// }
+    /// label.draw(ctx);
     /// ```
     ///
-    pub fn new(ctx: &mut Context, widget_id: WidgetID, font: Font, string: String, color: Color, dest: Point2<f32>) -> Self {
-        let font: Font = font;
-
-        let text_fragment = TextFragment::new(string.clone())
-            .scale(*DEFAULT_UI_FONT_SCALE)
-            .color(color)
-            .font(font);
+    pub fn new(ctx: &mut Context, widget_id: WidgetID, font_info: FontInfo, string: String, color: Color, dest: Point2<f32>) -> Self {
+        let text_fragment;
+        #[cfg(not(test))]
+        {
+            text_fragment = TextFragment::new(string.clone())
+                .scale(font_info.scale)
+                .color(color)
+                .font(font_info.font);
+        }
+        #[cfg(test)]
+        {
+            text_fragment = TextFragment::new(string.clone())
+                .scale(font_info.scale)
+                .color(color)
+                .font(Font::default());
+        }
 
         let text = Text::new(text_fragment.clone());
         // unwrap safe b/c if this fails then the game is fundamentally broken and is not in a usable state

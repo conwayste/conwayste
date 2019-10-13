@@ -50,8 +50,6 @@ impl Layer {
         }
     }
 
-    // TODO builder
-
     /// Add a widget to the layer
     pub fn add(&mut self, widget: Box<dyn Widget>) {
         self.widgets.push(widget);

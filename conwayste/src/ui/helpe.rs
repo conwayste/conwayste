@@ -46,7 +46,7 @@ pub fn draw_text(ctx: &mut Context, font: Font, color: Color, text: String, coor
 /// Represents a font at a particular scale. Besides the ID of the font, it also includes the scale
 /// at which to draw it, and the dimensions of one character at that scale (this is only useful if
 /// the font is fixed width!).
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct FontInfo {
     /// ID of the font.
     #[cfg(not(test))]

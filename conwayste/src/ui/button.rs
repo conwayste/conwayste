@@ -18,14 +18,14 @@
 
 use chromatica::css;
 
-use ggez::graphics::{self, Rect, Font, Color, DrawMode, DrawParam};
+use ggez::graphics::{self, Rect, Color, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
     label::Label,
     widget::Widget,
-    helpe::{within_widget, color_with_alpha, center},
+    helpe::{within_widget, color_with_alpha, center, FontInfo},
     UIAction, WidgetID
 };
 
@@ -50,34 +50,34 @@ impl Button {
     ///
     /// # Arguments
     /// * `ctx` - GGEZ context
-    /// * `font` - font to be used when drawing the text
-    /// * `button_text` - Text to be displayed
     /// * `widget_id` - Unique widget identifier
     /// * `action` - Unique action identifer
+    /// * `label_id` - Unique widget identifier for the associated label representing the button's text
+    /// * `font_info` - font descriptor to be used when drawing the text
+    /// * `button_text` - Text to be displayed
     ///
     /// # Examples
     ///
     /// ```rust
     /// use ggez::graphics::Font;
-    /// use ui::Button;
+    /// use ui::{self, Button, helpe};
     ///
-    /// fn new(ctx: &mut Context) -> GameResult<MainState> {
-    ///     let font = Font::default();
-    ///     let b = Button::new(ctx, ui::TestButton1,
-    ///             UIAction::PrintHelloWorld,
-    ///             ui::TestButton1Label,
-    ///             font,
-    ///             "TestButton");
+    /// let font = Font::Default;
+    /// let font_info = helpe::FontInfo::new(ctx, font, Some(20.0));
+    /// let b = Button::new(ctx, ui::TestButton1,
+    ///         UIAction::PrintHelloWorld,
+    ///         ui::TestButton1Label,
+    ///         font_info,
+    ///         "TestButton");
     ///
-    ///     b.draw(ctx)?;
-    /// }
+    /// b.draw(ctx);
     /// ```
     ///
     pub fn new(ctx: &mut Context, widget_id: WidgetID, action: UIAction, label_id: WidgetID,
-        font: Font, button_text: String) -> Self
+        font_info: FontInfo, button_text: String) -> Self
     {
         let label_position = Point2::new(0.0, 0.0); // label positioning defined an offset to button origin after centering
-        let label = Label::new(ctx, label_id, font, button_text, color_with_alpha(css::WHITE, 0.1), label_position);
+        let label = Label::new(ctx, label_id, font_info, button_text, color_with_alpha(css::WHITE, 0.1), label_position);
         let label_dims = label.size();
 
         let dimensions = Rect::new(30.0, 20.0, label_dims.w + BUTTON_LABEL_PADDING_W, label_dims.h + BUTTON_LABEL_PADDING_H);
