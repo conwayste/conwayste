@@ -1392,13 +1392,6 @@ impl MainState {
                     reason: format!("Widget: {:?} is a Pane or Layer element and has no associated action", widget_id)
                 });
             },
-            INGAME_PANE1_CHATBOX
-            | INGAME_PANE1_CHATBOXTEXTFIELD
-            | MAINMENU_PANE1_BUTTONNOLABEL
-            | MAINMENU_PANE1_BUTTONYESLABEL
-            | MAINMENU_TESTBUTTONLABEL => {
-                // PR_GATE
-            },
             ui::WidgetID(_) => {},
         }
 
