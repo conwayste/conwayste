@@ -23,7 +23,7 @@ use ggez::{Context, GameResult};
 
 use super::{
     widget::Widget,
-    helpe::color_with_alpha,
+    common::color_with_alpha,
     Pane,
     TextField,
     UIAction,

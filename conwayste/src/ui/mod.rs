@@ -20,7 +20,7 @@ extern crate ggez;
 extern crate chromatica;
 
 #[macro_use]
-pub(crate) mod helpe;
+pub(crate) mod common;
 mod button;
 mod chatbox;
 mod checkbox;
@@ -35,7 +35,7 @@ use crate::Screen;
 pub use button::Button;
 pub use chatbox::Chatbox;
 pub use checkbox::Checkbox;
-pub use helpe::{
+pub use common::{
     within_widget,
     center,
     draw_text,

@@ -25,7 +25,7 @@ use ggez::{Context, GameResult};
 use super::{
     label::Label,
     widget::Widget,
-    helpe::{within_widget, color_with_alpha, center, FontInfo},
+    common::{within_widget, color_with_alpha, center, FontInfo},
     UIAction, WidgetID
 };
 
@@ -60,10 +60,10 @@ impl Button {
     ///
     /// ```rust
     /// use ggez::graphics::Font;
-    /// use ui::{self, Button, helpe};
+    /// use ui::{self, Button, common};
     ///
     /// let font = Font::Default;
-    /// let font_info = helpe::FontInfo::new(ctx, font, Some(20.0));
+    /// let font_info = common::FontInfo::new(ctx, font, Some(20.0));
     /// let b = Button::new(ctx, ui::TestButton1,
     ///         UIAction::PrintHelloWorld,
     ///         ui::TestButton1Label,

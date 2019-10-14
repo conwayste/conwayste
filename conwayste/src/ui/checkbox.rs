@@ -23,7 +23,7 @@ use ggez::{Context, GameResult};
 use super::{
     label::Label,
     widget::Widget,
-    helpe::{within_widget, FontInfo},
+    common::{within_widget, FontInfo},
     UIAction,
     WidgetID,
 };
@@ -58,10 +58,10 @@ impl Checkbox {
     ///
     /// ```rust
     /// use ggez::graphics::Font;
-    /// use ui::{self, Checkbox, helpe};
+    /// use ui::{self, Checkbox, common};
     ///
     /// let font = Font::default();
-    /// let font_info = helpe::FontInfo::new(ctx, font, Some(20.0));
+    /// let font_info = common::FontInfo::new(ctx, font, Some(20.0));
     /// let checkbox = Checkbox::new(ctx,
     ///    ui::TestCheckbox,
     ///    false,

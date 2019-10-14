@@ -28,7 +28,7 @@ pub const HISTORY_SIZE: usize = 16;
 pub mod colors {
     use ggez::graphics::Color;
     use chromatica::css;
-    use crate::ui::helpe::color_with_alpha;
+    use crate::ui::common::color_with_alpha;
 
     lazy_static! {
         // TODO: probably can consoldate/remove many of these once the design is fleshed out more

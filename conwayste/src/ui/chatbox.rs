@@ -21,7 +21,7 @@ use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Rect, Text};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
-use super::{helpe::{within_widget, FontInfo}, widget::Widget, UIAction, WidgetID};
+use super::{common::{within_widget, FontInfo}, widget::Widget, UIAction, WidgetID};
 
 use crate::constants::{self, colors::*};
 
@@ -49,10 +49,10 @@ impl Chatbox {
     ///
     /// ```rust
     /// use ggez::graphics::Font;
-    /// use ui::{self, Checkbox, helpe};
+    /// use ui::{self, Checkbox, common};
     ///
     /// let font = Font::Default;
-    /// let chatbox_font_info = helpe::FontInfo::new(ctx, font, Some(20.0));
+    /// let chatbox_font_info = common::FontInfo::new(ctx, font, Some(20.0));
     /// let chatbox = Chatbox::new(ui::TestChatbox, chatbox_font_info, 20);
     /// checkbox.draw(ctx);
     /// ```
@@ -82,10 +82,10 @@ impl Chatbox {
     ///
     /// ```rust
     /// use ggez::graphics::Font;
-    /// use ui::{Chatbox, helpe};
+    /// use ui::{Chatbox, common};
     ///
     /// let font = Font::Default;
-    /// let font_info = helpe::FontInfo::new(ctx, font, Some(20.0));
+    /// let font_info = common::FontInfo::new(ctx, font, Some(20.0));
     /// let mut chatbox = Chatbox::new(SOME_CHATBOX_WIDGET_ID, font_info, 200);
     /// chatbox.add_message(String::new("Player 1: This is a new chat message");
     /// chatbox.add_message(String::new("-- This is a Server broadcast message -- ");

@@ -23,12 +23,12 @@ use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
-    helpe::{within_widget, FontInfo},
+    common::{within_widget, FontInfo},
     widget::Widget,
     UIAction, WidgetID,
 };
 #[cfg(not(test))]
-use super::helpe::draw_text;
+use super::common::draw_text;
 
 use crate::constants::{colors::*, CHATBOX_BORDER_PIXELS};
 
@@ -71,7 +71,7 @@ impl TextField {
     /// use ui::{self, TextField};
     ///
     /// let font = Font::Default;
-    /// let font_info = helpe::FontInfo::new(ctx, font, Some(20.0));
+    /// let font_info = common::FontInfo::new(ctx, font, Some(20.0));
     /// let dimensions = Rect::new(0.0, 0.0, 300.0, 20.0);
     ///
     /// let textfield = TextField::new(ui::ChatboxTextField, font_info, dimensions);

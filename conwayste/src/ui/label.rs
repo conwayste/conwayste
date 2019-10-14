@@ -23,7 +23,7 @@ use ggez::nalgebra::{Point2, Vector2};
 use ggez::graphics::Font;
 
 use super::{
-    helpe::FontInfo,
+    common::FontInfo,
     widget::Widget,
     WidgetID
 };
@@ -49,7 +49,7 @@ impl Label {
     /// # Examples
     ///
     /// ```rust
-    /// use ui::{self, Label, helpe};
+    /// use ui::{self, Label, common};
     /// use chromatica::css;
     ///
     /// let font = Font::default();

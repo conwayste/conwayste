@@ -22,7 +22,7 @@ use ggez::{Context, GameResult};
 
 use super::{
     widget::Widget,
-    helpe::{within_widget},
+    common::{within_widget},
     UIAction, WidgetID
 };
 

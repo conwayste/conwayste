@@ -37,7 +37,7 @@ use crate::ui::{
     Pane,
     TextField,
     UIAction,
-    helpe,
+    common,
 };
 
 pub struct UILayout {
@@ -53,7 +53,7 @@ impl UILayout {
 
         const CHATBOX_HISTORY: usize = 20;
         let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
-        let chatbox_font_info = helpe::FontInfo::new(ctx, font, Some(*constants::DEFAULT_CHATBOX_FONT_SCALE));
+        let chatbox_font_info = common::FontInfo::new(ctx, font, Some(*constants::DEFAULT_CHATBOX_FONT_SCALE));
         let mut chatbox = Chatbox::new(INGAME_PANE1_CHATBOX,
             chatbox_font_info,
             CHATBOX_HISTORY
@@ -63,7 +63,7 @@ impl UILayout {
 
         const CHAT_TEXTFIELD_HEIGHT: f32 = (20.0 + 5.0);
         let textfield_rect = Rect::new(chatbox_rect.x, chatbox_rect.bottom(), chatbox_rect.w, CHAT_TEXTFIELD_HEIGHT);
-        let default_font_info = helpe::FontInfo::new(ctx, font, None);
+        let default_font_info = common::FontInfo::new(ctx, font, None);
         let textfield = Box::new(TextField::new(INGAME_PANE1_CHATBOXTEXTFIELD,
             default_font_info,
             textfield_rect,
