@@ -173,3 +173,5 @@ impl Widget for Pane {
         Ok(())
     }
 }
+
+widget_from_id!(Pane);

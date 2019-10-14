@@ -82,6 +82,7 @@ use constants::{
 use input::{MouseAction, ScrollEvent};
 use error::{ConwaysteResult, ConwaysteError::*};
 use ui::{
+    TextField,
     TextInputState,
     UIAction,
     Widget,
@@ -468,7 +469,7 @@ impl EventHandler for MainState {
                 let left_mouse_click = mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
 
                 let screen = self.get_current_screen();
-                if let Some(layer) = LayoutManager::get_top_layer_from_screen(&mut self.ui_layout, screen) {
+                if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, screen) {
                     layer.on_hover(&mouse_point);
 
                     if let Some(action) = mouse_action {
@@ -493,7 +494,7 @@ impl EventHandler for MainState {
                 // TODO Disable FSP limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
                 let mut textfield_under_focus = false;
-                if let Some(tf) = LayoutManager::textfield_from_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     match tf.input_state {
                         Some(TextInputState::TextInputComplete) =>  {
                             textfield_under_focus = false;
@@ -546,7 +547,7 @@ impl EventHandler for MainState {
                 let mouse_point = self.inputs.mouse_info.position;
                 let screen = self.get_current_screen();
 
-                if let Some(layer) = LayoutManager::get_top_layer_from_screen(&mut self.ui_layout, screen) {
+                if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, screen) {
                     layer.on_hover(&mouse_point);
                 }
 
@@ -953,9 +954,9 @@ impl MainState {
 
         match keycode {
             KeyCode::Return => {
-                if let Some(tf) = LayoutManager::textfield_from_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                if let Some(tf) = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if tf.input_state.is_none() {
-                        if let Some(layer) = LayoutManager::get_top_layer_from_screen(&mut self.ui_layout, Screen::Run) {
+                        if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, Screen::Run) {
                             layer.enter_focus(INGAME_PANE1_CHATBOXTEXTFIELD);
                         }
                     }
@@ -1054,7 +1055,7 @@ impl MainState {
                 }
             }
             KeyCode::Escape => {
-                if let Some(layer) = LayoutManager::get_top_layer_from_screen(&mut self.ui_layout, screen) {
+                if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, screen) {
                     layer.exit_focus();
                 }
             }
@@ -1408,7 +1409,7 @@ impl MainState {
         let username = self.config.get().user.name.clone();
         let mut msg = String::new();
 
-        if let Some(tf) = LayoutManager::textfield_from_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+        if let Some(tf) = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
             if let Some(m) = tf.text() {
                 msg = format!("{}: {}", username, m);
             }

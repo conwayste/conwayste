@@ -24,12 +24,11 @@ use ggez::{Context, GameResult};
 use super::{
     widget::Widget,
     helpe::color_with_alpha,
-    Chatbox,
     Pane,
     TextField,
     UIAction,
     WidgetID
-    };
+};
 
 pub struct Layer {
     pub id: WidgetID,
@@ -58,7 +57,8 @@ impl Layer {
     /// Layer passes `exit_focus` request forward to its elements
     pub fn exit_focus(&mut self) {
         if let Some(other_id) = self.focused_widget {
-            if let Some(other_tf) = self.textfield_from_id(other_id) {
+            if let Some(other_tf) = TextField::widget_from_id(self, other_id)
+            {
                 other_tf.exit_focus();
             }
         }
@@ -68,7 +68,7 @@ impl Layer {
     pub fn enter_focus(&mut self, id: WidgetID) {
         self.exit_focus();
 
-        if let Some(tf) = self.textfield_from_id(id) {
+        if let Some(tf) = TextField::widget_from_id(self, id) {
             tf.enter_focus();
             self.focused_widget = Some(id);
             return;
@@ -114,20 +114,6 @@ impl Layer {
 
         // PR_GATE Replace with ConwaysteResult
         panic!("ERROR in Layer::get_widget_mut() => Widget (ID: {:?}) not found in layer (ID: {:?})", id, self.id);
-    }
-
-    // PR_GATE add support for other widgets
-
-    /// Returns the desired text field from the provided WidgetID, if found in the layer
-    pub fn textfield_from_id(&mut self, id: WidgetID) -> Option<&mut TextField> {
-        let widget = self.get_widget_mut(id);
-        return widget.downcast_mut::<TextField>();
-    }
-
-    /// Returns the desired chat box from the provided WidgetID, if found in the layer
-    pub fn chatbox_from_id(&mut self, id: WidgetID) -> Option<&mut Chatbox> {
-        let widget = self.get_widget_mut(id);
-        return widget.downcast_mut::<Chatbox>();
     }
 }
 

@@ -294,6 +294,8 @@ impl Widget for Chatbox {
     }
 }
 
+widget_from_id!(Chatbox);
+
 #[cfg(test)]
 mod tests {
     use super::*;

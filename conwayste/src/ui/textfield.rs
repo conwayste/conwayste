@@ -346,3 +346,5 @@ impl Widget for TextField {
         self.id
     }
 }
+
+widget_from_id!(TextField);

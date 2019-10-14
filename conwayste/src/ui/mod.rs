@@ -19,10 +19,11 @@
 extern crate ggez;
 extern crate chromatica;
 
+#[macro_use]
+pub(crate) mod helpe;
 mod button;
 mod chatbox;
 mod checkbox;
-pub(crate) mod helpe;
 mod label;
 mod layer;
 mod pane;

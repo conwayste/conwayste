@@ -158,3 +158,5 @@ impl Widget for Checkbox {
         Ok(())
     }
 }
+
+widget_from_id!(Checkbox);

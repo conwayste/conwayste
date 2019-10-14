@@ -132,3 +132,5 @@ impl Widget for Label {
         Ok(())
     }
 }
+
+widget_from_id!(Label);

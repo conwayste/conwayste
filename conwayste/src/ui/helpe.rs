@@ -22,6 +22,21 @@ use ggez::{Context, GameResult};
 
 use crate::constants::DEFAULT_UI_FONT_SCALE;
 
+#[macro_export]
+macro_rules! widget_from_id {
+    ($type:ident) => {
+        use super::layer::Layer;
+
+        impl $type {
+            pub fn widget_from_id(layer: &mut Layer, id: WidgetID) -> Option<&mut $type>
+            {
+                let widget = layer.get_widget_mut(id);
+                return widget.downcast_mut::<$type>();
+            }
+        }
+    }
+}
+
 /// Helper function to draw text onto the screen.
 /// Given the string `str`, it will be drawn at the point coordinates specified by `coords`.
 /// An offset can be specified by an optional `adjustment` point.

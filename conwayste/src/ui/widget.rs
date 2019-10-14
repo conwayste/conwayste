@@ -26,6 +26,9 @@ use super::{UIAction,WidgetID};
 
 /// A user interface element trait that defines graphical, interactive behavior to be specified.
 /// Relies on the `downcast_rs` crate to be able to transform widgets into their specific implementations.
+///
+/// When defining your own Widget, be sure to call the widget_from_id!(T) macro where T is your
+/// custom widget type.
 pub trait Widget: Downcast {
     /// Retrieves the widget's unique identifer
     fn id(&self) -> WidgetID;

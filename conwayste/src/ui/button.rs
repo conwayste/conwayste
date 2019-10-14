@@ -169,3 +169,5 @@ impl Widget for Button {
         self.label.translate(dest);
     }
 }
+
+widget_from_id!(Button);
