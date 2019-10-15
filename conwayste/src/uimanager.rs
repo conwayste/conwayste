@@ -32,7 +32,7 @@ use crate::ui::{
 
 // When adding support for a new widget, use this macro to define a routine to search in the
 // `UILayout` under the `Screen` for a `WidgetID` of that type
-macro_rules! widget_from_screen_and_ui {
+macro_rules! add_layering_support {
     ($type:ident) => {
 
         impl $type {
@@ -87,8 +87,8 @@ impl LayoutManager {
     }
 }
 
-widget_from_screen_and_ui!(Button);
-widget_from_screen_and_ui!(Checkbox);
-widget_from_screen_and_ui!(Label);
-widget_from_screen_and_ui!(Pane);
-widget_from_screen_and_ui!(TextField);
+add_layering_support!(Button);
+add_layering_support!(Checkbox);
+add_layering_support!(Label);
+add_layering_support!(Pane);
+add_layering_support!(TextField);
