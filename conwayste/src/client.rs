@@ -498,7 +498,7 @@ impl EventHandler for MainState {
                     match tf.input_state {
                         Some(TextInputState::TextInputComplete) =>  {
                             textfield_under_focus = false;
-                            self.handle_user_chat_complete(ctx)?;
+                            self.handle_user_chat_complete(ctx);
                         }
                         Some(TextInputState::EnteringText) => {
                             textfield_under_focus = true;
@@ -1398,7 +1398,7 @@ impl MainState {
         Ok(())
     }
 
-    fn handle_user_chat_complete(&mut self, _ctx: &mut Context) -> GameResult<()> {
+    fn handle_user_chat_complete(&mut self, _ctx: &mut Context) {
         let username = self.config.get().user.name.clone();
         let mut msg = String::new();
 
@@ -1419,8 +1419,6 @@ impl MainState {
                 }
             }
         }
-
-        Ok(())
     }
 
     fn get_current_screen(&self) -> Screen {
