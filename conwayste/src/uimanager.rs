@@ -75,9 +75,11 @@ impl LayoutManager {
     }
 
     /// Retreive a Chatbox from its widget ID
+    //
+    // Chatbox does not use  the`add_layering_support!()` macro because it resides in a fixed layer
+    // on one `Screen`, `Screen::Run`. It should not exist anywhere else, and the macro-generated
+    // code only searches in the top-most layer. The Chatbox exists in the bottom-most layer.
     pub fn chatbox_from_id(ui: &mut UILayout, id: WidgetID) -> Option<&mut Chatbox> {
-        // Not generated using `gen_screen_id_for_widget` as
-        // the Chatbox exists at a fixed position in the layers of Screen::Run
         if let Some(layers) = ui.layers.get_mut(&Screen::Run) {
             if let Some(first_layer) = layers.first_mut() {
                 return Chatbox::widget_from_id(first_layer, id);
