@@ -348,3 +348,246 @@ impl Widget for TextField {
 }
 
 widget_from_id!(TextField);
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use ggez::graphics::Scale;
+
+    fn create_dummy_textfield() -> TextField {
+        let font_info = FontInfo {
+            font: (), //dummy font because we can't create a real Font without ggez
+            scale: Scale::uniform(1.0), // I don't think this matters
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
+        };
+        TextField::new(WidgetID(1), font_info, Rect::new(0.0, 0.0, 100.0, 100.0))
+    }
+
+    #[test]
+    fn test_add_char_at_cursor_beginning_middle_end() {
+        let mut tf = create_dummy_textfield();
+
+        assert_eq!(tf.cursor_index, 0);
+
+        tf.add_char_at_cursor('A');
+        assert_eq!(tf.cursor_index, 1);
+
+        tf.add_char_at_cursor('B');
+        assert_eq!(tf.cursor_index, 2);
+
+        tf.move_cursor_left();
+        assert_eq!(tf.cursor_index, 1);
+
+        tf.add_char_at_cursor('C');
+        assert_eq!(tf.cursor_index, 2);
+    }
+
+    #[test]
+    fn test_add_char_at_cursor_exceeds_dimensions() {
+        let mut tf = create_dummy_textfield();
+        let max_chars = tf.max_visible_chars();
+
+        for _ in 0..max_chars + 2 {
+            tf.add_char_at_cursor('A');
+        }
+
+        assert_eq!(tf.visible_start_index, 2);
+    }
+
+    #[test]
+    fn test_move_cursor_left_at_limits() {
+        let mut tf = create_dummy_textfield();
+        assert_eq!(tf.cursor_index, 0);
+        tf.move_cursor_left();
+        assert_eq!(tf.cursor_index, 0);
+
+        let test_string = "TestString";
+        for ch in test_string.chars() {
+            tf.add_char_at_cursor(ch);
+        }
+
+        tf.move_cursor_left();
+        assert_eq!(tf.cursor_index, test_string.len() - 1);
+        tf.move_cursor_left();
+        assert_eq!(tf.cursor_index, test_string.len() - 2);
+    }
+
+    #[test]
+    fn test_move_cursor_right_at_limits() {
+        let mut tf = create_dummy_textfield();
+        assert_eq!(tf.cursor_index, 0);
+        tf.move_cursor_right();
+        assert_eq!(tf.cursor_index, 0);
+
+        let test_string = "TestString";
+        for ch in test_string.chars() {
+            tf.add_char_at_cursor(ch);
+        }
+
+        tf.move_cursor_right();
+        assert_eq!(tf.cursor_index, test_string.len());
+        tf.move_cursor_right();
+        assert_eq!(tf.cursor_index, test_string.len());
+        tf.move_cursor_left();
+        tf.move_cursor_right();
+        assert_eq!(tf.cursor_index, test_string.len());
+    }
+
+    #[test]
+    fn test_move_cursor_to_home() {
+        let mut tf = create_dummy_textfield();
+        assert_eq!(tf.cursor_index, 0);
+
+        let test_string = "TestString";
+        for ch in test_string.chars() {
+            tf.add_char_at_cursor(ch);
+        }
+        assert_eq!(tf.cursor_index, test_string.len());
+        tf.cursor_home();
+        assert_eq!(tf.cursor_index, 0);
+    }
+
+    #[test]
+    fn test_move_cursor_to_end() {
+        let mut tf = create_dummy_textfield();
+        assert_eq!(tf.cursor_index, 0);
+
+        let test_string = "TestString";
+        for ch in test_string.chars() {
+            tf.add_char_at_cursor(ch);
+        }
+        assert_eq!(tf.cursor_index, test_string.len());
+        tf.cursor_home();
+        assert_eq!(tf.cursor_index, 0);
+        tf.cursor_end();
+        assert_eq!(tf.cursor_index, test_string.len());
+    }
+
+    #[test]
+    fn test_move_cursor_left_when_string_exceeds_limits() {
+        let mut tf = create_dummy_textfield();
+        let max_chars = tf.max_visible_chars();
+
+        for _ in 0..max_chars + 2 {
+            tf.add_char_at_cursor('A');
+        }
+
+        for _ in 0..max_chars + 1{
+            assert_eq!(tf.visible_start_index, 2);
+            tf.move_cursor_left();
+        }
+        assert_eq!(tf.visible_start_index, 1);
+        tf.move_cursor_left();
+        assert_eq!(tf.visible_start_index, 0);
+    }
+
+    #[test]
+    fn test_move_cursor_right_when_string_exceeds_limits() {
+        let mut tf = create_dummy_textfield();
+        let max_chars = tf.max_visible_chars();
+
+        for _ in 0..max_chars + 2 {
+            tf.add_char_at_cursor('A');
+        }
+
+        tf.cursor_home();
+
+        for _ in 0..max_chars + 1{
+            assert_eq!(tf.visible_start_index, 0);
+            tf.move_cursor_right();
+        }
+        assert_eq!(tf.visible_start_index, 1);
+        tf.move_cursor_right();
+        assert_eq!(tf.visible_start_index, 2);
+    }
+
+    #[test]
+    fn test_remove_left_of_cursor_basic_case() {
+        let mut tf = create_dummy_textfield();
+
+        assert_eq!(tf.text, "");
+        tf.remove_left_of_cursor();
+        assert_eq!(tf.text, "");
+
+        for _ in 0..10 {
+            tf.add_char_at_cursor('A');
+        }
+        assert_eq!(tf.text, "AAAAAAAAAA");
+
+        for _ in 0..10 {
+            tf.remove_left_of_cursor();
+        }
+        assert_eq!(tf.text, "");
+    }
+
+    #[test]
+    fn test_remove_left_of_cursor_string_exceeds_limits_and_remove_contents() {
+        let mut tf = create_dummy_textfield();
+        let max_chars = tf.max_visible_chars();
+
+        for _ in 0..max_chars + 2 {
+            tf.add_char_at_cursor('A');
+        }
+        assert_eq!(tf.text, "AAAAAAAAAAAAAAAAAAAAAA");
+        assert_eq!(tf.visible_start_index, 2);
+        tf.remove_left_of_cursor();
+        assert_eq!(tf.visible_start_index, 2);
+        tf.remove_left_of_cursor();
+        assert_eq!(tf.visible_start_index, 2);
+        tf.remove_left_of_cursor();
+        assert_eq!(tf.visible_start_index, 2);
+
+        for _ in 0..max_chars - 2 {
+            tf.remove_left_of_cursor();
+        }
+        assert_eq!(tf.visible_start_index, 1);
+        tf.remove_left_of_cursor();
+        assert_eq!(tf.visible_start_index, 0);
+
+        assert_eq!(tf.text, "");
+    }
+
+    #[test]
+    fn test_remove_right_of_cursor_basic_case() {
+        let mut tf = create_dummy_textfield();
+
+        assert_eq!(tf.text, "");
+        tf.remove_right_of_cursor();
+        assert_eq!(tf.text, "");
+
+        for _ in 0..10 {
+            tf.add_char_at_cursor('A');
+        }
+        assert_eq!(tf.text, "AAAAAAAAAA");
+        tf.remove_right_of_cursor();
+        assert_eq!(tf.text, "AAAAAAAAAA");
+
+        tf.cursor_home();
+
+        for _ in 0..10 {
+            tf.remove_right_of_cursor();
+        }
+        assert_eq!(tf.text, "");
+    }
+
+    #[test]
+    fn test_remove_right_of_cursor_does_not_impact_visible_index() {
+        let mut tf = create_dummy_textfield();
+        let max_chars = tf.max_visible_chars();
+
+        for _ in 0..max_chars + 2 {
+            tf.add_char_at_cursor('A');
+        }
+        assert_eq!(tf.text, "AAAAAAAAAAAAAAAAAAAAAA");
+        tf.cursor_home();
+
+        for _ in 0..tf.text.len() {
+            assert_eq!(tf.visible_start_index, 0);
+            tf.remove_right_of_cursor();
+        }
+        tf.remove_right_of_cursor();
+        assert_eq!(tf.visible_start_index, 0);
+
+        assert_eq!(tf.text, "");
+    }
+}
