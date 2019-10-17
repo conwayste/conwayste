@@ -169,3 +169,120 @@ impl Widget for Layer {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::super::{chatbox::Chatbox, common::FontInfo, pane::Pane};
+    use ggez::graphics::Scale;
+
+    fn create_dummy_layer() -> Layer {
+        Layer::new(WidgetID(0))
+    }
+
+    #[test]
+    fn test_add_widget_to_layer_basic() {
+        let mut layer = create_dummy_layer();
+        let font_info = FontInfo {
+            font: (), //dummy font because we can't create a real Font without ggez
+            scale: Scale::uniform(1.0), // I don't think this matters
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
+        };
+        let history_len = 5;
+        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
+
+        layer.add(Box::new(chatbox));
+
+        for (i, w) in layer.widgets.iter().enumerate() {
+            assert_eq!(i, 0);
+            assert_eq!(w.id(), WidgetID(0));
+        }
+    }
+
+    #[test]
+    fn test_add_widget_two_widget_share_the_same_id() {
+        let mut layer = create_dummy_layer();
+        let font_info = FontInfo {
+            font: (), //dummy font because we can't create a real Font without ggez
+            scale: Scale::uniform(1.0), // I don't think this matters
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
+        };
+        let history_len = 5;
+        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
+        layer.add(Box::new(chatbox));
+
+        // TODO: This should fail because a WidgetID(0) already is present in the layer
+        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
+        layer.add(Box::new(chatbox));
+    }
+
+    #[test]
+    fn test_get_widget_mut_one_widget_exists() {
+        let mut layer = create_dummy_layer();
+        let font_info = FontInfo {
+            font: (), //dummy font because we can't create a real Font without ggez
+            scale: Scale::uniform(1.0), // I don't think this matters
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
+        };
+        let history_len = 5;
+        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
+
+        layer.add(Box::new(chatbox));
+        let w = layer.get_widget_mut(WidgetID(0));
+        assert_eq!(w.id(), WidgetID(0));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_get_widget_mut_widget_does_not_exist_list_is_empty() {
+        let mut layer = create_dummy_layer();
+
+        // TODO: Should return an Error once the TODO above is addressed
+        let _w = layer.get_widget_mut(WidgetID(0));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_get_widget_mut_widget_does_not_exist_list_non_empty() {
+        let mut layer = create_dummy_layer();
+        let font_info = FontInfo {
+            font: (), //dummy font because we can't create a real Font without ggez
+            scale: Scale::uniform(1.0), // I don't think this matters
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
+        };
+        let history_len = 5;
+        let chatbox = Chatbox::new(WidgetID(1), font_info, history_len);
+
+        layer.add(Box::new(chatbox));
+        let _w = layer.get_widget_mut(WidgetID(0));
+    }
+
+    #[test]
+    fn test_get_widget_mut_widget_is_a_pane() {
+        let mut layer = create_dummy_layer();
+        let pane = Pane::new(WidgetID(0), Rect::new(0.0, 0.0, 100.0, 100.0));
+
+        layer.add(Box::new(pane));
+        let w = layer.get_widget_mut(WidgetID(0));
+        assert_eq!(w.id(), WidgetID(0));
+    }
+
+    #[test]
+    fn test_get_widget_mut_widget_is_within_a_pane() {
+        let mut layer = create_dummy_layer();
+        let mut pane = Pane::new(WidgetID(0), Rect::new(0.0, 0.0, 100.0, 100.0));
+        let font_info = FontInfo {
+            font: (), //dummy font because we can't create a real Font without ggez
+            scale: Scale::uniform(1.0), // I don't think this matters
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
+        };
+        let history_len = 5;
+        let chatbox = Chatbox::new(WidgetID(1), font_info, history_len);
+
+        pane.add(Box::new(chatbox));
+        layer.add(Box::new(pane));
+        let w = layer.get_widget_mut(WidgetID(1));
+        assert_eq!(w.id(), WidgetID(1));
+    }
+
+}

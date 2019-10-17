@@ -176,3 +176,66 @@ impl Widget for Pane {
 }
 
 widget_from_id!(Pane);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::super::{chatbox::Chatbox, common::FontInfo};
+    use ggez::graphics::Scale;
+
+    fn create_dummy_pane(size: f32) -> Pane {
+        Pane::new(WidgetID(0), Rect::new(0.0, 0.0, size, size))
+    }
+
+    #[test]
+    fn test_add_widget_to_pane_basic() {
+        let mut pane = create_dummy_pane(1000.0);
+        let font_info = FontInfo {
+            font: (), //dummy font because we can't create a real Font without ggez
+            scale: Scale::uniform(1.0), // I don't think this matters
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
+        };
+        let history_len = 5;
+        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
+
+        // TODO: This should return a Ok result once the TODO above is addressed.
+        pane.add(Box::new(chatbox));
+
+        for (i, w) in pane.widgets.iter().enumerate() {
+            assert_eq!(i, 0);
+            assert_eq!(w.id(), WidgetID(0));
+        }
+    }
+
+    #[test]
+    fn test_add_larger_widget_to_smaller_pane() {
+        let mut pane = create_dummy_pane(10.0);
+        let font_info = FontInfo {
+            font: (), //dummy font because we can't create a real Font without ggez
+            scale: Scale::uniform(1.0), // I don't think this matters
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
+        };
+        let history_len = 5;
+        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
+
+        // TODO: This should return an Error once the TODO above is addressed.
+        pane.add(Box::new(chatbox));
+    }
+
+    #[test]
+    fn test_add_widgets_with_the_same_id_to_pane() {
+        let mut pane = create_dummy_pane(10.0);
+        let font_info = FontInfo {
+            font: (), //dummy font because we can't create a real Font without ggez
+            scale: Scale::uniform(1.0), // I don't think this matters
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
+        };
+        let history_len = 5;
+        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
+        pane.add(Box::new(chatbox));
+
+        // TODO: This should return an Error since the Widget ID's collide
+        let chatbox = Chatbox::new(WidgetID(1), font_info, history_len);
+        pane.add(Box::new(chatbox));
+    }
+}
