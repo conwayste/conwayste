@@ -245,7 +245,7 @@ impl Widget for Chatbox {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-
+        // TODO: Add support to scroll through history
         if self.hover {
             // Add in a teal border while hovered. Color checkbox differently to indicate hovered state.
             let border_rect = Rect::new(

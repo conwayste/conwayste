@@ -41,7 +41,7 @@ pub use common::{
     draw_text,
     intersection,
     point_offset
-    };
+};
 pub use label::Label;
 pub use layer::Layer;
 pub use pane::Pane;

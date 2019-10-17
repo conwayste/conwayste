@@ -25,7 +25,8 @@ use downcast_rs::Downcast;
 use super::{UIAction,WidgetID};
 
 /// A user interface element trait that defines graphical, interactive behavior to be specified.
-/// Relies on the `downcast_rs` crate to be able to transform widgets into their specific implementations.
+/// Relies on the `downcast_rs` crate to be able to transform widgets into their specific
+/// implementations.
 ///
 /// When defining your own Widget, be sure to call the widget_from_id!(T) macro where T is your
 /// custom widget type.
@@ -64,8 +65,8 @@ pub trait Widget: Downcast {
     }
 
     // Long-term TODO
-    // The following implementaions tend to use struct member variables so we need to define their own definitions
-    // Refactor into a Sizable trait
+    // The following three definitions tend to use struct member variables so we need to define
+    // their own definitions. Refactor into a Sizable trait.
 
     /// Get the size of the widget. Widget must be sizable.
     fn size(&self) -> Rect;

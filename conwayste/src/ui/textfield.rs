@@ -45,9 +45,8 @@ pub struct TextField {
     action: UIAction,
     pub input_state: Option<TextInputState>,
     text: String,
-    cursor_index: usize, // Position of the cursor: 0 means before first character; it's at the end when equal to text.len()
-    // `blink_timestamp` and `draw_cursor` are used to control the blinking of the cursor.
-    blink_timestamp: Option<Instant>,
+    cursor_index: usize, // Position of the cursor in the text fields' string
+    cursor_blink_timestamp: Option<Instant>, // last time the cursor blinked on/off
     draw_cursor: bool,
     dimensions: Rect,
     hover: bool,
@@ -95,7 +94,8 @@ impl TextField {
         }
     }
 
-    /// Maximum number of characters that can be visible at once. Computed from `dimensions` and `single_char_width`.
+    /// Maximum number of characters that can be visible at once.
+    /// Computed from `dimensions` and `single_char_width`.
     fn max_visible_chars(&self) -> usize {
         (self.dimensions.w / self.font_info.char_dimensions.x) as usize
     }

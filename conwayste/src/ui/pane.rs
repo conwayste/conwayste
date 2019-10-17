@@ -36,7 +36,8 @@ pub struct Pane {
     pub floating: bool, // can the window be dragged around?
     pub previous_pos: Option<Point2<f32>>,
 
-    // might need something to track mouse state to see if we are still clicked within the boundaries of the pane for dragging
+    // might need something to track mouse state to see if we are still clicked within the
+    // boundaries of the pane in the dragging case
 }
 
 /// A container of one or more widgets

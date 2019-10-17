@@ -46,7 +46,8 @@ const BUTTON_LABEL_PADDING_H: f32 = 16.0;   // in pixels
 /// A named widget that can be clicked to result in an occuring action.
 impl Button {
 
-    /// Creates a Button widget.
+    /// Creates a Button widget. The button's dimensions will automatically be sized to the provided
+    /// text.
     ///
     /// # Arguments
     /// * `ctx` - GGEZ context
@@ -96,6 +97,7 @@ impl Button {
         b
     }
 
+    /// Centers the label's text to the dimensions of the button
     fn center_label_text(&mut self) {
         let text_dims = self.label.size();
         let tmp_label_rect = Rect::new(self.dimensions.x, self.dimensions.y, text_dims.w, text_dims.h);
@@ -116,9 +118,6 @@ impl Widget for Button {
 
     fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
-        // if self.hover {
-        //     debug!("Hovering over Button, \"{}\" {:?}", self.label.text, point);
-        // }
     }
 
     fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
@@ -153,10 +152,10 @@ impl Widget for Button {
     }
 
     fn set_size(&mut self, new_dims: Rect) {
+        // PR_GATE add error handling
         if new_dims.w < self.label.dimensions.w + BUTTON_LABEL_PADDING_W
         || new_dims.h < self.label.dimensions.h + BUTTON_LABEL_PADDING_H {
-            // PR_GATE add error handling
-            // cannot set the size of a button to anything smaller than the self-containing text plus some margin
+            // cannot set the size smaller than the self-containing text, plus some margin
             return;
         }
         self.dimensions = new_dims;
