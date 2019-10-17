@@ -65,23 +65,43 @@ impl Button {
     ///
     /// let font = Font::Default;
     /// let font_info = common::FontInfo::new(ctx, font, Some(20.0));
-    /// let b = Button::new(ctx, ui::TestButton1,
-    ///         UIAction::PrintHelloWorld,
-    ///         ui::TestButton1Label,
-    ///         font_info,
-    ///         "TestButton");
+    /// let b = Button::new(
+    ///     ctx, ui::TestButton1,
+    ///     UIAction::PrintHelloWorld,
+    ///     ui::TestButton1Label,
+    ///     font_info,
+    ///     "TestButton"
+    /// );
     ///
     /// b.draw(ctx);
     /// ```
     ///
-    pub fn new(ctx: &mut Context, widget_id: WidgetID, action: UIAction, label_id: WidgetID,
-        font_info: FontInfo, button_text: String) -> Self
-    {
-        let label_position = Point2::new(0.0, 0.0); // label positioning defined an offset to button origin after centering
-        let label = Label::new(ctx, label_id, font_info, button_text, color_with_alpha(css::WHITE, 0.1), label_position);
+    pub fn new(
+        ctx: &mut Context,
+        widget_id: WidgetID,
+        action: UIAction,
+        label_id: WidgetID,
+        font_info: FontInfo,
+        button_text: String,
+    ) -> Self {
+        // label positioning defined an offset to button origin after centering
+        let label_position = Point2::new(0.0, 0.0);
+        let label = Label::new(
+            ctx,
+            label_id,
+            font_info,
+            button_text,
+            color_with_alpha(css::WHITE, 0.1),
+            label_position
+        );
         let label_dims = label.size();
 
-        let dimensions = Rect::new(30.0, 20.0, label_dims.w + BUTTON_LABEL_PADDING_W, label_dims.h + BUTTON_LABEL_PADDING_H);
+        let dimensions = Rect::new(
+            30.0,
+            20.0,
+            label_dims.w + BUTTON_LABEL_PADDING_W,
+            label_dims.h + BUTTON_LABEL_PADDING_H
+        );
 
         let mut b = Button {
             id: widget_id,

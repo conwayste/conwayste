@@ -148,7 +148,10 @@ impl Chatbox {
             let word_chars = Chatbox::count_chars(word);
 
             // If the word can fit on the next line, but not the current line
-            if chars_added != 0 && chars_added + word_chars > max_chars_per_line && word_chars <= max_chars_per_line {
+            if chars_added != 0
+                && chars_added + word_chars > max_chars_per_line
+                && word_chars <= max_chars_per_line
+            {
                 let mut text = Text::new(s.clone());
                 font_info.apply(&mut text);
                 texts.push_back((true, text));
@@ -271,10 +274,16 @@ impl Widget for Chatbox {
         )?;
         graphics::draw(ctx, &border, DrawParam::default())?;
 
-        let mut max_lines = (self.dimensions.h / (self.font_info.char_dimensions.y + constants::CHATBOX_LINE_SPACING)) as u32;
+        let mut max_lines = (self.dimensions.h / (self.font_info.char_dimensions.y
+                                                    + constants::CHATBOX_LINE_SPACING)) as u32;
 
+        // Draw as many messages as we can fit in the dimensions of the chatbox, newest at the bottom
         let mut i = 0;
-        let bottom_left_corner = Point2::new(self.dimensions.x, self.dimensions.y + self.dimensions.h - self.font_info.char_dimensions.y);
+        let bottom_left_corner = Point2::new(
+            self.dimensions.x,
+            self.dimensions.y + self.dimensions.h - self.font_info.char_dimensions.y
+        );
+
         for (_, wrapped_text) in self.wrapped.iter().rev() {
             if max_lines == 0 {
                 break;

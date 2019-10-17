@@ -54,7 +54,8 @@ impl Label {
     ///
     /// let font = Font::default();
     /// let font_info = FontInfo::new(font, Some(20.0));
-    /// let label = Label::new(ctx,
+    /// let label = Label::new(
+    ///     ctx,
     ///     ui::TestLabel,
     ///     font_info,
     ///     "TestButton",
@@ -65,7 +66,14 @@ impl Label {
     /// label.draw(ctx);
     /// ```
     ///
-    pub fn new(ctx: &mut Context, widget_id: WidgetID, font_info: FontInfo, string: String, color: Color, dest: Point2<f32>) -> Self {
+    pub fn new(
+        ctx: &mut Context,
+        widget_id: WidgetID,
+        font_info: FontInfo,
+        string: String,
+        color: Color,
+        dest: Point2<f32>
+    ) -> Self {
         let text_fragment;
         #[cfg(not(test))]
         {

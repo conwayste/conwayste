@@ -45,7 +45,13 @@ macro_rules! widget_from_id {
 ///
 /// On success, an `Ok((text_width, text_height))` tuple is returned, indicating the width
 /// and height of the text in pixels.
-pub fn draw_text(ctx: &mut Context, font: Font, color: Color, text: String, coords: &Point2<f32>) -> GameResult<(f32, f32)> {
+pub fn draw_text(
+    ctx: &mut Context,
+    font: Font,
+    color: Color,
+    text: String,
+    coords: &Point2<f32>,
+) -> GameResult<(f32, f32)> {
     let text_fragment = TextFragment::new(text)
         .scale(*DEFAULT_UI_FONT_SCALE)
         .color(color)
@@ -54,7 +60,7 @@ pub fn draw_text(ctx: &mut Context, font: Font, color: Color, text: String, coor
     let mut graphics_text = Text::new(text_fragment);
     let (text_width, text_height) = (graphics_text.width(ctx), graphics_text.height(ctx));
 
-    graphics::draw(ctx, &mut graphics_text, DrawParam::default().dest(*coords))?; // actually draw the text!
+    graphics::draw(ctx, &mut graphics_text, DrawParam::default().dest(*coords))?;
     Ok((text_width as f32, text_height as f32))
 }
 
@@ -87,8 +93,10 @@ impl FontInfo {
                 .scale(scale)
                 .font(font);
             let graphics_text = Text::new(text_fragment);
-            let char_dimensions = Vector2::new(graphics_text.width(ctx) as f32 / text.len() as f32,
-                                               graphics_text.height(ctx) as f32);
+            let char_dimensions = Vector2::new(
+                graphics_text.width(ctx) as f32 / text.len() as f32,
+                graphics_text.height(ctx) as f32
+            );
             FontInfo {
                 font,
                 scale,

@@ -83,7 +83,7 @@ impl TextField {
             input_state: None,
             text: String::new(),
             cursor_index: 0,
-            blink_timestamp: None,
+            cursor_blink_timestamp: None,
             draw_cursor: false,
             dimensions: dimensions,
             id: widget_id,
@@ -118,7 +118,7 @@ impl TextField {
     /// Adds a character at the current cursor position
     pub fn add_char_at_cursor(&mut self, character: char) {
         self.draw_cursor = true;
-        self.blink_timestamp = Some(Instant::now());
+        self.cursor_blink_timestamp = Some(Instant::now());
 
         if self.cursor_index == self.text.len() {
             self.text.push(character);
@@ -134,7 +134,7 @@ impl TextField {
     /// Deletes a character to the left of the current cursor
     pub fn remove_left_of_cursor(&mut self) {
         self.draw_cursor = true;
-        self.blink_timestamp = Some(Instant::now());
+        self.cursor_blink_timestamp = Some(Instant::now());
 
         if self.cursor_index != 0 {
             self.text.remove(self.cursor_index - 1);
@@ -148,7 +148,7 @@ impl TextField {
     /// Deletes a chracter to the right of the current cursor
     pub fn remove_right_of_cursor(&mut self) {
         self.draw_cursor = true;
-        self.blink_timestamp = Some(Instant::now());
+        self.cursor_blink_timestamp = Some(Instant::now());
 
         let text_len = self.text.len();
 
@@ -162,14 +162,14 @@ impl TextField {
         self.text.clear();
         self.cursor_index = 0;
         self.visible_start_index = 0;
-        self.blink_timestamp = None;
+        self.cursor_blink_timestamp = None;
         self.draw_cursor = false;
     }
 
     /// Moves the cursor position to the right by one character
     pub fn move_cursor_right(&mut self) {
         self.draw_cursor = true;
-        self.blink_timestamp = Some(Instant::now());
+        self.cursor_blink_timestamp = Some(Instant::now());
 
         if self.cursor_index < self.text.len() {
             self.cursor_index += 1;
@@ -183,7 +183,7 @@ impl TextField {
     /// Moves the cursor position to the left by one character
     pub fn move_cursor_left(&mut self) {
         self.draw_cursor = true;
-        self.blink_timestamp = Some(Instant::now());
+        self.cursor_blink_timestamp = Some(Instant::now());
 
         if self.cursor_index > 0 {
             self.cursor_index -= 1;
@@ -197,7 +197,7 @@ impl TextField {
     /// Moves the cursor before to the first character in the field
     pub fn cursor_home(&mut self) {
         self.draw_cursor = true;
-        self.blink_timestamp = Some(Instant::now());
+        self.cursor_blink_timestamp = Some(Instant::now());
 
         self.cursor_index = 0;
         self.visible_start_index = 0;
@@ -206,7 +206,7 @@ impl TextField {
     /// Moves the cursor after the last character in the field
     pub fn cursor_end(&mut self) {
         self.draw_cursor = true;
-        self.blink_timestamp = Some(Instant::now());
+        self.cursor_blink_timestamp = Some(Instant::now());
 
         self.cursor_index = self.text.len();
         if self.text.len() - self.visible_start_index > self.max_visible_chars() {
@@ -218,7 +218,7 @@ impl TextField {
     pub fn enter_focus(&mut self) {
         self.input_state = Some(TextInputState::EnteringText);
         self.draw_cursor = true;
-        self.blink_timestamp = Some(Instant::now());
+        self.cursor_blink_timestamp = Some(Instant::now());
     }
 
     /// Textfield loses focus and does not accept user input
@@ -246,10 +246,10 @@ impl Widget for TextField {
 
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
         if Some(TextInputState::EnteringText) == self.input_state {
-            if let Some(prev_blink_ms) = self.blink_timestamp {
+            if let Some(prev_blink_ms) = self.cursor_blink_timestamp {
                 if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
                     self.draw_cursor ^= true;
-                    self.blink_timestamp = Some(Instant::now());
+                    self.cursor_blink_timestamp = Some(Instant::now());
                 }
             }
         }

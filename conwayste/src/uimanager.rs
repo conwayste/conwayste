@@ -30,13 +30,17 @@ use crate::ui::{
     WidgetID,
 };
 
-// When adding support for a new widget, use this macro to define a routine to search in the
-// `UILayout` under the `Screen` for a `WidgetID` of that type
+// When adding support for a new widget, use this macro to define a routine which allows the
+// developer to search in a `UILayout`/`Screen` pair for a widget by its ID
 macro_rules! add_layering_support {
     ($type:ident) => {
 
         impl $type {
-            pub fn widget_from_screen_and_id(ui: &mut UILayout, screen: Screen, id: WidgetID) -> Option<&mut $type> {
+            pub fn widget_from_screen_and_id(
+                ui: &mut UILayout,
+                screen: Screen,
+                id: WidgetID
+            ) -> Option<&mut $type> {
                 if let Some(layer) = LayoutManager::get_top_layer(ui, screen) {
                     // assumes ID provided is part of the top layer!
                     return $type::widget_from_id(layer, id);

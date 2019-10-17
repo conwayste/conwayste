@@ -62,18 +62,29 @@ impl Checkbox {
     ///
     /// let font = Font::default();
     /// let font_info = common::FontInfo::new(ctx, font, Some(20.0));
-    /// let checkbox = Checkbox::new(ctx,
-    ///    ui::TestCheckbox,
-    ///    false,
-    ///    font_info,
-    ///    "Toggle Me",
-    ///    Rect::new(10.0, 210.0, 20.0, 20.0)
+    /// let checkbox = Checkbox::new(
+    ///     ctx,
+    ///     ui::TestCheckbox,
+    ///     false,
+    ///     font_info,
+    ///     "Toggle Me",
+    ///     Rect::new(10.0, 210.0, 20.0, 20.0)
     /// );
     /// checkbox.draw(ctx);
     /// ```
     ///
-    pub fn new(ctx: &mut Context, widget_id: WidgetID, enabled: bool, font_info: FontInfo, text: String, dimensions: Rect) -> Self {
-        let label_origin = Point2::new(dimensions.x + dimensions.w + LABEL_OFFSET_X, dimensions.y + dimensions.h + LABEL_OFFSET_Y);
+    pub fn new(
+        ctx: &mut Context,
+        widget_id: WidgetID,
+        enabled: bool,
+        font_info: FontInfo,
+        text: String,
+        dimensions: Rect,
+    ) -> Self {
+        let label_origin = Point2::new(
+            dimensions.x + dimensions.w + LABEL_OFFSET_X,
+            dimensions.y + dimensions.h + LABEL_OFFSET_Y
+        );
 
         Checkbox {
             id: widget_id,
@@ -136,8 +147,20 @@ impl Widget for Checkbox {
 
         if self.hover {
             // Add in a violet border/fill while hovered. Color checkbox differently to indicate  hovered state.
-            let border_rect = Rect::new(self.dimensions.x-1.0, self.dimensions.y-1.0, self.dimensions.w + 4.0, self.dimensions.h + 4.0);
-            let hovered_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), border_rect, *CHECKBOX_BORDER_ON_HOVER_COLOR)?;
+            let border_rect = Rect::new(
+                self.dimensions.x-1.0,
+                self.dimensions.y-1.0,
+                self.dimensions.w + 4.0,
+                self.dimensions.h + 4.0
+            );
+
+            let hovered_border = graphics::Mesh::new_rectangle(
+                ctx,
+                DrawMode::stroke(2.0),
+                border_rect,
+                *CHECKBOX_BORDER_ON_HOVER_COLOR
+            )?;
+
             graphics::draw(ctx, &hovered_border, DrawParam::default())?;
         }
 
@@ -147,10 +170,20 @@ impl Widget for Checkbox {
             DrawMode::stroke(2.0)
         };
 
-        let border = graphics::Mesh::new_rectangle(ctx, draw_mode, self.dimensions, *CHECKBOX_TOGGLED_FILL_COLOR)?;
+        let border = graphics::Mesh::new_rectangle(
+            ctx,
+            draw_mode,
+            self.dimensions,
+            *CHECKBOX_TOGGLED_FILL_COLOR
+        )?;
         graphics::draw(ctx, &border, DrawParam::default())?;
 
-        let label_border = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), self.dimensions, *CHECKBOX_TOGGLED_FILL_COLOR)?;
+        let label_border = graphics::Mesh::new_rectangle(
+            ctx,
+            DrawMode::stroke(2.0),
+            self.dimensions,
+            *CHECKBOX_TOGGLED_FILL_COLOR
+        )?;
         graphics::draw(ctx, &label_border, DrawParam::default())?;
 
         self.label.draw(ctx)?;

@@ -53,8 +53,13 @@ impl UILayout {
 
         const CHATBOX_HISTORY: usize = 20;
         let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
-        let chatbox_font_info = common::FontInfo::new(ctx, font, Some(*constants::DEFAULT_CHATBOX_FONT_SCALE));
-        let mut chatbox = Chatbox::new(INGAME_PANE1_CHATBOX,
+        let chatbox_font_info = common::FontInfo::new(
+            ctx,
+            font,
+            Some(*constants::DEFAULT_CHATBOX_FONT_SCALE),
+        );
+        let mut chatbox = Chatbox::new(
+            INGAME_PANE1_CHATBOX,
             chatbox_font_info,
             CHATBOX_HISTORY
         );
@@ -62,53 +67,76 @@ impl UILayout {
         let chatbox = Box::new(chatbox);
 
         const CHAT_TEXTFIELD_HEIGHT: f32 = (20.0 + 5.0);
-        let textfield_rect = Rect::new(chatbox_rect.x, chatbox_rect.bottom(), chatbox_rect.w, CHAT_TEXTFIELD_HEIGHT);
+        let textfield_rect = Rect::new(
+            chatbox_rect.x,
+            chatbox_rect.bottom(),
+            chatbox_rect.w,
+            CHAT_TEXTFIELD_HEIGHT
+        );
         let default_font_info = common::FontInfo::new(ctx, font, None);
-        let textfield = Box::new(TextField::new(INGAME_PANE1_CHATBOXTEXTFIELD,
-            default_font_info,
-            textfield_rect,
-        ));
+        let textfield = Box::new(
+            TextField::new(
+                INGAME_PANE1_CHATBOXTEXTFIELD,
+                default_font_info,
+                textfield_rect,
+            )
+        );
 
         chatpane.add(chatbox);
         chatpane.add(textfield);
 
-        let checkbox = Box::new(Checkbox::new(ctx, MAINMENU_TESTCHECKBOX,
-            config.get().video.fullscreen,
-            default_font_info,
-            "Toggle FullScreen".to_owned(),
-            Rect::new(10.0, 210.0, 20.0, 20.0),
-        ));
-
+        let checkbox = Box::new(
+            Checkbox::new(
+                ctx,
+                MAINMENU_TESTCHECKBOX,
+                config.get().video.fullscreen,
+                default_font_info,
+                "Toggle FullScreen".to_owned(),
+                Rect::new(10.0, 210.0, 20.0, 20.0),
+            )
+        );
 
         let mut layer_mainmenu = Layer::new(MAINMENU_LAYER1);
         let mut layer_ingame = Layer::new(INGAME_LAYER1);
 
-        // Create a new pane, and add two test buttons to it. Actions do not really matter for now, WIP
+        // Create a new pane, and add two test buttons to it.
         let mut pane = Box::new(Pane::new(MAINMENU_PANE1, Rect::new_i32(20, 20, 300, 250)));
-        let mut pane_button = Box::new(Button::new(ctx, MAINMENU_PANE1_BUTTONYES,
-            UIAction::ScreenTransition(Screen::ServerList),
-            MAINMENU_PANE1_BUTTONYESLABEL,
-            default_font_info,
-            "ServerList".to_owned()
-        ));
+        let mut pane_button = Box::new(
+            Button::new(
+                ctx,
+                MAINMENU_PANE1_BUTTONYES,
+                UIAction::ScreenTransition(Screen::ServerList),
+                MAINMENU_PANE1_BUTTONYESLABEL,
+                default_font_info,
+                "ServerList".to_owned()
+            )
+        );
         pane_button.set_size(Rect::new(10.0, 10.0, 180.0, 50.0));
         pane.add(pane_button);
 
-        let mut pane_button = Box::new(Button::new(ctx, MAINMENU_PANE1_BUTTONNO,
-            UIAction::ScreenTransition(Screen::InRoom),
-            MAINMENU_PANE1_BUTTONNOLABEL,
-            default_font_info,
-            "InRoom".to_owned()
-        ));
+        let mut pane_button = Box::new(
+            Button::new(
+                ctx,
+                MAINMENU_PANE1_BUTTONNO,
+                UIAction::ScreenTransition(Screen::InRoom),
+                MAINMENU_PANE1_BUTTONNOLABEL,
+                default_font_info,
+                "InRoom".to_owned()
+            )
+        );
         pane_button.set_size(Rect::new(10.0, 70.0, 180.0, 50.0));
         pane.add(pane_button);
 
-        let mut pane_button = Box::new(Button::new(ctx, MAINMENU_TESTBUTTON,
-            UIAction::ScreenTransition(Screen::Run),
-            MAINMENU_TESTBUTTONLABEL,
-            default_font_info,
-            "StartGame".to_owned()
-        ));
+        let mut pane_button = Box::new(
+            Button::new(
+                ctx,
+                MAINMENU_TESTBUTTON,
+                UIAction::ScreenTransition(Screen::Run),
+                MAINMENU_TESTBUTTONLABEL,
+                default_font_info,
+                "StartGame".to_owned()
+            )
+        );
         pane_button.set_size(Rect::new(10.0, 130.0, 180.0, 50.0));
         pane.add(pane_button);
 
