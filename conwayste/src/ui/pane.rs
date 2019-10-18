@@ -187,14 +187,18 @@ mod tests {
         Pane::new(WidgetID(0), Rect::new(0.0, 0.0, size, size))
     }
 
+    fn create_dummy_font() -> FontInfo {
+        FontInfo {
+            font: (), //dummy font because we can't create a real Font without ggez
+            scale: Scale::uniform(1.0), // Does not matter
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
+        }
+    }
+
     #[test]
     fn test_add_widget_to_pane_basic() {
         let mut pane = create_dummy_pane(1000.0);
-        let font_info = FontInfo {
-            font: (), //dummy font because we can't create a real Font without ggez
-            scale: Scale::uniform(1.0), // I don't think this matters
-            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
-        };
+        let font_info = create_dummy_font();
         let history_len = 5;
         let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
 
@@ -210,11 +214,7 @@ mod tests {
     #[test]
     fn test_add_larger_widget_to_smaller_pane() {
         let mut pane = create_dummy_pane(10.0);
-        let font_info = FontInfo {
-            font: (), //dummy font because we can't create a real Font without ggez
-            scale: Scale::uniform(1.0), // I don't think this matters
-            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
-        };
+        let font_info = create_dummy_font();
         let history_len = 5;
         let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
 
@@ -225,11 +225,7 @@ mod tests {
     #[test]
     fn test_add_widgets_with_the_same_id_to_pane() {
         let mut pane = create_dummy_pane(10.0);
-        let font_info = FontInfo {
-            font: (), //dummy font because we can't create a real Font without ggez
-            scale: Scale::uniform(1.0), // I don't think this matters
-            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
-        };
+        let font_info = create_dummy_font();
         let history_len = 5;
         let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
         pane.add(Box::new(chatbox));
