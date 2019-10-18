@@ -30,6 +30,8 @@ use super::{
     WidgetID
 };
 
+use crate::constants::colors::*;
+
 pub struct Layer {
     pub id: WidgetID,
     pub widgets: Vec<Box<dyn Widget>>,
@@ -157,7 +159,7 @@ impl Widget for Layer {
                 ctx,
                 DrawMode::fill(),
                 Rect::new(0.0, 0.0, 1920.0, 1080.0),
-                color_with_alpha(css::HONEYDEW, 0.4)
+                *LAYER_TRANSPARENCY_BG_COLOR,
             )?;
             graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
