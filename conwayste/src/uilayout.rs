@@ -50,6 +50,8 @@ impl UILayout {
 
         let chat_pane_rect = Rect::new(30.0, 40.0, 300.0, 150.0);
         let mut chatpane = Box::new(Pane::new(INGAME_PANE1, chat_pane_rect));
+        chatpane.bg_color = Some(*constants::colors::CHAT_PANE_FILL_COLOR);
+
 
         const CHATBOX_HISTORY: usize = 20;
         let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
@@ -74,13 +76,14 @@ impl UILayout {
             CHAT_TEXTFIELD_HEIGHT
         );
         let default_font_info = common::FontInfo::new(ctx, font, None);
-        let textfield = Box::new(
+        let mut textfield = Box::new(
             TextField::new(
                 INGAME_PANE1_CHATBOXTEXTFIELD,
                 default_font_info,
                 textfield_rect,
             )
         );
+        textfield.bg_color = Some(*constants::colors::CHAT_PANE_FILL_COLOR);
 
         chatpane.add(chatbox);
         chatpane.add(textfield);

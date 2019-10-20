@@ -42,7 +42,8 @@ pub mod colors {
         pub static ref CHECKBOX_TEXT_COLOR: Color = Color::from(css::WHITE);
         pub static ref CHECKBOX_BORDER_ON_HOVER_COLOR: Color = Color::from(css::VIOLET);
         pub static ref CHECKBOX_TOGGLED_FILL_COLOR: Color = Color::from(css::AZURE);
-        pub static ref PANE_BG_FILL_COLOR: Color = Color::from(css::FIREBRICK);
+        pub static ref CHAT_PANE_FILL_COLOR: Color = color_with_alpha(css::TURQUOISE, 0.33);
+        pub static ref PANE_BORDER_COLOR: Color = Color::from(css::FIREBRICK);
         pub static ref CELL_STATE_DEAD_COLOR: Color = Color::new(0.875, 0.875, 0.875, 1.0);
         pub static ref CELL_STATE_BG_FILL_SOLID_COLOR: Color = Color::from(css::WHITE);
         pub static ref CELL_STATE_BG_FILL_HOLLOW_COLOR: Color = Color::from(css::BLACK);
