@@ -31,6 +31,7 @@ pub mod colors {
     use crate::ui::common::color_with_alpha;
 
     lazy_static! {
+        // To see what the colors look like: https://developer.mozilla.org/en-US/docs/Web/CSS/color_value#Color_keywords
         // TODO: probably can consoldate/remove many of these once the design is fleshed out more
         pub static ref INPUT_TEXT_COLOR: Color = Color::from(css::DARKRED);
         pub static ref CHATBOX_TEXT_COLOR: Color = Color::from(css::DARKRED);

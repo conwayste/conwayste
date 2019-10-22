@@ -16,8 +16,8 @@
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
 custom_error! {pub ConwaysteError
-    InvalidUIAction {reason: String} = "ConwaysteError->InvalidUIAction->{reason}",
-    NoAssociatedUIAction{reason: String} = "ConwaysteError->NoAssociatedUIAction->{reason}"
+    InvalidUIAction {reason: String} = "ConwaysteError::InvalidUIAction(reason={reason})",
+    NoAssociatedUIAction{reason: String} = "ConwaysteError::NoAssociatedUIAction(reason={reason})"
 }
 
 pub type ConwaysteResult<T> = ::std::result::Result<T, ConwaysteError>;

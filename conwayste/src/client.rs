@@ -481,7 +481,7 @@ impl EventHandler for MainState {
                     if left_mouse_click {
                         if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
                             self.handle_ui_action(ctx, ui_id, ui_action).or_else(|e| -> ConwaysteResult<()> {
-                                error!("Failed to handle UI action: {:?}", e);
+                                error!("Failed to handle UI action: {}", e);
                                 Ok(())
                             }).unwrap();
                         }

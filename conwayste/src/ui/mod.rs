@@ -52,7 +52,7 @@ pub use widget::Widget;
 pub enum UIAction {
     ScreenTransition(Screen),
     Toggle(bool),
-    EnterText,
+    EnterText, // TODO: see if we still need this "gunk residue"
 }
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
