@@ -15,13 +15,20 @@
  *  You should have received a copy of the GNU General Public License
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
+
 use std::collections::VecDeque;
 
 use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Rect, Text};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
-use super::{common::{within_widget, FontInfo}, widget::Widget, UIAction, WidgetID};
+use super::{
+    common::{within_widget, FontInfo},
+    widget::Widget,
+    UIAction,
+    UIError, UIResult,
+    WidgetID
+};
 
 use crate::constants::{self, colors::*};
 
@@ -215,13 +222,20 @@ impl Widget for Chatbox {
         self.dimensions
     }
 
-    fn set_size(&mut self, new_dims: Rect) {
+    fn set_size(&mut self, new_dims: Rect) -> UIResult<()> {
+        if new_dims.w == 0.0 || new_dims.h == 0.0 {
+            return Err(Box::new(UIError::InvalidDimensions{
+                reason: "Cannot set the size to a width or height of zero".to_owned()
+            }));
+        }
+
         let old_dims = self.dimensions;
         self.dimensions = new_dims;
         if old_dims.w != new_dims.w {
             // width changed
             self.reflow_messages();
         }
+        Ok(())
     }
 
     fn translate(&mut self, dest: Vector2<f32>) {
@@ -324,7 +338,7 @@ mod tests {
         // `reflow_message`, plus 0.01 padding.
         let width = font_info.char_dimensions.x * (max_chars_per_line as f32) + 0.01;
         let mut cb = Chatbox::new(WidgetID(0), font_info, history_lines);
-        cb.set_size(Rect::new(0.0, 0.0, width, height));
+        let _result = cb.set_size(Rect::new(0.0, 0.0, width, height));
         cb
     }
 

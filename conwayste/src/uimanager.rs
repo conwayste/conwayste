@@ -53,6 +53,7 @@ macro_rules! add_layering_support {
 
 pub struct LayoutManager;
 
+/// `LayoutManager` is the interface in which UI elements are accessed through using a `UILayout`.
 impl LayoutManager {
     /// Get the current screen's top most layer
     pub fn get_top_layer(ui: &mut UILayout, screen: Screen) -> Option<&mut Layer> {
@@ -71,8 +72,7 @@ impl LayoutManager {
     pub fn focused_textfield_mut(ui: &mut UILayout, screen: Screen) -> Option<&mut TextField> {
         if let Some(layer) = Self::get_top_layer(ui, screen) {
             if let Some(id) = layer.focused_widget {
-                let widget = layer.get_widget_mut(id);
-                return widget.downcast_mut::<TextField>();
+                return TextField::widget_from_id(layer, id);
             }
         }
         None

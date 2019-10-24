@@ -26,7 +26,9 @@ use super::{
     label::Label,
     widget::Widget,
     common::{within_widget, color_with_alpha, center, FontInfo},
-    UIAction, WidgetID
+    UIAction,
+    UIError, UIResult,
+    WidgetID
 };
 
 pub struct Button {
@@ -124,10 +126,19 @@ impl Button {
         let label_center_point = center(&tmp_label_rect);
         let button_center = center(&self.dimensions);
 
-        self.label.set_size(Rect::new(self.dimensions.x + (button_center.x - label_center_point.x),
+        let result = self.label.set_size(
+            Rect::new(self.dimensions.x + (button_center.x - label_center_point.x),
             self.dimensions.y + (button_center.y - label_center_point.y),
             text_dims.w,
-            text_dims.h));
+            text_dims.h)
+        );
+
+        match result {
+            Ok(()) => { },
+            Err(e) => {
+                error!("Could not center label text for button: WidgetID({:?}), Error: {:?}", self.id, e);
+            }
+        }
     }
 }
 
@@ -171,15 +182,23 @@ impl Widget for Button {
         self.dimensions
     }
 
-    fn set_size(&mut self, new_dims: Rect) {
-        // PR_GATE add error handling
+    fn set_size(&mut self, new_dims: Rect) -> UIResult<()> {
+        if new_dims.w == 0.0 || new_dims.h == 0.0 {
+            return Err(Box::new(UIError::InvalidDimensions{
+                reason: "Cannot set the size to a width or height of zero".to_owned()
+            }));
+        }
+
         if new_dims.w < self.label.dimensions.w + BUTTON_LABEL_PADDING_W
         || new_dims.h < self.label.dimensions.h + BUTTON_LABEL_PADDING_H {
-            // cannot set the size smaller than the self-containing text, plus some margin
-            return;
+            return Err(Box::new(UIError::InvalidDimensions{
+                reason: "Cannot set the size smaller than the space taken by the button's text".to_owned()
+            }));
         }
+
         self.dimensions = new_dims;
         self.center_label_text();
+        Ok(())
     }
 
     fn translate(&mut self, dest: Vector2<f32>)

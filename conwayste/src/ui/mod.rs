@@ -16,6 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+extern crate env_logger;
 extern crate ggez;
 extern crate chromatica;
 
@@ -29,6 +30,7 @@ mod layer;
 mod pane;
 mod widget;
 mod textfield;
+pub(crate) mod ui_errors;
 
 use crate::Screen;
 
@@ -46,6 +48,7 @@ pub use label::Label;
 pub use layer::Layer;
 pub use pane::Pane;
 pub use textfield::{TextField, TextInputState};
+pub use ui_errors::{UIResult, UIError};
 pub use widget::Widget;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
