@@ -18,7 +18,7 @@
 
 use std::time::{Duration, Instant};
 
-use ggez::graphics::{self, DrawMode, DrawParam, Rect};
+use ggez::graphics::{self, Color, DrawMode, DrawParam, Rect};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -52,6 +52,7 @@ pub struct TextField {
     hover: bool,
     visible_start_index: usize, // The index of the first character in `self.text` that is visible.
     font_info: FontInfo,
+    pub bg_color: Option<Color>,
 }
 
 /// A widget that can accept and display user-inputted text from the Keyboard.
@@ -91,6 +92,7 @@ impl TextField {
             hover: false,
             visible_start_index: 0,
             font_info,
+            bg_color: None,
         }
     }
 
@@ -257,37 +259,71 @@ impl Widget for TextField {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        if self.input_state.is_some() || !self.text.is_empty() {
-            let colored_rect;
-            if !self.text.is_empty() && self.input_state.is_none() {
-                colored_rect = graphics::Mesh::new_rectangle(
-                    ctx,
-                    DrawMode::stroke(CHATBOX_BORDER_PIXELS),
-                    self.dimensions,
-                    *CHATBOX_INACTIVE_BORDER_COLOR,
-                )?;
-            } else {
-                colored_rect = graphics::Mesh::new_rectangle(
-                    ctx,
-                    DrawMode::stroke(CHATBOX_BORDER_PIXELS),
-                    self.dimensions,
-                    *CHATBOX_BORDER_COLOR,
-                )?;
-            }
+        if self.input_state.is_none() && self.text.is_empty() {
+            // textfield is hidden
+            return Ok(());
+        }
 
-            graphics::draw(ctx, &colored_rect, DrawParam::default())?;
+        if let Some(bg_color) = self.bg_color {
+            let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), self.dimensions, bg_color)?;
+            graphics::draw(ctx, &mesh, DrawParam::default())?;
+        }
 
-            // 3.0 px added to y for central alignment
-            let text_pos = Point2::new(
-                self.dimensions.x + CHATBOX_BORDER_PIXELS / 2.0 + 1.0,
-                self.dimensions.y + 3.0,
-            );
+        let colored_rect;
+        if !self.text.is_empty() && self.input_state.is_none() {
+            colored_rect = graphics::Mesh::new_rectangle(
+                ctx,
+                DrawMode::stroke(CHATBOX_BORDER_PIXELS),
+                self.dimensions,
+                *CHATBOX_INACTIVE_BORDER_COLOR,
+            )?;
+        } else {
+            colored_rect = graphics::Mesh::new_rectangle(
+                ctx,
+                DrawMode::stroke(CHATBOX_BORDER_PIXELS),
+                self.dimensions,
+                *CHATBOX_BORDER_COLOR,
+            )?;
+        }
 
-            let mut end = self.text.len();
-            if self.visible_start_index + self.max_visible_chars() < end {
-                end = self.visible_start_index + self.max_visible_chars();
-            }
-            let visible_text = self.text[self.visible_start_index..end].to_owned();
+        graphics::draw(ctx, &colored_rect, DrawParam::default())?;
+
+        // 3.0 px added to y for central alignment
+        let text_pos = Point2::new(
+            self.dimensions.x + CHATBOX_BORDER_PIXELS / 2.0 + 1.0,
+            self.dimensions.y + 3.0,
+        );
+
+        let mut end = self.text.len();
+        if self.visible_start_index + self.max_visible_chars() < end {
+            end = self.visible_start_index + self.max_visible_chars();
+        }
+        let visible_text = self.text[self.visible_start_index..end].to_owned();
+
+        #[cfg(not(test))]
+        {
+            draw_text(
+                ctx,
+                self.font_info.font,
+                *INPUT_TEXT_COLOR,
+                visible_text,
+                &text_pos,
+            )?;
+        }
+        #[cfg(test)]
+        {
+            let _ = visible_text;  // suppress warning
+        }
+
+        if self.draw_cursor {
+            let mut cursor_pos = text_pos.clone();
+
+            cursor_pos.x += (self.cursor_index - self.visible_start_index) as f32
+                * self.font_info.char_dimensions.x;
+
+            // Remove half the width of a character so the pipe character is at the beginning
+            // of its area (like a cursor), not the center (like a character).
+            cursor_pos.x -= self.font_info.char_dimensions.x / 2.0;
 
             #[cfg(not(test))]
             {
@@ -295,35 +331,9 @@ impl Widget for TextField {
                     ctx,
                     self.font_info.font,
                     *INPUT_TEXT_COLOR,
-                    visible_text,
-                    &text_pos,
+                    String::from("|"),
+                    &cursor_pos,
                 )?;
-            }
-            #[cfg(test)]
-            {
-                let _ = visible_text;  // suppress warning
-            }
-
-            if self.draw_cursor {
-                let mut cursor_pos = text_pos.clone();
-
-                cursor_pos.x += (self.cursor_index - self.visible_start_index) as f32
-                    * self.font_info.char_dimensions.x;
-
-                // Remove half the width of a character so the pipe character is at the beginning
-                // of its area (like a cursor), not the center (like a character).
-                cursor_pos.x -= self.font_info.char_dimensions.x / 2.0;
-
-                #[cfg(not(test))]
-                {
-                    draw_text(
-                        ctx,
-                        self.font_info.font,
-                        *INPUT_TEXT_COLOR,
-                        String::from("|"),
-                        &cursor_pos,
-                    )?;
-                }
             }
         }
 

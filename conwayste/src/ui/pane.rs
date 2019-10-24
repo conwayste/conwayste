@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{self, Rect, DrawMode, DrawParam};
+use ggez::graphics::{self, Color, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -35,6 +35,8 @@ pub struct Pane {
     pub hover: bool,
     pub floating: bool, // can the window be dragged around?
     pub previous_pos: Option<Point2<f32>>,
+    pub border: f32,
+    pub bg_color: Option<Color>,
 
     // might need something to track mouse state to see if we are still clicked within the
     // boundaries of the pane in the dragging case
@@ -51,6 +53,8 @@ impl Pane {
             hover: false,
             floating: true,
             previous_pos: None,
+            border: 1.0,
+            bg_color: None,
         }
     }
 
@@ -164,8 +168,15 @@ impl Widget for Pane {
     */
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(1.0), self.dimensions, *PANE_BG_FILL_COLOR)?;
-        graphics::draw(ctx, &mesh, DrawParam::default())?;
+        if let Some(bg_color) = self.bg_color {
+            let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), self.dimensions, bg_color)?;
+            graphics::draw(ctx, &mesh, DrawParam::default())?;
+        }
+
+        if self.border > 0.0 {
+            let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(1.0), self.dimensions, *PANE_BORDER_COLOR)?;
+            graphics::draw(ctx, &mesh, DrawParam::default())?;
+        }
 
         for widget in self.widgets.iter_mut() {
             widget.draw(ctx)?;
