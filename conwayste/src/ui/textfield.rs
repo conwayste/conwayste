@@ -25,7 +25,9 @@ use ggez::{Context, GameResult};
 use super::{
     common::{within_widget, FontInfo},
     widget::Widget,
-    UIAction, WidgetID,
+    UIAction,
+    UIError, UIResult,
+    WidgetID,
 };
 #[cfg(not(test))]
 use super::common::draw_text;
@@ -344,8 +346,15 @@ impl Widget for TextField {
         self.dimensions
     }
 
-    fn set_size(&mut self, new_dimensions: Rect) {
-        self.dimensions = new_dimensions;
+    fn set_size(&mut self, new_dims: Rect) -> UIResult<()> {
+        if new_dims.w == 0.0 || new_dims.h == 0.0 {
+            return Err(Box::new(UIError::InvalidDimensions{
+                reason: "Cannot set the size to a width or height of zero".to_owned()
+            }));
+        }
+
+        self.dimensions = new_dims;
+        Ok(())
     }
 
     fn translate(&mut self, dest: Vector2<f32>) {

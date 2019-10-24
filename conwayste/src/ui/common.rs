@@ -30,8 +30,20 @@ macro_rules! widget_from_id {
         impl $type {
             pub fn widget_from_id(layer: &mut Layer, id: WidgetID) -> Option<&mut $type>
             {
-                let widget = layer.get_widget_mut(id);
-                return widget.downcast_mut::<$type>();
+                let layer_id = layer.id();
+                let widget_result = layer.get_widget_mut(id);
+                match widget_result {
+                    Ok(widget) => {
+                        return widget.downcast_mut::<$type>();
+                    }
+                    Err(e) => {
+                        info!("Could not find $type widget of WidgetID({:?}) in layer of WidgetID({:?})! {:?}",
+                        id,
+                        layer_id,
+                        e);
+                        return None;
+                    }
+                }
             }
         }
     }

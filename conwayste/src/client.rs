@@ -59,6 +59,7 @@ use ggez::nalgebra::{Point2, Vector2};
 use ggez::timer;
 
 use std::env;
+use std::error::Error;
 use std::io::Write; // For env logger
 use std::path;
 use std::collections::{BTreeMap};
@@ -515,7 +516,15 @@ impl EventHandler for MainState {
                 if textfield_under_focus {
                     self.process_text_field_inputs();
                 } else {
-                    self.process_running_inputs();
+                    let result = self.process_running_inputs();
+
+                    handle_error!(result,
+                        UIError(e) => {
+                            error!("Received UI Error in process_running_inputs(). {:?}", e);
+                            Ok(())
+                        }
+                    );
+                    let _result = result;
                 }
 
                 if self.inputs.mouse_info.mousebutton == MouseButton::Left {
@@ -944,13 +953,13 @@ impl MainState {
     /// Handles keyboard and mouse input stored in `self.inputs` by the ggez callbacks. This is
     /// called from update() when we are in the Run screen, and the focus is not captured by, for
     /// example, a text dialog.
-    fn process_running_inputs(&mut self) {
+    fn process_running_inputs(&mut self) -> Result<(), Box<dyn Error>> {
         let keycode;
 
         if let Some(k) = self.inputs.key_info.key {
             keycode = k;
         } else {
-            return;
+            return Ok(());
         }
 
         match keycode {
@@ -958,7 +967,7 @@ impl MainState {
                 if let Some(tf) = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if tf.input_state.is_none() {
                         if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, Screen::Run) {
-                            layer.enter_focus(INGAME_PANE1_CHATBOXTEXTFIELD);
+                            layer.enter_focus(INGAME_PANE1_CHATBOXTEXTFIELD)?;
                         }
                     }
                 }
@@ -1010,6 +1019,7 @@ impl MainState {
                 println!("Unrecognized keycode {:?}", keycode);
             }
         }
+        Ok(())
     }
 
     fn process_menu_inputs(&mut self) {
@@ -1367,7 +1377,9 @@ impl MainState {
                         self.screen_stack.push(s);
                     }
                     _ => {
-                        return Err(UIError::InvalidAction{reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)});
+                        return Err(Box::new(UIError::InvalidAction{
+                            reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)
+                        }));
                     }
                 }
             },
@@ -1381,7 +1393,9 @@ impl MainState {
                         self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
                     }
                     _ => {
-                        return Err(UIError::InvalidAction{reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)});
+                        return Err(Box::new(UIError::InvalidAction{
+                            reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)
+                        }));
                      }
                 }
             },
@@ -1389,9 +1403,9 @@ impl MainState {
             | MAINMENU_LAYER1
             | INGAME_LAYER1
             | INGAME_PANE1 => {
-                return Err(UIError::ActionRestricted{
+                return Err(Box::new(UIError::ActionRestricted{
                     reason: format!("Widget: {:?} is either a Pane or Layer element. Actions are not allowed for Widgets of these types.", widget_id)
-                });
+                }));
             },
             ui::WidgetID(_) => {},
         }

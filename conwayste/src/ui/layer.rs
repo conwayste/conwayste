@@ -16,17 +16,16 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use chromatica::css;
 use ggez::graphics::{self, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
     widget::Widget,
-    common::color_with_alpha,
     Pane,
     TextField,
     UIAction,
+    UIError, UIResult,
     WidgetID
 };
 
@@ -67,23 +66,27 @@ impl Layer {
     }
 
     /// Layer passes `enter_focus` request forward to its elements
-    pub fn enter_focus(&mut self, id: WidgetID) {
+    pub fn enter_focus(&mut self, id: WidgetID) -> UIResult<()> {
         self.exit_focus();
 
         if let Some(tf) = TextField::widget_from_id(self, id) {
             tf.enter_focus();
             self.focused_widget = Some(id);
-            return;
+            return Ok(());
         }
 
-        // PR_GATE Replace with ConwaysteResult
-        panic!("ERROR in Layer::enter_focus() =>  Widget (ID: {:?}) not found in layer (ID: {:?})", id, self.id);
+        let error_msg = format!("ERROR in Layer::enter_focus() =>  Widget (ID: {:?}) not found in layer (ID: {:?})",
+            id,
+            self.id
+        );
+        Err(Box::new(UIError::WidgetNotFound{reason: error_msg}))
     }
 
     /// Iterates through all of the widgets grouped in this layer searching for the specified WidgetID.
     /// If a Pane widget is found, it will search through all of its contained elements as well.
     /// In either scenario, the first element found will be returned.
-    pub fn get_widget_mut(&mut self, id: WidgetID) -> &mut Box<dyn Widget> {
+    pub fn get_widget_mut(&mut self, id: WidgetID) -> UIResult<&mut Box<dyn Widget>>
+    {
         let mut index = None;
         let mut pane_index = None;
 
@@ -107,15 +110,20 @@ impl Layer {
             let i = index.unwrap();
 
             let pane = self.widgets.get_mut(i).unwrap().downcast_mut::<Pane>().unwrap();
-            return pane.widgets.get_mut(p_i).unwrap();
+            let widget = pane.widgets.get_mut(p_i).unwrap();
+            return Ok(widget);
         }
         if let Some(i) = index {
             // Unwrap safe because we found the index via enumerate
-            return self.widgets.get_mut(i).unwrap();
+            let widget = self.widgets.get_mut(i).unwrap();
+            return Ok(widget);
         }
 
-        // PR_GATE Replace with ConwaysteResult
-        panic!("ERROR in Layer::get_widget_mut() => Widget (ID: {:?}) not found in layer (ID: {:?})", id, self.id);
+        let error_msg = format!("ERROR in Layer::enter_focus() =>  Widget (ID: {:?}) not found in layer (ID: {:?})",
+            id,
+            self.id
+        );
+        Err(Box::new(UIError::WidgetNotFound{reason: error_msg}))
     }
 }
 
@@ -176,6 +184,7 @@ impl Widget for Layer {
 mod tests {
     use super::*;
     use super::super::{chatbox::Chatbox, common::FontInfo, pane::Pane};
+    use crate::constants;
     use ggez::graphics::Scale;
 
     fn create_dummy_layer() -> Layer {
@@ -226,21 +235,18 @@ mod tests {
         let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
 
         layer.add(Box::new(chatbox));
-        let w = layer.get_widget_mut(WidgetID(0));
+        let w = layer.get_widget_mut(WidgetID(0)).unwrap();
         assert_eq!(w.id(), WidgetID(0));
     }
 
     #[test]
-    #[should_panic]
     fn test_get_widget_mut_widget_does_not_exist_list_is_empty() {
         let mut layer = create_dummy_layer();
 
-        // TODO: Should return an Error once the TODO above is addressed
-        let _w = layer.get_widget_mut(WidgetID(0));
+        assert!(layer.get_widget_mut(WidgetID(0)).is_err());
     }
 
     #[test]
-    #[should_panic]
     fn test_get_widget_mut_widget_does_not_exist_list_non_empty() {
         let mut layer = create_dummy_layer();
         let font_info = create_dummy_font();
@@ -257,21 +263,21 @@ mod tests {
         let pane = Pane::new(WidgetID(0), Rect::new(0.0, 0.0, 100.0, 100.0));
 
         layer.add(Box::new(pane));
-        let w = layer.get_widget_mut(WidgetID(0));
+        let w = layer.get_widget_mut(WidgetID(0)).unwrap();
         assert_eq!(w.id(), WidgetID(0));
     }
 
     #[test]
     fn test_get_widget_mut_widget_is_within_a_pane() {
         let mut layer = create_dummy_layer();
-        let mut pane = Pane::new(WidgetID(0), Rect::new(0.0, 0.0, 100.0, 100.0));
+        let mut pane = Pane::new(WidgetID(0), *constants::DEFAULT_CHATBOX_RECT);
         let font_info = create_dummy_font();
         let history_len = 5;
         let chatbox = Chatbox::new(WidgetID(1), font_info, history_len);
 
-        pane.add(Box::new(chatbox));
+        assert!(pane.add(Box::new(chatbox)).is_ok());
         layer.add(Box::new(pane));
-        let w = layer.get_widget_mut(WidgetID(1));
+        let w = layer.get_widget_mut(WidgetID(1)).unwrap();
         assert_eq!(w.id(), WidgetID(1));
     }
 

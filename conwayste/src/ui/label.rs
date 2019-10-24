@@ -25,6 +25,7 @@ use ggez::graphics::Font;
 use super::{
     common::FontInfo,
     widget::Widget,
+    UIError, UIResult,
     WidgetID
 };
 
@@ -114,8 +115,15 @@ impl Widget for Label {
         self.dimensions
     }
 
-    fn set_size(&mut self, new_dims: Rect) {
+    fn set_size(&mut self, new_dims: Rect) -> UIResult<()> {
+        if new_dims.w == 0.0 || new_dims.h == 0.0 {
+            return Err(Box::new(UIError::InvalidDimensions{
+                reason: "Cannot set the size to a width or height of zero".to_owned()
+            }));
+        }
+
         self.dimensions = new_dims;
+        Ok(())
     }
 
     /// Translate the widget from one location to another. Widget must be sizable.

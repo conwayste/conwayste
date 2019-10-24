@@ -22,7 +22,11 @@ use ggez::nalgebra::{Point2, Vector2};
 
 use downcast_rs::Downcast;
 
-use super::{UIAction,WidgetID};
+use super::{
+    UIAction,
+    UIResult,
+    WidgetID
+};
 
 /// A user interface element trait that defines graphical, interactive behavior to be specified.
 /// Relies on the `downcast_rs` crate to be able to transform widgets into their specific
@@ -72,8 +76,8 @@ pub trait Widget: Downcast {
     fn size(&self) -> Rect;
 
     /// Set the size of the widget. Widget must be sizable.
-    fn set_size(&mut self, _new_dimensions: Rect) {
-        ()
+    fn set_size(&mut self, _new_dimensions: Rect) -> UIResult<()> {
+        Ok(())
     }
 
     /// Translate the widget from one location to another. Widget must be sizable.
