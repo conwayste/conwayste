@@ -53,6 +53,7 @@ macro_rules! add_layering_support {
 
 pub struct LayoutManager;
 
+/// `LayoutManager` is the interface in which UI elements are accessed through using a `UILayout`.
 impl LayoutManager {
     /// Get the current screen's top most layer
     pub fn get_top_layer(ui: &mut UILayout, screen: Screen) -> Option<&mut Layer> {

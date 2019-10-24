@@ -44,6 +44,7 @@ pub struct UILayout {
     pub layers: HashMap<Screen, Vec<Layer>>,
 }
 
+/// `UILayout` is responsible for the definition and storage of UI elements.
 impl UILayout {
     pub fn new(ctx: &mut Context, config: &Config, font: Font) -> Self {
         let mut ui_layers = HashMap::new();
