@@ -80,11 +80,12 @@ use constants::{
     colors::*,
 };
 use input::{MouseAction, ScrollEvent};
-use error::{ConwaysteResult, ConwaysteError::*};
 use ui::{
     TextField,
     TextInputState,
     UIAction,
+    UIError,
+    UIResult,
     Widget,
     WidgetID,
 };
@@ -480,7 +481,7 @@ impl EventHandler for MainState {
 
                     if left_mouse_click {
                         if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
-                            self.handle_ui_action(ctx, ui_id, ui_action).or_else(|e| -> ConwaysteResult<()> {
+                            self.handle_ui_action(ctx, ui_id, ui_action).or_else(|e| -> UIResult<()> {
                                 error!("Failed to handle UI action: {:?}", e);
                                 Ok(())
                             }).unwrap();
@@ -1356,7 +1357,7 @@ impl MainState {
         }
     }
 
-    fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> ConwaysteResult<()> {
+    fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> UIResult<()> {
         match widget_id {
             MAINMENU_PANE1_BUTTONYES
             | MAINMENU_PANE1_BUTTONNO
@@ -1366,7 +1367,7 @@ impl MainState {
                         self.screen_stack.push(s);
                     }
                     _ => {
-                        return Err(InvalidUIAction{reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)});
+                        return Err(UIError::InvalidAction{reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)});
                     }
                 }
             },
@@ -1380,7 +1381,7 @@ impl MainState {
                         self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
                     }
                     _ => {
-                        return Err(InvalidUIAction{reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)});
+                        return Err(UIError::InvalidAction{reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)});
                      }
                 }
             },
@@ -1388,8 +1389,8 @@ impl MainState {
             | MAINMENU_LAYER1
             | INGAME_LAYER1
             | INGAME_PANE1 => {
-                return Err(NoAssociatedUIAction{
-                    reason: format!("Widget: {:?} is a Pane or Layer element and has no associated action", widget_id)
+                return Err(UIError::ActionRestricted{
+                    reason: format!("Widget: {:?} is either a Pane or Layer element. Actions are not allowed for Widgets of these types.", widget_id)
                 });
             },
             ui::WidgetID(_) => {},

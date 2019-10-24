@@ -72,10 +72,3 @@ macro_rules! handle_error {
         )*
    };
 }
-
-custom_error! {pub ConwaysteError
-    InvalidUIAction {reason: String} = "ConwaysteError->InvalidUIAction->{reason}",
-    NoAssociatedUIAction{reason: String} = "ConwaysteError->NoAssociatedUIAction->{reason}"
-}
-
-pub type ConwaysteResult<T> = ::std::result::Result<T, ConwaysteError>;

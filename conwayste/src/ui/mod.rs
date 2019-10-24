@@ -29,6 +29,7 @@ mod layer;
 mod pane;
 mod widget;
 mod textfield;
+mod ui_errors;
 
 use crate::Screen;
 
@@ -46,6 +47,7 @@ pub use label::Label;
 pub use layer::Layer;
 pub use pane::Pane;
 pub use textfield::{TextField, TextInputState};
+pub use ui_errors::{UIResult, UIError};
 pub use widget::Widget;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
