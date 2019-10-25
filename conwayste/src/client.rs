@@ -521,7 +521,6 @@ impl EventHandler for MainState {
                     handle_error!(result,
                         UIError => |e| {
                             error!("Received UI Error in process_running_inputs(). {:?}", e);
-                            Ok(())
                         }
                     );
                 }

@@ -35,7 +35,7 @@
 ///     input_result - a result type
 ///     custom_return_type - (optional) specify a type T for Ok(T); Default type is ()
 ///     ErrorType - a concrete error type which implements Error trait
-///     err_var - a variable which will contain the boxed error downcast into a Box<ErrorType>
+///     err_var - a variable which will contain the boxed error downcast into ErrorType
 ///
 /// # Examples
 /// Here we match on a `SuperError`.
@@ -51,17 +51,15 @@
 ///     SuperError => |e| {
 ///         // e is a SuperError concrete error type
 ///         println!("I got a SuperError after the downcast");
-///         Ok(())
 ///     },
 ///     SuperSideKickError => |e| {
 ///         // e is a SuperSideKickError concrete error type
 ///         println!("I got a SuperSideKickError after the downcast!");
-///         // I don't know why you would ever want to do this but you *can* return a new error
-///         Err(Box::new(SuperError{}))
 ///     },
 /// );
 /// ```
-/// There are no matches in this case, to which the original result is preserved, unmodified.
+/// There are no matches in this case, to which the original result is preserved, unmodified. Use
+/// an "else" to handle this case.
 /// ```rust,ignore
 /// // See the Error documentation page for the SuperError and SuperSideKickError definitions.
 ///
@@ -74,12 +72,14 @@
 /// handle_error!(a_result,
 ///     SuperError => |e| {
 ///         println!("I got a SuperError after the downcast");
-///         Ok(())
 ///     },
 ///     SuperSideKickError => |e| {
 ///         println!("I got a SuperSideKickError after the downcast!");
-///         Ok(())
 ///     },
+///     else => |e| {
+///         // e is a Box<dyn Error>
+///         println!("I got an unexpected error");
+///     }
 /// );
 ///
 /// // The handle_error!() macro had no effect on a_result because there wasn't a
@@ -97,9 +97,32 @@ macro_rules! handle_error {
         $(
             let $input = $input.or_else(|boxed_error| -> Result<(), Box<dyn Error>> {
                 boxed_error.downcast::<$matcher>()
-                    .and_then(|$var| $result)
+                    .and_then(|boxed_var| {
+                        let $var = *boxed_var;
+                        let val = $result;
+                        Ok(val)
+                    })
             });
         )*
+        let _ = $input; // suppress warning about unused variable $input
+   };
+
+   ($input:ident $(, $matcher:ty => |$var:ident| $result:expr)*, else => |$default_var:ident| $default_result:expr) => {
+        $(
+            let $input = $input.or_else(|boxed_error| -> Result<(), Box<dyn Error>> {
+                boxed_error.downcast::<$matcher>()
+                    .and_then(|boxed_var| {
+                        let $var = *boxed_var;
+                        let val = $result;
+                        Ok(val)
+                    })
+            });
+        )*
+        let $input = $input.or_else(|boxed_error| -> Result<(), Box<dyn Error>> {
+            let $default_var = boxed_error;
+            let val = $default_result;
+            Ok(val)
+        });
         let _ = $input; // suppress warning about unused variable $input
    };
 
@@ -107,9 +130,30 @@ macro_rules! handle_error {
         $(
             let $input = $input.or_else(|boxed_error| -> Result<$type, Box<dyn Error>> {
                 boxed_error.downcast::<$matcher>()
-                    .and_then(|$var| $result)
+                    .and_then(|$var| {
+                        let val = $result;
+                        Ok(val)
+                    })
             });
         )*
+        let _ = $input; // suppress warning about unused variable $input
+   };
+
+   ($input:ident, $type:ty $(, $matcher:ty => |$var:ident| $result:expr)*, else => |$default_var:ident| $default_result:expr) => {
+        $(
+            let $input = $input.or_else(|boxed_error| -> Result<$type, Box<dyn Error>> {
+                boxed_error.downcast::<$matcher>()
+                    .and_then(|$var| {
+                        let val = $result;
+                        Ok(val)
+                    })
+            });
+        )*
+        let $input = $input.or_else(|boxed_error| -> Result<$type, Box<dyn Error>> {
+            let $default_var = boxed_error;
+            let val = $default_result;
+            Ok(val)
+        });
         let _ = $input; // suppress warning about unused variable $input
    };
 }
@@ -157,6 +201,10 @@ mod tests {
         Ok(5)
     }
 
+    fn give_me_a_custom_result_i32_super_err() -> Result<i32, Box<dyn Error>> {
+        Err(Box::new(SuperError{x: 3}))
+    }
+
     #[test]
     fn test_handle_error_super() {
         let a_result = give_me_a_super_result();
@@ -164,12 +212,10 @@ mod tests {
         let mut sidekick_arm_executed = false;
         handle_error!(a_result,
             SuperError => |e| {
-                super_x = Some((*e).x);
-                Ok(())
+                super_x = Some(e.x);
             },
             SuperSideKickError => |_e| {
                 sidekick_arm_executed = true;
-                Ok(())
             }
         );
         assert_eq!(super_x, Some(3));
@@ -183,12 +229,10 @@ mod tests {
         let mut sidekick_arm_executed = false;
         handle_error!(a_result,
             SuperError => |e| {
-                super_x = Some((*e).x);
-                Ok(())
+                super_x = Some(e.x);
             },
             SuperSideKickError => |_e| {
                 sidekick_arm_executed = true;
-                Ok(())
             }
         );
         assert_eq!(super_x, None);
@@ -196,22 +240,64 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_error_unexpected() {
+    fn test_handle_error_sidekick_with_default() {
+        let a_result = give_me_a_sidekick_result();
+        let mut super_x = None;
+        let mut sidekick_arm_executed = false;
+        let mut default_arm_executed = false;
+        handle_error!(a_result,
+            SuperError => |e| {
+                super_x = Some(e.x);
+            },
+            SuperSideKickError => |_e| {
+                sidekick_arm_executed = true;
+            },
+            else => |_e| {
+                default_arm_executed = true;
+            }
+        );
+        assert_eq!(super_x, None);
+        assert_eq!(sidekick_arm_executed, true);
+        assert_eq!(default_arm_executed, false);
+    }
+
+    #[test]
+    fn test_handle_error_unexpected_no_default() {
         let a_result = give_me_an_unexpected_result();
         let mut super_x = None;
         let mut sidekick_arm_executed = false;
         handle_error!(a_result,
             SuperError => |e| {
-                super_x = Some((*e).x);
-                Ok(())
+                super_x = Some(e.x);
             },
             SuperSideKickError => |_e| {
                 sidekick_arm_executed = true;
-                Ok(())
             }
         );
         assert_eq!(super_x, None);
         assert_eq!(sidekick_arm_executed, false);
+    }
+
+    #[test]
+    fn test_handle_error_unexpected_with_default() {
+        let a_result = give_me_an_unexpected_result();
+        let mut super_x = None;
+        let mut sidekick_arm_executed = false;
+        let mut default_arm_executed = false;
+        handle_error!(a_result,
+            SuperError => |e| {
+                super_x = Some(e.x);
+            },
+            SuperSideKickError => |_e| {
+                sidekick_arm_executed = true;
+            },
+            else => |_e| {
+                default_arm_executed = true;
+            }
+        );
+        assert_eq!(super_x, None);
+        assert_eq!(sidekick_arm_executed, false);
+        assert_eq!(default_arm_executed, true);
     }
 
     #[test]
@@ -220,14 +306,30 @@ mod tests {
 
         handle_error!(a_result, i32,
             SuperError => |_e| {
-                Ok(10)
+                10
             },
             SuperSideKickError => |_e| {
-                Ok(20)
+                20
             }
         );
 
         assert_eq!(a_result.unwrap(), 5);
+    }
+
+    #[test]
+    fn test_handle_error_custom_type_super_err() {
+        let a_result = give_me_a_custom_result_i32_super_err();
+
+        handle_error!(a_result, i32,
+            SuperError => |_e| {
+                10
+            },
+            SuperSideKickError => |_e| {
+                20
+            }
+        );
+
+        assert_eq!(a_result.unwrap(), 10); // It modifies a_result!!! FIXME
     }
 
 }
