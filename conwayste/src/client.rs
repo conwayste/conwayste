@@ -524,7 +524,6 @@ impl EventHandler for MainState {
                             Ok(())
                         }
                     );
-                    let _result = result;
                 }
 
                 if self.inputs.mouse_info.mousebutton == MouseButton::Left {
