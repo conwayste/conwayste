@@ -35,7 +35,7 @@ pub mod colors {
         // TODO: probably can consoldate/remove many of these once the design is fleshed out more
         pub static ref INPUT_TEXT_COLOR: Color = Color::from(css::DARKRED);
         pub static ref CHATBOX_TEXT_COLOR: Color = Color::from(css::DARKRED);
-        pub static ref CHATBOX_BORDER_COLOR: Color = Color::from(css::VIOLET);
+        pub static ref CHATBOX_BORDER_COLOR: Color = Color::from(css::FIREBRICK);
         pub static ref CHATBOX_INACTIVE_BORDER_COLOR: Color = color_with_alpha(css::VIOLET, 0.5);
         pub static ref CHATBOX_BORDER_ON_HOVER_COLOR: Color = Color::from(css::TEAL);
         pub static ref MENU_TEXT_COLOR: Color = Color::from(css::WHITE);
@@ -80,12 +80,14 @@ lazy_static! {
     // In pixels, used for the message container of the chatbox. Currently different from other UI
     // elements for experimentation.
     pub static ref DEFAULT_CHATBOX_FONT_SCALE: Scale = Scale::uniform(15.0);
-    pub static ref DEFAULT_CHATBOX_RECT: Rect = Rect::new(30.0, 600.0, 300.0, 150.0);
+    pub static ref DEFAULT_CHATBOX_RECT: Rect =  Rect::new(30.0, 40.0, 300.0, 175.0);
 
 }
 // Border thickness of chatbox in pixels.
-pub const CHATBOX_BORDER_PIXELS: f32 = 4.0;
+pub const CHATBOX_BORDER_PIXELS: f32 = 1.0;
 pub const CHATBOX_LINE_SPACING: f32 = 2.0;
+pub const CHATBOX_HISTORY: usize = 20;
+pub const CHAT_TEXTFIELD_HEIGHT: f32 = (25.0);
 
 pub mod widget_ids {
     use crate::ui::WidgetID;

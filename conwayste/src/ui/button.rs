@@ -136,7 +136,7 @@ impl Button {
         match result {
             Ok(()) => { },
             Err(e) => {
-                error!("Could not center label text for button: WidgetID({:?}), Error: {:?}", self.id, e);
+                error!("Could not center label text for button: {:?}, Error: {:?}", self.id, e);
             }
         }
     }

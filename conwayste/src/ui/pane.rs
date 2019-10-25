@@ -62,11 +62,13 @@ impl Pane {
 
     /// Add a widget to the pane
     pub fn add(&mut self, mut widget: Box<dyn Widget>) -> UIResult<()> {
-        let dims = widget.size();
+        let mut dims = widget.size();
+        // Widget-to-be-added's coordinates are with respect to the Pane's origin
+        dims.translate(self.dimensions.point());
 
         if dims.w > self.dimensions.w || dims.h > self.dimensions.h {
             return Err(Box::new(UIError::InvalidDimensions{
-                reason: format!("Widget of WidgetID({:?}) is larger than Pane of WidgetID({:?})", widget.id(), self.id)
+                reason: format!("Widget of {:?} is larger than Pane of {:?}", widget.id(), self.id)
             }));
         }
 
@@ -74,12 +76,14 @@ impl Pane {
         || dims.left() < self.dimensions.left()
         || dims.top() < self.dimensions.top()
         || dims.bottom() > self.dimensions.bottom() {
+            println!("{:?} Dims: {:?}", widget.id(), dims);
+            println!("Pane: {:?}", self.dimensions);
             return Err(Box::new(UIError::InvalidDimensions{
-                reason: format!("Widget of WidgetID({:?}) is not fully enclosed by Pane of WidgetID({:?})", widget.id(), self.id)
+                reason: format!("Widget of {:?} is not fully enclosed by Pane of {:?}", widget.id(), self.id)
             }));
         }
 
-        widget.set_size(Rect::new(dims.x + self.dimensions.x, dims.y + self.dimensions.y, dims.w, dims.h))?;
+        widget.set_size(dims)?;
         self.widgets.push(widget);
         Ok(())
     }
