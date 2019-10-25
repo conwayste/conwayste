@@ -273,8 +273,15 @@ mod tests {
         let mut pane = Pane::new(WidgetID(0), *constants::DEFAULT_CHATBOX_RECT);
         let font_info = create_dummy_font();
         let history_len = 5;
-        let chatbox = Chatbox::new(WidgetID(1), font_info, history_len);
+        let mut chatbox = Chatbox::new(WidgetID(1), font_info, history_len);
+        let size_update_result = chatbox.set_size(Rect::new(
+            0.0,
+            0.0,
+            constants::DEFAULT_CHATBOX_RECT.w,
+            constants::DEFAULT_CHATBOX_RECT.h - 20.0
+        ));
 
+        assert!(size_update_result.is_ok());
         assert!(pane.add(Box::new(chatbox)).is_ok());
         layer.add(Box::new(pane));
         let w = layer.get_widget_mut(WidgetID(1)).unwrap();

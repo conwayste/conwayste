@@ -153,6 +153,10 @@ mod tests {
         Err(Box::new(io::Error::from_raw_os_error(22)))
     }
 
+    fn give_me_a_custom_result_i32() -> Result<i32, Box<dyn Error>> {
+        Ok(5)
+    }
+
     #[test]
     fn test_handle_error_super() {
         let a_result = give_me_a_super_result();
@@ -209,4 +213,21 @@ mod tests {
         assert_eq!(super_x, None);
         assert_eq!(sidekick_arm_executed, false);
     }
+
+    #[test]
+    fn test_handle_error_custom_type() {
+        let a_result = give_me_a_custom_result_i32();
+
+        handle_error!(a_result, i32,
+            SuperError => |_e| {
+                Ok(10)
+            },
+            SuperSideKickError => |_e| {
+                Ok(20)
+            }
+        );
+
+        assert_eq!(a_result.unwrap(), 5);
+    }
+
 }
