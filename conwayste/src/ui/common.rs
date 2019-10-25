@@ -37,7 +37,7 @@ macro_rules! widget_from_id {
                         return widget.downcast_mut::<$type>();
                     }
                     Err(e) => {
-                        info!("Could not find $type widget of WidgetID({:?}) in layer of WidgetID({:?})! {:?}",
+                        info!("Could not find $type widget of {:?} in layer of {:?}! {:?}",
                         id,
                         layer_id,
                         e);

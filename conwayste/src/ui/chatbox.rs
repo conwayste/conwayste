@@ -280,10 +280,16 @@ impl Widget for Chatbox {
             graphics::draw(ctx, &hovered_border, DrawParam::default())?;
         }
 
+        let text_entry_rect = Rect::new(
+            self.dimensions.x,
+            self.dimensions.bottom(),
+            self.dimensions.w,
+            constants::CHAT_TEXTFIELD_HEIGHT
+        );
         let border = graphics::Mesh::new_rectangle(
             ctx,
             DrawMode::stroke(constants::CHATBOX_BORDER_PIXELS),
-            self.dimensions,
+            text_entry_rect,
             self.color,
         )?;
         graphics::draw(ctx, &border, DrawParam::default())?;

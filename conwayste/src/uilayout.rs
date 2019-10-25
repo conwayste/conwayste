@@ -49,13 +49,17 @@ impl UILayout {
     pub fn new(ctx: &mut Context, config: &Config, font: Font) -> Self {
         let mut ui_layers = HashMap::new();
 
-        let chat_pane_rect = Rect::new(30.0, 40.0, 300.0, 150.0);
+        let chat_pane_rect = *constants::DEFAULT_CHATBOX_RECT;
         let mut chatpane = Box::new(Pane::new(INGAME_PANE1, chat_pane_rect));
         chatpane.bg_color = Some(*constants::colors::CHAT_PANE_FILL_COLOR);
 
 
-        const CHATBOX_HISTORY: usize = 20;
-        let chatbox_rect = Rect::new(0.0, 0.0, chat_pane_rect.w, chat_pane_rect.h);
+        let chatbox_rect = Rect::new(
+            0.0,
+            0.0,
+            chat_pane_rect.w,
+            chat_pane_rect.h - constants::CHAT_TEXTFIELD_HEIGHT
+        );
         let chatbox_font_info = common::FontInfo::new(
             ctx,
             font,
@@ -64,7 +68,7 @@ impl UILayout {
         let mut chatbox = Chatbox::new(
             INGAME_PANE1_CHATBOX,
             chatbox_font_info,
-            CHATBOX_HISTORY
+            constants::CHATBOX_HISTORY
         );
         match chatbox.set_size(chatbox_rect) {
             Ok(()) => { },
@@ -74,12 +78,11 @@ impl UILayout {
         }
         let chatbox = Box::new(chatbox);
 
-        const CHAT_TEXTFIELD_HEIGHT: f32 = (20.0 + 5.0);
         let textfield_rect = Rect::new(
             chatbox_rect.x,
             chatbox_rect.bottom(),
             chatbox_rect.w,
-            CHAT_TEXTFIELD_HEIGHT
+            constants::CHAT_TEXTFIELD_HEIGHT
         );
         let default_font_info = common::FontInfo::new(ctx, font, None);
         let mut textfield = Box::new(
@@ -94,7 +97,7 @@ impl UILayout {
         match chatpane.add(chatbox) {
             Ok(()) => {},
             Err(e) => {
-                error!("Could not add widget WidgetID({:?}) to pane WidgetID({:?})! {:?}",
+                error!("Could not add widget {:?} to pane {:?}! {:?}",
                     INGAME_PANE1_CHATBOX,
                     INGAME_PANE1,
                     e
@@ -104,7 +107,7 @@ impl UILayout {
         match chatpane.add(textfield) {
             Ok(()) => {},
             Err(e) => {
-                error!("Could not add widget WidgetID({:?}) to pane WidgetID({:?})! {:?}",
+                error!("Could not add widget {:?} to pane {:?}! {:?}",
                     INGAME_PANE1_CHATBOXTEXTFIELD,
                     INGAME_PANE1,
                     e
@@ -130,7 +133,7 @@ impl UILayout {
         match pane_button.set_size(Rect::new(10.0, 10.0, 180.0, 50.0)) {
             Ok(()) => { },
             Err(e) => {
-                error!("Could not set size for button during initialization! WidgetID({:?}), {:?}",
+                error!("Could not set size for button during initialization! {:?}, {:?}",
                     MAINMENU_PANE1_BUTTONYES,
                     e
                 );
@@ -140,7 +143,7 @@ impl UILayout {
         match pane.add(pane_button) {
             Ok(()) => {},
             Err(e) => {
-                error!("Could not add widget WidgetID({:?}) to pane WidgetID({:?})! {:?}",
+                error!("Could not add widget {:?} to pane {:?}! {:?}",
                     MAINMENU_PANE1_BUTTONYES,
                     MAINMENU_PANE1,
                     e
@@ -161,7 +164,7 @@ impl UILayout {
         match pane_button.set_size(Rect::new(10.0, 70.0, 180.0, 50.0)) {
             Ok(()) => { },
             Err(e) => {
-                error!("Could not set size for button during initialization! WidgetID({:?}) {:?}",
+                error!("Could not set size for button during initialization! {:?} {:?}",
                 MAINMENU_PANE1_BUTTONNO,
                 e);
             }
@@ -169,7 +172,7 @@ impl UILayout {
         match pane.add(pane_button) {
             Ok(()) => {},
             Err(e) => {
-                error!("Could not add widget WidgetID({:?}) to pane WidgetID({:?})! {:?}",
+                error!("Could not add widget {:?} to pane {:?}! {:?}",
                     MAINMENU_PANE1_BUTTONNO,
                     MAINMENU_PANE1,
                     e
@@ -190,7 +193,7 @@ impl UILayout {
         match pane_button.set_size(Rect::new(10.0, 130.0, 180.0, 50.0)) {
             Ok(()) => { },
             Err(e) => {
-                error!("Could not set size for button during initialization! WidgetID({:?}) {:?}",
+                error!("Could not set size for button during initialization! {:?} {:?}",
                 MAINMENU_TESTBUTTON,
                 e);
             }
@@ -198,7 +201,7 @@ impl UILayout {
         match pane.add(pane_button) {
             Ok(()) => {},
             Err(e) => {
-                error!("Could not add widget WidgetID({:?}) to pane WidgetID({:?})! {:?}",
+                error!("Could not add widget {:?} to pane {:?}! {:?}",
                     MAINMENU_TESTBUTTON,
                     MAINMENU_PANE1,
                     e
@@ -219,7 +222,7 @@ impl UILayout {
         match pane.add(checkbox) {
             Ok(()) => {},
             Err(e) => {
-                error!("Could not add widget WidgetID({:?}) to pane WidgetID({:?})! {:?}",
+                error!("Could not add widget {:?} to pane {:?}! {:?}",
                     MAINMENU_TESTCHECKBOX,
                     MAINMENU_PANE1,
                     e

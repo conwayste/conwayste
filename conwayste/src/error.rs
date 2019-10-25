@@ -38,7 +38,8 @@
 ///     err_var - a variable which will contain the boxed error downcast into a Box<ErrorType>
 ///
 /// # Examples
-/// ```rust
+/// Here we match on a `SuperError`.
+/// ```rust,ignore
 /// // See the Error documentation page for the SuperError and SuperSideKickError definitions
 ///
 /// fn give_me_an_error_result() -> Result<(), Box<dyn Error>> {
@@ -55,9 +56,39 @@
 ///     SuperSideKickError => |e| {
 ///         // e is a SuperSideKickError concrete error type
 ///         println!("I got a SuperSideKickError after the downcast!");
+///         // I don't know why you would ever want to do this but you *can* return a new error
+///         Err(Box::new(SuperError{}))
+///     },
+/// );
+/// ```
+/// There are no matches in this case, to which the original result is preserved, unmodified.
+/// ```rust,ignore
+/// // See the Error documentation page for the SuperError and SuperSideKickError definitions.
+///
+/// fn give_me_an_error_result() -> Result<(), Box<dyn Error>> {
+///     // I made up SuperErrorNemesis for this specific example
+///     Err(Box::new(SuperErrorNemesis{}))
+/// }
+///
+/// let a_result = give_me_an_error_result();
+/// handle_error!(a_result,
+///     SuperError => |e| {
+///         println!("I got a SuperError after the downcast");
+///         Ok(())
+///     },
+///     SuperSideKickError => |e| {
+///         println!("I got a SuperSideKickError after the downcast!");
 ///         Ok(())
 ///     },
 /// );
+///
+/// // The handle_error!() macro had no effect on a_result because there wasn't a
+/// // successful match case. Here, however, there is.
+/// handle_error!(a_result,
+///     SuperErrorNemesis => |e| {
+///         println!("I got a SuperErrorNemesis after being ignored on the first handle_error macro.");
+///         Ok(())
+///     },
 /// ```
 ///
 #[macro_export]
