@@ -519,7 +519,7 @@ impl EventHandler for MainState {
                     let result = self.process_running_inputs();
 
                     handle_error!(result,
-                        UIError(e) => {
+                        UIError => |e| {
                             error!("Received UI Error in process_running_inputs(). {:?}", e);
                             Ok(())
                         }
