@@ -18,19 +18,18 @@
 
 use std::time::{Duration, Instant};
 
+use ggez::event::KeyCode;
 use ggez::graphics::{self, Color, DrawMode, DrawParam, Rect};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
+#[cfg(not(test))]
+use super::common::draw_text;
 use super::{
     common::{within_widget, FontInfo},
     widget::Widget,
-    UIAction,
-    UIError, UIResult,
-    WidgetID,
+    UIAction, UIError, UIResult, WidgetID,
 };
-#[cfg(not(test))]
-use super::common::draw_text;
 
 use crate::constants::{colors::*, CHATBOX_BORDER_PIXELS};
 
@@ -119,8 +118,34 @@ impl TextField {
         self.cursor_index = 0;
     }
 
+    /// Handle a text character being typed by the user.
+    pub fn on_char(&mut self, character: char) {
+        if self.input_state.is_some() {
+            self.add_char_at_cursor(character);
+        }
+    }
+
+    /// Handle a typed keycode that is not a textual key. For example, arrow keys.
+    pub fn on_keycode(&mut self, keycode: KeyCode) {
+        if keycode == KeyCode::Return {
+            self.input_state = Some(TextInputState::TextInputComplete);
+            return;
+        }
+        if let Some(TextInputState::EnteringText) = self.input_state {
+            match keycode {
+                KeyCode::Back => self.remove_left_of_cursor(),
+                KeyCode::Delete => self.remove_right_of_cursor(),
+                KeyCode::Left => self.move_cursor_left(),
+                KeyCode::Right => self.move_cursor_right(),
+                KeyCode::Home => self.cursor_home(),
+                KeyCode::End => self.cursor_end(),
+                _ => ()
+            }
+        }
+    }
+
     /// Adds a character at the current cursor position
-    pub fn add_char_at_cursor(&mut self, character: char) {
+    fn add_char_at_cursor(&mut self, character: char) {
         self.draw_cursor = true;
         self.cursor_blink_timestamp = Some(Instant::now());
 
@@ -136,7 +161,7 @@ impl TextField {
     }
 
     /// Deletes a character to the left of the current cursor
-    pub fn remove_left_of_cursor(&mut self) {
+    fn remove_left_of_cursor(&mut self) {
         self.draw_cursor = true;
         self.cursor_blink_timestamp = Some(Instant::now());
 
@@ -150,7 +175,7 @@ impl TextField {
     }
 
     /// Deletes a chracter to the right of the current cursor
-    pub fn remove_right_of_cursor(&mut self) {
+    fn remove_right_of_cursor(&mut self) {
         self.draw_cursor = true;
         self.cursor_blink_timestamp = Some(Instant::now());
 
@@ -171,7 +196,7 @@ impl TextField {
     }
 
     /// Moves the cursor position to the right by one character
-    pub fn move_cursor_right(&mut self) {
+    fn move_cursor_right(&mut self) {
         self.draw_cursor = true;
         self.cursor_blink_timestamp = Some(Instant::now());
 
@@ -185,7 +210,7 @@ impl TextField {
     }
 
     /// Moves the cursor position to the left by one character
-    pub fn move_cursor_left(&mut self) {
+    fn move_cursor_left(&mut self) {
         self.draw_cursor = true;
         self.cursor_blink_timestamp = Some(Instant::now());
 
@@ -199,7 +224,7 @@ impl TextField {
     }
 
     /// Moves the cursor before to the first character in the field
-    pub fn cursor_home(&mut self) {
+    fn cursor_home(&mut self) {
         self.draw_cursor = true;
         self.cursor_blink_timestamp = Some(Instant::now());
 
@@ -208,7 +233,7 @@ impl TextField {
     }
 
     /// Moves the cursor after the last character in the field
-    pub fn cursor_end(&mut self) {
+    fn cursor_end(&mut self) {
         self.draw_cursor = true;
         self.cursor_blink_timestamp = Some(Instant::now());
 
@@ -267,7 +292,8 @@ impl Widget for TextField {
         }
 
         if let Some(bg_color) = self.bg_color {
-            let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), self.dimensions, bg_color)?;
+            let mesh =
+                graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), self.dimensions, bg_color)?;
             graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
 
@@ -314,7 +340,7 @@ impl Widget for TextField {
         }
         #[cfg(test)]
         {
-            let _ = visible_text;  // suppress warning
+            let _ = visible_text; // suppress warning
         }
 
         if self.draw_cursor {
@@ -348,8 +374,8 @@ impl Widget for TextField {
 
     fn set_size(&mut self, new_dims: Rect) -> UIResult<()> {
         if new_dims.w == 0.0 || new_dims.h == 0.0 {
-            return Err(Box::new(UIError::InvalidDimensions{
-                reason: "Cannot set the size to a width or height of zero".to_owned()
+            return Err(Box::new(UIError::InvalidDimensions {
+                reason: "Cannot set the size to a width or height of zero".to_owned(),
             }));
         }
 
@@ -375,9 +401,9 @@ mod test {
 
     fn create_dummy_textfield() -> TextField {
         let font_info = FontInfo {
-            font: (), //dummy font because we can't create a real Font without ggez
+            font: (),                   //dummy font because we can't create a real Font without ggez
             scale: Scale::uniform(1.0), // I don't think this matters
-            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0), // any positive values will do
         };
         TextField::new(WidgetID(1), font_info, Rect::new(0.0, 0.0, 100.0, 100.0))
     }
@@ -491,7 +517,7 @@ mod test {
             tf.add_char_at_cursor('A');
         }
 
-        for _ in 0..max_chars + 1{
+        for _ in 0..max_chars + 1 {
             assert_eq!(tf.visible_start_index, 2);
             tf.move_cursor_left();
         }
@@ -511,7 +537,7 @@ mod test {
 
         tf.cursor_home();
 
-        for _ in 0..max_chars + 1{
+        for _ in 0..max_chars + 1 {
             assert_eq!(tf.visible_start_index, 0);
             tf.move_cursor_right();
         }

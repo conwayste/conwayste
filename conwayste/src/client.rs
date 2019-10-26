@@ -766,9 +766,7 @@ impl EventHandler for MainState {
 
         let screen = self.get_current_screen();
         if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-            if tf.input_state.is_some() {
-                tf.add_char_at_cursor(character);
-            }
+            tf.on_char(character);
         }
     }
 
@@ -1060,56 +1058,14 @@ impl MainState {
         let screen = self.get_current_screen();
 
         match keycode {
-            KeyCode::Return => {
-                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    tf.input_state = Some(TextInputState::TextInputComplete);
-                }
-            }
             KeyCode::Escape => {
                 if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, screen) {
                     layer.exit_focus();
                 }
             }
-            KeyCode::Back => {
+            KeyCode::Return | KeyCode::Back | KeyCode::Delete | KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
                 if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    if let Some(TextInputState::EnteringText) = tf.input_state {
-                        tf.remove_left_of_cursor();
-                    }
-                }
-            }
-            KeyCode::Delete => {
-                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    if let Some(TextInputState::EnteringText) = tf.input_state {
-                        tf.remove_right_of_cursor();
-                    }
-                }
-            }
-            KeyCode::Left => {
-                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    if let Some(TextInputState::EnteringText) = tf.input_state {
-                        tf.move_cursor_left();
-                    }
-                }
-            },
-            KeyCode::Right => {
-                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    if let Some(TextInputState::EnteringText) = tf.input_state {
-                        tf.move_cursor_right();
-                    }
-                }
-            }
-            KeyCode::Home => {
-                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    if let Some(TextInputState::EnteringText) = tf.input_state {
-                        tf.cursor_home();
-                    }
-                }
-            }
-            KeyCode::End => {
-                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    if let Some(TextInputState::EnteringText) = tf.input_state {
-                        tf.cursor_end();
-                    }
+                    tf.on_keycode(keycode);
                 }
             }
             _ => {} // do nothing for now
