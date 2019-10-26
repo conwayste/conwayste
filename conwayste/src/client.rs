@@ -517,12 +517,14 @@ impl EventHandler for MainState {
                     self.process_text_field_inputs();
                 } else {
                     let result = self.process_running_inputs();
-
                     handle_error!(result,
                         UIError => |e| {
-                            error!("Received UI Error in process_running_inputs(). {:?}", e);
+                            error!("Received UI Error from process_running_inputs(). {:?}", e);
+                        },
+                        else => |e| {
+                            error!("Received unexpected error from process_running_inputs(). {:?}", e);
                         }
-                    );
+                    ).unwrap(); // OK to call unwrap here because there is an else match arm (all errors handled)
                 }
 
                 if self.inputs.mouse_info.mousebutton == MouseButton::Left {
