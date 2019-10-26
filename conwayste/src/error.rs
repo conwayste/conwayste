@@ -28,12 +28,13 @@
 /// unmodified).
 ///
 /// NOTE: be sure to add commas in the right places otherwise you will see a "no rules expected
-/// this token in macro call" compile error.
+/// this token in macro call" compile error. Unlike in most parts of Rust, it is an error to have a
+/// trailing comma after the final match expression.
 ///
 /// # Usage
 ///     handle_error!(input_result [ -> custom_return_type ],
-///         ErrorType1 => |err_var| { ... }      // matcher 1
-///         ErrorType2 => |err_var| { ... }      // matcher 2
+///         ErrorType1 => |err_var| { ... },     // matcher 1
+///         ErrorType2 => |err_var| { ... },     // matcher 2
 ///         ...
 ///         [ else => |box_err_var| { ... } ]
 ///     );
