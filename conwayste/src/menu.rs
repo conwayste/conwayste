@@ -1,4 +1,4 @@
-/*  Copyright 2017-2018 the Conwayste Developers.
+/*  Copyright 2017-2019 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -17,13 +17,13 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::{Context, GameResult};
-use ggez::graphics::{self, Color};
+use ggez::graphics::{self, Font};
 use ggez::nalgebra::Point2;
 use std::collections::HashMap;
 
 use crate::video;
-use crate::utils;
-use crate::constants::{DEFAULT_ACTIVE_COLOR, DEFAULT_INACTIVE_COLOR};
+use crate::ui;
+use crate::constants::colors::*;
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub enum MenuState {
@@ -90,8 +90,6 @@ pub struct MenuContainer {
     text_width: f32,            // maximum width in pixels of any option
     menu_items: Vec<MenuItem>,
     metadata:   MenuMetaData,
-    bg_color:   Color,
-    fg_color:   Color,
 }
 
 impl MenuContainer {
@@ -103,8 +101,6 @@ impl MenuContainer {
             text_width: 0.0,
             menu_items: Vec::<MenuItem>::new(),
             metadata: MenuMetaData::new(0, 0),
-            bg_color: Color::new(1.0, 1.0, 1.0, 1.0),
-            fg_color: Color::new(0.0, 1.0, 1.0, 1.0),
         }
     }
 
@@ -149,7 +145,7 @@ pub struct MenuSystem {
     pub    menus:          HashMap<MenuState, MenuContainer >,
     pub    menu_state:     MenuState,
            controls:       MenuControls,
-           font:           graphics::Font,
+           font:           Font,
            inactive_color: graphics::Color,
            active_color:   graphics::Color,
 }
@@ -163,10 +159,6 @@ impl MenuControls {
 
     pub fn set_menu_key_pressed(&mut self, state: bool) {
         self.dir_key_pressed = state;
-    }
-
-    pub fn is_menu_key_pressed(&self) -> bool {
-        self.dir_key_pressed
     }
 }
 
@@ -215,14 +207,14 @@ impl MenuMetaData {
 }
 
 impl MenuSystem {
-    pub fn new(font: graphics::Font) -> MenuSystem {
+    pub fn new(font: Font) -> MenuSystem {
         let mut menu_sys = MenuSystem {
             menus:          HashMap::new(),
             menu_state:     MenuState::MainMenu,
             controls:       MenuControls::new(),
             font,
-            inactive_color: DEFAULT_INACTIVE_COLOR,
-            active_color:   DEFAULT_ACTIVE_COLOR,
+            inactive_color: *MENU_TEXT_COLOR,
+            active_color:   *MENU_TEXT_SELECTED_COLOR,
         };
 
         // FIXME: Hardcoded width and height. This is very hacky, but I expect this code to be
@@ -344,25 +336,23 @@ impl MenuSystem {
                 ////////////////////////////////////////////////
                 {
                     let container = self.menus.get_mut(&self.menu_state).unwrap();
-                    let coords = container.get_anchor();
-                    let mut offset = Point2::new(0.0,0.0);
+                    let mut coords = container.get_anchor();
 
                     let mut max_text_width = container.text_width;
                     for (i, menu_item) in container.get_menu_item_list().iter().enumerate() {
-                        let mut menu_option_str: &str = &menu_item.text;
+                        let mut menu_option = menu_item.text.clone();
 
                         if menu_item.id == MenuItemIdentifier::StartGame && has_game_started {
-                            menu_option_str = "Resume Game";
+                            menu_option = String::from("Resume Game");
                         }
 
                         let color = if index == i { self.active_color } else { self.inactive_color };
-                        let (w, h) = utils::Graphics::draw_text(_ctx, &self.font, color, &menu_option_str,
-                                                                 &coords, Some(&offset))?;
+                        let (w, h) = ui::draw_text(_ctx, self.font.clone(), color, menu_option, &coords)?;
                         if max_text_width < w {
                             max_text_width = w;
                         }
 
-                        offset = utils::Graphics::point_offset(offset, 0.0, h + 10.0);
+                        coords.y += h + 10.0;
                     }
                     if container.text_width < max_text_width {
                         container.text_width = max_text_width;
@@ -382,31 +372,26 @@ impl MenuSystem {
                 let ref container = self.menus.get(&MenuState::Video).unwrap();
                 let anchor = container.get_anchor();
                 let x = anchor.x + container.text_width + 10.0;
-                let mut y = anchor.y;
+                let y = anchor.y;
 
                 ///////////////////////////////
                 // Fullscreen
                 ///////////////////////////////
-                let coords = Point2::new(x, y);
+                let mut coords = Point2::new(x, y);
                 let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
 
-                // TODO: color
-                let (_w, h) = utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color,
-                                                         &is_fullscreen_str, &coords, None)?;
-                y += h + 10.0;
+                let (_w, h) = ui::draw_text(_ctx, self.font, self.inactive_color, is_fullscreen_str.to_owned(), &coords)?;
 
                 ////////////////////////////////
                 // Resolution
                 ///////////////////////////////
-                let coords = Point2::new(x, y);
+                coords.y += h + 10.0;
                 let res = video_settings.get_resolution();
-                let cur_res_str = format!("{}x{}", res.w, res.h);
+                let cur_resolution = format!("{}x{}", res.w, res.h);
 
-                // TODO: color
-                utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color, &cur_res_str,
-                                           &coords, None)?;
+                ui::draw_text(_ctx, self.font.clone(), self.inactive_color, cur_resolution, &coords)?;
             }
-             _  => {}
+            _  => {}
         }
         Ok(())
     }
@@ -416,10 +401,6 @@ impl MenuSystem {
         self.draw_general_menu_view(ctx, has_game_started)?;
         self.draw_specific_menu_view(video_settings, ctx)?;
         Ok(())
-    }
-
-    pub fn reset(&mut self) {
-        self.menu_state = MenuState::MainMenu;
     }
 }
 

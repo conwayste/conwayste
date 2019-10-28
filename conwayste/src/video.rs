@@ -1,4 +1,4 @@
-/*  Copyright 2017-2018 the Conwayste Developers.
+/*  Copyright 2017-2019 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::{Context, graphics, GameResult, conf::FullscreenType};
+use ggez::{Context, graphics, conf::FullscreenType, GameResult};
 
 #[derive(Debug, Clone, PartialEq, Copy, Default)]
 pub struct Resolution {

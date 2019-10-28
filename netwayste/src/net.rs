@@ -972,7 +972,7 @@ pub enum NetwaysteEvent {
 
 impl NetwaysteEvent {
 
-    #[allow(dead_code)]
+    #[allow(unused)]
     pub fn build_request_action_from_netwayste_event(nw_event: NetwaysteEvent, is_in_game: bool) -> RequestAction {
         match nw_event {
             NetwaysteEvent::None => {
@@ -1026,7 +1026,7 @@ impl NetwaysteEvent {
         }
     }
 
-    #[allow(dead_code)]
+    #[allow(unused)]
     pub fn build_netwayste_event_from_response_code(code: ResponseCode) -> NetwaysteEvent {
         match code {
             ResponseCode::LoggedIn(_cookie, server_version) => {

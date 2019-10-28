@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 conway       = { path = "../libconway" }
 netwayste    = { path = "../netwayste" }
+downcast-rs  = "1.0.4"
 ggez         = "0.5"
 log          = "0.4.6"
 chrono       = "0.4.6"
@@ -20,6 +21,8 @@ futures      = "0.1.17"
 tokio-core   = "0.1.9"
 color-backtrace = "0.1"
 lazy_static  = "1.2"
+chromatica   = "1.0.1"
+custom_error = "1.4"
 
 [[bin]]
 name = "client"

@@ -1,4 +1,4 @@
-/*  Copyright 2017-2018 the Conwayste Developers.
+/*  Copyright 2017-2019 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -17,6 +17,8 @@
  *  <http://www.gnu.org/licenses/>. */
 
 extern crate conway;
+#[macro_use] extern crate custom_error;
+#[macro_use] extern crate downcast_rs;
 extern crate env_logger;
 extern crate ggez;
 #[macro_use] extern crate log;
@@ -25,13 +27,17 @@ extern crate ggez;
 extern crate rand;
 extern crate color_backtrace;
 #[macro_use] extern crate lazy_static;
+extern crate chromatica;
 
 mod config;
 mod constants;
+mod error;
 mod input;
 mod menu;
 mod network;
-mod utils;
+mod ui;
+mod uilayout;
+mod uimanager;
 mod video;
 mod viewport;
 
@@ -48,15 +54,17 @@ use netwayste::net::NetwaysteEvent;
 use ggez::conf;
 use ggez::event::*;
 use ggez::{GameError, GameResult, Context, ContextBuilder};
-use ggez::graphics;
-use ggez::graphics::{Color, DrawParam};
+use ggez::graphics::{self, Color, DrawParam, Font};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::timer;
 
 use std::env;
+use std::error::Error;
 use std::io::Write; // For env logger
 use std::path;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap};
+
+use std::time::Instant;
 
 use constants::{
     CURRENT_PLAYER_ID,
@@ -69,11 +77,26 @@ use constants::{
     HISTORY_SIZE,
     INTRO_DURATION,
     INTRO_PAUSE_DURATION,
+    widget_ids::*,
+    colors::*,
 };
+use input::{MouseAction, ScrollEvent};
+use ui::{
+    TextField,
+    TextInputState,
+    UIAction,
+    UIError,
+    UIResult,
+    Widget,
+    WidgetID,
+};
+use uilayout::UILayout;
+use uimanager::LayoutManager;
 
-#[derive(PartialEq, Clone, Copy)]
-enum Stage {
-    Intro(f64),   // seconds
+
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+pub enum Screen {
+    Intro,   // seconds
     Menu,
     ServerList,
     InRoom,
@@ -83,8 +106,8 @@ enum Stage {
 
 // All game state
 struct MainState {
-    small_font:          graphics::Font,
-    stage:               Stage,            // Where are we in the game (Intro/Menu Main/Running..)
+    system_font:         Font,
+    screen_stack:        Vec<Screen>,       // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     intro_uni:           Universe,
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
@@ -96,7 +119,7 @@ struct MainState {
     config:              config::Config,
     viewport:            viewport::GridView,
     intro_viewport:      viewport::GridView,
-    input_manager:       input::InputManager,
+    inputs:              input::InputManager,
     net_worker:          Option<network::ConwaysteNetWorker>,
     recvd_first_resize:  bool,       // work around an apparent ggez bug where the first resize event is bogus
 
@@ -104,10 +127,10 @@ struct MainState {
     single_step:         bool,
     arrow_input:         (isize, isize),
     drag_draw:           Option<CellState>,
-    win_resize:          u8,
-    return_key_pressed:  bool,
-    escape_key_pressed:  bool,
     toggle_paused_game:  bool,
+    current_intro_duration:  f64,
+
+    ui_layout:           UILayout,
 }
 
 
@@ -139,7 +162,6 @@ impl ColorSettings {
 
     }
 }
-
 
 fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
     let _pat = Pattern("10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW$10bW$10bW$10b16W48$100b2A5b2A$100b2A5b2A2$104b2A$104b2A5$122b2Ab2A$121bA5bA$121bA6bA2b2A$121b3A3bA3b2A$126bA!".to_owned());
@@ -307,26 +329,25 @@ impl MainState {
 
         let mut color_settings = ColorSettings {
             cell_colors: BTreeMap::new(),
-            background:  Color::new( 0.25,  0.25,  0.25, 1.0),
+            background:  *UNIVERSE_BG_COLOR,
         };
-        color_settings.cell_colors.insert(CellState::Dead,           Color::new(0.875, 0.875, 0.875, 1.0));
+        color_settings.cell_colors.insert(CellState::Dead, *CELL_STATE_DEAD_COLOR);
         if GRID_DRAW_STYLE == DrawStyle::Line {
-            // black background - "tetris-like"
-            color_settings.cell_colors.insert(CellState::Alive(None), Color::new( 1.0, 1.0, 1.0, 1.0));
+            // black background - for a "tetris-like" effect
+            color_settings.cell_colors.insert(CellState::Alive(None), *CELL_STATE_BG_FILL_HOLLOW_COLOR);
         } else {
-            // light background
-            color_settings.cell_colors.insert(CellState::Alive(None), Color::new( 0.0, 0.0, 0.0, 1.0));
+            // light background - default setting
+            color_settings.cell_colors.insert(CellState::Alive(None), *CELL_STATE_BG_FILL_SOLID_COLOR);
         }
-        color_settings.cell_colors.insert(CellState::Alive(Some(0)), Color::new(  1.0,   0.0,   0.0, 1.0));  // 0 is red
-        color_settings.cell_colors.insert(CellState::Alive(Some(1)), Color::new(  0.0,   0.0,   1.0, 1.0));  // 1 is blue
-        color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
-        color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
+        color_settings.cell_colors.insert(CellState::Alive(Some(0)), *CELL_STATE_ALIVE_PLAYER_0_COLOR);  // 0 is red
+        color_settings.cell_colors.insert(CellState::Alive(Some(1)), *CELL_STATE_ALIVE_PLAYER_1_COLOR);  // 1 is blue
+        color_settings.cell_colors.insert(CellState::Wall, *CELL_STATE_WALL_COLOR);
+        color_settings.cell_colors.insert(CellState::Fog, *CELL_STATE_FOG_COLOR);
 
-        let font = graphics::Font::default(); // Provides DejaVuSerif.ttf
+        // Note: fixed-width fonts are required!
+        let font = Font::new(ctx, path::Path::new("/telegrama_render.ttf"))
+                    .map_err(|e| GameError::FilesystemError(format!("Could not load or find font. {:?}", e)))?;
 
-        /*
-         * Game Universe Initialization
-         */
         let bigbang =
         {
             // we're going to have to tear this all out when this becomes a real game
@@ -337,21 +358,17 @@ impl MainState {
             let player1 = PlayerBuilder::new(player1_writable);
             let players = vec![player0, player1];
 
-            // TODO we should probably get these settings from the server's universe
             BigBang::new()
             .width(universe_width_in_cells)
             .height(universe_height_in_cells)
-            // TODO (libconway#11) setting to false will crash because the `Known` BitGrid is not set up
-            .server_mode(true)
+            .server_mode(true) // TODO will change to false once we get server support up
+                               // Currently 'client' is technically both client and server
             .history(HISTORY_SIZE)
             .fog_radius(FOG_RADIUS)
             .add_players(players)
             .birth()
         };
 
-        /*
-         * Introduction Universe Initialization
-         */
         let intro_universe =
         {
             let player = PlayerBuilder::new(Region::new(0, 0, 256, 256));
@@ -363,6 +380,14 @@ impl MainState {
                 .birth()
         };
 
+        let mut config = config::Config::new();
+        config.load_or_create_default().map_err(|e| {
+            let msg = format!("Error while loading config: {:?}", e);
+            GameError::ConfigError(msg)
+        })?;
+
+        let ui_layout = UILayout::new(ctx, &config, font.clone());
+
         // Update universe draw parameters for intro
         let intro_uni_draw_params = UniDrawParams {
             bg_color: graphics::BLACK,
@@ -371,13 +396,9 @@ impl MainState {
             draw_counter: true,
         };
 
-        /*
-         * Network Initialization
-         */
-
         let mut s = MainState {
-            small_font:          font.clone(),
-            stage:               Stage::Intro(INTRO_DURATION),
+            screen_stack:        vec![Screen::Intro],
+            system_font:         font.clone(),
             uni:                 bigbang.unwrap(),
             intro_uni:           intro_universe.unwrap(),
             first_gen_was_drawn: false,
@@ -389,16 +410,15 @@ impl MainState {
             config:              config,
             viewport:            viewport,
             intro_viewport:      intro_viewport,
-            input_manager:       input::InputManager::new(input::InputDeviceType::PRIMARY),
+            inputs:              input::InputManager::new(),
             net_worker:          None,
             recvd_first_resize:  false,
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
-            win_resize:          0,
-            return_key_pressed:  false,
-            escape_key_pressed:  false,
             toggle_paused_game:  false,
+            current_intro_duration:  0.0,
+            ui_layout:           ui_layout,
         };
 
         init_patterns(&mut s).unwrap();
@@ -413,41 +433,133 @@ impl EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
         let duration = timer::duration_to_f64(timer::delta(ctx)); // seconds
 
-        self.receive_net_updates();
+        self.receive_net_updates()?;
 
-        match self.stage {
-            Stage::Intro(mut remaining) => {
+        let current_screen = match self.screen_stack.last() {
+            Some(screen) => screen,
+            None => panic!("Error in main thread update! Screen_stack is empty!"),
+        };
 
-                remaining -= duration;
-                if remaining > INTRO_DURATION - INTRO_PAUSE_DURATION {
-                    self.stage = Stage::Intro(remaining);
-                }
-                else {
-                    if remaining > 0.0 && remaining <= INTRO_DURATION - INTRO_PAUSE_DURATION {
+        match current_screen {
+            Screen::Intro => {
+                // Any key should skip the intro
+                if self.inputs.key_info.key.is_some() || (self.current_intro_duration > INTRO_DURATION) {
+                    self.screen_stack.pop();
+                    self.screen_stack.push(Screen::Menu);
+
+                    // update universe draw params now that intro is gone
+                    self.uni_draw_params = UniDrawParams {
+                        bg_color: self.color_settings.get_color(None),
+                        fg_color: self.color_settings.get_color(Some(CellState::Dead)),
+                        player_id: 1, // Current player, TODO sync with Server's CLIENT ID
+                        draw_counter: true,
+                    };
+                } else {
+                    self.current_intro_duration += duration;
+
+                    if self.current_intro_duration >= (INTRO_DURATION - INTRO_PAUSE_DURATION) {
                         self.intro_uni.next();
-                        self.stage = Stage::Intro(remaining);
-                    } else {
-                        // update universe draw params
-                        // keep in sync with other places where we transition to Run
-                        self.uni_draw_params = UniDrawParams {
-                            bg_color: self.color_settings.get_color(None),
-                            fg_color: self.color_settings.get_color(Some(CellState::Dead)),
-                            player_id: 1, // Current player, TODO sync with Server's CLIENT ID
-                            draw_counter: true,
-                        };
-                        self.stage = Stage::Run; // XXX Menu Stage is disabled for the time being
                     }
                 }
             }
-            Stage::Menu => {
-                self.update_current_screen(ctx); // TODO rewrite for ui changes
-            }
-            Stage::Run => {
-                // while this works at limiting the FPS, its a bit glitchy for input events... that probably should be
-                // rewritten as it was hacked together originally
-               // while timer::check_update_time(ctx, FPS)
+            Screen::Menu => {
+                let mouse_point = self.inputs.mouse_info.position;
+                let origin_point = self.inputs.mouse_info.down_position;
 
-                self.process_running_inputs();
+                let mouse_action = self.inputs.mouse_info.action;
+
+                let left_mouse_click = mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
+
+                let screen = self.get_current_screen();
+                if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, screen) {
+                    layer.on_hover(&mouse_point);
+
+                    if let Some(action) = mouse_action {
+                        if action == MouseAction::Drag {
+                            layer.on_drag(&origin_point, &mouse_point);
+                        }
+                    }
+
+                    if left_mouse_click {
+                        if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
+                            self.handle_ui_action(ctx, ui_id, ui_action).or_else(|e| -> UIResult<()> {
+                                error!("Failed to handle UI action: {}", e);
+                                Ok(())
+                            }).unwrap();
+                        }
+                    }
+                }
+
+                self.update_main_menu_selection(ctx)?;
+            }
+            Screen::Run => {
+                // TODO Disable FSP limit until we decide if we need it
+                // while timer::check_update_time(ctx, FPS) {
+                let mut textfield_under_focus = false;
+                if let Some(tf) = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                    match tf.input_state {
+                        Some(TextInputState::TextInputComplete) =>  {
+                            textfield_under_focus = false;
+                            self.handle_user_chat_complete(ctx);
+                        }
+                        Some(TextInputState::EnteringText) => {
+                            textfield_under_focus = true;
+                            tf.update(ctx)?;
+                        },
+                        None => {
+                            textfield_under_focus = false;
+                            tf.update(ctx)?;
+                        },
+                    }
+                }
+
+                if textfield_under_focus {
+                    self.process_text_field_inputs();
+                } else {
+                    let result = self.process_running_inputs();
+                    handle_error!(result,
+                        UIError => |e| {
+                            error!("Received UI Error from process_running_inputs(). {:?}", e);
+                        },
+                        else => |e| {
+                            error!("Received unexpected error from process_running_inputs(). {:?}", e);
+                        }
+                    ).unwrap(); // OK to call unwrap here because there is an else match arm (all errors handled)
+                }
+
+                if self.inputs.mouse_info.mousebutton == MouseButton::Left {
+                    let mouse_pos = self.inputs.mouse_info.position;
+
+                    match self.inputs.mouse_info.action {
+                        Some(MouseAction::Click) => {
+                            self.drag_draw = None;
+                        }
+                        Some(MouseAction::Drag) => {
+                            if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                                // Only make dead cells alive
+                                if let Some(cell_state) = self.drag_draw {
+                                    self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
+                                }
+                            }
+                        }
+                        Some(MouseAction::Held) => {
+                            if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                                if self.drag_draw.is_none() {
+                                    self.drag_draw = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
+                                }
+                            }
+                        }
+                        Some(MouseAction::DoubleClick) | None => {} // do nothing
+                    }
+                }
+
+
+                let mouse_point = self.inputs.mouse_info.position;
+                let screen = self.get_current_screen();
+
+                if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, screen) {
+                    layer.on_hover(&mouse_point);
+                }
 
                 if self.single_step {
                     self.running = false;
@@ -464,13 +576,21 @@ impl EventHandler for MainState {
 
                 self.viewport.update(self.arrow_input);
             }
-            Stage::InRoom => {
+            Screen::InRoom => {
                 // TODO implement
+                if let Some(_k) = self.inputs.key_info.key {
+                    debug!("Leaving InRoom to ServerList");
+                    self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
+                }
             }
-            Stage::ServerList => {
+            Screen::ServerList => {
+                if let Some(_k) = self.inputs.key_info.key {
+                    debug!("Leaving ServerList to MainMenu");
+                    self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
+                }
                 // TODO implement
              },
-            Stage::Exit => {
+            Screen::Exit => {
                let _ = ggez::event::quit(ctx);
             }
         }
@@ -483,23 +603,33 @@ impl EventHandler for MainState {
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         graphics::clear(ctx, [0.0, 0.0, 0.0, 1.0].into());
 
-        match self.stage {
-            Stage::Intro(_) => {
+        let current_screen = self.get_current_screen();
+
+        match current_screen {
+            Screen::Intro => {
                 self.draw_intro(ctx)?;
             }
-            Stage::Menu => {
+            Screen::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn)?;
             }
-            Stage::Run => {
+            Screen::Run => {
                 self.draw_universe(ctx)?;
             }
-            Stage::InRoom => {
+            Screen::InRoom => {
+                ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("In Room"), &Point2::new(100.0, 100.0))?;
                 // TODO
             }
-            Stage::ServerList => {
+            Screen::ServerList => {
+                ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("Server List"), &Point2::new(100.0, 100.0))?;
                 // TODO
              },
-            Stage::Exit => {}
+            Screen::Exit => {}
+        }
+
+        if let Some(ref mut layers) = LayoutManager::get_screen_layers(&mut self.ui_layout, current_screen) {
+            for layer in layers.iter_mut() {
+                layer.draw(ctx)?;
+            }
         }
 
         graphics::present(ctx)?;
@@ -510,89 +640,134 @@ impl EventHandler for MainState {
     // Note about coordinates: x and y are "screen coordinates", with the origin at the top left of
     // the screen. x becomes more positive going from left to right, and y becomes more positive
     // going top to bottom.
-    fn mouse_button_down_event(&mut self,
-                               _ctx: &mut Context,
-                               button: MouseButton,
-                               x: f32,
-                               y: f32
-                               ) {
-        self.input_manager.add(input::InputAction::MouseClick(button, x as i32, y as i32));
-    }
+    // Currently only allow one mouse button event at a time (e.g. left+right click not valid)
+    fn mouse_button_down_event(&mut self, _ctx: &mut Context, button: MouseButton, x: f32, y: f32) {
+        if self.inputs.mouse_info.mousebutton == MouseButton::Other(0) {
+            self.inputs.mouse_info.mousebutton = button;
+            self.inputs.mouse_info.down_timestamp = Some(Instant::now());
+            self.inputs.mouse_info.action = Some(MouseAction::Held);
+            self.inputs.mouse_info.position = Point2::new(x,y);
+            self.inputs.mouse_info.down_position = Point2::new(x,y);
 
-    fn mouse_motion_event(&mut self,
-                          _ctx: &mut Context,
-                          x: f32,
-                          y: f32,
-                          _dx: f32,
-                          _dy: f32
-                          ) {
-        match self.stage {
-            Stage::Intro(_) => {}
-            Stage::Menu | Stage::Run => {
-                if self.drag_draw != None {
-                    self.input_manager.add(input::InputAction::MouseDrag(MouseButton::Left, x as i32, y as i32));
-                } else {
-                    self.input_manager.add(input::InputAction::MouseMovement(x as i32, y as i32));
-                }
+            if self.inputs.mouse_info.debug_print {
+                debug!("{:?} Down", button);
             }
-            Stage::InRoom => {
-                // TODO implement
-            }
-            Stage::ServerList => {
-                // TODO implement
-             },
-            Stage::Exit => { unreachable!() }
         }
     }
 
-    fn mouse_button_up_event(&mut self,
-                             _ctx: &mut Context,
-                             _button: MouseButton,
-                             _x: f32,
-                             _y: f32
-                             ) {
-        // TODO Later, we'll need to support drag-and-drop patterns as well as drag draw
+    fn mouse_motion_event(&mut self, _ctx: &mut Context, x: f32, y: f32, _dx: f32, _dy: f32) {
+        self.inputs.mouse_info.position = Point2::new(x, y);
+
+        // Check that a valid mouse button was held down (but no motion yet), or that we are already
+        // dragging the mouse. If either case is true, update the action to reflect that the mouse
+        // is being dragged around
+        if self.inputs.mouse_info.mousebutton != MouseButton::Other(0)
+            && (self.inputs.mouse_info.action == Some(MouseAction::Held) || self.inputs.mouse_info.action == Some(MouseAction::Drag)) {
+            self.inputs.mouse_info.action = Some(MouseAction::Drag);
+
+            if self.inputs.mouse_info.debug_print {
+                debug!("Dragging {:?}, Current Position {:?}, Time Held: {:?}",
+                    self.inputs.mouse_info.mousebutton,
+                    self.inputs.mouse_info.position,
+                    self.inputs.mouse_info.down_timestamp.unwrap().elapsed());
+            }
+        }
+    }
+
+    fn mouse_button_up_event(&mut self, _ctx: &mut Context, button: MouseButton, x: f32, y: f32) {
+        // Register as a click if the same mouse button that clicked down is what triggered the event
+        if self.inputs.mouse_info.mousebutton == button {
+            self.inputs.mouse_info.action = Some(MouseAction::Click);
+            self.inputs.mouse_info.position = Point2::new(x, y);
+
+            if self.inputs.mouse_info.debug_print {
+                debug!("Clicked {:?}, Current Position {:?}, Time Held: {:?}",
+                    button,
+                    (x, y),
+                    self.inputs.mouse_info.down_timestamp.unwrap().elapsed());
+            }
+        }
+
         self.drag_draw = None;   // probably unnecessary because of state.left() check in mouse_motion_event
     }
 
-    fn key_down_event(&mut self,
-                      ctx: &mut Context,
-                      keycode: KeyCode,
-                      _keymod: KeyMods,
-                      repeat: bool
-                      ) {
+    /// Vertical scroll:   (y, positive away from and negative toward the user)
+    /// Horizontal scroll: (x, positive to the right and negative to the left)
+    fn mouse_wheel_event(&mut self, _ctx: &mut Context, _x: f32, y: f32) {
+        self.inputs.mouse_info.scroll_event = if y > 0.0 {
+                Some(ScrollEvent::ScrollUp)
+            } else if y < 0.0 {
+                Some(ScrollEvent::ScrollDown)
+            } else {
+                None
+            };
 
-        match self.stage {
-            Stage::Intro(_) => {
-                // update universe draw params
-                // keep in sync with other places where we transition to Run
-                self.uni_draw_params = UniDrawParams {
-                    bg_color: self.color_settings.get_color(None),
-                    fg_color: self.color_settings.get_color(Some(CellState::Dead)),
-                    player_id: 1, // Current player, TODO sync with Server's CLIENT ID
-                    draw_counter: true,
-                };
-                self.stage = Stage::Run; // TODO lets just go to the game for now...
-                self.menu_sys.reset();
-            }
-            Stage::Menu | Stage::Run | Stage::InRoom | Stage::ServerList => {
-                // TODO for now just quit the game
-                if keycode == KeyCode::Escape {
-                    self.quit_event(ctx);
-                }
-
-                self.input_manager.add(input::InputAction::KeyPress(keycode, repeat));
-            }
-            Stage::Exit => {}
+        if self.inputs.mouse_info.debug_print {
+            debug!("Wheel Event {:?}", self.inputs.mouse_info.scroll_event);
         }
     }
 
-    fn key_up_event(&mut self,
-                    _ctx: &mut Context,
-                    keycode: KeyCode,
-                    _keymod: KeyMods) {
-        //self.input_manager.clear_input_start_time();
-        self.input_manager.add(input::InputAction::KeyRelease(keycode));
+    fn key_down_event(&mut self, _ctx: &mut Context, keycode: KeyCode, keymod: KeyMods, repeat: bool ) {
+        let key_as_int32 = keycode as i32;
+
+        // Winit's KeyCode definition has no perceptible ordering so I'm selectively defining what keys we'll accept...
+        // for now at least
+        if key_as_int32 < (KeyCode::Numlock as i32)
+            || (key_as_int32 >= KeyCode::LAlt as i32 && key_as_int32 <= KeyCode::LWin as i32)
+            || (key_as_int32 >= KeyCode::RAlt as i32 && key_as_int32 <= KeyCode::RWin as i32)
+            || (key_as_int32 == KeyCode::Equals as i32 || key_as_int32 == KeyCode::Subtract as i32) {
+            if self.inputs.key_info.key.is_none() {
+                self.inputs.key_info.key = Some(keycode);
+            }
+
+            if self.inputs.key_info.key == Some(keycode) {
+                self.inputs.key_info.repeating = repeat;
+            }
+
+            if self.inputs.key_info.modifier.is_none() {
+                match keycode {
+                    KeyCode::LControl | KeyCode::LWin | KeyCode::LAlt | KeyCode::LShift |
+                    KeyCode::RControl | KeyCode::RWin | KeyCode::RAlt | KeyCode::RShift => {
+                        self.inputs.key_info.modifier = Some(keymod);
+                    }
+                    _ => {} // ignore all other non-standard, non-modifier keys
+                }
+            }
+        }
+
+        if self.inputs.key_info.debug_print {
+            debug!("Key_Down K: {:?}, M: {:?}, R: {}", self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating);
+        }
+    }
+
+    fn key_up_event(&mut self, _ctx: &mut Context, keycode: KeyCode, _keymod: KeyMods) {
+        if self.inputs.key_info.modifier.is_some() {
+            match keycode {
+                KeyCode::LControl | KeyCode::LWin | KeyCode::LAlt | KeyCode::LShift |
+                KeyCode::RControl | KeyCode::RWin | KeyCode::RAlt | KeyCode::RShift => {
+                    self.inputs.key_info.modifier = None;
+                }
+                _ => {}, // ignore the non-modifier keys as they're handled below
+            }
+        }
+        self.inputs.key_info.key = None;
+        self.inputs.key_info.repeating = false;
+
+        if self.inputs.key_info.debug_print {
+            debug!("Key_Up K: {:?}, M: {:?}, R: {}", self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating);
+        }
+    }
+
+    fn text_input_event(&mut self, _ctx: &mut Context, character: char) {
+        // Ignore control characters (like Esc or Del)./
+        if character.is_control() {
+            return;
+        }
+
+        let screen = self.get_current_screen();
+        if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
+            tf.on_char(character);
+        }
     }
 
     fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
@@ -624,17 +799,21 @@ impl EventHandler for MainState {
     }
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
+        println!("Got quit event!");
         let mut quit = false;
+        let current_screen = match self.screen_stack.last() {
+            Some(screen) => screen,
+            None => panic!("Error in quit_event! Screen_stack is empty!"),
+        };
 
-        match self.stage {
-            Stage::Run => {
+        match current_screen {
+            Screen::Run => {
                 self.pause_or_resume_game();
             }
-            Stage::Menu | Stage::InRoom | Stage::ServerList => {
-                // This is currently handled in the return_key_pressed path as well
-                self.escape_key_pressed = true;
+            Screen::Menu | Screen::InRoom | Screen::ServerList => {
+                // This is currently handled in the menu processing state path as well
             }
-            Stage::Exit => {
+            Screen::Exit => {
                 quit = true;
             }
             _ => {}
@@ -707,7 +886,7 @@ impl MainState {
             }
         });
 
-        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, viewport_rect) {
+        if let Some(clipped_rect) = ui::intersection(full_rect, viewport_rect) {
             let origin = graphics::DrawParam::new().dest(Point2::new(0.0, 0.0));
             let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect,
                                                           self.uni_draw_params.fg_color)?;
@@ -720,9 +899,8 @@ impl MainState {
 
         ////////// draw generation counter
         if self.uni_draw_params.draw_counter {
-            let gen_counter_str = universe.latest_gen().to_string();
-            let color = Color::new(1.0, 0.0, 0.0, 1.0);
-            utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
+            let gen_counter = universe.latest_gen().to_string();
+            ui::draw_text(ctx, self.system_font.clone(), *GEN_COUNTER_COLOR, gen_counter, &Point2::new(0.0, 0.0))?;
         }
 
         Ok(())
@@ -747,17 +925,20 @@ impl MainState {
 
     fn pause_or_resume_game(&mut self) {
         let cur_menu_state = self.menu_sys.menu_state;
-        let cur_stage = self.stage;
+        let current_screen = match self.screen_stack.last() {
+            Some(screen) => screen,
+            None => panic!("Error in key_down_event! Screen_stack is empty!"),
+        };
 
-        match cur_stage {
-            Stage::Menu => {
+        match current_screen {
+            Screen::Menu => {
                 if cur_menu_state == menu::MenuState::MainMenu {
-                    self.stage = Stage::Run;
+                    self.screen_stack.push(Screen::Run);
                     self.running = true;
                 }
             }
-            Stage::Run => {
-                self.stage = Stage::Menu;
+            Screen::Run => {
+                self.screen_stack.pop();
                 self.menu_sys.menu_state = menu::MenuState::MainMenu;
                 self.running = false;
             }
@@ -767,170 +948,137 @@ impl MainState {
         self.toggle_paused_game = false;
     }
 
-    // TODO
-    // Just had an idea... transform the user inputs events into game events
-    // That way differnt user inputs (gamepad, keyboard/mouse) resolve to a single game event
-    // This logic would be agnostic from how the user is interacting with the game
-    fn process_running_inputs(&mut self) {
+    /// Handles keyboard and mouse input stored in `self.inputs` by the ggez callbacks. This is
+    /// called from update() when we are in the Run screen, and the focus is not captured by, for
+    /// example, a text dialog.
+    fn process_running_inputs(&mut self) -> Result<(), Box<dyn Error>> {
+        let keycode;
 
-        while self.input_manager.has_more() {
-            if let Some(input) = self.input_manager.remove() {
-                match input {
+        if let Some(k) = self.inputs.key_info.key {
+            keycode = k;
+        } else {
+            return Ok(());
+        }
 
-                    // MOUSE EVENTS
-                    input::InputAction::MouseClick(MouseButton::Left, x, y) => {
-                        // Need to go through UI manager to determine what we are interacting with, TODO
-                        // Could be UI element (drawpad) or playing field
-                        if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
-                            let result = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID);
-                            self.drag_draw = match result {
-                                Ok(state) => Some(state),
-                                Err(_)    => None,
-                            };
+        match keycode {
+            KeyCode::Return => {
+                if let Some(tf) = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                    if tf.input_state.is_none() {
+                        if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, Screen::Run) {
+                            layer.enter_focus(INGAME_PANE1_CHATBOXTEXTFIELD)?;
                         }
                     }
-                    input::InputAction::MouseClick(MouseButton::Right, _x, _y) => { }
-                    input::InputAction::MouseMovement(_x, _y) => { }
-                    input::InputAction::MouseDrag(MouseButton::Left, x, y) => {
-                        if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
-                            if let Some(cell_state) = self.drag_draw {
-                                self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
-                            }
-                        }
-                    }
-
-                    // KEYBOARD EVENTS
-                    input::InputAction::KeyPress(keycode, repeat) => {
-                        match keycode {
-                            KeyCode::Return => {
-                                if !repeat {
-                                    self.running = !self.running;
-                                }
-                            }
-                            KeyCode::Space => {
-                                self.single_step = true;
-                            }
-                            KeyCode::Up => {
-                                self.arrow_input = (0, -1);
-                            }
-                            KeyCode::Down => {
-                                self.arrow_input = (0, 1);
-                            }
-                            KeyCode::Left => {
-                                self.arrow_input = (-1, 0);
-                            }
-                            KeyCode::Right => {
-                                self.arrow_input = (1, 0);
-                            }
-                            KeyCode::Add | KeyCode::Equals => {
-                                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
-                                let cell_size = self.viewport.get_cell_size();
-                                self.config.modify(|settings| {
-                                    settings.gameplay.zoom = cell_size;
-                                });
-                            }
-                            KeyCode::Minus | KeyCode::Subtract => {
-                                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
-                                let cell_size = self.viewport.get_cell_size();
-                                self.config.modify(|settings| {
-                                    settings.gameplay.zoom = cell_size;
-                                });
-                            }
-                            KeyCode::Numpad1 => {
-                                self.win_resize = 1;
-                            }
-                            KeyCode::Numpad2 => {
-                                self.win_resize = 2;
-                            }
-                            KeyCode::Numpad3 => {
-                                self.win_resize = 3;
-                            }
-                            KeyCode::LWin => {
-
-                            }
-                            KeyCode::D => {
-                                // TODO: do something with this debug code
-                                let visibility = None;  // can also do Some(player_id)
-                                let pat = self.uni.to_pattern(visibility);
-                                println!("PATTERN DUMP:\n{}", pat.0);
-                            }
-                            _ => {
-                                println!("Unrecognized keycode {:?}", keycode);
-                            }
-                        }
-                    }
-
-                    _ => {},
                 }
             }
+            KeyCode::R => {
+                if !self.inputs.key_info.repeating {
+                    self.running = !self.running;
+                }
+            }
+            KeyCode::Space => {
+                self.single_step = true;
+            }
+            KeyCode::Up => {
+                self.arrow_input = (0, -1);
+            }
+            KeyCode::Down => {
+                self.arrow_input = (0, 1);
+            }
+            KeyCode::Left => {
+                self.arrow_input = (-1, 0);
+            }
+            KeyCode::Right => {
+                self.arrow_input = (1, 0);
+            }
+            KeyCode::Add | KeyCode::Equals => {
+                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
+                let cell_size = self.viewport.get_cell_size();
+                self.config.modify(|settings| {
+                    settings.gameplay.zoom = cell_size;
+                });
+            }
+            KeyCode::Minus | KeyCode::Subtract => {
+                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
+                let cell_size = self.viewport.get_cell_size();
+                self.config.modify(|settings| {
+                    settings.gameplay.zoom = cell_size;
+                });
+            }
+            KeyCode::D => {
+                // TODO: do something with this debug code
+                let visibility = None;  // can also do Some(player_id)
+                let pat = self.uni.to_pattern(visibility);
+                println!("PATTERN DUMP:\n{}", pat.0);
+            }
+            KeyCode::Escape => {
+                self.toggle_paused_game = true;
+            }
+            _ => {
+                println!("Unrecognized keycode {:?}", keycode);
+            }
         }
+        Ok(())
     }
 
     fn process_menu_inputs(&mut self) {
-        while self.input_manager.has_more() {
-            if let Some(input) = self.input_manager.remove() {
-                match input {
-                    input::InputAction::MouseClick(MouseButton::Left, _x, _y) => {}
-                    input::InputAction::MouseClick(MouseButton::Right, _x, _y) => {}
-                    input::InputAction::MouseMovement(_x, _y) => {}
-                    input::InputAction::MouseDrag(MouseButton::Left, _x, _y) => {}
-                    /*input::InputAction::MouseRelease(_) => {}*/
+        let keycode;
 
-                    input::InputAction::KeyPress(keycode, repeat) => {
-                        if !self.menu_sys.get_controls().is_menu_key_pressed() {
-                            match keycode {
-                                KeyCode::Up => {
-                                    self.arrow_input = (0, -1);
-                                }
-                                KeyCode::Down => {
-                                    self.arrow_input = (0, 1);
-                                }
-                                KeyCode::Left => {
-                                    self.arrow_input = (-1, 0);
-                                }
-                                KeyCode::Right => {
-                                    self.arrow_input = (1, 0);
-                                }
-                                KeyCode::Return => {
-                                    if !repeat {
-                                        self.return_key_pressed = true;
-                                    }
-                                }
-                                KeyCode::Escape => {
-                                    self.escape_key_pressed = true;
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    input::InputAction::KeyRelease(keycode) => {
-                        match keycode {
-                            KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right => {
-                                self.arrow_input = (0, 0);
-                                self.menu_sys.get_controls().set_menu_key_pressed(false);
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    _ => {},
-                }
-            }
+        if let Some(k) = self.inputs.key_info.key {
+            keycode = k;
+        } else {
+            return;
         }
 
+        match keycode {
+            KeyCode::Up => {
+                self.arrow_input = (0, -1);
+            }
+            KeyCode::Down => {
+                self.arrow_input = (0, 1);
+            }
+            KeyCode::Left => {
+                self.arrow_input = (-1, 0);
+            }
+            KeyCode::Right => {
+                self.arrow_input = (1, 0);
+            }
+            _ => {}
+        }
     }
 
-    // update
-    fn update_current_screen(&mut self, ctx: &mut Context) {
+    fn process_text_field_inputs(&mut self) {
+        let keycode;
+
+        if let Some(k) = self.inputs.key_info.key {
+            keycode = k;
+        } else {
+            return;
+        }
+
+        let screen = self.get_current_screen();
+
+        match keycode {
+            KeyCode::Escape => {
+                if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, screen) {
+                    layer.exit_focus();
+                }
+            }
+            KeyCode::Return | KeyCode::Back | KeyCode::Delete | KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
+                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
+                    tf.on_keycode(keycode);
+                }
+            }
+            _ => {} // do nothing for now
+        }
+    }
+
+    fn update_main_menu_selection(&mut self, ctx: &mut Context) -> GameResult<()> {
         self.process_menu_inputs();
 
-        let is_direction_key_pressed = {
-            self.menu_sys.get_controls().is_menu_key_pressed()
-        };
-
+        ////////////////////////////////////////
         //// Directional Key / Menu movement
         ////////////////////////////////////////
-        if self.arrow_input != (0,0) && !is_direction_key_pressed {
+        if self.arrow_input != (0,0) && self.inputs.key_info.key.is_some() {
             // move selection accordingly
             let (_,y) = self.arrow_input;
             {
@@ -944,8 +1092,13 @@ impl MainState {
             /////////////////////////
             //// Non-Arrow key was pressed
             //////////////////////////
+            if let Some(k) = self.inputs.key_info.key {
+                let escape_key_pressed = k == KeyCode::Escape && !self.inputs.key_info.repeating;
+                let return_key_pressed = k == KeyCode::Return && !self.inputs.key_info.repeating;
 
-            if self.return_key_pressed || self.escape_key_pressed {
+                if !escape_key_pressed && !return_key_pressed {
+                    return Ok(());
+                }
 
                 let mut id = {
                     let container = self.menu_sys.get_menu_container();
@@ -955,13 +1108,13 @@ impl MainState {
                     menu_item.id
                 };
 
-                if self.escape_key_pressed {
+                if escape_key_pressed {
                     id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
                 }
 
                 match self.menu_sys.menu_state {
                     menu::MenuState::MainMenu => {
-                        if !self.escape_key_pressed {
+                        if !escape_key_pressed {
                             match id {
                                 menu::MenuItemIdentifier::Connect => {
                                     if self.net_worker.is_some() {
@@ -969,7 +1122,7 @@ impl MainState {
                                     }
                                     let mut net_worker = network::ConwaysteNetWorker::new();
                                     net_worker.connect(self.config.get().user.name.clone());
-                                    info!("Connected.");
+                                    info!("Connecting...");
                                     self.net_worker = Some(net_worker);
 
                                 }
@@ -977,7 +1130,7 @@ impl MainState {
                                     self.pause_or_resume_game();
                                 }
                                 menu::MenuItemIdentifier::ExitGame => {
-                                    self.stage = Stage::Exit;
+                                    self.screen_stack.push(Screen::Exit);
                                 }
                                 menu::MenuItemIdentifier::Options => {
                                     self.menu_sys.menu_state = menu::MenuState::Options;
@@ -989,17 +1142,17 @@ impl MainState {
                     menu::MenuState::Options => {
                         match id {
                             menu::MenuItemIdentifier::VideoSettings => {
-                                if !self.escape_key_pressed {
+                                if !escape_key_pressed {
                                     self.menu_sys.menu_state = menu::MenuState::Video;
                                 }
                             }
                             menu::MenuItemIdentifier::AudioSettings => {
-                                if !self.escape_key_pressed {
+                                if !escape_key_pressed {
                                     self.menu_sys.menu_state = menu::MenuState::Audio;
                                 }
                             }
                             menu::MenuItemIdentifier::GameplaySettings => {
-                                if !self.escape_key_pressed {
+                                if !escape_key_pressed {
                                     self.menu_sys.menu_state = menu::MenuState::Gameplay;
                                 }
                             }
@@ -1015,7 +1168,7 @@ impl MainState {
                                 self.menu_sys.menu_state = menu::MenuState::Options;
                             }
                             _ => {
-                                if !self.escape_key_pressed { }
+                                if !escape_key_pressed { }
                             }
                         }
                     }
@@ -1025,7 +1178,7 @@ impl MainState {
                                 self.menu_sys.menu_state = menu::MenuState::Options;
                             }
                             _ => {
-                                if !self.escape_key_pressed { }
+                                if !escape_key_pressed { }
                             }
                         }
                     }
@@ -1035,7 +1188,7 @@ impl MainState {
                                 self.menu_sys.menu_state = menu::MenuState::Options;
                             }
                             menu::MenuItemIdentifier::Fullscreen => {
-                                if !self.escape_key_pressed {
+                                if !escape_key_pressed {
                                     // toggle
                                     let is_fullscreen = !self.video_settings.is_fullscreen;
                                     self.video_settings.is_fullscreen = is_fullscreen;
@@ -1050,7 +1203,7 @@ impl MainState {
                             menu::MenuItemIdentifier::Resolution => {
                                 // NO-OP; menu item is effectively read-only
                                 /*
-                                if !self.escape_key_pressed {
+                                if !escape_key_pressed {
                                     self.video_settings.advance_to_next_resolution(ctx);
 
                                     // Update the configuration file and resize the viewing
@@ -1067,28 +1220,30 @@ impl MainState {
                 }
             }
         }
-
-        self.return_key_pressed = false;
-        self.escape_key_pressed = false;
+        Ok(())
     }
 
     // update
-    fn receive_net_updates(&mut self) {
+    fn receive_net_updates(&mut self) -> GameResult<()> {
         if self.net_worker.is_none() {
-            return;
+            return Ok(());
         }
+
+        let mut incoming_messages = vec![];
+
         let net_worker = self.net_worker.as_mut().unwrap();
         for e in net_worker.try_receive().into_iter() {
             match e {
                 NetwaysteEvent::LoggedIn(server_version) => {
                     info!("Logged in! Server version: v{}", server_version);
-                    self.stage = Stage::ServerList; //XXX
+                    self.screen_stack.push(Screen::ServerList); // XXX
                     // do other stuff
                     net_worker.try_send(NetwaysteEvent::List);
+                    net_worker.try_send(NetwaysteEvent::JoinRoom("room".to_owned()));
                 }
                 NetwaysteEvent::JoinedRoom(room_name) => {
                     println!("Joined Room: {}", room_name);
-                    self.stage = Stage::InRoom;
+                    self.screen_stack.push(Screen::InRoom); // XXX
                 }
                 NetwaysteEvent::PlayerList(list) => {
                     println!("PlayerList: {:?}",list);
@@ -1101,7 +1256,10 @@ impl MainState {
                 }
                 NetwaysteEvent::ChatMessages(msgs) => {
                     for m in msgs {
-                        println!("{:?}", m);
+                        let msg = format!("{}: {}", m.0, m.1);
+                        println!("{:?}", m); // print to stdout for dbg
+
+                        incoming_messages.push(msg);
                     }
                 }
                 NetwaysteEvent::LeftRoom => {
@@ -1118,36 +1276,35 @@ impl MainState {
                 }
             }
         }
+
+        for msg in incoming_messages {
+            if let Some(cb) = LayoutManager::chatbox_from_id(&mut self.ui_layout, INGAME_PANE1_CHATBOX) {
+                cb.add_message(msg);
+            }
+        }
+
+        Ok(())
     }
 
     fn post_update(&mut self) -> GameResult<()> {
-        /*
-        match self.input_manager.peek() {
-            Some(&input::InputAction::KeyPress(keycode, repeat)) => {
-                if repeat {
-                    match keycode {
-                        KeyCode::Up => {
-                            self.arrow_input = (0, -1);
-                        }
-                        KeyCode::Down => {
-                            self.arrow_input = (0, 1);
-                        }
-                        KeyCode::Left => {
-                            self.arrow_input = (-1, 0);
-                        }
-                        KeyCode::Right => {
-                            self.arrow_input = (1, 0);
-                        }
-                        _ => self.arrow_input = (0, 0)
-                    }
+        if let Some(action) = self.inputs.mouse_info.action {
+            match action {
+                MouseAction::Click => {
+                    self.inputs.mouse_info.down_timestamp = None;
+                    self.inputs.mouse_info.action = None;
+                    self.inputs.mouse_info.mousebutton = MouseButton::Other(0);
+                    self.inputs.mouse_info.down_position = Point2::new(0.0, 0.0);
                 }
+                MouseAction::Drag | MouseAction::Held | MouseAction::DoubleClick => {}
             }
-            _ => self.arrow_input = (0,0),
         }
-        */
+        self.inputs.mouse_info.scroll_event = None;
+
+        if self.inputs.key_info.key.is_some() {
+            self.inputs.key_info.key = None;
+        }
 
         self.arrow_input = (0, 0);
-        self.input_manager.expunge();
 
         // Flush config
         self.config.flush().map_err(|e| {
@@ -1165,6 +1322,83 @@ impl MainState {
             });
         }
     }
+
+    fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> UIResult<()> {
+        match widget_id {
+            MAINMENU_PANE1_BUTTONYES
+            | MAINMENU_PANE1_BUTTONNO
+            | MAINMENU_TESTBUTTON  => {
+                match action {
+                    UIAction::ScreenTransition(s) => {
+                        self.screen_stack.push(s);
+                    }
+                    _ => {
+                        return Err(Box::new(UIError::InvalidAction{
+                            reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)
+                        }));
+                    }
+                }
+            },
+            MAINMENU_TESTCHECKBOX => {
+                match action {
+                    UIAction::Toggle(enabled) => {
+                        self.config.modify(|settings| {
+                            settings.video.fullscreen = enabled;
+                        });
+                        self.video_settings.is_fullscreen = enabled;
+                        self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
+                    }
+                    _ => {
+                        return Err(Box::new(UIError::InvalidAction{
+                            reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)
+                        }));
+                     }
+                }
+            },
+            MAINMENU_PANE1
+            | MAINMENU_LAYER1
+            | INGAME_LAYER1
+            | INGAME_PANE1 => {
+                return Err(Box::new(UIError::ActionRestricted{
+                    reason: format!("Widget: {:?} is either a Pane or Layer element. Actions are not allowed for Widgets of these types.", widget_id)
+                }));
+            },
+            ui::WidgetID(_) => {},
+        }
+
+        Ok(())
+    }
+
+    fn handle_user_chat_complete(&mut self, _ctx: &mut Context) {
+        let username = self.config.get().user.name.clone();
+        let mut msg = String::new();
+
+        if let Some(tf) = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+            if let Some(m) = tf.text() {
+                msg = format!("{}: {}", username, m);
+            }
+            tf.input_state = None;
+            tf.clear();
+        }
+
+        if !msg.is_empty() {
+            if let Some(cb) = LayoutManager::chatbox_from_id(&mut self.ui_layout, INGAME_PANE1_CHATBOX) {
+                cb.add_message(msg.clone());
+
+                if let Some(ref mut netwayste) = self.net_worker {
+                    netwayste.try_send(NetwaysteEvent::ChatMessage(msg));
+                }
+            }
+        }
+    }
+
+    fn get_current_screen(&self) -> Screen {
+        match self.screen_stack.last() {
+            Some(screen) => *screen,
+            None => panic!("Error in main thread draw! Screen_stack is empty!"),
+        }
+    }
+
 }
 
 enum Orientation {
