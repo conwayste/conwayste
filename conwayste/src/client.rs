@@ -45,7 +45,7 @@ use chrono::Local;
 use log::LevelFilter;
 
 use conway::universe::{BigBang, Universe, CellState, Region, PlayerBuilder};
-use conway::grids::CharGrid;
+use conway::grids::{CharGrid, BitGrid};
 use conway::rle::Pattern;
 use conway::ConwayResult;
 
@@ -127,6 +127,8 @@ struct MainState {
     single_step:         bool,
     arrow_input:         (isize, isize),
     drag_draw:           Option<CellState>,
+    insert_mode:         Option<(BitGrid, usize, usize)>,   // pattern to be drawn on click along with width and height;
+                                                            // if Some(...), dragging doesn't draw anything
     toggle_paused_game:  bool,
     current_intro_duration:  f64,
 
@@ -416,6 +418,7 @@ impl MainState {
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
+            insert_mode:         None,
             toggle_paused_game:  false,
             current_intro_duration:  0.0,
             ui_layout:           ui_layout,
@@ -527,29 +530,44 @@ impl EventHandler for MainState {
                     ).unwrap(); // OK to call unwrap here because there is an else match arm (all errors handled)
                 }
 
-                if self.inputs.mouse_info.mousebutton == MouseButton::Left {
+                // TODO: move this into process_running_inputs
+                if self.inputs.mouse_info.mousebutton == MouseButton::Left && self.inputs.mouse_info.action == Some(MouseAction::Click) {
                     let mouse_pos = self.inputs.mouse_info.position;
 
-                    match self.inputs.mouse_info.action {
-                        Some(MouseAction::Click) => {
-                            self.drag_draw = None;
+                    if let Some((ref grid, width, height)) = self.insert_mode {
+                        // inserting a pattern
+                        if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                            let dst_region = Region::new(cell.col as isize, cell.row as isize, width, height);
+                            self.uni.copy_from_bit_grid(grid, dst_region, Some(CURRENT_PLAYER_ID));
+                            //XXX calculate shift to insert at center
+                            //XXX shouldn't be same as mouse position
                         }
-                        Some(MouseAction::Drag) => {
-                            if let Some(cell) = self.viewport.get_cell(mouse_pos) {
-                                // Only make dead cells alive
-                                if let Some(cell_state) = self.drag_draw {
-                                    self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
+                    } else {
+                        // not inserting a pattern, just drawing single cells
+                        match self.inputs.mouse_info.action {
+                            Some(MouseAction::Click) => {
+                                // release
+                                self.drag_draw = None;
+                            }
+                            Some(MouseAction::Drag) => {
+                                // hold + motion
+                                if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                                    // Only make dead cells alive
+                                    if let Some(cell_state) = self.drag_draw {
+                                        self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
+                                    }
                                 }
                             }
-                        }
-                        Some(MouseAction::Held) => {
-                            if let Some(cell) = self.viewport.get_cell(mouse_pos) {
-                                if self.drag_draw.is_none() {
-                                    self.drag_draw = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
+                            Some(MouseAction::Held) => {
+                                // depress, no move yet
+                                if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                                    if self.drag_draw.is_none() {
+                                        self.drag_draw = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
+                                    }
                                 }
                             }
+                            Some(MouseAction::DoubleClick) | None => {} // do nothing
                         }
-                        Some(MouseAction::DoubleClick) | None => {} // do nothing
                     }
                 }
 
@@ -765,6 +783,7 @@ impl EventHandler for MainState {
         }
 
         let screen = self.get_current_screen();
+
         if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
             tf.on_char(character);
         }
@@ -957,6 +976,15 @@ impl MainState {
         if let Some(k) = self.inputs.key_info.key {
             keycode = k;
         } else {
+            return Ok(());
+        }
+
+        if keycode == KeyCode::Key1 {
+            // pressing 1 clears selection
+            self.insert_mode = None;
+            return Ok(());
+        } else if keycode >= KeyCode::Key2 && keycode <= KeyCode::Key0 {
+            self.insert_mode = Some(self.bit_pattern_from_char(keycode));
             return Ok(());
         }
 
@@ -1397,6 +1425,32 @@ impl MainState {
             Some(screen) => *screen,
             None => panic!("Error in main thread draw! Screen_stack is empty!"),
         }
+    }
+
+    fn bit_pattern_from_char(&self, keycode: KeyCode) -> (BitGrid, usize, usize) {
+        // TODO: make this configurable
+        let rle_str = match keycode {
+            KeyCode::Key2 => "bob$2bo$3o!",  // SE glider
+            KeyCode::Key3 => "o$obo$2o!",    // SW glider
+            KeyCode::Key4 => "3o$o$bo!",     // NW glider
+            KeyCode::Key5 => "b2o$obo$2bo!", // NE glider
+
+            KeyCode::Key6 => "4bo$5bo$o4bo$b5o!",         // E LWSS
+            KeyCode::Key7 => "bo$o$o$o$o2bo$3o!",         // S LWSS
+            KeyCode::Key8 => "5o$o4bo$o$bo!",             // W LWSS
+            KeyCode::Key9 => "b3o$o2bo$3bo$3bo$3bo$2bo!", // N LWSS
+
+            // https://www.conwaylife.com/wiki/Period-22_glider_gun
+            KeyCode::Key0 => concat!("18b2o25b$19bo7bo17b$19bobo14b2o7b$20b2o12b2o2bo6b$24b3o7b2ob2o6b$24b2o",
+                                     "b2o7b3o6b$24bo2b2o12b2o2b$25b2o14bobob$35bo7bob$43b2o2$2o23bo19b$bo21b",
+                                     "obo19b$bobo13b3o4b2o19b$2b2o3bo8bo3bo24b$6bob2o6bo4bo23b$5bo4bo6b2obo",
+                                     "9bo14b$6bo3bo8bo3b2o6bo13b$7b3o13bobo3b3o13b$25bo19b$25b2o!"),
+            _ => "", // unexpected
+        };
+        let pat = Pattern(rle_str.to_owned());
+        let (width, height) = pat.calc_size().unwrap();  // unwrap OK because calc_size should never fail on valid RLE
+        let grid = pat.to_new_bit_grid(width, height).unwrap();
+        (grid, width, height)
     }
 
 }

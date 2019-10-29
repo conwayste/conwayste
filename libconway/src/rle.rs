@@ -164,6 +164,38 @@ fn digits_to_number(digits: &Vec<char>) -> ConwayResult<usize> {
 }
 
 
+/// Dummy implementation of the `CharGrid` trait that is only used to get the size of a pattern
+/// using `Pattern::to_grid`.
+#[derive(Default)]
+struct PatternSize {
+    pub col: usize,
+    pub row: usize,
+}
+
+impl CharGrid for PatternSize {
+    /// Write a char `ch` to (`col`, `row`).
+    fn write_at_position(&mut self, col: usize, row: usize, _ch: char, _visibility: Option<usize>) {
+        if row > self.row {
+            self.row = row;
+        }
+        if col > self.col {
+            self.col = col;
+        }
+    }
+
+    /// Is `ch` a valid character?
+    fn is_valid(_ch: char) -> bool { true }
+
+    /// Width in cells
+    fn width(&self) -> usize { self.col + 1 }
+
+    /// Height in cells
+    fn height(&self) -> usize { self.row + 1 }
+
+    fn get_run(&self, _col: usize, _row: usize, _visibility: Option<usize>) -> (usize, char) { unimplemented!("PatternSize is write-only"); }
+}
+
+
 impl Pattern {
     /// Creates a BitGrid out of this pattern. If there are no parse errors, the result contains
     /// the smallest BitGrid that fits a pattern `width` cells wide and `height` cells high.
@@ -172,6 +204,13 @@ impl Pattern {
         let mut grid = BitGrid::new(word_width, height);
         self.to_grid(&mut grid, None)?;
         Ok(grid)
+    }
+
+    /// Calculates the width and height actually taken up by the pattern.
+    pub fn calc_size(&self) -> ConwayResult<(usize, usize)> {
+        let mut ps: PatternSize = Default::default();
+        self.to_grid(&mut ps, None)?;
+        Ok((ps.width(), ps.height()))
     }
 
     /// Writes the pattern to a BitGrid or GenState (that is, anything implementing CharGrid).  The
@@ -192,37 +231,21 @@ impl Pattern {
         let mut row: usize = 0;
         let mut char_indices = self.0.char_indices();
         let mut ch;
-        let mut i;
+        let mut i = None;
         let mut complete = false;
         let mut digits: Vec<char> = vec![];
         loop {
             match char_indices.next() {
                 Some((_i, _ch)) => {
                     ch = _ch;
-                    i = _i;
+                    i = Some(_i);
                 }
                 None => break
             };
             if digits.len() > 0 && ch == '!' {
-                return Err(InvalidData{reason: format!("Cannot have {} after number at {}", ch, i)});
+                return Err(InvalidData{reason: format!("Cannot have {} after number at {}", ch, i.unwrap())});
             }
             match ch {
-                _ if G::is_valid(ch) => {
-                    // cell
-                    let number = if digits.len() > 0 {
-                        //TODO: wrap errors from digits_to_number rather than just forwarding
-                        digits_to_number(&digits)?
-                    } else { 1 };
-                    digits.clear();
-                    if ch != NO_OP_CHAR {
-                        for _ in 0..number {
-                            grid.write_at_position(col, row, ch, visibility);
-                            col += 1;
-                        }
-                    } else {
-                        col += number;
-                    }
-                }
                 '!' => {
                     // end of input
                     complete = true;
@@ -243,13 +266,29 @@ impl Pattern {
                 x if x.is_digit(10) => {
                     digits.push(ch);
                 }
+                _ if G::is_valid(ch) => {
+                    // cell
+                    let number = if digits.len() > 0 {
+                        //TODO: wrap errors from digits_to_number rather than just forwarding
+                        digits_to_number(&digits)?
+                    } else { 1 };
+                    digits.clear();
+                    if ch != NO_OP_CHAR {
+                        for _ in 0..number {
+                            grid.write_at_position(col, row, ch, visibility);
+                            col += 1;
+                        }
+                    } else {
+                        col += number;
+                    }
+                }
                 _ => {
-                    return Err(InvalidData{reason: format!("Unrecognized character {} at {}", ch, i)});
+                    return Err(InvalidData{reason: format!("Unrecognized character {} at {}", ch, i.unwrap())});
                 }
             }
         }
         if !complete {
-            return Err(InvalidData{reason: "Premature termination".to_owned()});
+            return Err(InvalidData{reason: format!("Premature termination at {:?}", i)});
         }
         Ok(())
     }

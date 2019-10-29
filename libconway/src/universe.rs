@@ -1320,7 +1320,7 @@ impl Universe {
     /// 
     /// Does numerous consistency checks on the bitmaps, and panics if inconsistencies are found.
     //XXX non_dead_cells_in_region
-    pub fn each_non_dead(&self, region: Region, visibility: Option<usize>, callback: &mut FnMut(usize, usize, CellState)) {
+    pub fn each_non_dead(&self, region: Region, visibility: Option<usize>, callback: &mut dyn FnMut(usize, usize, CellState)) {
         let cells = &self.gen_states[self.state_index].cells;
         let wall  = &self.gen_states[self.state_index].wall_cells;
         let known = &self.gen_states[self.state_index].known;
@@ -1415,7 +1415,7 @@ impl Universe {
     /// Iterate over every non-dead cell in the universe for the current generation.
     /// `visibility` is an optional player_id, allowing filtering based on fog.
     /// Callback receives (col, row, cell_state).
-    pub fn each_non_dead_full(&self, visibility: Option<usize>, callback: &mut FnMut(usize, usize, CellState)) {
+    pub fn each_non_dead_full(&self, visibility: Option<usize>, callback: &mut dyn FnMut(usize, usize, CellState)) {
         self.each_non_dead(self.region(), visibility, callback);
     }
 
