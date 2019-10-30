@@ -192,7 +192,9 @@ impl CharGrid for PatternSize {
     /// Height in cells
     fn height(&self) -> usize { self.row + 1 }
 
-    fn get_run(&self, _col: usize, _row: usize, _visibility: Option<usize>) -> (usize, char) { unimplemented!("PatternSize is write-only"); }
+    fn get_run(&self, _col: usize, _row: usize, _visibility: Option<usize>) -> (usize, char) {
+        unimplemented!("PatternSize is write-only");
+    }
 }
 
 

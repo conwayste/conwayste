@@ -531,16 +531,18 @@ impl EventHandler for MainState {
                 }
 
                 // TODO: move this into process_running_inputs
-                if self.inputs.mouse_info.mousebutton == MouseButton::Left && self.inputs.mouse_info.action == Some(MouseAction::Click) {
+                if self.inputs.mouse_info.mousebutton == MouseButton::Left {
                     let mouse_pos = self.inputs.mouse_info.position;
 
                     if let Some((ref grid, width, height)) = self.insert_mode {
                         // inserting a pattern
-                        if let Some(cell) = self.viewport.get_cell(mouse_pos) {
-                            let dst_region = Region::new(cell.col as isize, cell.row as isize, width, height);
-                            self.uni.copy_from_bit_grid(grid, dst_region, Some(CURRENT_PLAYER_ID));
-                            //XXX calculate shift to insert at center
-                            //XXX shouldn't be same as mouse position
+                        if self.inputs.mouse_info.action == Some(MouseAction::Click) {
+                            if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                                let insert_col = cell.col as isize - (width/2) as isize;
+                                let insert_row = cell.row as isize - (height/2) as isize;
+                                let dst_region = Region::new(insert_col, insert_row, width, height);
+                                self.uni.copy_from_bit_grid(grid, dst_region, Some(CURRENT_PLAYER_ID));
+                            }
                         }
                     } else {
                         // not inserting a pattern, just drawing single cells
@@ -979,16 +981,15 @@ impl MainState {
             return Ok(());
         }
 
-        if keycode == KeyCode::Key1 {
-            // pressing 1 clears selection
-            self.insert_mode = None;
-            return Ok(());
-        } else if keycode >= KeyCode::Key2 && keycode <= KeyCode::Key0 {
-            self.insert_mode = Some(self.bit_pattern_from_char(keycode));
-            return Ok(());
-        }
-
         match keycode {
+            KeyCode::Key1 => {
+                // pressing 1 clears selection
+                self.insert_mode = None;
+            }
+            k if k >= KeyCode::Key2 && k <= KeyCode::Key0 => {
+                self.insert_mode = Some(self.bit_pattern_from_char(keycode));
+                return Ok(());
+            }
             KeyCode::Return => {
                 if let Some(tf) = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if tf.input_state.is_none() {
