@@ -48,6 +48,7 @@ use conway::universe::{BigBang, Universe, CellState, Region, PlayerBuilder};
 use conway::grids::{CharGrid, BitGrid};
 use conway::rle::Pattern;
 use conway::ConwayResult;
+use conway::error::ConwayError;
 
 use netwayste::net::NetwaysteEvent;
 
@@ -987,7 +988,13 @@ impl MainState {
                 self.insert_mode = None;
             }
             k if k >= KeyCode::Key2 && k <= KeyCode::Key0 => {
-                self.insert_mode = Some(self.bit_pattern_from_char(keycode));
+                let grid_info_result = self.bit_pattern_from_char(keycode);
+                let grid_info = handle_error!{grid_info_result -> (BitGrid, usize, usize),
+                    ConwayError => |e| {
+                        return Err(format!("Invalid pattern bound to keycode {:?}: {}", keycode, e).into())
+                    }
+                }?;
+                self.insert_mode = Some(grid_info);
                 return Ok(());
             }
             KeyCode::Return => {
@@ -1428,7 +1435,13 @@ impl MainState {
         }
     }
 
-    fn bit_pattern_from_char(&self, keycode: KeyCode) -> (BitGrid, usize, usize) {
+    /// This takes a keyboard code and returns a `Result` whose Ok value is a `(BitGrid, width,
+    /// height)` tuple.
+    ///
+    /// # Errors
+    ///
+    /// This will return an error if one if its RLE patterns are invalid.
+    fn bit_pattern_from_char(&self, keycode: KeyCode) -> Result<(BitGrid, usize, usize), Box<dyn Error>> {
         // TODO: make this configurable
         let rle_str = match keycode {
             KeyCode::Key2 => "bob$2bo$3o!",  // SE glider
@@ -1449,9 +1462,9 @@ impl MainState {
             _ => "", // unexpected
         };
         let pat = Pattern(rle_str.to_owned());
-        let (width, height) = pat.calc_size().unwrap();  // unwrap OK because calc_size should never fail on valid RLE
-        let grid = pat.to_new_bit_grid(width, height).unwrap();
-        (grid, width, height)
+        let (width, height) = pat.calc_size()?;  // calc_size will fail on valid RLE -- return it
+        let grid = pat.to_new_bit_grid(width, height)?;
+        Ok((grid, width, height))
     }
 
 }
