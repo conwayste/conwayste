@@ -199,6 +199,22 @@ impl BitGrid {
             }
         }
     }
+
+    /// Calls callback on each bit that is set (1). Callback receives (col, row).
+    pub fn each_set<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        for row in 0 .. self.height() {
+            let mut col = 0;
+            for col_idx in 0 .. self.width_in_words() {
+                for shift in (0..64).rev() {
+                    let word = self.0[row][col_idx];
+                    if (word>>shift)&1 == 1 {
+                        callback(col, row);
+                    }
+                    col += 1;
+                }
+            }
+        }
+    }
 }
 
 

@@ -313,7 +313,7 @@ impl GridView {
     /// Given a window point in pixels, we'll determine the nearest intersecting
     /// row, column pair.
     // Given a Point2<f32>(x,y), we determine a col/row tuple in cell units
-    fn game_coords_from_window(&self, point: Point2<f32>) -> Option<Cell> {
+    pub fn game_coords_from_window(&self, point: Point2<f32>) -> Option<Cell> {
         let (col, row) = self.game_coords_from_window_unchecked(point);
 
         if col < 0 || col >= self.columns as isize || row < 0 || row >= self.rows as isize {

@@ -628,13 +628,41 @@ impl EventHandler for MainState {
 
         match current_screen {
             Screen::Intro => {
-                self.draw_intro(ctx)?;
+                let result = self.draw_intro(ctx);
+                let mut out_result: GameResult<()> = Ok(());
+                let mut do_return = false;
+                handle_error!{result,
+                    GameError => |e| {
+                        out_result = Err(e);
+                    },
+                    else => |e| {
+                        error!("Error from draw_intro: {}", e);
+                        do_return = true;
+                    }
+                };
+                if do_return {
+                    return out_result;
+                }
             }
             Screen::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn)?;
             }
             Screen::Run => {
-                self.draw_universe(ctx)?;
+                let result = self.draw_universe(ctx);
+                let mut out_result: GameResult<()> = Ok(());
+                let mut do_return = false;
+                handle_error!{result,
+                    GameError => |e| {
+                        out_result = Err(e);
+                    },
+                    else => |e| {
+                        error!("Error from draw_universe: {}", e);
+                        do_return = true;
+                    }
+                };
+                if do_return {
+                    return out_result;
+                }
             }
             Screen::InRoom => {
                 ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("In Room"), &Point2::new(100.0, 100.0))?;
@@ -860,7 +888,7 @@ struct UniDrawParams {
 
 impl MainState {
 
-    fn draw_game_of_life(&self, ctx: &mut Context, universe: &Universe) -> GameResult<()> {
+    fn draw_game_of_life(&self, ctx: &mut Context, universe: &Universe) -> Result<(), Box<dyn Error>> {
 
         let viewport = if self.uni_draw_params.player_id >= 0 {
             &self.viewport
@@ -881,7 +909,8 @@ impl MainState {
         let full_rect = viewport.get_rect_from_origin();
 
         let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
-        let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
+        let mut main_spritebatch = graphics::spritebatch::SpriteBatch::new(image.clone());
+        let mut overlay_spritebatch = graphics::spritebatch::SpriteBatch::new(image);
 
         // grid non-dead cells (walls, players, etc.)
         let visibility = if self.uni_draw_params.player_id >= 0 {
@@ -891,6 +920,7 @@ impl MainState {
             Some(0)
         };
 
+        // TODO: call each_non_dead with visible region (add method to viewport)
         universe.each_non_dead_full(visibility, &mut |col, row, state| {
             let color = if self.uni_draw_params.player_id >= 0 {
                 self.color_settings.get_color(Some(state))
@@ -904,9 +934,39 @@ impl MainState {
                     .scale(Vector2::new(rect.w, rect.h))
                     .color(color);
 
-                spritebatch.add(p);
+                main_spritebatch.add(p);
             }
         });
+
+        // TODO: truncate if outside of writable region
+        // TODO: move to new function
+        if let Some((ref grid, width, height)) = self.insert_mode {
+            if self.uni_draw_params.player_id < 0 {
+                return Err(format!("Unexpected player ID {}", self.uni_draw_params.player_id).into());
+            }
+            let player_cell_state = CellState::Alive(Some(self.uni_draw_params.player_id as usize));
+            let mut color = self.color_settings.get_color(Some(player_cell_state));
+            color.a = 0.5;  // semi-transparent since this is an overlay
+            if let Some(cursor_cell) = viewport.game_coords_from_window(self.inputs.mouse_info.position) {
+                let (cursor_col, cursor_row) = (cursor_cell.col, cursor_cell.row);
+                grid.each_set(|grid_col, grid_row| {
+                    let col = (grid_col + cursor_col) as isize - width as isize/2;
+                    let row = (grid_row + cursor_row) as isize - height as isize/2;
+                    if col < 0 || row < 0 {
+                        // out of range
+                        return;
+                    }
+                    if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col as usize, row as usize)) {
+                        let p = graphics::DrawParam::new()
+                            .dest(Point2::new(rect.x, rect.y))
+                            .scale(Vector2::new(rect.w, rect.h))
+                            .color(color);
+
+                        overlay_spritebatch.add(p);
+                    }
+                });
+            }
+        }
 
         if let Some(clipped_rect) = ui::intersection(full_rect, viewport_rect) {
             let origin = graphics::DrawParam::new().dest(Point2::new(0.0, 0.0));
@@ -914,10 +974,13 @@ impl MainState {
                                                           self.uni_draw_params.fg_color)?;
 
             graphics::draw(ctx, &rectangle, origin)?;
-            graphics::draw(ctx, &spritebatch, origin)?;
+            graphics::draw(ctx, &main_spritebatch, origin)?;
+            graphics::draw(ctx, &overlay_spritebatch, origin)?;
         }
 
-        spritebatch.clear();
+        // TODO: see if we need to do this
+        main_spritebatch.clear();
+        overlay_spritebatch.clear();
 
         ////////// draw generation counter
         if self.uni_draw_params.draw_counter {
@@ -936,11 +999,11 @@ impl MainState {
         self.intro_viewport.set_origin(Point2::new(target_center_x, target_center_y));
     }
 
-    fn draw_intro(&mut self, ctx: &mut Context) -> GameResult<()>{
+    fn draw_intro(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
         self.draw_game_of_life(ctx, &self.intro_uni)
     }
 
-    fn draw_universe(&mut self, ctx: &mut Context) -> GameResult<()> {
+    fn draw_universe(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
         self.first_gen_was_drawn = true;
         self.draw_game_of_life(ctx, &self.uni)
     }
@@ -988,6 +1051,7 @@ impl MainState {
                 self.insert_mode = None;
             }
             k if k >= KeyCode::Key2 && k <= KeyCode::Key0 => {
+                // select a pattern
                 let grid_info_result = self.bit_pattern_from_char(keycode);
                 let grid_info = handle_error!{grid_info_result -> (BitGrid, usize, usize),
                     ConwayError => |e| {
@@ -1440,7 +1504,7 @@ impl MainState {
     ///
     /// # Errors
     ///
-    /// This will return an error if one if its RLE patterns are invalid.
+    /// This will return an error if the selected RLE pattern is invalid.
     fn bit_pattern_from_char(&self, keycode: KeyCode) -> Result<(BitGrid, usize, usize), Box<dyn Error>> {
         // TODO: make this configurable
         let rle_str = match keycode {
