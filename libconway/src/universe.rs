@@ -711,8 +711,8 @@ impl Universe {
 
 
     /// Checked set - check for:
-    /// * current cell state (can't change wall)
     /// * player writable region
+    /// * current cell state (can't change wall)
     /// * fog
     /// * if current cell is alive, player_id matches player_id argument
     ///
@@ -724,6 +724,11 @@ impl Universe {
     pub fn set(&mut self, col: usize, row: usize, new_state: CellState, player_id: usize) {
 
         {
+            let is_writable_result = self.writable(col, row, player_id);
+            if is_writable_result.is_err() || !is_writable_result.unwrap() {
+                return;
+            }
+
             let gen_state = &mut self.gen_states[self.state_index];
             let word_col = col/64;
             let shift = 63 - (col & (64 - 1));
@@ -736,9 +741,6 @@ impl Universe {
 
             if walls_word & mask > 0 {
                 return;
-            }
-
-            if !self.player_writable[player_id].contains(col as isize, row as isize) { return;
             }
 
             if gen_state.player_states[player_id].fog[row][word_col] & mask > 0 {
@@ -811,10 +813,12 @@ impl Universe {
     /// 
     /// # Errors
     /// 
-    /// It is an error to toggle outside player's writable area, or to toggle a wall or an unknown cell.
+    /// * It is a `ConwayError::AccessDenied` error to toggle outside player's writable area, or to
+    /// toggle a wall or an unknown cell.
+    /// * It is a `ConwayError::InvalidData` error to pass in an invalid player_id.
     pub fn toggle(&mut self, col: usize, row: usize, player_id: usize) -> ConwayResult<CellState> {
         use ConwayError::*;
-        if !self.player_writable[player_id].contains(col as isize, row as isize) {
+        if !self.writable(col, row, player_id)? {
             return Err(AccessDenied{reason: format!("outside writable area for player {}: col={}, row={}",
                                                     player_id, col, row)});
         }
@@ -833,6 +837,19 @@ impl Universe {
             }
         }
         Ok(self.toggle_unchecked(col, row, Some(player_id)))
+    }
+
+
+    /// Returns Ok(true) if col and row are in writable area for specified player.
+    ///
+    /// # Errors
+    ///
+    /// * It is a `ConwayError::InvalidData` error to pass in an invalid player_id.
+    pub fn writable(&self, col: usize, row: usize, player_id: usize) -> ConwayResult<bool> {
+        if player_id >= self.player_writable.len() {
+            return Err(ConwayError::InvalidData{reason: format!("Unexpected player_id {}", player_id)});
+        }
+        Ok(self.player_writable[player_id].contains(col as isize, row as isize))
     }
 
 

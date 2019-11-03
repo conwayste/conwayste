@@ -941,12 +941,14 @@ impl MainState {
         // TODO: truncate if outside of writable region
         // TODO: move to new function
         if let Some((ref grid, width, height)) = self.insert_mode {
+            let unwritable_flash_on =  timer::time_since_start(ctx).subsec_millis() % 250 < 125;  // 50% duty cycle, 250ms period
+
             if self.uni_draw_params.player_id < 0 {
                 return Err(format!("Unexpected player ID {}", self.uni_draw_params.player_id).into());
             }
             let player_cell_state = CellState::Alive(Some(self.uni_draw_params.player_id as usize));
-            let mut color = self.color_settings.get_color(Some(player_cell_state));
-            color.a = 0.5;  // semi-transparent since this is an overlay
+            let mut player_color = self.color_settings.get_color(Some(player_cell_state));
+            player_color.a = 0.5;  // semi-transparent since this is an overlay
             if let Some(cursor_cell) = viewport.game_coords_from_window(self.inputs.mouse_info.position) {
                 let (cursor_col, cursor_row) = (cursor_cell.col, cursor_cell.row);
                 grid.each_set(|grid_col, grid_row| {
@@ -956,7 +958,18 @@ impl MainState {
                         // out of range
                         return;
                     }
-                    if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col as usize, row as usize)) {
+                    let (col, row) = (col as usize, row as usize);
+                    if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col, row)) {
+                        let mut color = player_color;
+                        // only error is due to player_id out of range, so unwrap OK here
+                        if !self.uni.writable(col, row, self.uni_draw_params.player_id as usize).unwrap() {
+                            // not writable, so draw flashing red cells
+                            if unwritable_flash_on {
+                                color = *constants::colors::INSERT_PATTERN_UNWRITABLE;
+                            } else {
+                                return;
+                            }
+                        }
                         let p = graphics::DrawParam::new()
                             .dest(Point2::new(rect.x, rect.y))
                             .scale(Vector2::new(rect.w, rect.h))
