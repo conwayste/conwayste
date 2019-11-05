@@ -31,7 +31,8 @@ use super::{
 use crate::constants::colors::*;
 
 pub struct Pane {
-    pub id: WidgetID,
+    id: WidgetID,
+    z_index: usize,
     pub dimensions: Rect,
     pub widgets: Vec<Box<dyn Widget>>,
     pub hover: bool,
@@ -50,6 +51,7 @@ impl Pane {
     pub fn new(widget_id: WidgetID, dimensions: Rect) -> Self {
         Pane {
             id: widget_id,
+            z_index: 0,
             dimensions: dimensions,
             widgets: vec![],
             hover: false,
@@ -102,6 +104,10 @@ impl Pane {
 impl Widget for Pane {
     fn id(&self) -> WidgetID {
         self.id
+    }
+
+    fn z_index(&self) -> usize {
+        self.z_index
     }
 
     fn size(&self) -> Rect {

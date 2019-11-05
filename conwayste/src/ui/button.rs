@@ -32,7 +32,8 @@ use super::{
 };
 
 pub struct Button {
-    pub id:     WidgetID,
+    id: WidgetID,
+    z_index: usize,
     pub label: Label,
     pub button_color: Color,
     pub draw_mode: DrawMode,
@@ -107,6 +108,7 @@ impl Button {
 
         let mut b = Button {
             id: widget_id,
+            z_index: 0,
             label: label,
             button_color: color_with_alpha(css::DARKCYAN, 0.8),
             draw_mode: DrawMode::fill(),
@@ -145,6 +147,10 @@ impl Button {
 impl Widget for Button {
     fn id(&self) -> WidgetID {
         self.id
+    }
+
+    fn z_index(&self) -> usize {
+        self.z_index
     }
 
     fn on_hover(&mut self, point: &Point2<f32>) {

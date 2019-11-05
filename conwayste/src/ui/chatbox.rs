@@ -34,6 +34,7 @@ use crate::constants::{self, colors::*};
 
 pub struct Chatbox {
     id: WidgetID,
+    z_index: usize,
     history_lines: usize,
     color: Color,
     messages: VecDeque<String>,
@@ -69,6 +70,7 @@ impl Chatbox {
         let rect = *constants::DEFAULT_CHATBOX_RECT;
         Chatbox {
             id: widget_id,
+            z_index: 0,
             history_lines,
             color: *CHATBOX_BORDER_COLOR,
             messages: VecDeque::with_capacity(history_lines),
@@ -216,6 +218,10 @@ impl Chatbox {
 impl Widget for Chatbox {
     fn id(&self) -> WidgetID {
         self.id
+    }
+
+    fn z_index(&self) -> usize {
+        self.z_index
     }
 
     fn size(&self) -> Rect {

@@ -38,6 +38,9 @@ pub trait Widget: Downcast {
     /// Retrieves the widget's unique identifer
     fn id(&self) -> WidgetID;
 
+    /// Retreives the widget's draw stack order
+    fn z_index(&self) -> usize;
+
     /// Action to be taken when the widget is given the provided point
     fn on_hover(&mut self, _point: &Point2<f32>) {
         ()

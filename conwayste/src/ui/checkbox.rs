@@ -33,7 +33,8 @@ use super::{
 use crate::constants::colors::*;
 
 pub struct Checkbox {
-    pub id:     WidgetID,
+    id: WidgetID,
+    z_index: usize,
     pub label: Label,
     pub enabled: bool,
     pub dimensions: Rect,
@@ -90,6 +91,7 @@ impl Checkbox {
 
         Checkbox {
             id: widget_id,
+            z_index: 0,
             label: Label::new(ctx, widget_id, font_info, text, *CHECKBOX_TEXT_COLOR, label_origin),
             enabled: enabled,
             dimensions: dimensions,
@@ -109,6 +111,10 @@ impl Checkbox {
 impl Widget for Checkbox {
     fn id(&self) -> WidgetID {
         self.id
+    }
+
+    fn z_index(&self) -> usize {
+        self.z_index
     }
 
     fn size(&self) -> Rect {

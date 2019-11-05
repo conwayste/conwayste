@@ -43,6 +43,7 @@ pub enum TextInputState {
 
 pub struct TextField {
     id: WidgetID,
+    z_index: usize,
     action: UIAction,
     pub input_state: Option<TextInputState>,
     text: String,
@@ -82,13 +83,14 @@ impl TextField {
     ///
     pub fn new(widget_id: WidgetID, font_info: FontInfo, dimensions: Rect) -> TextField {
         TextField {
+            id: widget_id,
+            z_index: 0,
             input_state: None,
             text: String::new(),
             cursor_index: 0,
             cursor_blink_timestamp: None,
             draw_cursor: false,
             dimensions: dimensions,
-            id: widget_id,
             action: UIAction::EnterText,
             hover: false,
             visible_start_index: 0,
@@ -258,6 +260,14 @@ impl TextField {
 }
 
 impl Widget for TextField {
+    fn id(&self) -> WidgetID {
+        self.id
+    }
+
+    fn z_index(&self) -> usize {
+        self.z_index
+    }
+
     fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
     }
@@ -385,10 +395,6 @@ impl Widget for TextField {
 
     fn translate(&mut self, dest: Vector2<f32>) {
         self.dimensions.translate(dest);
-    }
-
-    fn id(&self) -> WidgetID {
-        self.id
     }
 }
 

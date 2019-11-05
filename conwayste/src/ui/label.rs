@@ -30,7 +30,8 @@ use super::{
 };
 
 pub struct Label {
-    pub id: WidgetID,
+    id: WidgetID,
+    z_index: usize,
     pub textfrag: TextFragment,
     pub dimensions: Rect,
 }
@@ -98,6 +99,7 @@ impl Label {
 
         Label {
             id: widget_id,
+            z_index: 0,
             textfrag: text_fragment,
             dimensions: dimensions
         }
@@ -108,6 +110,10 @@ impl Widget for Label {
     /// Retrieves the widget's unique identifer
     fn id(&self) -> WidgetID {
         self.id
+    }
+
+    fn z_index(&self) -> usize {
+        self.z_index
     }
 
     /// Get the size of the widget. Widget must be sizable.
