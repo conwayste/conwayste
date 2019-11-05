@@ -25,21 +25,19 @@ use crate::constants::DEFAULT_UI_FONT_SCALE;
 #[macro_export]
 macro_rules! widget_from_id {
     ($type:ident) => {
-        use super::layer::Layer;
+        use super::layer::Layering;
 
         impl $type {
-            pub fn widget_from_id(layer: &mut Layer, id: WidgetID) -> Option<&mut $type>
+            pub fn widget_from_id(layer: &mut Layering, id: WidgetID) -> Option<&mut $type>
             {
-                let layer_id = layer.id();
                 let widget_result = layer.get_widget_mut(id);
                 match widget_result {
                     Ok(widget) => {
                         return widget.downcast_mut::<$type>();
                     }
                     Err(e) => {
-                        info!("Could not find $type widget of {:?} in layer of {:?}! {:?}",
+                        info!("Could not find $type widget of {:?} in layer! {:?}",
                         id,
-                        layer_id,
                         e);
                         return None;
                     }

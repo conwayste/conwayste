@@ -16,6 +16,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::collections::HashMap;
+
 use ggez::graphics::{self, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};

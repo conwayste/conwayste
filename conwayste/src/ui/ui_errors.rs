@@ -19,7 +19,8 @@ custom_error! {pub UIError
     InvalidDimensions {reason: String} = "UIError::InvalidDimensions({reason})",
     WidgetNotFound {reason: String} = "UIError::WidgetNotFound({reason})",
     InvalidAction {reason: String} = "UIError::InvalidAction({reason})",
-    ActionRestricted{reason: String} = "UIError::ActionRestricted({reason})"
+    ActionRestricted{reason: String} = "UIError::ActionRestricted({reason})",
+    WidgetIDCollision{reason: String} = "UIError::WidgetIDCollision({reason})"
 }
 
 pub type UIResult<T> = Result<T, Box<UIError>>;

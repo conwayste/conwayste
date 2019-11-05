@@ -33,7 +33,7 @@ use crate::ui::{
     Button,
     Checkbox,
     Chatbox,
-    Layer,
+    Layering,
     Pane,
     TextField,
     UIAction,
@@ -41,7 +41,7 @@ use crate::ui::{
 };
 
 pub struct UILayout {
-    pub layers: HashMap<Screen, Vec<Layer>>,
+    pub layers: HashMap<Screen, Vec<Layering>>,
 }
 
 /// `UILayout` is responsible for the definition and storage of UI elements.
@@ -115,8 +115,8 @@ impl UILayout {
             }
         }
 
-        let mut layer_mainmenu = Layer::new(MAINMENU_LAYER1);
-        let mut layer_ingame = Layer::new(INGAME_LAYER1);
+        let mut layer_mainmenu = Layering::new();
+        let mut layer_ingame = Layering::new();
 
         // Create a new pane, and add two test buttons to it.
         let mut pane = Box::new(Pane::new(MAINMENU_PANE1, Rect::new_i32(20, 20, 300, 250)));

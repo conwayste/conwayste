@@ -24,7 +24,7 @@ use crate::ui::{
     Chatbox,
     Checkbox,
     Label,
-    Layer,
+    Layering,
     Pane,
     TextField,
     WidgetID,
@@ -56,7 +56,7 @@ pub struct LayoutManager;
 /// `LayoutManager` is the interface in which UI elements are accessed through using a `UILayout`.
 impl LayoutManager {
     /// Get the current screen's top most layer
-    pub fn get_top_layer(ui: &mut UILayout, screen: Screen) -> Option<&mut Layer> {
+    pub fn get_top_layer(ui: &mut UILayout, screen: Screen) -> Option<&mut Layering> {
         if let Some(vec_layer) = ui.layers.get_mut(&screen) {
             return vec_layer.last_mut();
         }
