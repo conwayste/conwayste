@@ -1519,23 +1519,17 @@ impl MainState {
     ///
     /// This will return an error if the selected RLE pattern is invalid.
     fn bit_pattern_from_char(&self, keycode: KeyCode) -> Result<(BitGrid, usize, usize), Box<dyn Error>> {
-        // TODO: make this configurable
+        let gameplay = &self.config.get().gameplay;
         let rle_str = match keycode {
-            KeyCode::Key2 => "bob$2bo$3o!",  // SE glider
-            KeyCode::Key3 => "o$obo$2o!",    // SW glider
-            KeyCode::Key4 => "3o$o$bo!",     // NW glider
-            KeyCode::Key5 => "b2o$obo$2bo!", // NE glider
-
-            KeyCode::Key6 => "4bo$5bo$o4bo$b5o!",         // E LWSS
-            KeyCode::Key7 => "bo$o$o$o$o2bo$3o!",         // S LWSS
-            KeyCode::Key8 => "5o$o4bo$o$bo!",             // W LWSS
-            KeyCode::Key9 => "b3o$o2bo$3bo$3bo$3bo$2bo!", // N LWSS
-
-            // https://www.conwaylife.com/wiki/Period-22_glider_gun
-            KeyCode::Key0 => concat!("18b2o25b$19bo7bo17b$19bobo14b2o7b$20b2o12b2o2bo6b$24b3o7b2ob2o6b$24b2o",
-                                     "b2o7b3o6b$24bo2b2o12b2o2b$25b2o14bobob$35bo7bob$43b2o2$2o23bo19b$bo21b",
-                                     "obo19b$bobo13b3o4b2o19b$2b2o3bo8bo3bo24b$6bob2o6bo4bo23b$5bo4bo6b2obo",
-                                     "9bo14b$6bo3bo8bo3b2o6bo13b$7b3o13bobo3b3o13b$25bo19b$25b2o!"),
+            KeyCode::Key2 => &gameplay.pattern2,
+            KeyCode::Key3 => &gameplay.pattern3,
+            KeyCode::Key4 => &gameplay.pattern4,
+            KeyCode::Key5 => &gameplay.pattern5,
+            KeyCode::Key6 => &gameplay.pattern6,
+            KeyCode::Key7 => &gameplay.pattern7,
+            KeyCode::Key8 => &gameplay.pattern8,
+            KeyCode::Key9 => &gameplay.pattern9,
+            KeyCode::Key0 => &gameplay.pattern0,
             _ => "", // unexpected
         };
         let pat = Pattern(rle_str.to_owned());

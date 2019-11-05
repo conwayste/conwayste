@@ -137,12 +137,35 @@ impl Default for AudioSettings {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GamePlaySettings {
     pub zoom: f32,
+    pub pattern2: String,
+    pub pattern3: String,
+    pub pattern4: String,
+    pub pattern5: String,
+    pub pattern6: String,
+    pub pattern7: String,
+    pub pattern8: String,
+    pub pattern9: String,
+    pub pattern0: String,
 }
 
 impl Default for GamePlaySettings {
     fn default() -> Self {
         GamePlaySettings {
             zoom: DEFAULT_ZOOM_LEVEL,
+            pattern2: "bob$2bo$3o!".to_owned(),  // SE glider
+            pattern3: "o$obo$2o!".to_owned(),    // SW glider
+            pattern4: "3o$o$bo!".to_owned(),     // NW glider
+            pattern5: "b2o$obo$2bo!".to_owned(), // NE glider
+            pattern6: "4bo$5bo$o4bo$b5o!".to_owned(),         // E LWSS
+            pattern7: "bo$o$o$o$o2bo$3o!".to_owned(),         // S LWSS
+            pattern8: "5o$o4bo$o$bo!".to_owned(),             // W LWSS
+            pattern9: "b3o$o2bo$3bo$3bo$3bo$2bo!".to_owned(), // N LWSS
+
+            // https://www.conwaylife.com/wiki/Period-22_glider_gun
+            pattern0: concat!("18b2o25b$19bo7bo17b$19bobo14b2o7b$20b2o12b2o2bo6b$24b3o7b2ob2o6b$24b2o",
+                              "b2o7b3o6b$24bo2b2o12b2o2b$25b2o14bobob$35bo7bob$43b2o2$2o23bo19b$bo21b",
+                              "obo19b$bobo13b3o4b2o19b$2b2o3bo8bo3bo24b$6bob2o6bo4bo23b$5bo4bo6b2obo",
+                              "9bo14b$6bo3bo8bo3b2o6bo13b$7b3o13bobo3b3o13b$25bo19b$25b2o!").to_owned(),
         }
     }
 }
