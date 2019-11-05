@@ -33,102 +33,150 @@ use super::{
 
 use crate::constants::colors::*;
 
-pub struct Layer {
-    pub id: WidgetID,
-    pub widgets: Vec<Box<dyn Widget>>,
+pub struct Layering {
     pub with_transparency: bool,
-    pub focused_widget: Option<WidgetID>,
+    pub widget_list: Vec<Box<dyn Widget>>,
+    focused_ids: Vec<Option<WidgetID>>
 }
 
-/// A container of one or more widgets or panes
-impl Layer {
-    /// Specify the unique widget identifer for the layer
-    pub fn new(widget_id: WidgetID) -> Self {
-        Layer {
-            id: widget_id,
-            widgets: vec![],
+/// A container of one or more widgets or panes ordered by virtual layers.
+impl Layering {
+    pub fn new() -> Self {
+        Layering {
             with_transparency: false,
-            focused_widget: None,
+            widget_list: vec![],
+            focused_ids: vec![None]
         }
     }
 
-    /// Add a widget to the layer
-    pub fn add(&mut self, widget: Box<dyn Widget>) {
-        self.widgets.push(widget);
+    /// Returns true if an entry with the provided WidgetID exists.
+    fn check_for_entry(&self, widget_id: WidgetID) -> bool {
+        self.widget_list
+            .iter()
+            .find(|&&widget| widget.id() == widget_id)
+            .is_some()
     }
 
-    /// Layer passes `exit_focus` request forward to its elements
+    /// Retreives a mutable reference to a widget
+    ///
+    /// # Error
+    /// A WidgetNotFound error can be returned if a widget with the `widget_id`
+    /// does not exist in the internal list of widgets.
+    pub fn get_widget_mut(&self, widget_id: WidgetID) -> UIResult<&mut Box<dyn Widget>> {
+        self.widget_list
+            .iter_mut()
+            .filter(|widget| widget.id() == widget_id)
+            .next()
+            .ok_or_else(|| Box::new(UIError::WidgetNotFound {
+                reason: format!("{:?} not found in layering's widget list", widget_id).to_owned()
+            }))
+    }
+
+    /// Retreives an immutable reference to a widget belonging to a layer
+    ///
+    /// # Error
+    /// A WidgetNotFound error can be returned if a widget with the `widget_id`
+    /// does not exist in the internal list of widgets.
+    pub fn get_widget(&self, widget_id: WidgetID) -> UIResult<&Box<dyn Widget>> {
+        self.widget_list
+            .iter()
+            .filter(|widget| widget.id() == widget_id)
+            .next()
+            .ok_or_else(|| Box::new(UIError::WidgetNotFound {
+                reason: format!("{:?} not found in layering's widget list", widget_id).to_owned()
+            }))
+    }
+
+    /// Add a widget to the layer. Internal data structure maintains a list sorted by descending
+    /// z_index.
+    ///
+    /// # Error
+    /// A WidgetIDCollision error can be returned if a widget with the `widget_id`
+    /// already exists in the internal list of widgets.
+    pub fn add_widget(&mut self, widget: Box<dyn Widget>, z_index: usize) -> UIResult<()> {
+        if self.check_for_entry(widget.id()) {
+            return Err(Box::new(UIError::WidgetIDCollision {
+                    reason: format!("Widget with ID {:?} exists in layer's widget list.", widget.id())
+            }));
+        }
+
+        // Insert by z-index, descending. Use zero when the list is empty.
+        let insertion_index = self.widget_list
+            .iter()
+            .position(|&widget| z_index >= widget.z_index())
+            .unwrap_or(0);
+
+        self.widget_list.insert(insertion_index, widget);
+
+        Ok(())
+    }
+
+    /// Removes a widget belonging to thelayer
+    ///
+    /// # Error
+    /// A WidgetNotFound error can be returned if a widget with the `widget_id` does not exist
+    /// in the internal list of widgets.
+    pub fn remove_widget(&mut self, widget_id: WidgetID) -> UIResult<()> {
+        let removal_index = self.widget_list
+            .iter()
+            .position(|&widget| widget_id >= widget.id())
+            .ok_or_else(|| {
+                return Err(Box::new(UIError::WidgetNotFound {
+                    reason: format!("{:?} not found in layer during removal", widget_id).to_owned()
+                }))
+            }).unwrap(); // unwrap safe because we must have an Ok(...) if we did not return
+
+        let widget = self.widget_list.remove(removal_index);
+        if let Some(id) = self.focused_ids[widget.z_index()] {
+            if widget_id == id {
+                self.focused_ids[widget.z_index()] = None;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Returns the WidgetID of the widget currently in-focus
+    pub fn focused_widget_id(&self) -> Option<WidgetID> {
+        return self.focused_ids.last().map_or(None, |opt_id| *opt_id);
+    }
+
+    /// Notifies the layer that the provided WidgetID is to hold focus.widget
+    ///
+    /// # Error
+    /// A WidgetNotFound error can be returned if a widget with the `widget_id` does not exist in
+    /// the internal list of widgets.
+    pub fn enter_focus(&mut self, widget_id: WidgetID) -> UIResult<()> {
+        if !self.check_for_entry(widget_id) {
+            return Err(Box::new(UIError::WidgetNotFound {
+                reason: format!("{:?} not found in layering's widget list", widget_id)
+            }));
+        }
+
+        // Unwrap safe because focused_ids should never be empty
+        let focused_slot = self.focused_ids.last_mut().unwrap();
+        *focused_slot = Some(widget_id);
+        Ok(())
+    }
+
+    /// Clears the focus of the highest layer
+    ///
     pub fn exit_focus(&mut self) {
-        if let Some(other_id) = self.focused_widget {
-            if let Some(other_tf) = TextField::widget_from_id(self, other_id)
-            {
-                other_tf.exit_focus();
-            }
-        }
+        // Unwrap safe because focused_ids should never be empty
+        let focused_slot = self.focused_ids.last_mut().unwrap();
+        *focused_slot = None;
     }
 
-    /// Layer passes `enter_focus` request forward to its elements
-    pub fn enter_focus(&mut self, id: WidgetID) -> UIResult<()> {
-        self.exit_focus();
-
-        if let Some(tf) = TextField::widget_from_id(self, id) {
-            tf.enter_focus();
-            self.focused_widget = Some(id);
-            return Ok(());
+    /// Returns a mutable reference to the current widget under focus
+    pub fn focused_widget_mut(&self) -> Option<&mut Box<dyn Widget>> {
+        if let Some(Some(id)) = self.focused_ids.last() {
+            return self.get_widget_mut(*id).ok();
         }
-
-        let error_msg = format!("ERROR in Layer::enter_focus() =>  Widget (ID: {:?}) not found in layer (ID: {:?})",
-            id,
-            self.id
-        );
-        Err(Box::new(UIError::WidgetNotFound{reason: error_msg}))
-    }
-
-    /// Iterates through all of the widgets grouped in this layer searching for the specified WidgetID.
-    /// If a Pane widget is found, it will search through all of its contained elements as well.
-    /// In either scenario, the first element found will be returned.
-    pub fn get_widget_mut(&mut self, id: WidgetID) -> UIResult<&mut Box<dyn Widget>>
-    {
-        let mut index = None;
-        let mut pane_index = None;
-
-        for (i, w) in self.widgets.iter().enumerate() {
-            if w.id() == id {
-                index = Some(i);
-                break;
-            }
-
-            if let Some(pane) = w.downcast_ref::<Pane>() {
-                for (j, x) in pane.widgets.iter().enumerate() {
-                    if x.id() == id {
-                        index = Some(i);
-                        pane_index = Some(j);
-                    }
-                }
-            }
-        }
-
-        if let Some(p_i) = pane_index {
-            let i = index.unwrap();
-
-            let pane = self.widgets.get_mut(i).unwrap().downcast_mut::<Pane>().unwrap();
-            let widget = pane.widgets.get_mut(p_i).unwrap();
-            return Ok(widget);
-        }
-        if let Some(i) = index {
-            // Unwrap safe because we found the index via enumerate
-            let widget = self.widgets.get_mut(i).unwrap();
-            return Ok(widget);
-        }
-
-        let error_msg = format!("ERROR in Layer::enter_focus() =>  Widget (ID: {:?}) not found in layer (ID: {:?})",
-            id,
-            self.id
-        );
-        Err(Box::new(UIError::WidgetNotFound{reason: error_msg}))
+        None
     }
 }
 
+/*
 impl Widget for Layer {
     fn id(&self) -> WidgetID {
         self.id
@@ -181,7 +229,9 @@ impl Widget for Layer {
         Ok(())
     }
 }
+*/
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,4 +340,52 @@ mod tests {
         assert_eq!(w.id(), WidgetID(1));
     }
 
+}
+*/
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use super::super::{Chatbox, common::FontInfo};
+    use crate::ggez::graphics::Scale;
+
+    fn create_dummy_widget_id(widget_id: WidgetID) -> Box<Chatbox> {
+        let font_info = FontInfo {
+            font: (),
+            scale: Scale::uniform(1.0),
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0),
+        };
+        Box::new(Chatbox::new(widget_id, font_info, 5))
+    }
+
+    #[test]
+    fn test_check_for_entry_widget_not_found() {
+        let dummy_widget_id = WidgetID(0);
+        let dummy_widget = create_dummy_widget_id(dummy_widget_id);
+        let mut layer_info = Layering::new();
+
+        assert!(!layer_info.check_for_entry(dummy_widget_id));
+    }
+
+    #[test]
+    fn test_check_for_entry_widget_found() {
+        let dummy_widget_id = WidgetID(0);
+        let dummy_widget = create_dummy_widget_id(dummy_widget_id);
+        let mut layer_info = Layering::new();
+
+        layer_info.add_widget(dummy_widget, 0);
+        assert!(layer_info.check_for_entry(dummy_widget_id));
+    }
+
+    #[test]
+    fn test_check_for_entry_widget_not_found_list_non_empty() {
+        let dummy_widget_id = WidgetID(0);
+        let dummy_widget = create_dummy_widget_id(dummy_widget_id);
+        let mut layer_info = Layering::new();
+
+        layer_info.add_widget(dummy_widget, 0);
+        assert!(layer_info.check_for_entry(dummy_widget_id));
+
+        assert!(!layer_info.check_for_entry(WidgetID(1)));
+    }
 }

@@ -229,8 +229,8 @@ impl UILayout {
                 );
             }
         }
-        layer_mainmenu.add(pane);
-        layer_ingame.add(chatpane);
+        layer_mainmenu.add_widget(pane, 0);
+        layer_ingame.add_widget(pane, 0);
 
         ui_layers.insert(Screen::Menu, vec![layer_mainmenu]);
         ui_layers.insert(Screen::Run, vec![layer_ingame]);

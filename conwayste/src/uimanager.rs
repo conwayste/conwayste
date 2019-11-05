@@ -64,14 +64,14 @@ impl LayoutManager {
     }
 
     /// Get all layers associated with the specified Screen
-    pub fn get_screen_layers(ui: &mut UILayout, screen:Screen) -> Option<&mut Vec<Layer>> {
+    pub fn get_screen_layers(ui: &mut UILayout, screen:Screen) -> Option<&mut Vec<Layering>> {
         ui.layers.get_mut(&screen)
     }
 
     /// Get the current screen's focused Textfield. This is expected to be on the top-most layer
     pub fn focused_textfield_mut(ui: &mut UILayout, screen: Screen) -> Option<&mut TextField> {
         if let Some(layer) = Self::get_top_layer(ui, screen) {
-            if let Some(id) = layer.focused_widget {
+            if let Some(id) = layer.focused_widget_id() {
                 return TextField::widget_from_id(layer, id);
             }
         }
