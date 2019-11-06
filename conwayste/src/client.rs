@@ -947,8 +947,7 @@ impl MainState {
                 return Err(format!("Unexpected player ID {}", self.uni_draw_params.player_id).into());
             }
             let player_cell_state = CellState::Alive(Some(self.uni_draw_params.player_id as usize));
-            let mut player_color = self.color_settings.get_color(Some(player_cell_state));
-            player_color.a = 0.5;  // semi-transparent since this is an overlay
+            let player_color = self.color_settings.get_color(Some(player_cell_state));
             if let Some(cursor_cell) = viewport.game_coords_from_window(self.inputs.mouse_info.position) {
                 let (cursor_col, cursor_row) = (cursor_cell.col, cursor_cell.row);
                 grid.each_set(|grid_col, grid_row| {
@@ -970,6 +969,7 @@ impl MainState {
                                 return;
                             }
                         }
+                        color.a = 0.5;  // semi-transparent since this is an overlay
                         let p = graphics::DrawParam::new()
                             .dest(Point2::new(rect.x, rect.y))
                             .scale(Vector2::new(rect.w, rect.h))
