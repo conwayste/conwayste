@@ -631,7 +631,7 @@ impl EventHandler for MainState {
                 let result = self.draw_intro(ctx);
                 let mut out_result: GameResult<()> = Ok(());
                 let mut do_return = false;
-                handle_error!{result,
+                handle_error!(result,
                     GameError => |e| {
                         out_result = Err(e);
                     },
@@ -639,7 +639,7 @@ impl EventHandler for MainState {
                         error!("Error from draw_intro: {}", e);
                         do_return = true;
                     }
-                };
+                ).unwrap();
                 if do_return {
                     return out_result;
                 }
@@ -651,7 +651,7 @@ impl EventHandler for MainState {
                 let result = self.draw_universe(ctx);
                 let mut out_result: GameResult<()> = Ok(());
                 let mut do_return = false;
-                handle_error!{result,
+                handle_error!(result,
                     GameError => |e| {
                         out_result = Err(e);
                     },
@@ -659,7 +659,7 @@ impl EventHandler for MainState {
                         error!("Error from draw_universe: {}", e);
                         do_return = true;
                     }
-                };
+                ).unwrap();
                 if do_return {
                     return out_result;
                 }
