@@ -608,7 +608,9 @@ impl ServerState {
 
     /// Processes a player's request action for all non Connect requests. If necessary, a response is buffered
     /// for later transmission
-    pub fn process_player_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> Result<Option<Packet>, Box<Error>> {
+    pub fn process_player_request_action(&mut self, player_id: PlayerID, action: RequestAction)
+        -> Result<Option<Packet>, Box<dyn Error>>
+    {
         match action {
             RequestAction::Connect{..} => unreachable!(),
             _ => {
@@ -800,7 +802,9 @@ impl ServerState {
     ///  3. Client should notified if version requires updating
     ///  4. Ignore if already received or processed
     /// Always returns either Ok(Some(Packet::Response{...})), Ok(None), or error.
-    pub fn decode_packet(&mut self, addr: SocketAddr, packet: Packet) -> Result<Option<Packet>, Box<Error>> {
+    pub fn decode_packet(&mut self, addr: SocketAddr, packet: Packet)
+        -> Result<Option<Packet>, Box<dyn Error>>
+    {
         match packet.clone() {
             _pkt @ Packet::Response{..} | _pkt @ Packet::Update{..} => {
                 return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "invalid packet type")));
@@ -967,7 +971,7 @@ impl ServerState {
     }
 
     // Right now we'll be constructing all client Update packets for _every_ room.
-    pub fn construct_client_updates(&mut self) -> Result<Option<Vec<(SocketAddr, Packet)>>, Box<Error>> {
+    pub fn construct_client_updates(&mut self) -> Result<Option<Vec<(SocketAddr, Packet)>>, Box<dyn Error>> {
         let mut client_updates: Vec<(SocketAddr, Packet)> = vec![];
 
         if self.rooms.len() == 0 {

@@ -288,7 +288,7 @@ impl ClientNetState {
     }
 
 
-    pub fn handle_response_ok(&mut self) -> Result<(), Box<Error>> {
+    pub fn handle_response_ok(&mut self) -> Result<(), Box<dyn Error>> {
             info!("OK :)");
             return Ok(());
     }
