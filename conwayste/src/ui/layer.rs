@@ -16,8 +16,6 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use std::collections::HashMap;
-
 use ggez::graphics::{self, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::Point2;
 use ggez::Context;
@@ -192,8 +190,8 @@ impl Layering {
 
         if let Some((list_index, pane_index)) = indices {
             // Found in a Pane. Unwraps below are safe because of check_for_entry call
-            let dynWidget = self.widget_list.get_mut(list_index).unwrap();
-            let pane = downcast_widget!(mut dynWidget, Pane).unwrap();
+            let dyn_widget = self.widget_list.get_mut(list_index).unwrap();
+            let pane = downcast_widget!(mut dyn_widget, Pane).unwrap();
             let widget = pane.widgets.get_mut(pane_index).unwrap();
             widget.enter_focus();
         } else {

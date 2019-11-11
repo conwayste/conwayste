@@ -37,6 +37,7 @@ use crate::ui::{
     Pane,
     TextField,
     UIAction,
+    UIResult,
     common,
 };
 
@@ -46,7 +47,7 @@ pub struct UILayout {
 
 /// `UILayout` is responsible for the definition and storage of UI elements.
 impl UILayout {
-    pub fn new(ctx: &mut Context, config: &Config, font: Font) -> Self {
+    pub fn new(ctx: &mut Context, config: &Config, font: Font) -> UIResult<Self> {
         let mut ui_layers = HashMap::new();
 
         let chat_pane_rect = *constants::DEFAULT_CHATBOX_RECT;
@@ -229,14 +230,14 @@ impl UILayout {
                 );
             }
         }
-        layer_mainmenu.add_widget(pane, 0);
-        layer_ingame.add_widget(chatpane, 0);
+        layer_mainmenu.add_widget(pane, 0)?;
+        layer_ingame.add_widget(chatpane, 0)?;
 
         ui_layers.insert(Screen::Menu, layer_mainmenu);
         ui_layers.insert(Screen::Run, layer_ingame);
 
-        UILayout {
+        Ok(UILayout {
             layers: ui_layers,
-        }
+        })
     }
 }

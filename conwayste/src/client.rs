@@ -386,7 +386,7 @@ impl MainState {
             GameError::ConfigError(msg)
         })?;
 
-        let ui_layout = UILayout::new(ctx, &config, font.clone());
+        let ui_layout = UILayout::new(ctx, &config, font.clone()).unwrap();
 
         // Update universe draw parameters for intro
         let intro_uni_draw_params = UniDrawParams {
