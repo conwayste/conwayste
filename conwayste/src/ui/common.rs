@@ -36,15 +36,42 @@ macro_rules! widget_from_id {
                         return widget.downcast_mut::<$type>();
                     }
                     Err(e) => {
-                        info!("Could not find $type widget of {:?} in layer! {:?}",
-                        id,
-                        e);
+                        info!("Could not find $type widget of {:?} in layer! {:?}", id, e);
                         return None;
                     }
                 }
             }
         }
     }
+}
+
+/// A basic macro to downcast a `dyn Widget` to a concrete type. No turbo-fish required!
+///
+/// # Arguments
+/// Two required arguments are the `dyn Widget` object and the destination type.
+/// An optional mut argument, when included prior to the widget, returns a mutable reference.
+///
+/// # Usage
+/// ```Rust
+/// downcast_widget!([mut] widget, type) macro
+/// ```
+///
+/// # Examples
+/// ```rust
+/// let widget = layer.get_widget_mut(WidgetID(0));
+/// let textfield = downcast_widget!(mut widget, TextField);
+/// textfield.enter_focus()
+/// ```
+///
+#[macro_export]
+macro_rules! downcast_widget {
+    (mut $widget:ident, $type:ident) => {
+        $widget.downcast_mut::<$type>()
+    };
+
+    ($widget:ident, $type:ident) => {
+        $widget.downcast_ref::<$type>()
+    };
 }
 
 /// Helper function to draw text onto the screen.

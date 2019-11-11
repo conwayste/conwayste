@@ -41,7 +41,7 @@ use crate::ui::{
 };
 
 pub struct UILayout {
-    pub layers: HashMap<Screen, Vec<Layering>>,
+    pub layers: HashMap<Screen, Layering>,
 }
 
 /// `UILayout` is responsible for the definition and storage of UI elements.
@@ -230,10 +230,10 @@ impl UILayout {
             }
         }
         layer_mainmenu.add_widget(pane, 0);
-        layer_ingame.add_widget(pane, 0);
+        layer_ingame.add_widget(chatpane, 0);
 
-        ui_layers.insert(Screen::Menu, vec![layer_mainmenu]);
-        ui_layers.insert(Screen::Run, vec![layer_ingame]);
+        ui_layers.insert(Screen::Menu, layer_mainmenu);
+        ui_layers.insert(Screen::Run, layer_ingame);
 
         UILayout {
             layers: ui_layers,

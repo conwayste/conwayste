@@ -90,6 +90,19 @@ impl Pane {
         Ok(())
     }
 
+    pub fn get_widget_ids(&self) -> Vec<WidgetID> {
+        let mut id_list = vec![];
+
+        for w in self.widgets.iter() {
+            id_list.push(w.id());
+
+            if let Some(sub_pane) = downcast_widget!(w, Pane) {
+                id_list.extend(sub_pane.get_widget_ids().iter());
+            }
+        }
+        return id_list;
+    }
+
     /*
     // TODO: Currently used to reset previous position on mouse release after dragging completes.
     //      Re-evaluate design if this is the best way to do it. See issue #71 (dragging).

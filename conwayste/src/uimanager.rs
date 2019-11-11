@@ -41,8 +41,7 @@ macro_rules! add_layering_support {
                 screen: Screen,
                 id: WidgetID
             ) -> Option<&mut $type> {
-                if let Some(layer) = LayoutManager::get_top_layer(ui, screen) {
-                    // assumes ID provided is part of the top layer!
+                if let Some(layer) = LayoutManager::get_screen_layering(ui, screen) {
                     return $type::widget_from_id(layer, id);
                 }
                 None
@@ -55,22 +54,14 @@ pub struct LayoutManager;
 
 /// `LayoutManager` is the interface in which UI elements are accessed through using a `UILayout`.
 impl LayoutManager {
-    /// Get the current screen's top most layer
-    pub fn get_top_layer(ui: &mut UILayout, screen: Screen) -> Option<&mut Layering> {
-        if let Some(vec_layer) = ui.layers.get_mut(&screen) {
-            return vec_layer.last_mut();
-        }
-        None
-    }
-
     /// Get all layers associated with the specified Screen
-    pub fn get_screen_layers(ui: &mut UILayout, screen:Screen) -> Option<&mut Vec<Layering>> {
+    pub fn get_screen_layering(ui: &mut UILayout, screen:Screen) -> Option<&mut Layering> {
         ui.layers.get_mut(&screen)
     }
 
     /// Get the current screen's focused Textfield. This is expected to be on the top-most layer
     pub fn focused_textfield_mut(ui: &mut UILayout, screen: Screen) -> Option<&mut TextField> {
-        if let Some(layer) = Self::get_top_layer(ui, screen) {
+        if let Some(layer) = Self::get_screen_layering(ui, screen) {
             if let Some(id) = layer.focused_widget_id() {
                 return TextField::widget_from_id(layer, id);
             }
@@ -84,12 +75,7 @@ impl LayoutManager {
     // on one `Screen`, `Screen::Run`. It should not exist anywhere else, and the macro-generated
     // code only searches in the top-most layer. The Chatbox exists in the bottom-most layer.
     pub fn chatbox_from_id(ui: &mut UILayout, id: WidgetID) -> Option<&mut Chatbox> {
-        if let Some(layers) = ui.layers.get_mut(&Screen::Run) {
-            if let Some(first_layer) = layers.first_mut() {
-                return Chatbox::widget_from_id(first_layer, id);
-            }
-        }
-        None
+        Chatbox::widget_from_screen_and_id(ui, Screen::Run, id)
     }
 }
 
@@ -98,3 +84,4 @@ add_layering_support!(Checkbox);
 add_layering_support!(Label);
 add_layering_support!(Pane);
 add_layering_support!(TextField);
+add_layering_support!(Chatbox);

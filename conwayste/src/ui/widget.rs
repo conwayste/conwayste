@@ -71,6 +71,16 @@ pub trait Widget: Downcast {
         Ok(())
     }
 
+    /// Textfield gains focus and begins accepting user input
+    fn enter_focus(&mut self) {
+        ()
+    }
+
+    /// Textfield loses focus and does not accept user input
+    fn exit_focus(&mut self) {
+        ()
+    }
+
     // Long-term TODO
     // The following three definitions tend to use struct member variables so we need to define
     // their own definitions. Refactor into a Sizable trait.

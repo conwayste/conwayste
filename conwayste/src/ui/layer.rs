@@ -19,8 +19,8 @@
 use std::collections::HashMap;
 
 use ggez::graphics::{self, Rect, DrawMode, DrawParam};
-use ggez::nalgebra::{Point2, Vector2};
-use ggez::{Context, GameResult};
+use ggez::nalgebra::Point2;
+use ggez::Context;
 
 use super::{
     widget::Widget,
@@ -36,7 +36,8 @@ use crate::constants::colors::*;
 pub struct Layering {
     pub with_transparency: bool,
     pub widget_list: Vec<Box<dyn Widget>>,
-    focused_ids: Vec<Option<WidgetID>>
+    focused_ids: Vec<Option<WidgetID>>,
+    id_cache: Vec<WidgetID>
 }
 
 /// A container of one or more widgets or panes ordered by virtual layers.
@@ -45,24 +46,64 @@ impl Layering {
         Layering {
             with_transparency: false,
             widget_list: vec![],
-            focused_ids: vec![None]
+            focused_ids: vec![None],
+            id_cache: vec![]
         }
     }
 
     /// Returns true if an entry with the provided WidgetID exists.
     fn check_for_entry(&self, widget_id: WidgetID) -> bool {
-        self.widget_list
+        self.id_cache
             .iter()
-            .find(|&&widget| widget.id() == widget_id)
+            .find(|&&id| id == widget_id)
             .is_some()
     }
 
-    /// Retreives a mutable reference to a widget
+    /// Returns an optional pair of indices if the widget-id is found in Pane beloning to
+    /// the layering.
+    fn search_panes_for_widget_id(&self, widget_id: WidgetID) -> Option<(usize, usize)> {
+        // First check to see if it belongs to any pane
+        for (i, w) in self.widget_list.iter().enumerate() {
+            if let Some(pane) = downcast_widget!(w, Pane) {
+                for (j, w2) in pane.widgets.iter().enumerate() {
+                    if w2.id() == widget_id {
+                        return Some((i, j));
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Caches the widget-id's residing in this layering. Will include widgets belonging to a one
+    /// level deep pane.
+    fn rebuild_id_cache(&mut self) {
+        let mut local_id_cache = vec![];
+        for widget in self.widget_list.iter() {
+            local_id_cache.push(widget.id());
+
+            if let Some(pane) = downcast_widget!(widget, Pane) {
+                local_id_cache.extend(pane.get_widget_ids());
+            }
+        }
+        self.id_cache = local_id_cache;
+    }
+
+    /// Retreives a mutable reference to a widget. This will search one Pane-level deep
+    /// for the provided widget-id.
     ///
     /// # Error
-    /// A WidgetNotFound error can be returned if a widget with the `widget_id`
+    /// A WidgetNotFound error will be returned if the widget-id is not found.
     /// does not exist in the internal list of widgets.
-    pub fn get_widget_mut(&self, widget_id: WidgetID) -> UIResult<&mut Box<dyn Widget>> {
+    pub fn get_widget_mut(&mut self, widget_id: WidgetID) -> UIResult<&mut Box<dyn Widget>> {
+        if let Some((list_index, pane_index)) = self.search_panes_for_widget_id(widget_id) {
+            let pane = self.widget_list.get_mut(list_index).unwrap().downcast_mut::<Pane>().unwrap();
+            let widget = pane.widgets.get_mut(pane_index).unwrap();
+            return Ok(widget);
+        }
+
+        // If it doesn't belong to a pane, check the widget list for an entry
         self.widget_list
             .iter_mut()
             .filter(|widget| widget.id() == widget_id)
@@ -72,27 +113,11 @@ impl Layering {
             }))
     }
 
-    /// Retreives an immutable reference to a widget belonging to a layer
+    /// Add a widget to the layering at the provided z_index depth. Internal data structure
+    /// maintains a list sorted by descending z_index.
     ///
     /// # Error
-    /// A WidgetNotFound error can be returned if a widget with the `widget_id`
-    /// does not exist in the internal list of widgets.
-    pub fn get_widget(&self, widget_id: WidgetID) -> UIResult<&Box<dyn Widget>> {
-        self.widget_list
-            .iter()
-            .filter(|widget| widget.id() == widget_id)
-            .next()
-            .ok_or_else(|| Box::new(UIError::WidgetNotFound {
-                reason: format!("{:?} not found in layering's widget list", widget_id).to_owned()
-            }))
-    }
-
-    /// Add a widget to the layer. Internal data structure maintains a list sorted by descending
-    /// z_index.
-    ///
-    /// # Error
-    /// A WidgetIDCollision error can be returned if a widget with the `widget_id`
-    /// already exists in the internal list of widgets.
+    /// A WidgetIDCollision error can be returned if the widget-id exists in this layering.
     pub fn add_widget(&mut self, widget: Box<dyn Widget>, z_index: usize) -> UIResult<()> {
         if self.check_for_entry(widget.id()) {
             return Err(Box::new(UIError::WidgetIDCollision {
@@ -103,27 +128,27 @@ impl Layering {
         // Insert by z-index, descending. Use zero when the list is empty.
         let insertion_index = self.widget_list
             .iter()
-            .position(|&widget| z_index >= widget.z_index())
+            .position(|widget| z_index >= widget.z_index())
             .unwrap_or(0);
 
         self.widget_list.insert(insertion_index, widget);
-
+        self.rebuild_id_cache();
         Ok(())
     }
 
-    /// Removes a widget belonging to thelayer
+    /// Removes a widget belonging to the layering
     ///
     /// # Error
     /// A WidgetNotFound error can be returned if a widget with the `widget_id` does not exist
     /// in the internal list of widgets.
-    pub fn remove_widget(&mut self, widget_id: WidgetID) -> UIResult<()> {
+    pub fn _remove_widget(&mut self, widget_id: WidgetID) -> UIResult<()> {
         let removal_index = self.widget_list
             .iter()
-            .position(|&widget| widget_id >= widget.id())
-            .ok_or_else(|| {
+            .position(|widget| widget_id >= widget.id())
+            .ok_or_else(|| -> UIResult<()> {
                 return Err(Box::new(UIError::WidgetNotFound {
                     reason: format!("{:?} not found in layer during removal", widget_id).to_owned()
-                }))
+                }));
             }).unwrap(); // unwrap safe because we must have an Ok(...) if we did not return
 
         let widget = self.widget_list.remove(removal_index);
@@ -133,6 +158,7 @@ impl Layering {
             }
         }
 
+        self.rebuild_id_cache();
         Ok(())
     }
 
@@ -141,62 +167,87 @@ impl Layering {
         return self.focused_ids.last().map_or(None, |opt_id| *opt_id);
     }
 
+    /// Retreive the z-index of the first widget in the widget list. Defaults to the zeroth depth if
+    /// widget list is empty.
+    fn peek_z_index(&self) -> usize {
+        self.widget_list.first().map(|widget| widget.z_index()).unwrap_or_default()
+    }
+
     /// Notifies the layer that the provided WidgetID is to hold focus.widget
     ///
     /// # Error
     /// A WidgetNotFound error can be returned if a widget with the `widget_id` does not exist in
     /// the internal list of widgets.
     pub fn enter_focus(&mut self, widget_id: WidgetID) -> UIResult<()> {
+        let mut indices = None;
         if !self.check_for_entry(widget_id) {
             return Err(Box::new(UIError::WidgetNotFound {
                 reason: format!("{:?} not found in layering's widget list", widget_id)
             }));
         }
 
-        // Unwrap safe because focused_ids should never be empty
-        let focused_slot = self.focused_ids.last_mut().unwrap();
-        *focused_slot = Some(widget_id);
+        if let Some((list_i, pane_i)) = self.search_panes_for_widget_id(widget_id) {
+            indices = Some((list_i, pane_i));
+        }
+
+        if let Some((list_index, pane_index)) = indices {
+            // Found in a Pane. Unwraps below are safe because of check_for_entry call
+            let dynWidget = self.widget_list.get_mut(list_index).unwrap();
+            let pane = downcast_widget!(mut dynWidget, Pane).unwrap();
+            let widget = pane.widgets.get_mut(pane_index).unwrap();
+            widget.enter_focus();
+        } else {
+            // unwrap safe because of check_for_entry call
+            let widget = self.widget_list
+                .iter_mut()
+                .filter(|widget| widget.id() == widget_id)
+                .next().
+                unwrap();
+            widget.enter_focus();
+        }
+
+        if let Some(focused_slot) = self.focused_ids.last_mut() {
+            *focused_slot = Some(widget_id);
+        }
+
         Ok(())
     }
 
     /// Clears the focus of the highest layer
-    ///
     pub fn exit_focus(&mut self) {
         // Unwrap safe because focused_ids should never be empty
-        let focused_slot = self.focused_ids.last_mut().unwrap();
-        *focused_slot = None;
-    }
+        let widget_id = *self.focused_ids.last().unwrap();
 
-    /// Returns a mutable reference to the current widget under focus
-    pub fn focused_widget_mut(&self) -> Option<&mut Box<dyn Widget>> {
-        if let Some(Some(id)) = self.focused_ids.last() {
-            return self.get_widget_mut(*id).ok();
+        if let Some(widget_id) = widget_id {
+            let widget = self.get_widget_mut(widget_id).unwrap();
+            let widget = widget.downcast_mut::<TextField>().unwrap();
+            widget.exit_focus();
         }
-        None
-    }
-}
 
-/*
-impl Widget for Layer {
-    fn id(&self) -> WidgetID {
-        self.id
-    }
-
-    fn size(&self) -> Rect {
-        Rect::zero()
-    }
-
-    fn translate(&mut self, _dest: Vector2<f32>) {}
-
-    fn on_hover(&mut self, point: &Point2<f32>) {
-        for w in self.widgets.iter_mut() {
-            w.on_hover(point);
+        if let Some(widget_id) = self.focused_ids.last_mut() {
+            *widget_id = None;
         }
     }
 
-    fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        for w in self.widgets.iter_mut() {
-            let ui_action = w.on_click(point);
+    pub fn on_hover(&mut self, point: &Point2<f32>) {
+        let highest_z_index = self.peek_z_index();
+
+        for widget in self.widget_list
+            .iter_mut()
+            .filter(|widget| widget.z_index() == highest_z_index)
+        {
+            widget.on_hover(point);
+        }
+    }
+
+    pub fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
+        let highest_z_index = self.peek_z_index();
+
+        for widget in self.widget_list
+            .iter_mut()
+            .filter(|widget| widget.z_index() == highest_z_index)
+        {
+            let ui_action = widget.on_click(point);
             if ui_action.is_some() {
                 return ui_action;
             }
@@ -204,14 +255,29 @@ impl Widget for Layer {
         None
     }
 
-    fn on_drag(&mut self, original_pos: &Point2<f32>, current_pos: &Point2<f32>) {
-        for w in self.widgets.iter_mut() {
-            w.on_drag(original_pos, current_pos);
+    pub fn on_drag(&mut self, original_pos: &Point2<f32>, current_pos: &Point2<f32>) {
+        let highest_z_index = self.peek_z_index();
+
+        for widget in self.widget_list
+            .iter_mut()
+            .filter(|widget| widget.z_index() == highest_z_index)
+        {
+            widget.on_drag(original_pos, current_pos);
         }
     }
 
-    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        if self.with_transparency {
+    pub fn draw(&mut self, ctx: &mut Context) -> UIResult<()> {
+        let highest_z_index = self.peek_z_index();
+
+        if self.with_transparency && highest_z_index != 0 {
+            // Draw the previous layer
+            for widget in self.widget_list
+                .iter_mut()
+                .filter(|widget| widget.z_index() == highest_z_index - 1)
+            {
+                widget.draw(ctx)?;
+            }
+
             // TODO: Get resolution from video-settings
             let mesh = graphics::Mesh::new_rectangle(
                 ctx,
@@ -222,14 +288,17 @@ impl Widget for Layer {
             graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
 
-        for widget in self.widgets.iter_mut() {
+        for widget in self.widget_list
+            .iter_mut()
+            .filter(|widget| widget.z_index() == highest_z_index)
+        {
             widget.draw(ctx)?;
         }
 
         Ok(())
     }
 }
-*/
+
 
 /*
 #[cfg(test)]
@@ -361,8 +430,7 @@ mod test {
     #[test]
     fn test_check_for_entry_widget_not_found() {
         let dummy_widget_id = WidgetID(0);
-        let dummy_widget = create_dummy_widget_id(dummy_widget_id);
-        let mut layer_info = Layering::new();
+        let layer_info = Layering::new();
 
         assert!(!layer_info.check_for_entry(dummy_widget_id));
     }
@@ -373,7 +441,7 @@ mod test {
         let dummy_widget = create_dummy_widget_id(dummy_widget_id);
         let mut layer_info = Layering::new();
 
-        layer_info.add_widget(dummy_widget, 0);
+        let _result = layer_info.add_widget(dummy_widget, 0);
         assert!(layer_info.check_for_entry(dummy_widget_id));
     }
 
@@ -383,7 +451,7 @@ mod test {
         let dummy_widget = create_dummy_widget_id(dummy_widget_id);
         let mut layer_info = Layering::new();
 
-        layer_info.add_widget(dummy_widget, 0);
+        let _result = layer_info.add_widget(dummy_widget, 0);
         assert!(layer_info.check_for_entry(dummy_widget_id));
 
         assert!(!layer_info.check_for_entry(WidgetID(1)));

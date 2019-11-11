@@ -141,6 +141,7 @@ impl TextField {
                 KeyCode::Right => self.move_cursor_right(),
                 KeyCode::Home => self.cursor_home(),
                 KeyCode::End => self.cursor_end(),
+                KeyCode::Escape => self.exit_focus(),
                 _ => ()
             }
         }
@@ -243,19 +244,6 @@ impl TextField {
         if self.text.len() - self.visible_start_index > self.max_visible_chars() {
             self.visible_start_index = self.text.len() - self.max_visible_chars();
         }
-    }
-
-    /// Textfield gains focus and begins accepting user input
-    pub fn enter_focus(&mut self) {
-        self.input_state = Some(TextInputState::EnteringText);
-        self.draw_cursor = true;
-        self.cursor_blink_timestamp = Some(Instant::now());
-    }
-
-    /// Textfield loses focus and does not accept user input
-    pub fn exit_focus(&mut self) {
-        self.input_state = None;
-        self.draw_cursor = false;
     }
 }
 
@@ -395,6 +383,19 @@ impl Widget for TextField {
 
     fn translate(&mut self, dest: Vector2<f32>) {
         self.dimensions.translate(dest);
+    }
+
+    /// Textfield gains focus and begins accepting user input
+    fn enter_focus(&mut self) {
+        self.input_state = Some(TextInputState::EnteringText);
+        self.draw_cursor = true;
+        self.cursor_blink_timestamp = Some(Instant::now());
+    }
+
+    /// Textfield loses focus and does not accept user input
+    fn exit_focus(&mut self) {
+        self.input_state = None;
+        self.draw_cursor = false;
     }
 }
 

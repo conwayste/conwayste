@@ -471,7 +471,7 @@ impl EventHandler for MainState {
                 let left_mouse_click = mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
 
                 let screen = self.get_current_screen();
-                if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, screen) {
+                if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, screen) {
                     layer.on_hover(&mouse_point);
 
                     if let Some(action) = mouse_action {
@@ -557,7 +557,7 @@ impl EventHandler for MainState {
                 let mouse_point = self.inputs.mouse_info.position;
                 let screen = self.get_current_screen();
 
-                if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, screen) {
+                if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, screen) {
                     layer.on_hover(&mouse_point);
                 }
 
@@ -626,10 +626,8 @@ impl EventHandler for MainState {
             Screen::Exit => {}
         }
 
-        if let Some(ref mut layers) = LayoutManager::get_screen_layers(&mut self.ui_layout, current_screen) {
-            for layer in layers.iter_mut() {
-                layer.draw(ctx)?;
-            }
+        if let Some(ref mut layering) = LayoutManager::get_screen_layering(&mut self.ui_layout, current_screen) {
+            layering.draw(ctx)?;
         }
 
         graphics::present(ctx)?;
@@ -964,7 +962,7 @@ impl MainState {
             KeyCode::Return => {
                 if let Some(tf) = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if tf.input_state.is_none() {
-                        if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, Screen::Run) {
+                        if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, Screen::Run) {
                             layer.enter_focus(INGAME_PANE1_CHATBOXTEXTFIELD)?;
                         }
                     }
@@ -1059,7 +1057,7 @@ impl MainState {
 
         match keycode {
             KeyCode::Escape => {
-                if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, screen) {
+                if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, screen) {
                     layer.exit_focus();
                 }
             }
