@@ -250,15 +250,8 @@ impl Widget for Chatbox {
     }
 
     fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        let hover = self.hover;
-        self.hover = false;
-
-        if hover {
-            debug!("Clicked within Chatbox");
-            return Some((self.id, self.action));
-        }
-
-        None
+        //debug!("Clicked within Chatbox");
+        return Some((self.id, self.action));
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {

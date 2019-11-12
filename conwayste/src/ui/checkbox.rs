@@ -142,14 +142,8 @@ impl Widget for Checkbox {
 
     fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
     {
-        let hover = self.hover;
-        self.hover = false;
-
-        if hover {
-            //debug!("Clicked Checkbox, '{}'", self.label.textfrag.text);
-            return Some(( self.id, UIAction::Toggle(self.toggle_checkbox()) ));
-        }
-        None
+        //debug!("Clicked Checkbox, '{}'", self.label.textfrag.text);
+        return Some(( self.id, UIAction::Toggle(self.toggle_checkbox()) ));
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {

@@ -137,9 +137,11 @@ impl Widget for Pane {
 
         if hover {
             for w in self.widgets.iter_mut() {
-                let ui_action = w.on_click(point);
-                if ui_action.is_some() {
-                    return ui_action;
+                if within_widget(point, &w.size()) {
+                    let ui_action = w.on_click(point);
+                    if ui_action.is_some() {
+                        return ui_action;
+                    }
                 }
             }
         }
