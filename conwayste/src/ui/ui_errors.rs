@@ -22,4 +22,5 @@ custom_error! {pub UIError
     ActionRestricted{reason: String} = "UIError::ActionRestricted({reason})"
 }
 
+// TODO: use Box<dyn Error> and make this a generic CwResult (project-wide)
 pub type UIResult<T> = Result<T, Box<UIError>>;

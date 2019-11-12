@@ -96,12 +96,13 @@ use uimanager::LayoutManager;
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum Screen {
-    Intro,   // seconds
-    Menu,
+    Intro,          // intro screen
+    Menu,           // root menu
+    Options,        // options menu
     ServerList,
     InRoom,
-    Run,          // TODO: break it out more to indicate whether waiting for game or playing game
-    Exit,         // We're getting ready to quit the game, WRAP IT UP SON
+    Run,            // TODO: break it out more to indicate whether waiting for game or playing game
+    Exit,           // We're getting ready to quit the game, WRAP IT UP SON
 }
 
 // All game state
@@ -436,7 +437,7 @@ impl EventHandler for MainState {
         self.receive_net_updates()?;
 
         let current_screen = match self.screen_stack.last() {
-            Some(screen) => screen,
+            Some(screen) => *screen,
             None => panic!("Error in main thread update! Screen_stack is empty!"),
         };
 
@@ -462,7 +463,7 @@ impl EventHandler for MainState {
                     }
                 }
             }
-            Screen::Menu => {
+            Screen::Menu | Screen::Options => {
                 let mouse_point = self.inputs.mouse_info.position;
                 let origin_point = self.inputs.mouse_info.down_position;
 
@@ -490,7 +491,10 @@ impl EventHandler for MainState {
                     }
                 }
 
-                self.update_main_menu_selection(ctx)?;
+                if current_screen == Screen::Menu {
+                    // root menu only
+                    self.update_main_menu_selection(ctx)?;
+                }
             }
             Screen::Run => {
                 // TODO Disable FSP limit until we decide if we need it
@@ -605,6 +609,7 @@ impl EventHandler for MainState {
 
         let current_screen = self.get_current_screen();
 
+        // Before drawing widgets, draw other stuff underneath
         match current_screen {
             Screen::Intro => {
                 self.draw_intro(ctx)?;
@@ -612,8 +617,8 @@ impl EventHandler for MainState {
             Screen::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn)?;
             }
-            Screen::Run => {
-                self.draw_universe(ctx)?;
+            Screen::Options => {
+                ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("Options"), &Point2::new(100.0, 100.0))?;
             }
             Screen::InRoom => {
                 ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("In Room"), &Point2::new(100.0, 100.0))?;
@@ -623,9 +628,13 @@ impl EventHandler for MainState {
                 ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("Server List"), &Point2::new(100.0, 100.0))?;
                 // TODO
              },
+            Screen::Run => {
+                self.draw_universe(ctx)?;
+            }
             Screen::Exit => {}
         }
 
+        // Next, draw widgets
         if let Some(ref mut layers) = LayoutManager::get_screen_layers(&mut self.ui_layout, current_screen) {
             for layer in layers.iter_mut() {
                 layer.draw(ctx)?;
