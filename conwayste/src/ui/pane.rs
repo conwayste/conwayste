@@ -64,12 +64,18 @@ impl Pane {
 
     /// Add a widget to the pane
     pub fn add(&mut self, mut widget: Box<dyn Widget>) -> UIResult<()> {
+        if self.widgets.iter().filter(|&w| w.id() == widget.id()).next().is_some() {
+            return Err(Box::new(UIError::WidgetIDCollision {
+                reason: format!("Widget of {:?} already exists in the Pane of {:?}", widget.id(), self.id())
+            }));
+        }
+
         let mut dims = widget.size();
         // Widget-to-be-added's coordinates are with respect to the Pane's origin
         dims.translate(self.dimensions.point());
 
         if dims.w > self.dimensions.w || dims.h > self.dimensions.h {
-            return Err(Box::new(UIError::InvalidDimensions{
+            return Err(Box::new(UIError::InvalidDimensions {
                 reason: format!("Widget of {:?} is larger than Pane of {:?}", widget.id(), self.id)
             }));
         }
@@ -80,7 +86,7 @@ impl Pane {
         || dims.bottom() > self.dimensions.bottom() {
             println!("{:?} Dims: {:?}", widget.id(), dims);
             println!("Pane: {:?}", self.dimensions);
-            return Err(Box::new(UIError::InvalidDimensions{
+            return Err(Box::new(UIError::InvalidDimensions {
                 reason: format!("Widget of {:?} is not fully enclosed by Pane of {:?}", widget.id(), self.id)
             }));
         }
@@ -326,15 +332,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
-    fn test_add_widgets_with_the_same_id_to_pane() {
-        let mut pane = create_dummy_pane(10.0);
+    fn test_add_widgets_with_the_same_id_to_pane_fails() {
+        let mut pane = create_dummy_pane(500.0);
         let font_info = create_dummy_font();
         let history_len = 5;
         let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
         assert!(pane.add(Box::new(chatbox)).is_ok());
 
-        // TODO: This should return an Error since the Widget ID's collide
         let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
         assert!(pane.add(Box::new(chatbox)).is_err());
     }
