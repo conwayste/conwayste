@@ -68,19 +68,30 @@ pub trait Widget: Downcast {
         Ok(())
     }
 
-    // Long-term TODO
-    // The following three definitions tend to use struct member variables so we need to define
-    // their own definitions. Refactor into a Sizable trait.
-
-    /// Get the size of the widget. Widget must be sizable.
+    /// Get the size of the widget.
     fn size(&self) -> Rect;
 
-    /// Set the size of the widget. Widget must be sizable.
+    /// Get the origin point of the widget in screen coordinates.
+    fn position(&self) -> Point2<f32>;
+
+    /// Get the width and height of the widget in pixels.
+    fn dimensions(&self) -> (f32, f32);
+
+    /// Set the size of the widget.
     fn set_size(&mut self, _new_dimensions: Rect) -> UIResult<()> {
         Ok(())
     }
 
-    /// Translate the widget from one location to another. Widget must be sizable.
+    /// Set the size of the widget.
+    fn set_position(&mut self, _x: f32, _y: f32) {
+        ()
+    }
+
+    fn set_dimensions(&mut self, _w: f32, _h: f32) -> UIResult<()> {
+        Ok(())
+    }
+
+    /// Translate the widget from one location to another.
     fn translate(&mut self, _dest: Vector2<f32>);
 }
 
