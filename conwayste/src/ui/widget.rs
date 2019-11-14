@@ -71,12 +71,12 @@ pub trait Widget: Downcast {
         Ok(())
     }
 
-    /// Textfield gains focus and begins accepting user input
+    /// Widget gains focus and begins accepting user input
     fn enter_focus(&mut self) {
         ()
     }
 
-    /// Textfield loses focus and does not accept user input
+    /// Widget loses focus and does not accept user input
     fn exit_focus(&mut self) {
         ()
     }
