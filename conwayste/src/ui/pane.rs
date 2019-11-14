@@ -21,6 +21,7 @@ use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
+    BoxedWidget,
     widget::Widget,
     common::{within_widget},
     UIAction,
@@ -34,7 +35,7 @@ pub struct Pane {
     id: WidgetID,
     z_index: usize,
     pub dimensions: Rect,
-    pub widgets: Vec<Box<dyn Widget>>,
+    pub widgets: Vec<BoxedWidget>,
     pub hover: bool,
     pub floating: bool, // can the window be dragged around?
     pub previous_pos: Option<Point2<f32>>,
@@ -63,7 +64,7 @@ impl Pane {
     }
 
     /// Add a widget to the pane
-    pub fn add(&mut self, mut widget: Box<dyn Widget>) -> UIResult<()> {
+    pub fn add(&mut self, mut widget: BoxedWidget) -> UIResult<()> {
         if self.widgets.iter().filter(|&w| w.id() == widget.id()).next().is_some() {
             return Err(Box::new(UIError::WidgetIDCollision {
                 reason: format!("Widget of {:?} already exists in the Pane of {:?}", widget.id(), self.id())

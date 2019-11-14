@@ -21,6 +21,7 @@ use ggez::nalgebra::Point2;
 use ggez::Context;
 
 use super::{
+    BoxedWidget,
     widget::Widget,
     Pane,
     TextField,
@@ -33,7 +34,7 @@ use crate::constants::colors::*;
 
 pub struct Layering {
     pub with_transparency: bool,
-    pub widget_list: Vec<Box<dyn Widget>>,
+    pub widget_list: Vec<BoxedWidget>,
     focused_ids: Vec<Option<WidgetID>>,
     id_cache: Vec<WidgetID>
 }
@@ -93,7 +94,7 @@ impl Layering {
     /// # Error
     /// A WidgetNotFound error will be returned if the widget-id is not found.
     /// does not exist in the internal list of widgets.
-    pub fn get_widget_mut(&mut self, widget_id: WidgetID) -> UIResult<&mut Box<dyn Widget>> {
+    pub fn get_widget_mut(&mut self, widget_id: WidgetID) -> UIResult<&mut BoxedWidget> {
         if let Some((list_index, pane_index)) = self.search_panes_for_widget_id(widget_id) {
             // Unwraps are safe because the previous search would return None if it couldn't find
             // a pane.
@@ -116,7 +117,7 @@ impl Layering {
     ///
     /// # Error
     /// A WidgetIDCollision error can be returned if the widget-id exists in this layering.
-    pub fn add_widget(&mut self, widget: Box<dyn Widget>, z_index: usize) -> UIResult<()> {
+    pub fn add_widget(&mut self, widget: BoxedWidget, z_index: usize) -> UIResult<()> {
         if self.check_for_entry(widget.id()) {
             return Err(Box::new(UIError::WidgetIDCollision {
                     reason: format!("Widget with ID {:?} exists in layer's widget list.", widget.id())

@@ -51,6 +51,8 @@ pub use textfield::{TextField, TextInputState};
 pub use ui_errors::{UIResult, UIError};
 pub use widget::Widget;
 
+type BoxedWidget = Box<dyn Widget>;
+
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum UIAction {
     ScreenTransition(Screen),
