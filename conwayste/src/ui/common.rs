@@ -45,32 +45,36 @@ macro_rules! widget_from_id {
     }
 }
 
-/// A basic macro to downcast a `dyn Widget` to a concrete type. No turbo-fish required!
+/// A macro to downcast a `dyn Widget` to a concrete type; added for readability.
 ///
 /// # Arguments
 /// Two required arguments are the `dyn Widget` object and the destination type.
-/// An optional mut argument, when included prior to the widget, returns a mutable reference.
+/// An variant of this macro exists to return a mutable reference to a widget. See Usage section.
 ///
 /// # Usage
 /// ```Rust
-/// downcast_widget!([mut] widget, type) macro
+/// downcast_widget!(widget, type)
+/// downcast_widget_mut!(widget, type)
 /// ```
 ///
 /// # Examples
 /// ```rust
 /// let widget = layer.get_widget_mut(WidgetID(0));
-/// let textfield = downcast_widget!(mut widget, TextField);
+/// let textfield = downcast_widget_mut!(widget, TextField);
 /// textfield.enter_focus()
 /// ```
 ///
 #[macro_export]
 macro_rules! downcast_widget {
-    (mut $widget:ident, $type:ident) => {
-        $widget.downcast_mut::<$type>()
-    };
-
     ($widget:ident, $type:ident) => {
         $widget.downcast_ref::<$type>()
+    };
+}
+
+#[macro_export]
+macro_rules! downcast_widget_mut {
+    ($widget:ident, $type:ident) => {
+        $widget.downcast_mut::<$type>()
     };
 }
 

@@ -190,7 +190,7 @@ impl Layering {
         if let Some((list_index, pane_index)) = indices {
             // Found in a Pane. Unwraps below are safe because of check_for_entry call
             let dyn_widget = self.widget_list.get_mut(list_index).unwrap();
-            let pane = downcast_widget!(mut dyn_widget, Pane).unwrap();
+            let pane = downcast_widget_mut!( dyn_widget, Pane).unwrap();
             let widget = pane.widgets.get_mut(pane_index).unwrap();
             widget.enter_focus();
         } else {
@@ -215,7 +215,7 @@ impl Layering {
 
         if let Some(widget_id) = widget_id {
             if let Ok(dyn_widget) = self.get_widget_mut(widget_id) {
-                if let Some(tf_widget) = downcast_widget!(mut dyn_widget, TextField) {
+                if let Some(tf_widget) = downcast_widget_mut!( dyn_widget, TextField) {
                     tf_widget.exit_focus();
                 }
             }
