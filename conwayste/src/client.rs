@@ -82,6 +82,7 @@ use constants::{
 };
 use input::{MouseAction, ScrollEvent};
 use ui::{
+    Chatbox,
     TextField,
     TextInputState,
     UIAction,
@@ -496,20 +497,25 @@ impl EventHandler for MainState {
                 // TODO Disable FSP limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
                 let mut textfield_under_focus = false;
-                if let Some(tf) = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
-                    match tf.input_state {
-                        Some(TextInputState::TextInputComplete) =>  {
-                            textfield_under_focus = false;
-                            self.handle_user_chat_complete(ctx);
+                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                    Ok(tf) => {
+                        match tf.input_state {
+                            Some(TextInputState::TextInputComplete) =>  {
+                                textfield_under_focus = false;
+                                self.handle_user_chat_complete(ctx);
+                            }
+                            Some(TextInputState::EnteringText) => {
+                                textfield_under_focus = true;
+                                tf.update(ctx)?;
+                            },
+                            None => {
+                                textfield_under_focus = false;
+                                tf.update(ctx)?;
+                            },
                         }
-                        Some(TextInputState::EnteringText) => {
-                            textfield_under_focus = true;
-                            tf.update(ctx)?;
-                        },
-                        None => {
-                            textfield_under_focus = false;
-                            tf.update(ctx)?;
-                        },
+                    }
+                    Err(e) => {
+                        error!("could not update Chatbox's text input state: {:?}", e);
                     }
                 }
 
@@ -763,8 +769,10 @@ impl EventHandler for MainState {
         }
 
         let screen = self.get_current_screen();
-        if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-            tf.on_char(character);
+        match LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
+            Ok(tf) => tf.on_char(character),
+            Err(e) => error!("Could not get layer's focused
+                             textfield for {:?} during text input event: {:?}", screen, e)
         }
     }
 
@@ -960,11 +968,16 @@ impl MainState {
 
         match keycode {
             KeyCode::Return => {
-                if let Some(tf) = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
-                    if tf.input_state.is_none() {
-                        if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, Screen::Run) {
-                            layer.enter_focus(INGAME_PANE1_CHATBOXTEXTFIELD)?;
+                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                    Ok(tf) => {
+                        if tf.input_state.is_none() {
+                            if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, Screen::Run) {
+                                layer.enter_focus(INGAME_PANE1_CHATBOXTEXTFIELD)?;
+                            }
                         }
+                    }
+                    Err(e) => {
+                        error!("Could not get Chatbox's textfield while processing key inputs: {:?}", e);
                     }
                 }
             }
@@ -1062,8 +1075,10 @@ impl MainState {
                 }
             }
             KeyCode::Return | KeyCode::Back | KeyCode::Delete | KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
-                    tf.on_keycode(keycode);
+                match LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
+                    Ok(tf) => tf.on_keycode(keycode),
+                    Err(e) => error!("Could not get focused textfield for {:?}
+                                      during process text field inputs: {:?}", screen, e)
                 }
             }
             _ => {} // do nothing for now
@@ -1276,8 +1291,9 @@ impl MainState {
         }
 
         for msg in incoming_messages {
-            if let Some(cb) = LayoutManager::chatbox_from_id(&mut self.ui_layout, INGAME_PANE1_CHATBOX) {
-                cb.add_message(msg);
+            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOX) {
+                Ok(cb) => cb.add_message(msg),
+                Err(e) => error!("Could not add mesasge to Chatbox on network message receive: {:?}", e)
             }
         }
 
@@ -1371,20 +1387,30 @@ impl MainState {
         let username = self.config.get().user.name.clone();
         let mut msg = String::new();
 
-        if let Some(tf) = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
-            if let Some(m) = tf.text() {
-                msg = format!("{}: {}", username, m);
+        match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+            Ok(tf) => {
+                if let Some(m) = tf.text() {
+                    msg = format!("{}: {}", username, m);
+                }
+                tf.input_state = None;
+                tf.clear();
             }
-            tf.input_state = None;
-            tf.clear();
+            Err(e) => {
+                error!("Could not access Chatbox's text entry field on user input complete: {:?}", e);
+            }
         }
 
         if !msg.is_empty() {
-            if let Some(cb) = LayoutManager::chatbox_from_id(&mut self.ui_layout, INGAME_PANE1_CHATBOX) {
-                cb.add_message(msg.clone());
+            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOX) {
+                Ok(cb) => {
+                    cb.add_message(msg.clone());
 
-                if let Some(ref mut netwayste) = self.net_worker {
-                    netwayste.try_send(NetwaysteEvent::ChatMessage(msg));
+                    if let Some(ref mut netwayste) = self.net_worker {
+                        netwayste.try_send(NetwaysteEvent::ChatMessage(msg));
+                    }
+                }
+                Err(e) => {
+                    error!("Could not add message to Chatbox on user input complete: {:?}", e);
                 }
             }
         }

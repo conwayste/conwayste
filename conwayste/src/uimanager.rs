@@ -27,6 +27,8 @@ use crate::ui::{
     Layering,
     Pane,
     TextField,
+    UIError,
+    UIResult,
     WidgetID,
 };
 
@@ -40,11 +42,13 @@ macro_rules! add_layering_support {
                 ui: &mut UILayout,
                 screen: Screen,
                 id: WidgetID
-            ) -> Option<&mut $type> {
+            ) -> UIResult<&mut $type> {
                 if let Some(layer) = LayoutManager::get_screen_layering(ui, screen) {
                     return $type::widget_from_id(layer, id);
                 }
-                None
+                Err(Box::new(UIError::InvalidArgument {
+                    reason: format!("{:?} not found in UI Layout", screen)
+                }))
             }
         }
     }
@@ -60,22 +64,15 @@ impl LayoutManager {
     }
 
     /// Get the current screen's focused Textfield. This is expected to be on the top-most layer
-    pub fn focused_textfield_mut(ui: &mut UILayout, screen: Screen) -> Option<&mut TextField> {
+    pub fn focused_textfield_mut(ui: &mut UILayout, screen: Screen) -> UIResult<&mut TextField> {
         if let Some(layer) = Self::get_screen_layering(ui, screen) {
             if let Some(id) = layer.focused_widget_id() {
                 return TextField::widget_from_id(layer, id);
             }
         }
-        None
-    }
-
-    /// Retreive a Chatbox from its widget ID
-    //
-    // Chatbox does not use  the`add_layering_support!()` macro because it resides in a fixed layer
-    // on one `Screen`, `Screen::Run`. It should not exist anywhere else, and the macro-generated
-    // code only searches in the top-most layer. The Chatbox exists in the bottom-most layer.
-    pub fn chatbox_from_id(ui: &mut UILayout, id: WidgetID) -> Option<&mut Chatbox> {
-        Chatbox::widget_from_screen_and_id(ui, Screen::Run, id)
+        Err(Box::new(UIError::WidgetNotFound {
+            reason: format!("Layering for screen {:?} does not have a TextFiled in focus", screen)
+        }))
     }
 }
 

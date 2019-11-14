@@ -23,6 +23,7 @@ custom_error! {pub UIError
     InvalidAction {reason: String} = "UIError::InvalidAction({reason})",
     ActionRestricted{reason: String} = "UIError::ActionRestricted({reason})",
     WidgetIDCollision{reason: String} = "UIError::WidgetIDCollision({reason})",
+    InvalidArgument{reason: String} = "UIError::InvalidArgument({reason})",
 }
 
 pub type UIResult<T> = Result<T, Box<UIError>>;

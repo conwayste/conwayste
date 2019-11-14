@@ -28,16 +28,24 @@ macro_rules! widget_from_id {
         use super::layer::Layering;
 
         impl $type {
-            pub fn widget_from_id(layer: &mut Layering, id: WidgetID) -> Option<&mut $type>
+            pub fn widget_from_id(layer: &mut Layering, id: WidgetID) -> UIResult<&mut $type>
             {
                 let widget_result = layer.get_widget_mut(id);
                 match widget_result {
                     Ok(widget) => {
-                        return widget.downcast_mut::<$type>();
+                        match widget.downcast_mut::<$type>() {
+                            Some(downcasted_widget) => {
+                                return Ok(downcasted_widget);
+                            }
+                            None => {
+                                return Err(Box::new(UIError::WidgetNotFound {
+                                    reason: format!("{:?} could not be downcasted to type $type", id)
+                                }));
+                            }
+                        }
                     }
                     Err(e) => {
-                        info!("Could not find $type widget of {:?} in layer! {:?}", id, e);
-                        return None;
+                        return Err(e);
                     }
                 }
             }
