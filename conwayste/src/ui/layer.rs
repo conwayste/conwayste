@@ -141,7 +141,7 @@ impl Layering {
     /// in the internal list of widgets.
     pub fn _remove_widget(&mut self, widget_id: WidgetID) -> UIResult<()> {
         let removal_index = self.widget_list.iter()
-            .position(|widget| widget_id >= widget.id())
+            .position(|widget| widget_id == widget.id())
             .ok_or_else(|| -> UIResult<()> {
                 return Err(Box::new(UIError::WidgetNotFound {
                     reason: format!("{:?} not found in layer during removal", widget_id).to_owned()
