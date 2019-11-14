@@ -38,7 +38,9 @@ pub struct Layering {
     id_cache: Vec<WidgetID>
 }
 
-/// A container of one or more widgets or panes ordered by virtual layers.
+/// A Layering is a container of one or more widgets or panes, where widgets are ordered by
+/// by their z_index to create the appearance of a layer, for a given game screen. Layerings
+/// support an optional transparency between two adjacent z-orders.
 impl Layering {
     pub fn new() -> Self {
         Layering {
@@ -51,10 +53,7 @@ impl Layering {
 
     /// Returns true if an entry with the provided WidgetID exists.
     fn check_for_entry(&self, widget_id: WidgetID) -> bool {
-        self.id_cache
-            .iter()
-            .find(|&&id| id == widget_id)
-            .is_some()
+        self.id_cache.iter().find(|&&id| id == widget_id).is_some()
     }
 
     /// Returns an optional pair of indices if the widget-id is found in Pane beloning to
@@ -96,14 +95,15 @@ impl Layering {
     /// does not exist in the internal list of widgets.
     pub fn get_widget_mut(&mut self, widget_id: WidgetID) -> UIResult<&mut Box<dyn Widget>> {
         if let Some((list_index, pane_index)) = self.search_panes_for_widget_id(widget_id) {
+            // Unwraps are safe because the previous search would return None if it couldn't find
+            // a pane.
             let pane = self.widget_list.get_mut(list_index).unwrap().downcast_mut::<Pane>().unwrap();
             let widget = pane.widgets.get_mut(pane_index).unwrap();
             return Ok(widget);
         }
 
         // If it doesn't belong to a pane, check the widget list for an entry
-        self.widget_list
-            .iter_mut()
+        self.widget_list.iter_mut()
             .filter(|widget| widget.id() == widget_id)
             .next()
             .ok_or_else(|| Box::new(UIError::WidgetNotFound {
@@ -124,8 +124,7 @@ impl Layering {
         }
 
         // Insert by z-index, descending. Use zero when the list is empty.
-        let insertion_index = self.widget_list
-            .iter()
+        let insertion_index = self.widget_list.iter()
             .position(|widget| z_index >= widget.z_index())
             .unwrap_or(0);
 
@@ -140,8 +139,7 @@ impl Layering {
     /// A WidgetNotFound error can be returned if a widget with the `widget_id` does not exist
     /// in the internal list of widgets.
     pub fn _remove_widget(&mut self, widget_id: WidgetID) -> UIResult<()> {
-        let removal_index = self.widget_list
-            .iter()
+        let removal_index = self.widget_list.iter()
             .position(|widget| widget_id >= widget.id())
             .ok_or_else(|| -> UIResult<()> {
                 return Err(Box::new(UIError::WidgetNotFound {
@@ -196,8 +194,7 @@ impl Layering {
             widget.enter_focus();
         } else {
             // unwrap safe because of check_for_entry call
-            let widget = self.widget_list
-                .iter_mut()
+            let widget = self.widget_list.iter_mut()
                 .filter(|widget| widget.id() == widget_id)
                 .next().
                 unwrap();
@@ -231,8 +228,7 @@ impl Layering {
     pub fn on_hover(&mut self, point: &Point2<f32>) {
         let highest_z_index = self.peek_z_index();
 
-        for widget in self.widget_list
-            .iter_mut()
+        for widget in self.widget_list.iter_mut()
             .filter(|widget| widget.z_index() == highest_z_index)
         {
             widget.on_hover(point);
@@ -242,8 +238,7 @@ impl Layering {
     pub fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
         let highest_z_index = self.peek_z_index();
 
-        for widget in self.widget_list
-            .iter_mut()
+        for widget in self.widget_list.iter_mut()
             .filter(|widget| widget.z_index() == highest_z_index)
         {
             let ui_action = widget.on_click(point);
@@ -257,8 +252,7 @@ impl Layering {
     pub fn on_drag(&mut self, original_pos: &Point2<f32>, current_pos: &Point2<f32>) {
         let highest_z_index = self.peek_z_index();
 
-        for widget in self.widget_list
-            .iter_mut()
+        for widget in self.widget_list.iter_mut()
             .filter(|widget| widget.z_index() == highest_z_index)
         {
             widget.on_drag(original_pos, current_pos);
@@ -270,8 +264,7 @@ impl Layering {
 
         if self.with_transparency && highest_z_index != 0 {
             // Draw the previous layer
-            for widget in self.widget_list
-                .iter_mut()
+            for widget in self.widget_list.iter_mut()
                 .filter(|widget| widget.z_index() == highest_z_index - 1)
             {
                 widget.draw(ctx)?;
@@ -287,8 +280,7 @@ impl Layering {
             graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
 
-        for widget in self.widget_list
-            .iter_mut()
+        for widget in self.widget_list.iter_mut()
             .filter(|widget| widget.z_index() == highest_z_index)
         {
             widget.draw(ctx)?;
