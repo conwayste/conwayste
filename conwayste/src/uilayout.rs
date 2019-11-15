@@ -39,6 +39,7 @@ use crate::ui::{
     UIAction,
     common,
     UIResult,
+    WidgetID,
 };
 
 pub struct UILayout {
@@ -105,48 +106,46 @@ impl UILayout {
         let (button_width, button_height) = (180.0, 50.0);
         let mut pane_mainmenu = Box::new(Pane::new(MAINMENU_PANE1, Rect::new(pane_x, pane_y, large_value, large_value)));
 
+        struct ButtonInfo(
+            WidgetID,
+            UIAction,
+            WidgetID,
+            &'static str,
+        );
+        let button_infos: &[ButtonInfo] = &[
+                ButtonInfo(
+                    MAINMENU_PANE1_BUTTONSERVLST,
+                    UIAction::ScreenTransition(Screen::ServerList),
+                    MAINMENU_PANE1_BUTTONSERVLSTLABEL,
+                    "ServerList",
+                ),
+                ButtonInfo(
+                    MAINMENU_PANE1_BUTTONINROOM,
+                    UIAction::ScreenTransition(Screen::InRoom),
+                    MAINMENU_PANE1_BUTTONINROOMLABEL,
+                    "InRoom",
+                ),
+                ButtonInfo(
+                    MAINMENU_PANE1_BUTTONSTART,
+                    UIAction::ScreenTransition(Screen::Run),
+                    MAINMENU_PANE1_BUTTONSTARTLABEL,
+                    "StartGame",
+                ),
+                ButtonInfo(
+                    MAINMENU_PANE1_BUTTONOPTIONS,
+                    UIAction::ScreenTransition(Screen::Options),
+                    MAINMENU_PANE1_BUTTONOPTIONSLABEL,
+                    "Options",
+                ),
+        ];
+
         let (x, mut y) = (pad, pad);
-        let mut pane_button = Box::new(
-            Button::new(
-                ctx,
-                MAINMENU_PANE1_BUTTONYES,
-                UIAction::ScreenTransition(Screen::ServerList),
-                MAINMENU_PANE1_BUTTONYESLABEL,
-                default_font_info,
-                "ServerList".to_owned()
-            )
-        );
-        pane_button.set_size(Rect::new(x, y, button_width, button_height))?;
-        pane_mainmenu.add(pane_button)?;
-        y += button_height + pad;
-
-        let mut pane_button = Box::new(
-            Button::new(
-                ctx,
-                MAINMENU_PANE1_BUTTONNO,
-                UIAction::ScreenTransition(Screen::InRoom),
-                MAINMENU_PANE1_BUTTONNOLABEL,
-                default_font_info,
-                "InRoom".to_owned()
-            )
-        );
-        pane_button.set_size(Rect::new(x, y, button_width, button_height))?;
-        pane_mainmenu.add(pane_button)?;
-        y += button_height + pad;
-
-        let mut pane_button = Box::new(
-            Button::new(
-                ctx,
-                MAINMENU_TESTBUTTON,
-                UIAction::ScreenTransition(Screen::Run),
-                MAINMENU_TESTBUTTONLABEL,
-                default_font_info,
-                "StartGame".to_owned()
-            )
-        );
-        pane_button.set_size(Rect::new(x, y, button_width, button_height))?;
-        pane_mainmenu.add(pane_button)?;
-        y += button_height + pad;
+        for info in button_infos {
+            let mut pane_button = Box::new(Button::new(ctx, info.0, info.1, info.2, default_font_info, info.3.to_owned()));
+            pane_button.set_size(Rect::new(x, y, button_width, button_height))?;
+            pane_mainmenu.add(pane_button)?;
+            y += button_height + pad;
+        }
 
         /////
         let (checkbox_width, checkbox_height) = (20.0, 20.0);

@@ -91,19 +91,21 @@ pub const CHAT_TEXTFIELD_HEIGHT: f32 = (25.0);
 
 pub mod widget_ids {
     use crate::ui::WidgetID;
-    pub const MAINMENU_LAYER1: WidgetID = WidgetID(0);
-    pub const MAINMENU_TESTBUTTON: WidgetID = WidgetID(1);
-    pub const MAINMENU_TESTBUTTONLABEL: WidgetID = WidgetID(2);
-    pub const MAINMENU_TESTCHECKBOX: WidgetID = WidgetID(3);
-    pub const MAINMENU_PANE1: WidgetID = WidgetID(4);
-    pub const MAINMENU_PANE1_BUTTONYES: WidgetID = WidgetID(5);
-    pub const MAINMENU_PANE1_BUTTONYESLABEL: WidgetID = WidgetID(6);
-    pub const MAINMENU_PANE1_BUTTONNO: WidgetID = WidgetID(7);
-    pub const MAINMENU_PANE1_BUTTONNOLABEL: WidgetID = WidgetID(8);
-    pub const INGAME_LAYER1: WidgetID = WidgetID(9);
-    pub const INGAME_PANE1: WidgetID = WidgetID(10);
-    pub const INGAME_PANE1_CHATBOX: WidgetID = WidgetID(11);
-    pub const INGAME_PANE1_CHATBOXTEXTFIELD: WidgetID = WidgetID(12);
+    pub const MAINMENU_LAYER1: WidgetID = WidgetID(1000);
+    pub const MAINMENU_PANE1: WidgetID  = WidgetID(1100);
+    pub const MAINMENU_PANE1_BUTTONSERVLST: WidgetID      = WidgetID(1101);
+    pub const MAINMENU_PANE1_BUTTONSERVLSTLABEL: WidgetID = WidgetID(1102);
+    pub const MAINMENU_PANE1_BUTTONINROOM: WidgetID       = WidgetID(1103);
+    pub const MAINMENU_PANE1_BUTTONINROOMLABEL: WidgetID  = WidgetID(1104);
+    pub const MAINMENU_PANE1_BUTTONSTART: WidgetID        = WidgetID(1105);
+    pub const MAINMENU_PANE1_BUTTONSTARTLABEL: WidgetID   = WidgetID(1106);
+    pub const MAINMENU_PANE1_BUTTONOPTIONS: WidgetID      = WidgetID(1107);
+    pub const MAINMENU_PANE1_BUTTONOPTIONSLABEL: WidgetID = WidgetID(1108);
+    pub const MAINMENU_TESTCHECKBOX: WidgetID             = WidgetID(1109);
+    pub const INGAME_LAYER1: WidgetID                 = WidgetID(2000);
+    pub const INGAME_PANE1: WidgetID                  = WidgetID(2100);
+    pub const INGAME_PANE1_CHATBOX: WidgetID          = WidgetID(2101);
+    pub const INGAME_PANE1_CHATBOXTEXTFIELD: WidgetID = WidgetID(2102);
 }
 
 //////////////////////////////////////////////////////////////////////
