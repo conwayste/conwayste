@@ -101,7 +101,7 @@ pub mod widget_ids {
     pub const MAINMENU_PANE1_BUTTONSTARTLABEL: WidgetID   = WidgetID(1106);
     pub const MAINMENU_PANE1_BUTTONOPTIONS: WidgetID      = WidgetID(1107);
     pub const MAINMENU_PANE1_BUTTONOPTIONSLABEL: WidgetID = WidgetID(1108);
-    pub const MAINMENU_TESTCHECKBOX: WidgetID             = WidgetID(1109);
+    pub const MAINMENU_FULLSCREEN_CHECKBOX: WidgetID      = WidgetID(1109);
     pub const INGAME_LAYER1: WidgetID                 = WidgetID(2000);
     pub const INGAME_PANE1: WidgetID                  = WidgetID(2100);
     pub const INGAME_PANE1_CHATBOX: WidgetID          = WidgetID(2101);

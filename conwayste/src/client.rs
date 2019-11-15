@@ -466,7 +466,8 @@ impl EventHandler for MainState {
                     }
                 }
             }
-            Screen::Menu | Screen::Options => {
+            Screen::Menu | Screen::InRoom | Screen::ServerList | Screen::Options => {
+                // Any screen that has widgets needs code like this to pass user inputs into the widgets.
                 let mouse_point = self.inputs.mouse_info.position;
                 let origin_point = self.inputs.mouse_info.down_position;
 
@@ -486,6 +487,7 @@ impl EventHandler for MainState {
 
                     if left_mouse_click {
                         if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
+                            // There was a UIAction from a click event! Handle it...
                             self.handle_ui_action(ctx, ui_id, ui_action).or_else(|e| -> UIResult<()> {
                                 error!("Failed to handle UI action: {}", e);
                                 Ok(())
@@ -497,6 +499,12 @@ impl EventHandler for MainState {
                 if current_screen == Screen::Menu {
                     // root menu only
                     self.update_main_menu_selection(ctx)?;
+                } else {
+                    if self.inputs.key_info.key == Some(KeyCode::Escape) {
+                        // Go to previous screen on escape
+                        debug!("Leaving {:?}", current_screen);
+                        self.screen_stack.pop();
+                    }
                 }
             }
             Screen::Run => {
@@ -583,20 +591,6 @@ impl EventHandler for MainState {
 
                 self.viewport.update(self.arrow_input);
             }
-            Screen::InRoom => {
-                // TODO implement
-                if let Some(_k) = self.inputs.key_info.key {
-                    debug!("Leaving InRoom to ServerList");
-                    self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
-                }
-            }
-            Screen::ServerList => {
-                if let Some(_k) = self.inputs.key_info.key {
-                    debug!("Leaving ServerList to MainMenu");
-                    self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
-                }
-                // TODO implement
-             },
             Screen::Exit => {
                let _ = ggez::event::quit(ctx);
             }
@@ -625,11 +619,9 @@ impl EventHandler for MainState {
             }
             Screen::InRoom => {
                 ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("In Room"), &Point2::new(100.0, 100.0))?;
-                // TODO
             }
             Screen::ServerList => {
                 ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("Server List"), &Point2::new(100.0, 100.0))?;
-                // TODO
              },
             Screen::Run => {
                 self.draw_universe(ctx)?;
@@ -1335,17 +1327,21 @@ impl MainState {
         }
     }
 
-    fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> UIResult<()> {
+    fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> Result<(), Box<dyn Error>> {
         match action {
             UIAction::ScreenTransition(s) => {
                 self.screen_stack.push(s);
             }
-            UIAction::Toggle(enabled) => {
-                self.config.modify(|settings| {
-                    settings.video.fullscreen = enabled;
-                });
-                self.video_settings.is_fullscreen = enabled;
-                self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
+            UIAction::Toggle(is_checked) => {
+                if widget_id == MAINMENU_FULLSCREEN_CHECKBOX {
+                    self.config.modify(|settings| {
+                        settings.video.fullscreen = is_checked;
+                    });
+                    self.video_settings.is_fullscreen = is_checked;
+                    self.video_settings.update_fullscreen(ctx)?;
+                } else {
+                    return Err(format!("Don't know how to handle a toggle from widget {:?}", widget_id).into());
+                }
             }
             _ => {
                 return Err(Box::new(UIError::InvalidAction{

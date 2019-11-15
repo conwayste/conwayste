@@ -152,7 +152,7 @@ impl UILayout {
         let checkbox = Box::new(
             Checkbox::new(
                 ctx,
-                MAINMENU_TESTCHECKBOX,
+                MAINMENU_FULLSCREEN_CHECKBOX,
                 config.get().video.fullscreen,
                 default_font_info,
                 "Toggle FullScreen".to_owned(),
