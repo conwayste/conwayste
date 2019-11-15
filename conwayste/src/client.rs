@@ -387,7 +387,10 @@ impl MainState {
             GameError::ConfigError(msg)
         })?;
 
-        let ui_layout = UILayout::new(ctx, &config, font.clone());
+        let ui_layout = UILayout::new(ctx, &config, font.clone()).map_err(|e| {
+            let msg = format!("Error while setting up UI layout: {:?}", e);
+            GameError::ConfigError(msg)
+        })?;
 
         // Update universe draw parameters for intro
         let intro_uni_draw_params = UniDrawParams {
@@ -1333,48 +1336,23 @@ impl MainState {
     }
 
     fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> UIResult<()> {
-        match widget_id {
-            MAINMENU_PANE1_BUTTONYES
-            | MAINMENU_PANE1_BUTTONNO
-            | MAINMENU_TESTBUTTON  => {
-                match action {
-                    UIAction::ScreenTransition(s) => {
-                        self.screen_stack.push(s);
-                    }
-                    _ => {
-                        return Err(Box::new(UIError::InvalidAction{
-                            reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)
-                        }));
-                    }
-                }
-            },
-            MAINMENU_TESTCHECKBOX => {
-                match action {
-                    UIAction::Toggle(enabled) => {
-                        self.config.modify(|settings| {
-                            settings.video.fullscreen = enabled;
-                        });
-                        self.video_settings.is_fullscreen = enabled;
-                        self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
-                    }
-                    _ => {
-                        return Err(Box::new(UIError::InvalidAction{
-                            reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)
-                        }));
-                     }
-                }
-            },
-            MAINMENU_PANE1
-            | MAINMENU_LAYER1
-            | INGAME_LAYER1
-            | INGAME_PANE1 => {
-                return Err(Box::new(UIError::ActionRestricted{
-                    reason: format!("Widget: {:?} is either a Pane or Layer element. Actions are not allowed for Widgets of these types.", widget_id)
+        match action {
+            UIAction::ScreenTransition(s) => {
+                self.screen_stack.push(s);
+            }
+            UIAction::Toggle(enabled) => {
+                self.config.modify(|settings| {
+                    settings.video.fullscreen = enabled;
+                });
+                self.video_settings.is_fullscreen = enabled;
+                self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
+            }
+            _ => {
+                return Err(Box::new(UIError::InvalidAction{
+                    reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)
                 }));
-            },
-            ui::WidgetID(_) => {},
+            }
         }
-
         Ok(())
     }
 
