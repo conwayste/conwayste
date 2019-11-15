@@ -99,7 +99,13 @@ impl UILayout {
         // Create the main menu pane and add buttons to it
         // TODO: this should be a grid layout so that the x and y positions of the buttons are
         // calculated automatically.
-        let mut pane_mainmenu = Box::new(Pane::new(MAINMENU_PANE1, Rect::new_i32(20, 20, 300, 250)));
+        let (pane_x, pane_y) = (20.0, 20.0);
+        let large_value = 9999.0; // we dun' want no errrs
+        let pad = 10.0;
+        let (button_width, button_height) = (180.0, 50.0);
+        let mut pane_mainmenu = Box::new(Pane::new(MAINMENU_PANE1, Rect::new(pane_x, pane_y, large_value, large_value)));
+
+        let (x, mut y) = (pad, pad);
         let mut pane_button = Box::new(
             Button::new(
                 ctx,
@@ -110,9 +116,9 @@ impl UILayout {
                 "ServerList".to_owned()
             )
         );
-        pane_button.set_size(Rect::new(10.0, 10.0, 180.0, 50.0))?;
-
+        pane_button.set_size(Rect::new(x, y, button_width, button_height))?;
         pane_mainmenu.add(pane_button)?;
+        y += button_height + pad;
 
         let mut pane_button = Box::new(
             Button::new(
@@ -124,9 +130,9 @@ impl UILayout {
                 "InRoom".to_owned()
             )
         );
-        pane_button.set_size(Rect::new(10.0, 70.0, 180.0, 50.0))?;
-
+        pane_button.set_size(Rect::new(x, y, button_width, button_height))?;
         pane_mainmenu.add(pane_button)?;
+        y += button_height + pad;
 
         let mut pane_button = Box::new(
             Button::new(
@@ -138,10 +144,12 @@ impl UILayout {
                 "StartGame".to_owned()
             )
         );
-        pane_button.set_size(Rect::new(10.0, 130.0, 180.0, 50.0))?;
-
+        pane_button.set_size(Rect::new(x, y, button_width, button_height))?;
         pane_mainmenu.add(pane_button)?;
+        y += button_height + pad;
 
+        /////
+        let (checkbox_width, checkbox_height) = (20.0, 20.0);
         let checkbox = Box::new(
             Checkbox::new(
                 ctx,
@@ -149,10 +157,13 @@ impl UILayout {
                 config.get().video.fullscreen,
                 default_font_info,
                 "Toggle FullScreen".to_owned(),
-                Rect::new(10.0, 210.0, 20.0, 20.0),
+                Rect::new(x, y, checkbox_width, checkbox_height),
             )
         );
         pane_mainmenu.add(checkbox)?;
+        y += checkbox_height + pad;
+
+        pane_mainmenu.set_size(Rect::new(pane_x, pane_y, pad + button_width + pad, y))?;
 
         layer_mainmenu.add(pane_mainmenu);
         layer_ingame.add(chatpane);
