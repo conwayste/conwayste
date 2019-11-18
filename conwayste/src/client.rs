@@ -1333,7 +1333,7 @@ impl MainState {
                 self.screen_stack.push(s);
             }
             UIAction::Toggle(is_checked) => {
-                if widget_id == MAINMENU_FULLSCREEN_CHECKBOX {
+                if widget_id == OPTIONS_PANE1_FULLSCREEN_CHECKBOX {
                     self.config.modify(|settings| {
                         settings.video.fullscreen = is_checked;
                     });
