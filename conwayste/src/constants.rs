@@ -55,6 +55,8 @@ pub mod colors {
         pub static ref GEN_COUNTER_COLOR: Color = Color::from(css::RED);
         pub static ref UNIVERSE_BG_COLOR: Color = Color::new( 0.25,  0.25,  0.25, 1.0);
         pub static ref LAYER_TRANSPARENCY_BG_COLOR: Color = color_with_alpha(css::HONEYDEW, 0.4);
+        pub static ref OPTIONS_TEXT_FILL_COLOR: Color = Color::from(css::YELLOW);
+        pub static ref OPTIONS_LABEL_TEXT_COLOR: Color = Color::from(css::WHITE);
     }
 }
 
@@ -87,7 +89,16 @@ lazy_static! {
 pub const CHATBOX_BORDER_PIXELS: f32 = 1.0;
 pub const CHATBOX_LINE_SPACING: f32 = 2.0;
 pub const CHATBOX_HISTORY: usize = 20;
-pub const CHAT_TEXTFIELD_HEIGHT: f32 = (25.0);
+
+// Height of text fields.
+pub const TEXTFIELD_HEIGHT: f32 = 25.0; // pixels
+
+// Padding used on menu screens.
+pub const MENU_PADDING: f32 = 5.0; // pixels
+
+// Width of labels and input widgets on menu screens.
+pub const MENU_LABEL_WIDTH: f32 = 250.0; // pixels; TODO: remove constant and use maximum width of the text in all the labels on a given screen
+pub const MENU_INPUT_WIDTH: f32 = 250.0; // pixels
 
 pub mod widget_ids {
     use crate::ui::WidgetID;
@@ -106,6 +117,10 @@ pub mod widget_ids {
     pub const INGAME_PANE1: WidgetID                  = WidgetID(2100);
     pub const INGAME_PANE1_CHATBOX: WidgetID          = WidgetID(2101);
     pub const INGAME_PANE1_CHATBOXTEXTFIELD: WidgetID = WidgetID(2102);
+    pub const OPTIONS_LAYER1: WidgetID                = WidgetID(3000);
+    pub const OPTIONS_PANE1: WidgetID                 = WidgetID(3100);
+    pub const OPTIONS_PANE1_LABEL: WidgetID           = WidgetID(3101);
+    pub const OPTIONS_PANE1_TEXTFIELD: WidgetID       = WidgetID(3102);
 }
 
 //////////////////////////////////////////////////////////////////////

@@ -19,6 +19,7 @@
 use std::collections::HashMap;
 
 use ggez::graphics::{Rect, Font};
+use ggez::nalgebra::Point2;
 
 use ggez::{Context};
 
@@ -29,17 +30,18 @@ use crate::constants::{
 use crate::config::Config;
 use crate::Screen;
 use crate::ui::{
-    Widget,
     Button,
-    Checkbox,
     Chatbox,
+    Checkbox,
+    Label,
     Layer,
     Pane,
     TextField,
     UIAction,
-    common,
     UIResult,
+    Widget,
     WidgetID,
+    common,
 };
 
 pub struct UILayout {
@@ -51,16 +53,20 @@ impl UILayout {
     pub fn new(ctx: &mut Context, config: &Config, font: Font) -> UIResult<Self> {
         let mut ui_layers = HashMap::new();
 
-        let chat_pane_rect = *constants::DEFAULT_CHATBOX_RECT;
-        let mut chatpane = Box::new(Pane::new(INGAME_PANE1, chat_pane_rect));
-        chatpane.bg_color = Some(*constants::colors::CHAT_PANE_FILL_COLOR);
+        let default_font_info = common::FontInfo::new(ctx, font, None);
+        let large_value = 9999.0; // we dun' want no errrs
 
+        ////// In-Game ///////
+        let mut layer_ingame = Layer::new(INGAME_LAYER1);
+        let pane_chatbox_rect = *constants::DEFAULT_CHATBOX_RECT;
+        let mut pane_chatbox = Box::new(Pane::new(INGAME_PANE1, pane_chatbox_rect));
+        pane_chatbox.bg_color = Some(*constants::colors::CHAT_PANE_FILL_COLOR);
 
         let chatbox_rect = Rect::new(
             0.0,
             0.0,
-            chat_pane_rect.w,
-            chat_pane_rect.h - constants::CHAT_TEXTFIELD_HEIGHT
+            pane_chatbox_rect.w,
+            pane_chatbox_rect.h - constants::TEXTFIELD_HEIGHT
         );
         let chatbox_font_info = common::FontInfo::new(
             ctx,
@@ -79,9 +85,8 @@ impl UILayout {
             chatbox_rect.x,
             chatbox_rect.bottom(),
             chatbox_rect.w,
-            constants::CHAT_TEXTFIELD_HEIGHT
+            constants::TEXTFIELD_HEIGHT
         );
-        let default_font_info = common::FontInfo::new(ctx, font, None);
         let mut textfield = Box::new(
             TextField::new(
                 INGAME_PANE1_CHATBOXTEXTFIELD,
@@ -91,18 +96,17 @@ impl UILayout {
         );
         textfield.bg_color = Some(*constants::colors::CHAT_PANE_FILL_COLOR);
 
-        chatpane.add(chatbox)?;
-        chatpane.add(textfield)?;
+        pane_chatbox.add(chatbox)?;
+        pane_chatbox.add(textfield)?;
+        layer_ingame.add(pane_chatbox);
 
-        let mut layer_mainmenu = Layer::new(MAINMENU_LAYER1);
-        let mut layer_ingame = Layer::new(INGAME_LAYER1);
-
+        ////// Main Menu ///////
         // Create the main menu pane and add buttons to it
         // TODO: this should be a grid layout so that the x and y positions of the buttons are
         // calculated automatically.
+        let mut layer_mainmenu = Layer::new(MAINMENU_LAYER1);
         let (pane_x, pane_y) = (20.0, 20.0);
-        let large_value = 9999.0; // we dun' want no errrs
-        let pad = 10.0;
+        let pad = constants::MENU_PADDING;
         let (button_width, button_height) = (180.0, 50.0);
         let mut pane_mainmenu = Box::new(Pane::new(MAINMENU_PANE1, Rect::new(pane_x, pane_y, large_value, large_value)));
 
@@ -165,10 +169,41 @@ impl UILayout {
         pane_mainmenu.set_size(Rect::new(pane_x, pane_y, pad + button_width + pad, y))?;
 
         layer_mainmenu.add(pane_mainmenu);
-        layer_ingame.add(chatpane);
 
+        ////// Options ///////
+        let mut layer_options = Layer::new(OPTIONS_LAYER1);
+        let mut pane_options = Box::new(Pane::new(OPTIONS_PANE1, Rect::new(0.0, 0.0, large_value, large_value)));
+
+        let label_player_name_rect = Rect::new(
+            0.0,
+            0.0,
+            constants::MENU_LABEL_WIDTH,
+            constants::TEXTFIELD_HEIGHT
+        );
+        let mut label_player_name = Box::new(
+            Label::new(
+                ctx,
+                OPTIONS_PANE1_LABEL,
+                default_font_info,
+                "Player Name:".to_owned(),
+                *constants::colors::OPTIONS_LABEL_TEXT_COLOR,
+                Point2::new(label_player_name_rect.x, label_player_name_rect.y),
+            )
+        );
+
+        let mut tf_player_name_rect = label_player_name_rect;
+        tf_player_name_rect.x += label_player_name_rect.w + constants::MENU_PADDING;  // text field goes to right of label
+        tf_player_name_rect.w = constants::MENU_INPUT_WIDTH;
+        let mut tf_player_name = Box::new(TextField::new(OPTIONS_PANE1_TEXTFIELD, default_font_info, tf_player_name_rect));
+        tf_player_name.bg_color = Some(*constants::colors::OPTIONS_TEXT_FILL_COLOR);
+
+        pane_options.add_and_shrink_to_fit(vec![tf_player_name, label_player_name], constants::MENU_PADDING)?;
+        layer_options.add(pane_options);
+
+        ////// Add the layers for each screen to the UI layers hash ///////
         ui_layers.insert(Screen::Menu, vec![layer_mainmenu]);
         ui_layers.insert(Screen::Run, vec![layer_ingame]);
+        ui_layers.insert(Screen::Options, vec![layer_options]);
 
         Ok(UILayout {
             layers: ui_layers,

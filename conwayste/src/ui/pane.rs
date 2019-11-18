@@ -60,7 +60,14 @@ impl Pane {
         }
     }
 
-    /// Add a widget to the pane
+    /// Add a widget to the pane. The added widget's x and y coordinates will be translated by the
+    /// x and y coordinates of its new parent. For example, if a widget is at (10,10) and it is
+    /// added to a pane at (200,300), the widget will now be at (210, 310).
+    ///
+    /// # Errors
+    ///
+    /// It is a `UIError::InvalidDimensions` error if, after being translated as described above,
+    /// the widget's box does not fit within the box of its parent.
     pub fn add(&mut self, mut widget: Box<dyn Widget>) -> UIResult<()> {
         let mut dims = widget.size();
         // Widget-to-be-added's coordinates are with respect to the Pane's origin
@@ -97,6 +104,50 @@ impl Pane {
         }
     }
     */
+
+    /// Adds the vector of children to the parent, and shrink the parent to fit the widgets with
+    /// padding on all sides. The widgets will have the padding added to their x and y coordinates.
+    /// Therefore it is suggested that the upper left widget in `children` be at `(0, 0)`.
+    ///
+    /// # Errors
+    ///
+    /// It is an error if the parent does not have an `add` method for adding `Widget`s.
+    /// Any errors from adding are passed down. NOTE: parent will have already been resized!
+    //TODO if a `Container` trait is added, this can be a method of that trait instead. This would
+    // allow things other than Pane to contain child Widgets.
+    pub fn add_and_shrink_to_fit(&mut self, children: Vec<Box<dyn Widget>>, padding: f32) -> UIResult<()> {
+        // find bounding box
+        let (mut width, mut height) = (0.0, 0.0);
+        for child in &children {
+            let child_rect = child.size();
+            let w = child_rect.x + child_rect.w;
+            let h = child_rect.y + child_rect.h;
+            if w > width {
+                width = w;
+            }
+            if h > height {
+                height = h;
+            }
+        }
+
+        // resize parent (use padding)
+        let mut dimensions = self.size();
+        dimensions.w = width + 2.0 * padding;
+        dimensions.h = height + 2.0 * padding;
+        self.set_size(dimensions)?;
+
+        for mut child in children {
+            // add padding to each child
+            let mut dimensions = child.size();
+            dimensions.x += padding;
+            dimensions.y += padding;
+            child.set_size(dimensions)?;
+
+            self.add(child)?;
+        }
+        Ok(())
+    }
+
 }
 
 impl Widget for Pane {

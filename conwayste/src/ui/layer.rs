@@ -38,7 +38,8 @@ pub struct Layer {
     pub focused_widget: Option<WidgetID>,
 }
 
-/// A container of one or more widgets or panes
+/// A container of one or more widgets or panes. Like a `Pane`, a `Layer` can contain widgets.
+/// Unlike a `Pane`, a `Layer` has no size. It always takes up the whole screen.
 impl Layer {
     /// Specify the unique widget identifer for the layer
     pub fn new(widget_id: WidgetID) -> Self {

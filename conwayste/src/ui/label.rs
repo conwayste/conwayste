@@ -67,6 +67,7 @@ impl Label {
     /// label.draw(ctx);
     /// ```
     ///
+    //TODO: remove ctx; no need to make TextFragments if we know the width of characters (font_info)
     pub fn new(
         ctx: &mut Context,
         widget_id: WidgetID,

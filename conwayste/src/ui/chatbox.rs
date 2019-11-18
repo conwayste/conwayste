@@ -284,7 +284,7 @@ impl Widget for Chatbox {
             self.dimensions.x,
             self.dimensions.bottom(),
             self.dimensions.w,
-            constants::CHAT_TEXTFIELD_HEIGHT
+            constants::TEXTFIELD_HEIGHT
         );
         let border = graphics::Mesh::new_rectangle(
             ctx,
