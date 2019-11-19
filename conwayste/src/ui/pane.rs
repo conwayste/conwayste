@@ -111,7 +111,6 @@ impl Pane {
     ///
     /// # Errors
     ///
-    /// It is an error if the parent does not have an `add` method for adding `Widget`s.
     /// Any errors from adding are passed down. NOTE: parent will have already been resized!
     //TODO if a `Container` trait is added, this can be a method of that trait instead. This would
     // allow things other than Pane to contain child Widgets.
