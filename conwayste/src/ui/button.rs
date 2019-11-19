@@ -153,7 +153,6 @@ impl Widget for Button {
 
     fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
     {
-        //debug!("Clicked Button, '{:?}'", self.label.textfrag);
         return Some((self.id, self.action));
     }
 
