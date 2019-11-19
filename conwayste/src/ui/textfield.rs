@@ -263,14 +263,8 @@ impl Widget for TextField {
     }
 
     fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        let hover = self.hover;
-        self.hover = false;
-
-        if hover {
-            self.enter_focus();
-            return Some((self.id, self.action));
-        }
-        None
+        self.enter_focus();
+        return Some((self.id, self.action));
     }
 
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
