@@ -473,7 +473,8 @@ impl EventHandler for MainState {
 
                 let mouse_action = self.inputs.mouse_info.action;
 
-                let left_mouse_click = mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
+                let left_mouse_click = (mouse_action == Some(MouseAction::Click) &&
+                                        self.inputs.mouse_info.mousebutton == MouseButton::Left);
 
                 let screen = self.get_current_screen();
                 if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, screen) {
