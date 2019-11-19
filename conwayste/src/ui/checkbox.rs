@@ -135,21 +135,11 @@ impl Widget for Checkbox {
     fn on_hover(&mut self, point: &Point2<f32>) {
         let label_dimensions = self.label.size();
         self.hover = within_widget(point, &self.dimensions) || within_widget(point, &label_dimensions);
-        if self.hover {
-            //debug!("Hovering over Checkbox, '{:?}'", label_dimensions);
-        }
     }
 
     fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
     {
-        let hover = self.hover;
-        self.hover = false;
-
-        if hover {
-            //debug!("Clicked Checkbox, '{}'", self.label.textfrag.text);
-            return Some(( self.id, UIAction::Toggle(self.toggle_checkbox()) ));
-        }
-        None
+        return Some(( self.id, UIAction::Toggle(self.toggle_checkbox()) ));
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
