@@ -626,43 +626,23 @@ impl EventHandler for MainState {
 
         let current_screen = self.get_current_screen();
 
+        let mut do_return = false; // we need to abort if one of the draw_* methods fail
         match current_screen {
             Screen::Intro => {
-                let result = self.draw_intro(ctx);
-                let mut out_result: GameResult<()> = Ok(());
-                let mut do_return = false;
-                handle_error!(result,
-                    GameError => |e| {
-                        out_result = Err(e);
-                    },
-                    else => |e| {
-                        error!("Error from draw_intro: {}", e);
-                        do_return = true;
-                    }
-                ).unwrap();
-                if do_return {
-                    return out_result;
-                }
+                self.draw_intro(ctx).unwrap_or_else(|e| {
+                    error!("Error from draw_intro: {}", e);
+                    do_return = true;
+                });
             }
             Screen::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn)?;
             }
             Screen::Run => {
-                let result = self.draw_universe(ctx);
-                let mut out_result: GameResult<()> = Ok(());
                 let mut do_return = false;
-                handle_error!(result,
-                    GameError => |e| {
-                        out_result = Err(e);
-                    },
-                    else => |e| {
-                        error!("Error from draw_universe: {}", e);
-                        do_return = true;
-                    }
-                ).unwrap();
-                if do_return {
-                    return out_result;
-                }
+                self.draw_universe(ctx).unwrap_or_else(|e| {
+                    error!("Error from draw_universe: {}", e);
+                    do_return = true;
+                });
             }
             Screen::InRoom => {
                 ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("In Room"), &Point2::new(100.0, 100.0))?;
@@ -673,6 +653,11 @@ impl EventHandler for MainState {
                 // TODO
              },
             Screen::Exit => {}
+        }
+
+        if do_return {
+            // error in above match -- can't pass on error because it's a GameResult (no enum for this!)
+            return Ok(());
         }
 
         if let Some(ref mut layers) = LayoutManager::get_screen_layers(&mut self.ui_layout, current_screen) {

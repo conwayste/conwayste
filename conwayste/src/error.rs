@@ -104,7 +104,7 @@ macro_rules! handle_error {
    ($input:ident -> $type:ty $(, $matcher:ty => |$var:ident| $result:expr)*) => {
        $input
         $(
-            .or_else(|boxed_error| -> Result<$type, Box<dyn Error>> {
+            .or_else(|boxed_error: Box<dyn Error>| -> Result<$type, Box<dyn Error>> {
                 boxed_error.downcast::<$matcher>()
                     .and_then(|$var: Box<$matcher>| {
                         let $var = *$var; // unbox
@@ -123,7 +123,7 @@ macro_rules! handle_error {
                 , $matcher => |$var| $result
             )*
        )
-        .or_else(|boxed_error| -> Result<$type, Box<dyn Error>> {
+        .or_else(|boxed_error: Box<dyn Error>| -> Result<$type, Box<dyn Error>> {
             let $default_var = boxed_error;
             #[allow(unused_variables)]
             let val = $default_result;
