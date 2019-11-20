@@ -21,6 +21,7 @@ use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
+    common::within_widget,
     widget::Widget,
     Pane,
     TextField,
@@ -151,9 +152,11 @@ impl Widget for Layer {
 
     fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
         for w in self.widgets.iter_mut() {
-            let ui_action = w.on_click(point);
-            if ui_action.is_some() {
-                return ui_action;
+            if within_widget(point, &w.size()) {
+                let ui_action = w.on_click(point);
+                if ui_action.is_some() {
+                    return ui_action;
+                }
             }
         }
         None

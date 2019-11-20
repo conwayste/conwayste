@@ -151,15 +151,9 @@ impl Widget for Button {
         self.hover = within_widget(point, &self.dimensions);
     }
 
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        let hover = self.hover;
-        self.hover = false;
-
-        if hover {
-            debug!("Clicked Button, '{:?}'", self.label.textfrag);
-            return Some((self.id, self.action));
-        }
-        None
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
+    {
+        return Some((self.id, self.action));
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
