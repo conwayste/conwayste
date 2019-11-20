@@ -33,10 +33,13 @@ use super::{
 use crate::constants::colors::*;
 
 pub struct Layering {
-    pub with_transparency: bool,
-    pub widget_list: Vec<BoxedWidget>,
-    focused_ids: Vec<Option<WidgetID>>,
-    id_cache: Vec<WidgetID>
+    pub with_transparency: bool,        // Determines if a transparent film is drawn in between two
+                                        // adjacent layers
+    pub widget_list: Vec<BoxedWidget>,  // Pool of all widgets belonging to a game screen
+    focused_ids: Vec<Option<WidgetID>>, // Currently active widget, one per z-order. If None, then
+                                        // the layer is not focused on any particular widget.
+    id_cache: Vec<WidgetID>,            // Memory cache of all widget-id's belonging to this layer
+                                        // for faster look-up
 }
 
 /// A `Layering` is a container of one or more widgets or panes (hereby referred to as widgets),
@@ -557,7 +560,7 @@ mod test {
 
         for i in 0..limit {
             let widget_id = WidgetID(i);
-            assert!(layer_info._remove_widget(widget_id).is_ok());
+            assert!(layer_info.remove_widget(widget_id).is_ok());
         }
     }
 
