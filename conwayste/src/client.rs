@@ -387,7 +387,7 @@ impl MainState {
             GameError::ConfigError(msg)
         })?;
 
-        let ui_layout = UILayout::new(ctx, &config, font.clone()).unwrap();
+        let ui_layout = UILayout::new(ctx, &config, font.clone())?;
 
         // Update universe draw parameters for intro
         let intro_uni_draw_params = UniDrawParams {
@@ -632,7 +632,7 @@ impl EventHandler for MainState {
             Screen::Exit => {}
         }
 
-        if let Some(ref mut layering) = LayoutManager::get_screen_layering(&mut self.ui_layout, current_screen) {
+        if let Some(layering) = LayoutManager::get_screen_layering(&mut self.ui_layout, current_screen) {
             layering.draw(ctx)?;
         }
 
