@@ -531,6 +531,9 @@ impl EventHandler for MainState {
                     ).unwrap(); // OK to call unwrap here because there is an else match arm (all errors handled)
                 }
 
+                let keymods = self.inputs.key_info.modifier;
+                let is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
+
                 // TODO: move this into process_running_inputs
                 if self.inputs.mouse_info.mousebutton == MouseButton::Left {
                     let mouse_pos = self.inputs.mouse_info.position;
@@ -572,6 +575,9 @@ impl EventHandler for MainState {
                             Some(MouseAction::DoubleClick) | None => {} // do nothing
                         }
                     }
+                } else if is_shift && self.arrow_input != (0, 0) {
+                    if let Some((ref _grid, _width, _height)) = self.insert_mode {
+                    }
                 }
 
 
@@ -595,7 +601,10 @@ impl EventHandler for MainState {
                     self.pause_or_resume_game();
                 }
 
-                self.viewport.update(self.arrow_input);
+                if !is_shift {
+                    // Arrow keys (but not Shift-<Arrow>!) move the player's view of the universe around
+                    self.viewport.update(self.arrow_input);
+                }
             }
             Screen::InRoom => {
                 // TODO implement
@@ -749,15 +758,7 @@ impl EventHandler for MainState {
                 self.inputs.key_info.repeating = repeat;
             }
 
-            if self.inputs.key_info.modifier.is_none() {
-                match keycode {
-                    KeyCode::LControl | KeyCode::LWin | KeyCode::LAlt | KeyCode::LShift |
-                    KeyCode::RControl | KeyCode::RWin | KeyCode::RAlt | KeyCode::RShift => {
-                        self.inputs.key_info.modifier = Some(keymod);
-                    }
-                    _ => {} // ignore all other non-standard, non-modifier keys
-                }
-            }
+            self.inputs.key_info.modifier = keymod;
         }
 
         if self.inputs.key_info.debug_print {
@@ -765,16 +766,9 @@ impl EventHandler for MainState {
         }
     }
 
-    fn key_up_event(&mut self, _ctx: &mut Context, keycode: KeyCode, _keymod: KeyMods) {
-        if self.inputs.key_info.modifier.is_some() {
-            match keycode {
-                KeyCode::LControl | KeyCode::LWin | KeyCode::LAlt | KeyCode::LShift |
-                KeyCode::RControl | KeyCode::RWin | KeyCode::RAlt | KeyCode::RShift => {
-                    self.inputs.key_info.modifier = None;
-                }
-                _ => {}, // ignore the non-modifier keys as they're handled below
-            }
-        }
+    fn key_up_event(&mut self, _ctx: &mut Context, _keycode: KeyCode, keymod: KeyMods) {
+        // TODO: should probably only clear key if keycode matches key_info.key
+        self.inputs.key_info.modifier &= !keymod;  // clear whatever modifier key was released
         self.inputs.key_info.key = None;
         self.inputs.key_info.repeating = false;
 

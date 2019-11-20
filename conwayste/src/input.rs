@@ -73,7 +73,7 @@ impl MouseInfo {
 pub struct KeyInfo {
     pub key: Option<KeyCode>,
     pub repeating: bool,
-    pub modifier: Option<KeyMods>,
+    pub modifier: KeyMods,
     pub debug_print: bool,
 }
 
@@ -82,7 +82,7 @@ impl KeyInfo {
         KeyInfo {
             key: None,
             repeating: false,
-            modifier: None,
+            modifier: KeyMods::NONE,
             debug_print: false,
         }
     }
