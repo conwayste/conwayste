@@ -149,7 +149,9 @@ impl Layering {
     /// # Error
     /// A WidgetNotFound error can be returned if a widget with the `widget_id` does not exist
     /// in the internal list of widgets.
-    pub fn _remove_widget(&mut self, widget_id: WidgetID) -> UIResult<()> {
+    // Implemented API for future use. TODO: Remove comment once function is used
+    #[allow(unused)]
+    pub fn remove_widget(&mut self, widget_id: WidgetID) -> UIResult<()> {
         let removal_index = self.widget_list.iter()
             .position(|widget| widget_id == widget.id())
             .ok_or_else(|| -> UIResult<()> {
