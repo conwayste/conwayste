@@ -39,9 +39,19 @@ pub struct Layering {
     id_cache: Vec<WidgetID>
 }
 
-/// A Layering is a container of one or more widgets or panes, where widgets are ordered by
-/// by their z_index to create the appearance of a layer, for a given game screen. Layerings
-/// support an optional transparency between two adjacent z-orders.
+/// A `Layering` is a container of one or more widgets or panes (hereby referred to as widgets),
+/// ordered and drawn by by their `z_index`, to create the appearance of a depth for a given game
+/// screen.
+///
+/// Widgets with a `z_index` of zero are drawn on the base (or zeroth) layer. Widgets with a
+/// `z_index` of one are drawn immediately above that layer, and so on. Only the two highest
+/// z-orders are drawn to minimize screen clutter. This means if three widgets -- each with a
+/// z-index of 0, 1, and 2, respectively -- are added to the `Layering`, only widgets 1 and 2 are
+/// drawn in that respective order.
+///
+/// Layerings also support an optional transparency between two adjacent z-orders. If the
+/// transparency option is enabled, `with_transparency == true`, then a transparent film spanning
+/// the screen size is drawn in between layers `n-1` and `n`.
 impl Layering {
     pub fn new() -> Self {
         Layering {
@@ -263,7 +273,7 @@ impl Layering {
     pub fn draw(&mut self, ctx: &mut Context) -> UIResult<()> {
         let highest_z_index = self.peek_z_index();
 
-        if self.with_transparency && highest_z_index != 0 {
+        if highest_z_index > 0 {
             // Draw the previous layer
             for widget in self.widget_list.iter_mut()
                 .filter(|widget| widget.z_index() == highest_z_index - 1)
@@ -271,14 +281,16 @@ impl Layering {
                 widget.draw(ctx)?;
             }
 
-            // TODO: Get resolution from video-settings
-            let mesh = graphics::Mesh::new_rectangle(
-                ctx,
-                DrawMode::fill(),
-                Rect::new(0.0, 0.0, 1920.0, 1080.0),
-                *LAYER_TRANSPARENCY_BG_COLOR,
-            )?;
-            graphics::draw(ctx, &mesh, DrawParam::default())?;
+            if self.with_transparency {
+                // TODO: Get resolution from video-settings
+                let mesh = graphics::Mesh::new_rectangle(
+                    ctx,
+                    DrawMode::fill(),
+                    Rect::new(0.0, 0.0, 1920.0, 1080.0),
+                    *LAYER_TRANSPARENCY_BG_COLOR,
+                )?;
+                graphics::draw(ctx, &mesh, DrawParam::default())?;
+            }
         }
 
         for widget in self.widget_list.iter_mut()
