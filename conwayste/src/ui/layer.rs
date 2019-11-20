@@ -41,7 +41,7 @@ pub struct Layering {
 
 /// A `Layering` is a container of one or more widgets or panes (hereby referred to as widgets),
 /// ordered and drawn by by their `z_index`, to create the appearance of a depth for a given game
-/// screen.
+/// screen. Only one layering is needed per screen.
 ///
 /// Widgets with a `z_index` of zero are drawn on the base (or zeroth) layer. Widgets with a
 /// `z_index` of one are drawn immediately above that layer, and so on. Only the two highest
@@ -67,7 +67,7 @@ impl Layering {
         self.id_cache.iter().find(|&&id| id == widget_id).is_some()
     }
 
-    /// Returns an optional pair of indices if the widget-id is found in Pane beloning to
+    /// Returns an optional pair of indices if the widget-id is found in Pane belonging to
     /// the layering.
     fn search_panes_for_widget_id(&self, widget_id: WidgetID) -> Option<(usize, usize)> {
         // First check to see if it belongs to any pane
