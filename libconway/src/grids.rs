@@ -15,6 +15,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
+use std::error::Error;
 use std::ops::{Index, IndexMut};
 use std::cmp;
 use crate::universe::Region;
@@ -26,6 +27,13 @@ pub enum BitOperation {
     Clear,
     Set,
     Toggle
+}
+
+/// Defines a rotation.
+#[derive(Eq, PartialEq, Debug, Clone, Copy)]
+pub enum Rotation {
+    CW,  // clockwise
+    CCW, // counter-clockwise
 }
 
 
@@ -214,6 +222,17 @@ impl BitGrid {
                 }
             }
         }
+    }
+
+    /// Rotates pattern in the specified direction around the specified center point.
+    ///
+    /// # Errors
+    ///
+    pub fn rotate(&mut self, rotation: Rotation, (center_col, center_row): (usize, usize)) -> Result<(), Box<dyn Error>> {
+        let new_width_in_words = (self.height() - 1)/64 + 1;   // number of words needed for this many cells
+        let new_height = self.width();
+        let mut new = BitGrid::new(new_width_in_words, new_height);
+        Ok(())
     }
 }
 

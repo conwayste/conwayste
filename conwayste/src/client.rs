@@ -49,6 +49,7 @@ use conway::grids::{CharGrid, BitGrid};
 use conway::rle::Pattern;
 use conway::ConwayResult;
 use conway::error::ConwayError;
+use conway::Rotation;
 
 use netwayste::net::NetwaysteEvent;
 
@@ -576,7 +577,21 @@ impl EventHandler for MainState {
                         }
                     }
                 } else if is_shift && self.arrow_input != (0, 0) {
-                    if let Some((ref _grid, _width, _height)) = self.insert_mode {
+                    if let Some((ref mut grid, width, height)) = self.insert_mode {
+                        let rotation = match self.arrow_input {
+                            (-1, 0) => Some(Rotation::CCW),
+                            ( 1, 0) => Some(Rotation::CW),
+                            (0, 0) => unreachable!(),
+                            _ => None,   // do nothing in this case
+                        };
+                        if let Some(rotation) = rotation {
+                            let center = (width/2, height/2);
+                            grid.rotate(rotation, center).unwrap_or_else(|e| {
+                                error!("Failed to rotate pattern {:?} around {:?}: {:?}", rotation, center, e);
+                            });
+                        } else {
+                            info!("Ignoring Shift-<Up/Down>");
+                        }
                     }
                 }
 
