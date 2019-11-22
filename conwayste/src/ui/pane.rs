@@ -62,7 +62,7 @@ impl Pane {
 
     /// Add a widget to the pane
     pub fn add(&mut self, mut widget: Box<dyn Widget>) -> UIResult<()> {
-        let mut dims = widget.size();
+        let mut dims = widget.rect();
         // Widget-to-be-added's coordinates are with respect to the Pane's origin
         dims.translate(self.dimensions.point());
 
@@ -83,7 +83,7 @@ impl Pane {
             }));
         }
 
-        widget.set_size(dims)?;
+        widget.set_rect(dims)?;
         self.widgets.push(widget);
         Ok(())
     }
@@ -104,11 +104,11 @@ impl Widget for Pane {
         self.id
     }
 
-    fn size(&self) -> Rect {
+    fn rect(&self) -> Rect {
         self.dimensions
     }
 
-    fn set_size(&mut self, new_dims: Rect) -> UIResult<()> {
+    fn set_rect(&mut self, new_dims: Rect) -> UIResult<()> {
         if new_dims.w == 0.0 || new_dims.h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions{
                 reason: format!("Cannot set the size of a Pane {:?} to a width or height of zero", self.id())
@@ -128,11 +128,11 @@ impl Widget for Pane {
         self.dimensions.y = y;
     }
 
-    fn dimensions(&self) -> (f32, f32) {
+    fn size(&self) -> (f32, f32) {
         (self.dimensions.w, self.dimensions.h)
     }
 
-    fn set_dimensions(&mut self, w: f32, h: f32) -> UIResult<()> {
+    fn set_size(&mut self, w: f32, h: f32) -> UIResult<()> {
         if w == 0.0 || h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions {
                 reason: format!("Cannot set the width or height of Pane {:?} to zero", self.id())
@@ -163,7 +163,7 @@ impl Widget for Pane {
 
         if hover {
             for w in self.widgets.iter_mut() {
-                if within_widget(point, &w.size()) {
+                if within_widget(point, &w.rect()) {
                     let ui_action = w.on_click(point);
                     if ui_action.is_some() {
                         return ui_action;
@@ -189,7 +189,7 @@ impl Widget for Pane {
         // Check that the mouse down event is bounded by the pane but not by a sub-widget
         if within_widget(original_pos, &self.dimensions) {
             for widget in self.widgets.iter() {
-                if within_widget(original_pos, &widget.size()) && self.previous_pos.is_none() {
+                if within_widget(original_pos, &widget.rect()) && self.previous_pos.is_none() {
                     drag_ok = false;
                     break;
                 }

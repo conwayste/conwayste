@@ -69,16 +69,16 @@ pub trait Widget: Downcast {
     }
 
     /// Get the size of the widget.
-    fn size(&self) -> Rect;
+    fn rect(&self) -> Rect;
 
     /// Get the origin point of the widget in screen coordinates.
     fn position(&self) -> Point2<f32>;
 
     /// Get the width and height of the widget in pixels.
-    fn dimensions(&self) -> (f32, f32);
+    fn size(&self) -> (f32, f32);
 
     /// Set the size of the widget.
-    fn set_size(&mut self, _new_dimensions: Rect) -> UIResult<()> {
+    fn set_rect(&mut self, _new_dimensions: Rect) -> UIResult<()> {
         Ok(())
     }
 
@@ -87,7 +87,7 @@ pub trait Widget: Downcast {
         ()
     }
 
-    fn set_dimensions(&mut self, _w: f32, _h: f32) -> UIResult<()> {
+    fn set_size(&mut self, _w: f32, _h: f32) -> UIResult<()> {
         Ok(())
     }
 

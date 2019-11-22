@@ -70,7 +70,7 @@ impl UILayout {
             chatbox_font_info,
             constants::CHATBOX_HISTORY
         );
-        match chatbox.set_size(chatbox_rect) {
+        match chatbox.set_rect(chatbox_rect) {
             Ok(()) => { },
             Err(e) => {
                 error!("Could not set size for chatbox during initialization! {:?}", e);
@@ -130,7 +130,7 @@ impl UILayout {
                 "ServerList".to_owned()
             )
         );
-        match pane_button.set_size(Rect::new(10.0, 10.0, 180.0, 50.0)) {
+        match pane_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0)) {
             Ok(()) => { },
             Err(e) => {
                 error!("Could not set size for button during initialization! {:?}, {:?}",
@@ -161,7 +161,7 @@ impl UILayout {
                 "InRoom".to_owned()
             )
         );
-        match pane_button.set_size(Rect::new(10.0, 70.0, 180.0, 50.0)) {
+        match pane_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0)) {
             Ok(()) => { },
             Err(e) => {
                 error!("Could not set size for button during initialization! {:?} {:?}",
@@ -190,7 +190,7 @@ impl UILayout {
                 "StartGame".to_owned()
             )
         );
-        match pane_button.set_size(Rect::new(10.0, 130.0, 180.0, 50.0)) {
+        match pane_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0)) {
             Ok(()) => { },
             Err(e) => {
                 error!("Could not set size for button during initialization! {:?} {:?}",

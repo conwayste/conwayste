@@ -133,14 +133,14 @@ impl Widget for Layer {
         self.id
     }
 
-    fn size(&self) -> Rect {
+    fn rect(&self) -> Rect {
         Rect::zero()
     }
 
     fn position(&self) -> Point2<f32> { Point2::<f32>::new(0.0, 0.0) }
     fn set_position(&mut self, _x: f32, _y: f32) { }
-    fn dimensions(&self) -> (f32, f32) { (0.0, 0.0) }
-    fn set_dimensions(&mut self, _w: f32, _h: f32) -> UIResult<()> { Ok(()) }
+    fn size(&self) -> (f32, f32) { (0.0, 0.0) }
+    fn set_size(&mut self, _w: f32, _h: f32) -> UIResult<()> { Ok(()) }
 
     fn translate(&mut self, _dest: Vector2<f32>) { }
 
@@ -152,7 +152,7 @@ impl Widget for Layer {
 
     fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
         for w in self.widgets.iter_mut() {
-            if within_widget(point, &w.size()) {
+            if within_widget(point, &w.rect()) {
                 let ui_action = w.on_click(point);
                 if ui_action.is_some() {
                     return ui_action;
@@ -282,7 +282,7 @@ mod tests {
         let font_info = create_dummy_font();
         let history_len = 5;
         let mut chatbox = Chatbox::new(WidgetID(1), font_info, history_len);
-        let size_update_result = chatbox.set_size(Rect::new(
+        let size_update_result = chatbox.set_rect(Rect::new(
             0.0,
             0.0,
             constants::DEFAULT_CHATBOX_RECT.w,

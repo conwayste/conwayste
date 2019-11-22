@@ -96,7 +96,7 @@ impl Chatbox {
     /// let mut chatbox = Chatbox::new(SOME_CHATBOX_WIDGET_ID, font_info, 200);
     /// chatbox.add_message(String::new("Player 1: This is a new chat message");
     /// chatbox.add_message(String::new("-- This is a Server broadcast message -- ");
-    /// chatbox.set_size(chatbox_rect);
+    /// chatbox.set_rect(chatbox_rect);
     /// chatpane.add(Box::new(chatbox));
     ///
     /// //...
@@ -218,11 +218,11 @@ impl Widget for Chatbox {
         self.id
     }
 
-    fn size(&self) -> Rect {
+    fn rect(&self) -> Rect {
         self.dimensions
     }
 
-    fn set_size(&mut self, new_dims: Rect) -> UIResult<()> {
+    fn set_rect(&mut self, new_dims: Rect) -> UIResult<()> {
         if new_dims.w == 0.0 || new_dims.h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions{
                 reason: format!("Cannot set the size to a width or height of a chatbox, {:?}, to zero", self.id())
@@ -247,11 +247,11 @@ impl Widget for Chatbox {
         self.dimensions.y = y;
     }
 
-    fn dimensions(&self) -> (f32, f32) {
+    fn size(&self) -> (f32, f32) {
         (self.dimensions.w, self.dimensions.h)
     }
 
-    fn set_dimensions(&mut self, w: f32, h: f32) -> UIResult<()> {
+    fn set_size(&mut self, w: f32, h: f32) -> UIResult<()> {
         if w == 0.0 || h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions {
                 reason: format!("Cannot set the width or height of Chatbox {:?} to zero", self.id())
@@ -364,7 +364,7 @@ mod tests {
         // `reflow_message`, plus 0.01 padding.
         let width = font_info.char_dimensions.x * (max_chars_per_line as f32) + 0.01;
         let mut cb = Chatbox::new(WidgetID(0), font_info, history_lines);
-        let _result = cb.set_size(Rect::new(0.0, 0.0, width, height));
+        let _result = cb.set_rect(Rect::new(0.0, 0.0, width, height));
         cb
     }
 
