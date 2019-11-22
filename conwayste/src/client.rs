@@ -791,11 +791,11 @@ impl EventHandler for MainState {
             height,
         );
         if self.uni_draw_params.player_id < 0 {
-            self.intro_viewport.set_dimensions(width, height);
+            self.intro_viewport.set_size(width, height);
             self.center_intro_viewport(width, height);
         }
         graphics::set_screen_coordinates(ctx, new_rect).unwrap();
-        self.viewport.set_dimensions(width, height);
+        self.viewport.set_size(width, height);
         if self.video_settings.is_fullscreen {
             debug!("not saving resolution to config because is_fullscreen is true");
         } else {
@@ -1223,7 +1223,7 @@ impl MainState {
                                     // screen
                                     let (w,h) = self.video_settings.get_resolution();
                                     self.config.set_resolution(w, h);
-                                    self.viewport.set_dimensions(w, h);
+                                    self.viewport.set_size(w, h);
                                 }
                                 */
                             }

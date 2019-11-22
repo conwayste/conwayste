@@ -441,7 +441,7 @@ mod test {
         let history_len = 5;
         let mut chatbox = Chatbox::new(chatbox_id, font_info, history_len);
 
-        let size_update_result = chatbox.set_size(Rect::new(
+        let size_update_result = chatbox.set_rect(Rect::new(
             0.0,
             0.0,
             constants::DEFAULT_CHATBOX_RECT.w,
@@ -467,7 +467,7 @@ mod test {
         let history_len = 5;
         let mut chatbox = Chatbox::new(chatbox_id, font_info, history_len);
 
-        let size_update_result = chatbox.set_size(Rect::new(
+        let size_update_result = chatbox.set_rect(Rect::new(
             0.0,
             0.0,
             constants::DEFAULT_CHATBOX_RECT.w,
@@ -492,7 +492,7 @@ mod test {
         let history_len = 5;
         let mut chatbox = Chatbox::new(chatbox_id, font_info, history_len);
 
-        let size_update_result = chatbox.set_size(Rect::new(
+        let size_update_result = chatbox.set_rect(Rect::new(
             0.0,
             0.0,
             constants::DEFAULT_CHATBOX_RECT.w,
@@ -517,7 +517,7 @@ mod test {
         let history_len = 5;
         let mut chatbox = Chatbox::new(chatbox_id, font_info, history_len);
 
-        let size_update_result = chatbox.set_size(Rect::new(
+        let size_update_result = chatbox.set_rect(Rect::new(
             0.0,
             0.0,
             constants::DEFAULT_CHATBOX_RECT.w,
