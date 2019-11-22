@@ -251,7 +251,7 @@ impl GridView {
 
     /// Set dimensions of the grid in window coordinates (pixels). This may cause unintended
     /// consequences if modified while a game is running.  Be mindful of the window size.
-    pub fn set_dimensions(&mut self, w: f32, h: f32) {
+    pub fn set_size(&mut self, w: f32, h: f32) {
         self.set_width(w);
         self.set_height(h);
     }
