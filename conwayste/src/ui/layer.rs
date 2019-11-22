@@ -137,7 +137,12 @@ impl Widget for Layer {
         Rect::zero()
     }
 
-    fn translate(&mut self, _dest: Vector2<f32>) {}
+    fn position(&self) -> Point2<f32> { Point2::<f32>::new(0.0, 0.0) }
+    fn set_position(&mut self, _x: f32, _y: f32) { }
+    fn dimensions(&self) -> (f32, f32) { (0.0, 0.0) }
+    fn set_dimensions(&mut self, _w: f32, _h: f32) -> UIResult<()> { Ok(()) }
+
+    fn translate(&mut self, _dest: Vector2<f32>) { }
 
     fn on_hover(&mut self, point: &Point2<f32>) {
         for w in self.widgets.iter_mut() {

@@ -177,15 +177,16 @@ impl Widget for Button {
 
     fn set_size(&mut self, new_dims: Rect) -> UIResult<()> {
         if new_dims.w == 0.0 || new_dims.h == 0.0 {
-            return Err(Box::new(UIError::InvalidDimensions{
-                reason: "Cannot set the size to a width or height of zero".to_owned()
+            return Err(Box::new(UIError::InvalidDimensions {
+                reason: format!("Cannot set the width or height of a Button {:?} to zero", self.id())
             }));
         }
 
         if new_dims.w < self.label.dimensions.w + BUTTON_LABEL_PADDING_W
         || new_dims.h < self.label.dimensions.h + BUTTON_LABEL_PADDING_H {
             return Err(Box::new(UIError::InvalidDimensions{
-                reason: "Cannot set the size smaller than the space taken by the button's text".to_owned()
+                reason: format!("Cannot set the Button's size smaller than the space taken by the
+                    button's text: {:?}", self.id())
             }));
         }
 
@@ -194,8 +195,44 @@ impl Widget for Button {
         Ok(())
     }
 
-    fn translate(&mut self, dest: Vector2<f32>)
-    {
+    fn position(&self) -> Point2<f32> {
+        self.dimensions.point().into()
+    }
+
+    fn set_position(&mut self, x: f32, y: f32) {
+        self.dimensions.x = x;
+        self.dimensions.y = y;
+
+        self.center_label_text();
+    }
+
+    fn dimensions(&self) -> (f32, f32) {
+        (self.dimensions.w, self.dimensions.h)
+    }
+
+    fn set_dimensions(&mut self, w: f32, h: f32) -> UIResult<()> {
+        if w == 0.0 || h == 0.0 {
+            return Err(Box::new(UIError::InvalidDimensions {
+                reason: format!("Cannot set the width or height of Button {:?} to zero", self.id())
+            }));
+        }
+
+        if w < self.label.dimensions.w + BUTTON_LABEL_PADDING_W
+        || h < self.label.dimensions.h + BUTTON_LABEL_PADDING_H {
+            return Err(Box::new(UIError::InvalidDimensions{
+                reason: format!("Cannot set the width or height of Button {:?} smaller than
+                    the space taken by the button's text", self.id())
+            }));
+        }
+
+        self.dimensions.w = w;
+        self.dimensions.h = h;
+        self.center_label_text();
+
+        Ok(())
+    }
+
+    fn translate(&mut self, dest: Vector2<f32>) {
         self.dimensions.translate(dest);
         self.label.translate(dest);
     }
