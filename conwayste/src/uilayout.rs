@@ -77,7 +77,7 @@ impl UILayout {
             chatbox_font_info,
             constants::CHATBOX_HISTORY
         );
-        chatbox.set_size(chatbox_rect)?;
+        chatbox.set_rect(chatbox_rect)?;
         let chatbox = Box::new(chatbox);
 
         let textfield_rect = Rect::new(
@@ -146,11 +146,11 @@ impl UILayout {
         let mainmenu_widgets: Vec<Box<dyn Widget>> =
             mainmenu_button_infos.iter().map(|info| -> Box<dyn Widget> {
                 let mut button = Box::new(Button::new(ctx, info.0, info.1, info.2, default_font_info, info.3.to_owned()));
-                let mut dims = button.size();
+                let mut dims = button.rect();
                 dims.x = x;
                 dims.y = y;
                 dims.w = dims.w.max(button_width); // make the buttons an even length (this can only increase the width)
-                button.set_size(dims).unwrap();    // unwrap OK because errors only possible when width or height shrinks
+                button.set_rect(dims).unwrap();    // unwrap OK because errors only possible when width or height shrinks
                 y += dims.h + pad;
                 button
             }).collect();
@@ -179,7 +179,7 @@ impl UILayout {
                 Point2::new(label_player_name_rect.x, label_player_name_rect.y),
             )
         );
-        label_player_name.set_size(label_player_name_rect)?;
+        label_player_name.set_rect(label_player_name_rect)?;
         options_widgets.push(label_player_name);
         x += label_player_name_rect.w + constants::MENU_PADDING;    // next widget is to the right of previous
 

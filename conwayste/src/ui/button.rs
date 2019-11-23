@@ -96,7 +96,7 @@ impl Button {
             color_with_alpha(css::WHITE, 0.1),
             label_position
         );
-        let label_dims = label.size();
+        let label_dims = label.rect();
 
         let dimensions = Rect::new(
             30.0,
@@ -121,24 +121,15 @@ impl Button {
 
     /// Centers the label's text to the dimensions of the button
     fn center_label_text(&mut self) {
-        let text_dims = self.label.size();
+        let text_dims = self.label.rect();
         let tmp_label_rect = Rect::new(self.dimensions.x, self.dimensions.y, text_dims.w, text_dims.h);
         let label_center_point = center(&tmp_label_rect);
         let button_center = center(&self.dimensions);
 
-        let result = self.label.set_size(
-            Rect::new(self.dimensions.x + (button_center.x - label_center_point.x),
+        self.label.set_position(
+            self.dimensions.x + (button_center.x - label_center_point.x),
             self.dimensions.y + (button_center.y - label_center_point.y),
-            text_dims.w,
-            text_dims.h)
         );
-
-        match result {
-            Ok(()) => { },
-            Err(e) => {
-                error!("Could not center label text for button: {:?}, Error: {:?}", self.id, e);
-            }
-        }
     }
 }
 
@@ -171,21 +162,22 @@ impl Widget for Button {
         Ok(())
     }
 
-    fn size(&self) -> Rect {
+    fn rect(&self) -> Rect {
         self.dimensions
     }
 
-    fn set_size(&mut self, new_dims: Rect) -> UIResult<()> {
+    fn set_rect(&mut self, new_dims: Rect) -> UIResult<()> {
         if new_dims.w == 0.0 || new_dims.h == 0.0 {
-            return Err(Box::new(UIError::InvalidDimensions{
-                reason: "Cannot set the size to a width or height of zero".to_owned()
+            return Err(Box::new(UIError::InvalidDimensions {
+                reason: format!("Cannot set the width or height of a Button {:?} to zero", self.id())
             }));
         }
 
         if new_dims.w < self.label.dimensions.w + BUTTON_LABEL_PADDING_W
         || new_dims.h < self.label.dimensions.h + BUTTON_LABEL_PADDING_H {
             return Err(Box::new(UIError::InvalidDimensions{
-                reason: "Cannot set the size smaller than the space taken by the button's text".to_owned()
+                reason: format!("Cannot set the Button's size smaller than the space taken by the
+                    button's text: {:?}", self.id())
             }));
         }
 
@@ -194,8 +186,44 @@ impl Widget for Button {
         Ok(())
     }
 
-    fn translate(&mut self, dest: Vector2<f32>)
-    {
+    fn position(&self) -> Point2<f32> {
+        self.dimensions.point().into()
+    }
+
+    fn set_position(&mut self, x: f32, y: f32) {
+        self.dimensions.x = x;
+        self.dimensions.y = y;
+
+        self.center_label_text();
+    }
+
+    fn size(&self) -> (f32, f32) {
+        (self.dimensions.w, self.dimensions.h)
+    }
+
+    fn set_size(&mut self, w: f32, h: f32) -> UIResult<()> {
+        if w == 0.0 || h == 0.0 {
+            return Err(Box::new(UIError::InvalidDimensions {
+                reason: format!("Cannot set the width or height of Button {:?} to zero", self.id())
+            }));
+        }
+
+        if w < self.label.dimensions.w + BUTTON_LABEL_PADDING_W
+        || h < self.label.dimensions.h + BUTTON_LABEL_PADDING_H {
+            return Err(Box::new(UIError::InvalidDimensions{
+                reason: format!("Cannot set the width or height of Button {:?} smaller than
+                    the space taken by the button's text", self.id())
+            }));
+        }
+
+        self.dimensions.w = w;
+        self.dimensions.h = h;
+        self.center_label_text();
+
+        Ok(())
+    }
+
+    fn translate(&mut self, dest: Vector2<f32>) {
         self.dimensions.translate(dest);
         self.label.translate(dest);
     }

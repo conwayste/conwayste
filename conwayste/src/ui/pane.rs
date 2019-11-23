@@ -69,7 +69,7 @@ impl Pane {
     /// It is a `UIError::InvalidDimensions` error if, after being translated as described above,
     /// the widget's box does not fit within the box of its parent.
     pub fn add(&mut self, mut widget: Box<dyn Widget>) -> UIResult<()> {
-        let mut dims = widget.size();
+        let mut dims = widget.rect();
         // Widget-to-be-added's coordinates are with respect to the Pane's origin
         dims.translate(self.dimensions.point());
 
@@ -90,7 +90,7 @@ impl Pane {
             }));
         }
 
-        widget.set_size(dims)?;
+        widget.set_rect(dims)?;
         self.widgets.push(widget);
         Ok(())
     }
@@ -118,7 +118,7 @@ impl Pane {
         // find bounding box
         let (mut width, mut height) = (0.0, 0.0);
         for child in &children {
-            let child_rect = child.size();
+            let child_rect = child.rect();
             let w = child_rect.x + child_rect.w;
             let h = child_rect.y + child_rect.h;
             if w > width {
@@ -130,17 +130,14 @@ impl Pane {
         }
 
         // resize parent (use padding)
-        let mut dimensions = self.size();
-        dimensions.w = width + 2.0 * padding;
-        dimensions.h = height + 2.0 * padding;
-        self.set_size(dimensions)?;
+        self.set_size(width + 2.0 * padding, height + 2.0 * padding)?;
 
         for mut child in children {
             // add padding to each child
-            let mut dimensions = child.size();
-            dimensions.x += padding;
-            dimensions.y += padding;
-            child.set_size(dimensions)?;
+            let mut p = child.position();
+            p.x += padding;
+            p.y += padding;
+            child.set_position(p.x, p.y);
 
             self.add(child)?;
         }
@@ -154,18 +151,44 @@ impl Widget for Pane {
         self.id
     }
 
-    fn size(&self) -> Rect {
+    fn rect(&self) -> Rect {
         self.dimensions
     }
 
-    fn set_size(&mut self, new_dims: Rect) -> UIResult<()> {
+    fn set_rect(&mut self, new_dims: Rect) -> UIResult<()> {
         if new_dims.w == 0.0 || new_dims.h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions{
-                reason: "Cannot set the size to a width or height of zero".to_owned()
+                reason: format!("Cannot set the size of a Pane {:?} to a width or height of zero", self.id())
             }));
         }
 
         self.dimensions = new_dims;
+        Ok(())
+    }
+
+    fn position(&self) -> Point2<f32> {
+        self.dimensions.point().into()
+    }
+
+    fn set_position(&mut self, x: f32, y: f32) {
+        self.dimensions.x = x;
+        self.dimensions.y = y;
+    }
+
+    fn size(&self) -> (f32, f32) {
+        (self.dimensions.w, self.dimensions.h)
+    }
+
+    fn set_size(&mut self, w: f32, h: f32) -> UIResult<()> {
+        if w == 0.0 || h == 0.0 {
+            return Err(Box::new(UIError::InvalidDimensions {
+                reason: format!("Cannot set the width or height of Pane {:?} to zero", self.id())
+            }));
+        }
+
+        self.dimensions.w = w;
+        self.dimensions.h = h;
+
         Ok(())
     }
 
@@ -187,7 +210,7 @@ impl Widget for Pane {
 
         if hover {
             for w in self.widgets.iter_mut() {
-                if within_widget(point, &w.size()) {
+                if within_widget(point, &w.rect()) {
                     let ui_action = w.on_click(point);
                     if ui_action.is_some() {
                         return ui_action;
@@ -213,7 +236,7 @@ impl Widget for Pane {
         // Check that the mouse down event is bounded by the pane but not by a sub-widget
         if within_widget(original_pos, &self.dimensions) {
             for widget in self.widgets.iter() {
-                if within_widget(original_pos, &widget.size()) && self.previous_pos.is_none() {
+                if within_widget(original_pos, &widget.rect()) && self.previous_pos.is_none() {
                     drag_ok = false;
                     break;
                 }
