@@ -152,16 +152,28 @@ impl Default for GamePlaySettings {
     fn default() -> Self {
         GamePlaySettings {
             zoom: DEFAULT_ZOOM_LEVEL,
-            pattern2: "bob$2bo$3o!".to_owned(),  // SE glider
-            pattern3: "o$obo$2o!".to_owned(),    // SW glider
-            pattern4: "3o$o$bo!".to_owned(),     // NW glider
-            pattern5: "b2o$obo$2bo!".to_owned(), // NE glider
-            pattern6: "4bo$5bo$o4bo$b5o!".to_owned(),         // E LWSS
-            pattern7: "bo$o$o$o$o2bo$3o!".to_owned(),         // S LWSS
-            pattern8: "5o$o4bo$o$bo!".to_owned(),             // W LWSS
-            pattern9: "b3o$o2bo$3bo$3bo$3bo$2bo!".to_owned(), // N LWSS
+            pattern2: "bob$2bo$3o!".to_owned(),                     // SE glider
+            pattern3: "4bo$5bo$o4bo$b5o!".to_owned(),               // E LWSS
+            pattern4: "2o2b$obob$2bob$2b2o!".to_owned(),            // NW eater
+            pattern5: "2o$2o!".to_owned(),                          // block
+            pattern6: "b2o$2ob$bo!".to_owned(),                     // R-pentomino
+            pattern7: "10o!".to_owned(),                            // flashy thingy idk the name
 
-            // https://www.conwaylife.com/wiki/Period-22_glider_gun
+            // First-ever P23 oscillator "David Hilbert", discovered 2019-11-23.
+            // https://www.conwaylife.com/wiki/David_Hilbert
+            // https://www.conwaylife.com/forums/viewtopic.php?t=&p=85719#p85719
+            pattern8: concat!("16b2o$16bo$17bo$14b4o$5b2o7bo$5bo11b3o$2b2obo11bo2bob2o$o2bob2o3bo3bo",
+                               "4b2obo2bo$2obo5b2o2bobo6bob2o$3bo5bo5bo6bo$3b2o7b3o6b2o$7b3o3$9bobo$9b",
+                               "2o3b3o$14b3o$9b2o$9b2o3$11bo$3b2o5b2o9b2o$3bo5b2obo9bo$2obo6bobo9bob2o",
+                               "$o2bob2o4b2o6b2obo2bo$2b2obo11bo2bob2o$5bo11b3o$5b2o7bo$14b4o$17bo$16b",
+                               "o$16b2o!").to_owned(),
+
+            // N cottonmouth ship. https://www.conwaylife.com/wiki/Cottonmouth
+            pattern9: concat!("2b2o2b2o$4b2o$4b2o$bobo2bobo$bo6bo2$bo6bo$2b2o2b2o$3b4o2$3o4b3o2$2o6b",
+                              "2o$2o6b2o2$bo6bo$bobo2bobo2$2b2o2b2o$bo6bo2$4b2o$3bo2bo$3bo2bo$2bo4bo$",
+                              "2bo4bo$3b4o$2b2o2b2o$2bo4bo$2bo4bo3$3b4o$4b2o!").to_owned(),
+
+            // NW P22 glider gun. https://www.conwaylife.com/wiki/Period-22_glider_gun
             pattern0: concat!("18b2o25b$19bo7bo17b$19bobo14b2o7b$20b2o12b2o2bo6b$24b3o7b2ob2o6b$24b2o",
                               "b2o7b3o6b$24bo2b2o12b2o2b$25b2o14bobob$35bo7bob$43b2o2$2o23bo19b$bo21b",
                               "obo19b$bobo13b3o4b2o19b$2b2o3bo8bo3bo24b$6bob2o6bo4bo23b$5bo4bo6b2obo",

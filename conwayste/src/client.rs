@@ -577,7 +577,7 @@ impl EventHandler for MainState {
                         }
                     }
                 } else if is_shift && self.arrow_input != (0, 0) {
-                    if let Some((ref mut grid, width, height)) = self.insert_mode {
+                    if let Some((ref mut grid, ref mut width, ref mut height)) = self.insert_mode {
                         let rotation = match self.arrow_input {
                             (-1, 0) => Some(Rotation::CCW),
                             ( 1, 0) => Some(Rotation::CW),
@@ -585,10 +585,13 @@ impl EventHandler for MainState {
                             _ => None,   // do nothing in this case
                         };
                         if let Some(rotation) = rotation {
-                            let center = (width/2, height/2);
-                            grid.rotate(rotation, center).unwrap_or_else(|e| {
-                                error!("Failed to rotate pattern {:?} around {:?}: {:?}", rotation, center, e);
+                            grid.rotate(*width, *height, rotation).unwrap_or_else(|e| {
+                                error!("Failed to rotate pattern {:?}: {:?}", rotation, e);
                             });
+                            // reverse the stored width and height
+                            let (new_width, new_height) = (*height, *width);
+                            *width = new_width;
+                            *height = new_height;
                         } else {
                             info!("Ignoring Shift-<Up/Down>");
                         }
