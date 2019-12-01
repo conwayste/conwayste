@@ -977,6 +977,19 @@ mod grid_tests {
         let pat_r = grid.to_pattern(None);
         assert_eq!(pat_r, Pattern("o$obo$2o!".to_owned()));
     }
+
+    #[test]
+    fn bit_grid_each_set1() {
+        let pat = Pattern("bo$2bo$3o!".to_owned());
+        let grid = pat.to_new_bit_grid(3, 3).unwrap();
+        let expected = vec![(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)];
+        let mut i = 0;
+        grid.each_set(|c,r| {
+            assert_eq!((c, r), expected[i]);
+            i += 1;
+        });
+        assert_eq!(i, expected.len());
+    }
 }
 
 
