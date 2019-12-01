@@ -418,6 +418,20 @@ mod universe_tests {
         let diff = uni.diff(0, 4, Some(other_player)).unwrap();
         assert!(diff.pattern.0.find('B').is_none());  // should not find cells from player 1
     }
+
+    #[test]
+    fn universe_writable_returns_true_when_writable() {
+        let uni = generate_test_universe_with_default_params(UniType::Client);
+        let player0 = 0;
+        assert!(uni.writable(100, 70, player0).unwrap());
+    }
+
+    #[test]
+    fn universe_writable_returns_false_when_not_writable() {
+        let uni = generate_test_universe_with_default_params(UniType::Client);
+        let player1 = 1;
+        assert!(!uni.writable(100, 70, player1).unwrap());
+    }
 }
 
 
@@ -936,6 +950,33 @@ mod grid_tests {
             }
         }
     }
+
+    #[test]
+    fn bit_grid_rotate_horizontal_line_ccw() {
+        let pat = Pattern("10o!".to_owned());
+        let mut grid = pat.to_new_bit_grid(10, 1).unwrap();
+        grid.rotate(10, 1, Rotation::CCW).unwrap();
+        let pat_r = grid.to_pattern(None);
+        assert_eq!(pat_r, Pattern("o$o$o$o$o$o$o$o$o$o!".to_owned()));
+    }
+
+    #[test]
+    fn bit_grid_rotate_horizontal_line_cw() {
+        let pat = Pattern("10o!".to_owned());
+        let mut grid = pat.to_new_bit_grid(10, 1).unwrap();
+        grid.rotate(10, 1, Rotation::CW).unwrap();
+        let pat_r = grid.to_pattern(None);
+        assert_eq!(pat_r, Pattern("o$o$o$o$o$o$o$o$o$o!".to_owned()));
+    }
+
+    #[test]
+    fn bit_grid_rotate_glider_cw() {
+        let pat = Pattern("bo$2bo$3o!".to_owned());
+        let mut grid = pat.to_new_bit_grid(3, 3).unwrap();
+        grid.rotate(3, 3, Rotation::CW).unwrap();
+        let pat_r = grid.to_pattern(None);
+        assert_eq!(pat_r, Pattern("o$obo$2o!".to_owned()));
+    }
 }
 
 
@@ -943,10 +984,11 @@ mod rle_tests {
     use crate::rle::*;
     use crate::grids::BitGrid;
     use std::str::FromStr;
+    use crate::error::ConwayError;
 
-    // Glider gun
     #[test]
     fn one_line_parsing_works1() {
+        // Glider gun
         let gun = Pattern("24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!".to_owned()).to_new_bit_grid(36, 9).unwrap();
         assert_eq!(gun[0][0], 0b0000000000000000000000001000000000000000000000000000000000000000);
         assert_eq!(gun[1][0], 0b0000000000000000000000101000000000000000000000000000000000000000);
@@ -960,9 +1002,9 @@ mod rle_tests {
     }
 
 
-    // Glider gun with line break
     #[test]
     fn multi_line_parsing_works1() {
+        // Glider gun with line break
         let gun = Pattern("24bo$22bobo$12b2o6b2o\r\n12b2o$\r\n11bo3bo4b2o12b2o$2o8b\ro5bo3b2o$2o8bo3bob2o4b\nobo$10bo5bo7bo$11bo3bo$12b2o!".to_owned()).to_new_bit_grid(36, 9).unwrap();
         assert_eq!(gun[0][0], 0b0000000000000000000000001000000000000000000000000000000000000000);
         assert_eq!(gun[1][0], 0b0000000000000000000000101000000000000000000000000000000000000000);
@@ -1062,5 +1104,30 @@ mod rle_tests {
             vec![0b0000000000000001010000001000000000000000000000000000000000000000],
             vec![0b0000000000000001000000000000000000000000000000000000000000000000],
             vec![0b0000000000000011000000000000000000000000000000000000000000000000]]));
+    }
+
+    #[test]
+    fn calc_size1() {
+        // Glider gun
+        let gun_pat = Pattern("24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!".to_owned());
+        let size_result = gun_pat.calc_size();
+        let size = size_result.unwrap();
+        assert_eq!(size, (36, 9));
+    }
+
+    #[test]
+    fn calc_size2() {
+        let pat = Pattern("o!".to_owned());
+        let size_result = pat.calc_size();
+        let size = size_result.unwrap();
+        assert_eq!(size, (1, 1));
+    }
+
+    #[test]
+    fn calc_size_fail1() {
+        let pat = Pattern("invalidpatternlol".to_owned());
+        let size_result = pat.calc_size();
+        let err = size_result.unwrap_err();
+        assert_eq!(err, ConwayError::InvalidData{reason:"Premature termination at Some(16)".to_owned()});
     }
 }
