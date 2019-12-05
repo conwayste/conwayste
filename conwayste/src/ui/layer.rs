@@ -44,7 +44,11 @@ pub struct Layering {
 
 /// A `Layering` is a container of one or more widgets or panes (hereby referred to as widgets),
 /// ordered and drawn by by their `z_index`, to create the appearance of a depth for a given game
-/// screen. Only one layering is needed per screen.
+/// screen. Each screen must have only one layering to store the set of visible widgets.
+///
+/// A use case is a modal dialog, where a Pane (containing all of the dialog's widgets) could be
+/// added to the layering at a higher `z_index` than the pre-existing layer's widgets. When the
+/// modal dialog is dismissed, the Pane is removed from the layering by widget-id.
 ///
 /// Widgets with a `z_index` of zero are drawn on the base (or zeroth) layer. Widgets with a
 /// `z_index` of one are drawn immediately above that layer, and so on. Only the two highest

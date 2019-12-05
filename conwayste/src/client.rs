@@ -768,11 +768,13 @@ impl EventHandler for MainState {
             return;
         }
 
+        // PR_GATE: Ameen to look at why it doesn't print the error after a TF loses focus
+        // and then remove the er ror message once fixed, and this misspelled comment
         let screen = self.get_current_screen();
         match LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
             Ok(tf) => tf.on_char(character),
-            Err(e) => error!("Could not get layer's focused
-                             textfield for {:?} during text input event: {:?}", screen, e)
+            Err(e) => error!(concat!("Could not get layer's focused ",
+                "textfield for {:?} during text input event: {:?}"), screen, e)
         }
     }
 
