@@ -849,7 +849,17 @@ impl Universe {
         if player_id >= self.player_writable.len() {
             return Err(ConwayError::InvalidData{reason: format!("Unexpected player_id {}", player_id)});
         }
-        Ok(self.player_writable[player_id].contains(col as isize, row as isize))
+        let in_writable_region = self.player_writable[player_id].contains(col as isize, row as isize);
+        if !in_writable_region {
+            return Ok(false);
+        }
+
+        let wall  = &self.gen_states[self.state_index].wall_cells;
+        let word_col = col/64;
+        let shift = 63 - (col & (64 - 1));
+        let on_wall_cell = (wall[row][word_col] >> shift) & 1 == 1;
+
+        Ok(!on_wall_cell)
     }
 
 
