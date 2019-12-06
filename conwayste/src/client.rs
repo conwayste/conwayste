@@ -45,9 +45,11 @@ use chrono::Local;
 use log::LevelFilter;
 
 use conway::universe::{BigBang, Universe, CellState, Region, PlayerBuilder};
-use conway::grids::CharGrid;
+use conway::grids::{CharGrid, BitGrid};
 use conway::rle::Pattern;
 use conway::ConwayResult;
+use conway::error::ConwayError;
+use conway::Rotation;
 
 use netwayste::net::NetwaysteEvent;
 
@@ -127,6 +129,8 @@ struct MainState {
     single_step:         bool,
     arrow_input:         (isize, isize),
     drag_draw:           Option<CellState>,
+    insert_mode:         Option<(BitGrid, usize, usize)>,   // pattern to be drawn on click along with width and height;
+                                                            // if Some(...), dragging doesn't draw anything
     toggle_paused_game:  bool,
     current_intro_duration:  f64,
 
@@ -416,6 +420,7 @@ impl MainState {
             single_step:         false,
             arrow_input:         (0, 0),
             drag_draw:           None,
+            insert_mode:         None,
             toggle_paused_game:  false,
             current_intro_duration:  0.0,
             ui_layout:           ui_layout,
@@ -527,29 +532,69 @@ impl EventHandler for MainState {
                     ).unwrap(); // OK to call unwrap here because there is an else match arm (all errors handled)
                 }
 
+                let keymods = self.inputs.key_info.modifier;
+                let is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
+
+                // TODO: move this into process_running_inputs
                 if self.inputs.mouse_info.mousebutton == MouseButton::Left {
                     let mouse_pos = self.inputs.mouse_info.position;
 
-                    match self.inputs.mouse_info.action {
-                        Some(MouseAction::Click) => {
-                            self.drag_draw = None;
-                        }
-                        Some(MouseAction::Drag) => {
+                    if let Some((ref grid, width, height)) = self.insert_mode {
+                        // inserting a pattern
+                        if self.inputs.mouse_info.action == Some(MouseAction::Click) {
                             if let Some(cell) = self.viewport.get_cell(mouse_pos) {
-                                // Only make dead cells alive
-                                if let Some(cell_state) = self.drag_draw {
-                                    self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
-                                }
+                                let insert_col = cell.col as isize - (width/2) as isize;
+                                let insert_row = cell.row as isize - (height/2) as isize;
+                                let dst_region = Region::new(insert_col, insert_row, width, height);
+                                self.uni.copy_from_bit_grid(grid, dst_region, Some(CURRENT_PLAYER_ID));
                             }
                         }
-                        Some(MouseAction::Held) => {
-                            if let Some(cell) = self.viewport.get_cell(mouse_pos) {
-                                if self.drag_draw.is_none() {
-                                    self.drag_draw = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
+                    } else {
+                        // not inserting a pattern, just drawing single cells
+                        match self.inputs.mouse_info.action {
+                            Some(MouseAction::Click) => {
+                                // release
+                                self.drag_draw = None;
+                            }
+                            Some(MouseAction::Drag) => {
+                                // hold + motion
+                                if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                                    // Only make dead cells alive
+                                    if let Some(cell_state) = self.drag_draw {
+                                        self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
+                                    }
                                 }
                             }
+                            Some(MouseAction::Held) => {
+                                // depress, no move yet
+                                if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                                    if self.drag_draw.is_none() {
+                                        self.drag_draw = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
+                                    }
+                                }
+                            }
+                            Some(MouseAction::DoubleClick) | None => {} // do nothing
                         }
-                        Some(MouseAction::DoubleClick) | None => {} // do nothing
+                    }
+                } else if is_shift && self.arrow_input != (0, 0) {
+                    if let Some((ref mut grid, ref mut width, ref mut height)) = self.insert_mode {
+                        let rotation = match self.arrow_input {
+                            (-1, 0) => Some(Rotation::CCW),
+                            ( 1, 0) => Some(Rotation::CW),
+                            (0, 0) => unreachable!(),
+                            _ => None,   // do nothing in this case
+                        };
+                        if let Some(rotation) = rotation {
+                            grid.rotate(*width, *height, rotation).unwrap_or_else(|e| {
+                                error!("Failed to rotate pattern {:?}: {:?}", rotation, e);
+                            });
+                            // reverse the stored width and height
+                            let (new_width, new_height) = (*height, *width);
+                            *width = new_width;
+                            *height = new_height;
+                        } else {
+                            info!("Ignoring Shift-<Up/Down>");
+                        }
                     }
                 }
 
@@ -574,7 +619,10 @@ impl EventHandler for MainState {
                     self.pause_or_resume_game();
                 }
 
-                self.viewport.update(self.arrow_input);
+                if !is_shift {
+                    // Arrow keys (but not Shift-<Arrow>!) move the player's view of the universe around
+                    self.viewport.update(self.arrow_input);
+                }
             }
             Screen::InRoom => {
                 // TODO implement
@@ -607,13 +655,17 @@ impl EventHandler for MainState {
 
         match current_screen {
             Screen::Intro => {
-                self.draw_intro(ctx)?;
+                self.draw_intro(ctx).unwrap_or_else(|e| {
+                    error!("Error from draw_intro: {}", e);
+                });
             }
             Screen::Menu => {
                 self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn)?;
             }
             Screen::Run => {
-                self.draw_universe(ctx)?;
+                self.draw_universe(ctx).unwrap_or_else(|e| {
+                    error!("Error from draw_universe: {}", e);
+                });
             }
             Screen::InRoom => {
                 ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("In Room"), &Point2::new(100.0, 100.0))?;
@@ -724,15 +776,7 @@ impl EventHandler for MainState {
                 self.inputs.key_info.repeating = repeat;
             }
 
-            if self.inputs.key_info.modifier.is_none() {
-                match keycode {
-                    KeyCode::LControl | KeyCode::LWin | KeyCode::LAlt | KeyCode::LShift |
-                    KeyCode::RControl | KeyCode::RWin | KeyCode::RAlt | KeyCode::RShift => {
-                        self.inputs.key_info.modifier = Some(keymod);
-                    }
-                    _ => {} // ignore all other non-standard, non-modifier keys
-                }
-            }
+            self.inputs.key_info.modifier = keymod;
         }
 
         if self.inputs.key_info.debug_print {
@@ -740,16 +784,9 @@ impl EventHandler for MainState {
         }
     }
 
-    fn key_up_event(&mut self, _ctx: &mut Context, keycode: KeyCode, _keymod: KeyMods) {
-        if self.inputs.key_info.modifier.is_some() {
-            match keycode {
-                KeyCode::LControl | KeyCode::LWin | KeyCode::LAlt | KeyCode::LShift |
-                KeyCode::RControl | KeyCode::RWin | KeyCode::RAlt | KeyCode::RShift => {
-                    self.inputs.key_info.modifier = None;
-                }
-                _ => {}, // ignore the non-modifier keys as they're handled below
-            }
-        }
+    fn key_up_event(&mut self, _ctx: &mut Context, _keycode: KeyCode, keymod: KeyMods) {
+        // TODO: should probably only clear key if keycode matches key_info.key
+        self.inputs.key_info.modifier &= !keymod;  // clear whatever modifier key was released
         self.inputs.key_info.key = None;
         self.inputs.key_info.repeating = false;
 
@@ -765,6 +802,7 @@ impl EventHandler for MainState {
         }
 
         let screen = self.get_current_screen();
+
         if let Some(tf) = LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
             tf.on_char(character);
         }
@@ -838,7 +876,7 @@ struct UniDrawParams {
 
 impl MainState {
 
-    fn draw_game_of_life(&self, ctx: &mut Context, universe: &Universe) -> GameResult<()> {
+    fn draw_game_of_life(&self, ctx: &mut Context, universe: &Universe) -> Result<(), Box<dyn Error>> {
 
         let viewport = if self.uni_draw_params.player_id >= 0 {
             &self.viewport
@@ -859,7 +897,8 @@ impl MainState {
         let full_rect = viewport.get_rect_from_origin();
 
         let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
-        let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
+        let mut main_spritebatch = graphics::spritebatch::SpriteBatch::new(image.clone());
+        let mut overlay_spritebatch = graphics::spritebatch::SpriteBatch::new(image);
 
         // grid non-dead cells (walls, players, etc.)
         let visibility = if self.uni_draw_params.player_id >= 0 {
@@ -869,6 +908,7 @@ impl MainState {
             Some(0)
         };
 
+        // TODO: call each_non_dead with visible region (add method to viewport)
         universe.each_non_dead_full(visibility, &mut |col, row, state| {
             let color = if self.uni_draw_params.player_id >= 0 {
                 self.color_settings.get_color(Some(state))
@@ -882,9 +922,52 @@ impl MainState {
                     .scale(Vector2::new(rect.w, rect.h))
                     .color(color);
 
-                spritebatch.add(p);
+                main_spritebatch.add(p);
             }
         });
+
+        // TODO: truncate if outside of writable region
+        // TODO: move to new function
+        if let Some((ref grid, width, height)) = self.insert_mode {
+            let unwritable_flash_on =  timer::time_since_start(ctx).subsec_millis() % 250 < 125;  // 50% duty cycle, 250ms period
+
+            if self.uni_draw_params.player_id < 0 {
+                return Err(format!("Unexpected player ID {}", self.uni_draw_params.player_id).into());
+            }
+            let player_cell_state = CellState::Alive(Some(self.uni_draw_params.player_id as usize));
+            let player_color = self.color_settings.get_color(Some(player_cell_state));
+            if let Some(cursor_cell) = viewport.game_coords_from_window(self.inputs.mouse_info.position) {
+                let (cursor_col, cursor_row) = (cursor_cell.col, cursor_cell.row);
+                grid.each_set(|grid_col, grid_row| {
+                    let col = (grid_col + cursor_col) as isize - width as isize/2;
+                    let row = (grid_row + cursor_row) as isize - height as isize/2;
+                    if col < 0 || row < 0 {
+                        // out of range
+                        return;
+                    }
+                    let (col, row) = (col as usize, row as usize);
+                    if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col, row)) {
+                        let mut color = player_color;
+                        // only error is due to player_id out of range, so unwrap OK here
+                        if !self.uni.writable(col, row, self.uni_draw_params.player_id as usize).unwrap() {
+                            // not writable, so draw flashing red cells
+                            if unwritable_flash_on {
+                                color = *constants::colors::INSERT_PATTERN_UNWRITABLE;
+                            } else {
+                                return;
+                            }
+                        }
+                        color.a = 0.5;  // semi-transparent since this is an overlay
+                        let p = graphics::DrawParam::new()
+                            .dest(Point2::new(rect.x, rect.y))
+                            .scale(Vector2::new(rect.w, rect.h))
+                            .color(color);
+
+                        overlay_spritebatch.add(p);
+                    }
+                });
+            }
+        }
 
         if let Some(clipped_rect) = ui::intersection(full_rect, viewport_rect) {
             let origin = graphics::DrawParam::new().dest(Point2::new(0.0, 0.0));
@@ -892,10 +975,13 @@ impl MainState {
                                                           self.uni_draw_params.fg_color)?;
 
             graphics::draw(ctx, &rectangle, origin)?;
-            graphics::draw(ctx, &spritebatch, origin)?;
+            graphics::draw(ctx, &main_spritebatch, origin)?;
+            graphics::draw(ctx, &overlay_spritebatch, origin)?;
         }
 
-        spritebatch.clear();
+        // TODO: see if we need to do this
+        main_spritebatch.clear();
+        overlay_spritebatch.clear();
 
         ////////// draw generation counter
         if self.uni_draw_params.draw_counter {
@@ -914,11 +1000,11 @@ impl MainState {
         self.intro_viewport.set_origin(Point2::new(target_center_x, target_center_y));
     }
 
-    fn draw_intro(&mut self, ctx: &mut Context) -> GameResult<()>{
+    fn draw_intro(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
         self.draw_game_of_life(ctx, &self.intro_uni)
     }
 
-    fn draw_universe(&mut self, ctx: &mut Context) -> GameResult<()> {
+    fn draw_universe(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
         self.first_gen_was_drawn = true;
         self.draw_game_of_life(ctx, &self.uni)
     }
@@ -961,6 +1047,21 @@ impl MainState {
         }
 
         match keycode {
+            KeyCode::Key1 => {
+                // pressing 1 clears selection
+                self.insert_mode = None;
+            }
+            k if k >= KeyCode::Key2 && k <= KeyCode::Key0 => {
+                // select a pattern
+                let grid_info_result = self.bit_pattern_from_char(keycode);
+                let grid_info = handle_error!{grid_info_result -> (BitGrid, usize, usize),
+                    ConwayError => |e| {
+                        return Err(format!("Invalid pattern bound to keycode {:?}: {}", keycode, e).into())
+                    }
+                }?;
+                self.insert_mode = Some(grid_info);
+                return Ok(());
+            }
             KeyCode::Return => {
                 if let Some(tf) = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
                     if tf.input_state.is_none() {
@@ -1397,6 +1498,32 @@ impl MainState {
             Some(screen) => *screen,
             None => panic!("Error in main thread draw! Screen_stack is empty!"),
         }
+    }
+
+    /// This takes a keyboard code and returns a `Result` whose Ok value is a `(BitGrid, width,
+    /// height)` tuple.
+    ///
+    /// # Errors
+    ///
+    /// This will return an error if the selected RLE pattern is invalid.
+    fn bit_pattern_from_char(&self, keycode: KeyCode) -> Result<(BitGrid, usize, usize), Box<dyn Error>> {
+        let gameplay = &self.config.get().gameplay;
+        let rle_str = match keycode {
+            KeyCode::Key2 => &gameplay.pattern2,
+            KeyCode::Key3 => &gameplay.pattern3,
+            KeyCode::Key4 => &gameplay.pattern4,
+            KeyCode::Key5 => &gameplay.pattern5,
+            KeyCode::Key6 => &gameplay.pattern6,
+            KeyCode::Key7 => &gameplay.pattern7,
+            KeyCode::Key8 => &gameplay.pattern8,
+            KeyCode::Key9 => &gameplay.pattern9,
+            KeyCode::Key0 => &gameplay.pattern0,
+            _ => "", // unexpected
+        };
+        let pat = Pattern(rle_str.to_owned());
+        let (width, height) = pat.calc_size()?;  // calc_size will fail on valid RLE -- return it
+        let grid = pat.to_new_bit_grid(width, height)?;
+        Ok((grid, width, height))
     }
 
 }

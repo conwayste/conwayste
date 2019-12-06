@@ -55,6 +55,7 @@ pub mod colors {
         pub static ref GEN_COUNTER_COLOR: Color = Color::from(css::RED);
         pub static ref UNIVERSE_BG_COLOR: Color = Color::new( 0.25,  0.25,  0.25, 1.0);
         pub static ref LAYER_TRANSPARENCY_BG_COLOR: Color = color_with_alpha(css::HONEYDEW, 0.4);
+        pub static ref INSERT_PATTERN_UNWRITABLE: Color = Color::from(css::RED);
     }
 }
 
