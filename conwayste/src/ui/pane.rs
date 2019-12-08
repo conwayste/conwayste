@@ -16,12 +16,13 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::fmt;
+
 use ggez::graphics::{self, Color, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
-    BoxedWidget,
     widget::Widget,
     common::{within_widget},
     UIAction,
@@ -35,7 +36,6 @@ pub struct Pane {
     id: WidgetID,
     z_index: usize,
     pub dimensions: Rect,
-    pub widgets: Vec<BoxedWidget>,
     pub hover: bool,
     pub floating: bool, // can the window be dragged around?
     pub previous_pos: Option<Point2<f32>>,
@@ -54,60 +54,12 @@ impl Pane {
             id: widget_id,
             z_index: 0,
             dimensions: dimensions,
-            widgets: vec![],
             hover: false,
             floating: true,
             previous_pos: None,
             border: 1.0,
             bg_color: None,
         }
-    }
-
-    /// Add a widget to the pane
-    pub fn add(&mut self, mut widget: BoxedWidget) -> UIResult<()> {
-        if self.widgets.iter().filter(|&w| w.id() == widget.id()).next().is_some() {
-            return Err(Box::new(UIError::WidgetIDCollision {
-                reason: format!("Widget of {:?} already exists in the Pane of {:?}", widget.id(), self.id())
-            }));
-        }
-
-        let mut dims = widget.rect();
-        // Widget-to-be-added's coordinates are with respect to the Pane's origin
-        dims.translate(self.dimensions.point());
-
-        if dims.w > self.dimensions.w || dims.h > self.dimensions.h {
-            return Err(Box::new(UIError::InvalidDimensions {
-                reason: format!("Widget of {:?} is larger than Pane of {:?}", widget.id(), self.id)
-            }));
-        }
-
-        if dims.right() > self.dimensions.right()
-        || dims.left() < self.dimensions.left()
-        || dims.top() < self.dimensions.top()
-        || dims.bottom() > self.dimensions.bottom() {
-            println!("{:?} Dims: {:?}", widget.id(), dims);
-            println!("Pane: {:?}", self.dimensions);
-            return Err(Box::new(UIError::InvalidDimensions {
-                reason: format!("Widget of {:?} is not fully enclosed by Pane of {:?}", widget.id(), self.id)
-            }));
-        }
-
-        widget.set_rect(dims)?;
-        self.widgets.push(widget);
-        Ok(())
-    }
-
-    pub fn get_widget_ids(&self) -> Vec<WidgetID> {
-        let mut id_list = vec![];
-
-        for w in self.widgets.iter() {
-            id_list.push(w.id());
-
-            if let Some(sub_pane) = downcast_widget!(w, Pane) {
-                id_list.extend(sub_pane.get_widget_ids().iter());
-            }
-        }
-        return id_list;
     }
 
     /*
@@ -181,25 +133,14 @@ impl Widget for Pane {
 
     fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
+        /*
         for w in self.widgets.iter_mut() {
             w.on_hover(point);
         }
+        */
     }
 
-    fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        let hover = self.hover;
-        self.hover = false;
-
-        if hover {
-            for w in self.widgets.iter_mut() {
-                if within_widget(point, &w.rect()) {
-                    let ui_action = w.on_click(point);
-                    if ui_action.is_some() {
-                        return ui_action;
-                    }
-                }
-            }
-        }
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
         None
     }
 
@@ -264,9 +205,10 @@ impl Widget for Pane {
             graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
 
+        /*
         for widget in self.widgets.iter_mut() {
             widget.draw(ctx)?;
-        }
+        }*/
 
         Ok(())
     }

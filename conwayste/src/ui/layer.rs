@@ -26,7 +26,6 @@ use super::{
     BoxedWidget,
     widget::Widget,
     Pane,
-    TextField,
     UIAction,
     UIError, UIResult,
     WidgetID
@@ -109,27 +108,6 @@ impl Layering {
         self.widget_tree.traverse_level_order(&root_id).unwrap().find(|&node| node.data().id() == widget_id).is_some()
     }
 
-    /// Returns an optional pair of indices if the widget-id is found in Pane belonging to
-    /// the layering.
-    fn search_panes_for_widget_id(&self, widget_id: WidgetID) -> Option<(NodeId, usize)> {
-        // unwrap safe because a Layering should always have a dummy root-node
-        let root_id = self.widget_tree.root_node_id().unwrap();
-        // First check to see if it belongs to any pane
-        for node_id in self.widget_tree.traverse_level_order_ids(&root_id).unwrap() {
-            let node = self.widget_tree.get(&node_id).unwrap();
-            let widget = node.data();
-            if let Some(pane) = downcast_widget!(widget, Pane) {
-                for (j, w2) in pane.widgets.iter().enumerate() {
-                    if w2.id() == widget_id {
-                        return Some((node_id, j));
-                    }
-                }
-            }
-        }
-
-        None
-    }
-
     /// Retreives a mutable reference to a widget. This will search one Pane-level deep
     /// for the provided widget-id.
     ///
@@ -137,13 +115,14 @@ impl Layering {
     /// A WidgetNotFound error will be returned if the widget-id is not found.
     /// does not exist in the internal list of widgets.
     pub fn get_widget_mut(&mut self, widget_id: WidgetID) -> UIResult<&mut BoxedWidget> {
+        /*
         if let Some((node_id, pane_index)) = self.search_panes_for_widget_id(widget_id) {
             // Unwraps are safe because the previous search would return None if it couldn't find
             // a pane.
             let pane = self.widget_tree.get_mut(&node_id).unwrap().data_mut().downcast_mut::<Pane>().unwrap();
             let widget = pane.widgets.get_mut(pane_index).unwrap();
             return Ok(widget);
-        }
+        }*/
 
         // If it doesn't belong to a pane, check the widget list for an entry
         // unwrap safe because a Layering should always have a dummy root-node
@@ -176,7 +155,7 @@ impl Layering {
         let widget_id = widget.id();
         if self.check_for_entry(widget_id) {
             return Err(Box::new(UIError::WidgetIDCollision {
-                    reason: format!("Widget with ID {:?} exists in layer's widget list.", widget_id)
+                reason: format!("Widget with ID {:?} exists in layer's widget list.", widget_id)
             }));
         }
 
@@ -204,16 +183,42 @@ impl Layering {
                     })))?;
             }
             InsertModifier::ToNestedPane(widget_id) => {
+                if !self.check_for_entry(widget_id) {
+                    return Err(Box::new(UIError::WidgetNotFound {
+                        reason: format!("Pane with ID {:?} not found in tree. Cannot add {:?} to tree.", widget_id, widget.id())
+                    }));
+                }
+
+                let mut node_id_found = None;
                 for node_id in self.widget_tree.traverse_level_order_ids(&root_id).unwrap() {
                     let node = self.widget_tree.get(&node_id).unwrap();
                     let dyn_widget = node.data();
                     if let Some(pane) = downcast_widget!(dyn_widget, Pane) {
                         if pane.id() == widget_id {
-                            let pane = self.widget_tree.get_mut(&node_id).unwrap().data_mut().downcast_mut::<Pane>().unwrap();
-                            pane.add(widget)?;
+                            let point = pane.dimensions.point();
+                            let vector = Vector2::new(point.x, point.y);
+                            widget.translate(vector);
+                            node_id_found = Some(node_id);
                             break;
                         }
                     }
+                }
+
+                let inserting_widget_id = widget.id();
+                if let Some(node_id) = node_id_found {
+                    self.widget_tree.insert(Node::new(widget), InsertBehavior::UnderNode(&node_id))
+                        .or_else(|e| Err(Box::new(UIError::InvalidAction {
+                            reason: format!("Error during insertion of {:?}, ToNestedPane({:?}, layer={}): {}",
+                                inserting_widget_id,
+                                widget_id,
+                                self.highest_z_order,
+                                e)
+                        })))?;
+                } else {
+                    return Err(Box::new(UIError::WidgetNotFound {
+                        reason: format!(concat!("Pane with ID {:?} not found in tree but was checked",
+                        " for entry. Cannot add {:?} to tree."), widget_id, widget.id())
+                    }))
                 }
             }
         }
@@ -274,6 +279,12 @@ impl Layering {
                 self.focused_node_id = Some(node_id);
                 break;
             }
+        }
+
+        if let Some(node_id) = &self.focused_node_id {
+            let node = self.widget_tree.get_mut(node_id).unwrap();
+            let dyn_widget = node.data_mut();
+            dyn_widget.enter_focus();
         }
 
         Ok(())
