@@ -33,6 +33,7 @@ use crate::ui::{
     Button,
     Checkbox,
     Chatbox,
+    InsertModifier,
     Layering,
     Pane,
     TextField,
@@ -230,8 +231,8 @@ impl UILayout {
                 );
             }
         }
-        layer_mainmenu.add_widget(pane, 0)?;
-        layer_ingame.add_widget(chatpane, 0)?;
+        layer_mainmenu.add_widget(pane, InsertModifier::AtCurrentLayer)?;
+        layer_ingame.add_widget(chatpane, InsertModifier::AtCurrentLayer)?;
 
         ui_layers.insert(Screen::Menu, layer_mainmenu);
         ui_layers.insert(Screen::Run, layer_ingame);

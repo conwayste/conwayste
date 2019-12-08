@@ -17,8 +17,10 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::graphics::{self, Rect, DrawMode, DrawParam};
-use ggez::nalgebra::Point2;
+use ggez::nalgebra::{Point2, Vector2};
 use ggez::Context;
+
+use id_tree::{*, InsertBehavior, RemoveBehavior};
 
 use super::{
     BoxedWidget,
@@ -32,14 +34,41 @@ use super::{
 
 use crate::constants::colors::*;
 
+/// Dummy Widget to act as a root node in the tree. Serves no other purpose.
+struct LayerRootNode;
+impl LayerRootNode {
+    fn new() -> BoxedWidget {
+        Box::new(LayerRootNode{})
+    }
+}
+impl Widget for LayerRootNode {
+    fn id(&self) -> WidgetID {
+        use std::usize::MAX;
+        WidgetID(MAX)
+    }
+    fn z_index(&self) -> usize {
+        use std::usize::MAX;
+        MAX
+    }
+    fn rect(&self) -> Rect { Rect::new(0.0, 0.0, 0.0, 0.0)}
+    fn position(&self) -> Point2<f32> {Point2::new(0.0, 0.0)}
+    fn size(&self) -> (f32, f32) { (0.0, 0.0) }
+    fn translate(&mut self, _dest: Vector2<f32>) { }
+}
+
+pub enum InsertModifier {
+    AtCurrentLayer,
+    AtNextLayer,
+    ToNestedPane(WidgetID)
+}
+
 pub struct Layering {
     pub with_transparency: bool,        // Determines if a transparent film is drawn in between two
                                         // adjacent layers
-    pub widget_list: Vec<BoxedWidget>,  // Pool of all widgets belonging to a game screen
-    focused_ids: Vec<Option<WidgetID>>, // Currently active widget, one per z-order. If None, then
+    pub widget_tree: Tree<BoxedWidget>,
+    highest_z_order: usize,                 // Number of layers allocated in the system + 1
+    focused_node_id: Option<NodeId>, // Currently active widget, one per z-order. If None, then
                                         // the layer is not focused on any particular widget.
-    id_cache: Vec<WidgetID>,            // Memory cache of all widget-id's belonging to this layer
-                                        // for faster look-up
 }
 
 /// A `Layering` is a container of one or more widgets or panes (hereby referred to as widgets),
@@ -62,47 +91,43 @@ pub struct Layering {
 impl Layering {
     pub fn new() -> Self {
         Layering {
+            widget_tree: TreeBuilder::new()
+                            .with_node_capacity(100)
+                            .with_swap_capacity(10)
+                            .with_root(Node::new(LayerRootNode::new()))
+                            .build(),
+            highest_z_order: 0,
             with_transparency: false,
-            widget_list: vec![],
-            focused_ids: vec![None],
-            id_cache: vec![]
+            focused_node_id: None,
         }
     }
 
     /// Returns true if an entry with the provided WidgetID exists.
     fn check_for_entry(&self, widget_id: WidgetID) -> bool {
-        self.id_cache.iter().find(|&&id| id == widget_id).is_some()
+        // unwrap safe because a Layering should always have a dummy root-node
+        let root_id = self.widget_tree.root_node_id().unwrap();
+        self.widget_tree.traverse_level_order(&root_id).unwrap().find(|&node| node.data().id() == widget_id).is_some()
     }
 
     /// Returns an optional pair of indices if the widget-id is found in Pane belonging to
     /// the layering.
-    fn search_panes_for_widget_id(&self, widget_id: WidgetID) -> Option<(usize, usize)> {
+    fn search_panes_for_widget_id(&self, widget_id: WidgetID) -> Option<(NodeId, usize)> {
+        // unwrap safe because a Layering should always have a dummy root-node
+        let root_id = self.widget_tree.root_node_id().unwrap();
         // First check to see if it belongs to any pane
-        for (i, w) in self.widget_list.iter().enumerate() {
-            if let Some(pane) = downcast_widget!(w, Pane) {
+        for node_id in self.widget_tree.traverse_level_order_ids(&root_id).unwrap() {
+            let node = self.widget_tree.get(&node_id).unwrap();
+            let widget = node.data();
+            if let Some(pane) = downcast_widget!(widget, Pane) {
                 for (j, w2) in pane.widgets.iter().enumerate() {
                     if w2.id() == widget_id {
-                        return Some((i, j));
+                        return Some((node_id, j));
                     }
                 }
             }
         }
 
         None
-    }
-
-    /// Caches the widget-id's residing in this layering. Will include widgets belonging to a one
-    /// level deep pane.
-    fn rebuild_id_cache(&mut self) {
-        let mut local_id_cache = vec![];
-        for widget in self.widget_list.iter() {
-            local_id_cache.push(widget.id());
-
-            if let Some(pane) = downcast_widget!(widget, Pane) {
-                local_id_cache.extend(pane.get_widget_ids());
-            }
-        }
-        self.id_cache = local_id_cache;
     }
 
     /// Retreives a mutable reference to a widget. This will search one Pane-level deep
@@ -112,21 +137,33 @@ impl Layering {
     /// A WidgetNotFound error will be returned if the widget-id is not found.
     /// does not exist in the internal list of widgets.
     pub fn get_widget_mut(&mut self, widget_id: WidgetID) -> UIResult<&mut BoxedWidget> {
-        if let Some((list_index, pane_index)) = self.search_panes_for_widget_id(widget_id) {
+        if let Some((node_id, pane_index)) = self.search_panes_for_widget_id(widget_id) {
             // Unwraps are safe because the previous search would return None if it couldn't find
             // a pane.
-            let pane = self.widget_list.get_mut(list_index).unwrap().downcast_mut::<Pane>().unwrap();
+            let pane = self.widget_tree.get_mut(&node_id).unwrap().data_mut().downcast_mut::<Pane>().unwrap();
             let widget = pane.widgets.get_mut(pane_index).unwrap();
             return Ok(widget);
         }
 
         // If it doesn't belong to a pane, check the widget list for an entry
-        self.widget_list.iter_mut()
-            .filter(|widget| widget.id() == widget_id)
+        // unwrap safe because a Layering should always have a dummy root-node
+        let root_id = self.widget_tree.root_node_id().unwrap();
+
+        if let Some(node_id) = self.widget_tree.traverse_level_order_ids(&root_id).unwrap()
+            .filter(|node_id| {
+                let node = self.widget_tree.get(&node_id).unwrap();
+                node.data().id() == widget_id
+            })
             .next()
-            .ok_or_else(|| Box::new(UIError::WidgetNotFound {
+        {
+            let node = self.widget_tree.get_mut(&node_id).unwrap();
+            Ok(node.data_mut())
+        }
+        else {
+            Err(Box::new(UIError::WidgetNotFound {
                 reason: format!("{:?} not found in layering's widget list", widget_id).to_owned()
             }))
+        }
     }
 
     /// Add a widget to the layering at the provided z_index depth. Internal data structure
@@ -134,20 +171,52 @@ impl Layering {
     ///
     /// # Error
     /// A WidgetIDCollision error can be returned if the widget-id exists in this layering.
-    pub fn add_widget(&mut self, widget: BoxedWidget, z_index: usize) -> UIResult<()> {
-        if self.check_for_entry(widget.id()) {
+    // todo rename InsertModifier
+    pub fn add_widget(&mut self, mut widget: BoxedWidget, modifier: InsertModifier) -> UIResult<()> {
+        let widget_id = widget.id();
+        if self.check_for_entry(widget_id) {
             return Err(Box::new(UIError::WidgetIDCollision {
-                    reason: format!("Widget with ID {:?} exists in layer's widget list.", widget.id())
+                    reason: format!("Widget with ID {:?} exists in layer's widget list.", widget_id)
             }));
         }
 
-        // Insert by z-index, descending. Use zero when the list is empty.
-        let insertion_index = self.widget_list.iter()
-            .position(|widget| z_index >= widget.z_index())
-            .unwrap_or(0);
-
-        self.widget_list.insert(insertion_index, widget);
-        self.rebuild_id_cache();
+        let root_id = self.widget_tree.root_node_id().unwrap().clone();
+        match modifier {
+            InsertModifier::AtCurrentLayer => {
+                widget.set_z_index(self.highest_z_order);
+                self.widget_tree.insert(Node::new(widget), InsertBehavior::UnderNode(&root_id))
+                    .or_else(|e| Err(Box::new(UIError::InvalidAction {
+                        reason: format!("Error during insertion of {:?}, AtCurrentLayer({}): {}",
+                            widget_id,
+                            self.highest_z_order,
+                            e)
+                    })))?;
+            }
+            InsertModifier::AtNextLayer => {
+                self.highest_z_order += 1;
+                widget.set_z_index(self.highest_z_order);
+                self.widget_tree.insert(Node::new(widget), InsertBehavior::UnderNode(&root_id))
+                    .or_else(|e| Err(Box::new(UIError::InvalidAction {
+                        reason: format!("Error during insertion of {:?}, AtCurrentLayer({}): {}",
+                            widget_id,
+                            self.highest_z_order,
+                            e)
+                    })))?;
+            }
+            InsertModifier::ToNestedPane(widget_id) => {
+                for node_id in self.widget_tree.traverse_level_order_ids(&root_id).unwrap() {
+                    let node = self.widget_tree.get(&node_id).unwrap();
+                    let dyn_widget = node.data();
+                    if let Some(pane) = downcast_widget!(dyn_widget, Pane) {
+                        if pane.id() == widget_id {
+                            let pane = self.widget_tree.get_mut(&node_id).unwrap().data_mut().downcast_mut::<Pane>().unwrap();
+                            pane.add(widget)?;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         Ok(())
     }
 
@@ -159,34 +228,28 @@ impl Layering {
     // Implemented API for future use. TODO: Remove comment once function is used
     #[allow(unused)]
     pub fn remove_widget(&mut self, widget_id: WidgetID) -> UIResult<()> {
-        let removal_index = self.widget_list.iter()
-            .position(|widget| widget_id == widget.id())
-            .ok_or_else(|| -> UIResult<()> {
-                return Err(Box::new(UIError::WidgetNotFound {
-                    reason: format!("{:?} not found in layer during removal", widget_id).to_owned()
-                }));
-            }).unwrap(); // unwrap safe because we must have an Ok(...) if we did not return
+        if !self.check_for_entry(widget_id) {
+            return Err(Box::new(UIError::WidgetNotFound {
+                reason: format!("{:?} not found in layer during removal", widget_id).to_owned()
+            }));
+        }
 
-        let widget = self.widget_list.remove(removal_index);
-        if let Some(id) = self.focused_ids[widget.z_index()] {
-            if widget_id == id {
-                self.focused_ids[widget.z_index()] = None;
+        let root_id = self.widget_tree.root_node_id().unwrap();
+        for node_id in self.widget_tree.traverse_level_order_ids(&root_id).unwrap() {
+            let node = self.widget_tree.get(&node_id).unwrap();
+            let dyn_widget = node.data();
+            if dyn_widget.id() == widget_id {
+                self.widget_tree.remove_node(node_id, RemoveBehavior::DropChildren);
+                break;
             }
         }
 
-        self.rebuild_id_cache();
         Ok(())
     }
 
     /// Returns the WidgetID of the widget currently in-focus
     pub fn focused_widget_id(&self) -> Option<WidgetID> {
-        return self.focused_ids.last().map_or(None, |opt_id| *opt_id);
-    }
-
-    /// Retreive the z-index of the first widget in the widget list. Defaults to the zeroth depth if
-    /// widget list is empty.
-    fn peek_z_index(&self) -> usize {
-        self.widget_list.first().map(|widget| widget.z_index()).unwrap_or_default()
+        self.focused_node_id.as_ref().map(|node_id| self.widget_tree.get(node_id).unwrap().data().id())
     }
 
     /// Notifies the layer that the provided WidgetID is to hold focus.widget
@@ -195,34 +258,22 @@ impl Layering {
     /// A WidgetNotFound error can be returned if a widget with the `widget_id` does not exist in
     /// the internal list of widgets.
     pub fn enter_focus(&mut self, widget_id: WidgetID) -> UIResult<()> {
-        let mut indices = None;
         if !self.check_for_entry(widget_id) {
             return Err(Box::new(UIError::WidgetNotFound {
-                reason: format!("{:?} not found in layering's widget list", widget_id)
+                reason: format!("{:?} not found in layering's widget list during enter focus", widget_id)
             }));
         }
 
-        if let Some((list_i, pane_i)) = self.search_panes_for_widget_id(widget_id) {
-            indices = Some((list_i, pane_i));
-        }
-
-        if let Some((list_index, pane_index)) = indices {
-            // Found in a Pane. Unwraps below are safe because of check_for_entry call
-            let dyn_widget = self.widget_list.get_mut(list_index).unwrap();
-            let pane = downcast_widget_mut!( dyn_widget, Pane).unwrap();
-            let widget = pane.widgets.get_mut(pane_index).unwrap();
-            widget.enter_focus();
-        } else {
-            // unwrap safe because of check_for_entry call
-            let widget = self.widget_list.iter_mut()
-                .filter(|widget| widget.id() == widget_id)
-                .next().
-                unwrap();
-            widget.enter_focus();
-        }
-
-        if let Some(focused_slot) = self.focused_ids.last_mut() {
-            *focused_slot = Some(widget_id);
+        let root_id = self.widget_tree.root_node_id().unwrap();
+        for node_id in self.widget_tree.traverse_level_order_ids(&root_id).unwrap() {
+            let node = self.widget_tree.get(&node_id).unwrap();
+            let dyn_widget = node.data();
+            if dyn_widget.id() == widget_id {
+                // Will overwrite any previously focused widget. This is acceptable because the user
+                // may be switching focuses, like from one textfield to another
+                self.focused_node_id = Some(node_id);
+                break;
+            }
         }
 
         Ok(())
@@ -230,37 +281,42 @@ impl Layering {
 
     /// Clears the focus of the highest layer
     pub fn exit_focus(&mut self) {
-        let widget_id = *self.focused_ids.last().unwrap();
-
-        if let Some(widget_id) = widget_id {
+        if let Some(widget_id) = self.focused_widget_id() {
             if let Ok(dyn_widget) = self.get_widget_mut(widget_id) {
-                if let Some(tf_widget) = downcast_widget_mut!( dyn_widget, TextField) {
-                    tf_widget.exit_focus();
-                }
+                dyn_widget.exit_focus();
             }
         }
 
-        if let Some(widget_id) = self.focused_ids.last_mut() {
-            *widget_id = None;
-        }
+        #[allow(unused)]
+        self.focused_node_id.take();
     }
 
     pub fn on_hover(&mut self, point: &Point2<f32>) {
-        let highest_z_index = self.peek_z_index();
+        let root_id = self.widget_tree.root_node_id().unwrap();
+        let node_ids = self.widget_tree.traverse_level_order_ids(&root_id).unwrap()
+            .filter(|node_id| {
+                let node = self.widget_tree.get(node_id).unwrap();
+                node.data().z_index() == self.highest_z_order
+            })
+            .collect::<Vec<NodeId>>();
 
-        for widget in self.widget_list.iter_mut()
-            .filter(|widget| widget.z_index() == highest_z_index)
-        {
+        for node_id in node_ids {
+            let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
             widget.on_hover(point);
         }
     }
 
     pub fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        let highest_z_index = self.peek_z_index();
+        let root_id = self.widget_tree.root_node_id().unwrap();
+        let node_ids = self.widget_tree.traverse_level_order_ids(&root_id).unwrap()
+            .filter(|node_id| {
+                let node = self.widget_tree.get(node_id).unwrap();
+                node.data().z_index() == self.highest_z_order
+            })
+            .collect::<Vec<NodeId>>();
 
-        for widget in self.widget_list.iter_mut()
-            .filter(|widget| widget.z_index() == highest_z_index)
-        {
+        for node_id in node_ids {
+            let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
             let ui_action = widget.on_click(point);
             if ui_action.is_some() {
                 return ui_action;
@@ -270,23 +326,33 @@ impl Layering {
     }
 
     pub fn on_drag(&mut self, original_pos: &Point2<f32>, current_pos: &Point2<f32>) {
-        let highest_z_index = self.peek_z_index();
+        let root_id = self.widget_tree.root_node_id().unwrap();
+        let node_ids = self.widget_tree.traverse_level_order_ids(&root_id).unwrap()
+            .filter(|node_id| {
+                let node = self.widget_tree.get(node_id).unwrap();
+                node.data().z_index() == self.highest_z_order
+            })
+            .collect::<Vec<NodeId>>();
 
-        for widget in self.widget_list.iter_mut()
-            .filter(|widget| widget.z_index() == highest_z_index)
-        {
+        for node_id in node_ids {
+            let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
             widget.on_drag(original_pos, current_pos);
         }
     }
 
     pub fn draw(&mut self, ctx: &mut Context) -> UIResult<()> {
-        let highest_z_index = self.peek_z_index();
-
-        if highest_z_index > 0 {
+        let root_id = self.widget_tree.root_node_id().unwrap().clone();
+        if self.highest_z_order > 0 {
             // Draw the previous layer
-            for widget in self.widget_list.iter_mut()
-                .filter(|widget| widget.z_index() == highest_z_index - 1)
-            {
+            let node_ids = self.widget_tree.traverse_level_order_ids(&root_id).unwrap()
+                .filter(|node_id| {
+                    let node = self.widget_tree.get(node_id).unwrap();
+                    node.data().z_index() == self.highest_z_order - 1
+                })
+                .collect::<Vec<NodeId>>();
+
+            for node_id in node_ids {
+                let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
                 widget.draw(ctx)?;
             }
 
@@ -302,9 +368,15 @@ impl Layering {
             }
         }
 
-        for widget in self.widget_list.iter_mut()
-            .filter(|widget| widget.z_index() == highest_z_index)
-        {
+        let node_ids = self.widget_tree.traverse_level_order_ids(&root_id).unwrap()
+            .filter(|node_id| {
+                let node = self.widget_tree.get(node_id).unwrap();
+                node.data().z_index() == self.highest_z_order
+            })
+            .collect::<Vec<NodeId>>();
+
+        for node_id in node_ids {
+            let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
             widget.draw(ctx)?;
         }
 

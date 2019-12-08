@@ -8,21 +8,22 @@ edition = "2018"
 [dependencies]
 conway       = { path = "../libconway" }
 netwayste    = { path = "../netwayste" }
-downcast-rs  = "1.0.4"
-ggez         = "0.5"
-log          = "0.4.6"
-chrono       = "0.4.6"
-env_logger   = "0.6.1"
-version      = "2.0.1"
-toml         = "0.5"
-serde        = {version="1.0.90", features=["derive"]}
-rand         = "0.4"
-futures      = "0.1.17"
-tokio-core   = "0.1.9"
-color-backtrace = "0.1"
-lazy_static  = "1.2"
 chromatica   = "1.0.1"
+chrono       = "0.4.6"
+color-backtrace = "0.1"
 custom_error = "1.4"
+downcast-rs  = "1.0.4"
+id_tree      = "1.7.0"
+env_logger   = "0.6.1"
+futures      = "0.1.17"
+ggez         = "0.5"
+lazy_static  = "1.2"
+log          = "0.4.6"
+rand         = "0.4"
+serde        = {version="1.0.90", features=["derive"]}
+tokio-core   = "0.1.9"
+toml         = "0.5"
+version      = "2.0.1"
 
 [[bin]]
 name = "client"

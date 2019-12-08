@@ -144,6 +144,10 @@ impl Widget for Button {
         self.z_index
     }
 
+    fn set_z_index(&mut self, new_z_index: usize) {
+        self.z_index = new_z_index;
+    }
+
     fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
     }

@@ -224,6 +224,10 @@ impl Widget for Chatbox {
         self.z_index
     }
 
+    fn set_z_index(&mut self, new_z_index: usize) {
+        self.z_index = new_z_index;
+    }
+
     fn rect(&self) -> Rect {
         self.dimensions
     }

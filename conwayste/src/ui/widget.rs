@@ -41,6 +41,11 @@ pub trait Widget: Downcast {
     /// Retreives the widget's draw stack order
     fn z_index(&self) -> usize;
 
+    /// Sets the widget's draw stack order
+    fn set_z_index(&mut self, new_z_index: usize) {
+        ()
+    }
+
     /// Action to be taken when the widget is given the provided point
     fn on_hover(&mut self, _point: &Point2<f32>) {
         ()
