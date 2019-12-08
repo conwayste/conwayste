@@ -34,6 +34,7 @@ use super::{
 use crate::constants::colors::*;
 
 /// Dummy Widget to act as a root node in the tree. Serves no other purpose.
+#[derive(Debug)]
 struct LayerRootNode;
 impl LayerRootNode {
     fn new() -> BoxedWidget {
@@ -105,6 +106,9 @@ impl Layering {
     fn check_for_entry(&self, widget_id: WidgetID) -> bool {
         // unwrap safe because a Layering should always have a dummy root-node
         let root_id = self.widget_tree.root_node_id().unwrap();
+        let mut s = String::new();
+        let _ = self.widget_tree.write_formatted(&mut s);
+        println!("{}", s);
         self.widget_tree.traverse_level_order(&root_id).unwrap().find(|&node| node.data().id() == widget_id).is_some()
     }
 
@@ -115,15 +119,6 @@ impl Layering {
     /// A WidgetNotFound error will be returned if the widget-id is not found.
     /// does not exist in the internal list of widgets.
     pub fn get_widget_mut(&mut self, widget_id: WidgetID) -> UIResult<&mut BoxedWidget> {
-        /*
-        if let Some((node_id, pane_index)) = self.search_panes_for_widget_id(widget_id) {
-            // Unwraps are safe because the previous search would return None if it couldn't find
-            // a pane.
-            let pane = self.widget_tree.get_mut(&node_id).unwrap().data_mut().downcast_mut::<Pane>().unwrap();
-            let widget = pane.widgets.get_mut(pane_index).unwrap();
-            return Ok(widget);
-        }*/
-
         // If it doesn't belong to a pane, check the widget list for an entry
         // unwrap safe because a Layering should always have a dummy root-node
         let root_id = self.widget_tree.root_node_id().unwrap();

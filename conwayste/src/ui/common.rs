@@ -116,7 +116,7 @@ pub fn draw_text(
 /// Represents a font at a particular scale. Besides the ID of the font, it also includes the scale
 /// at which to draw it, and the dimensions of one character at that scale (this is only useful if
 /// the font is fixed width!).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct FontInfo {
     /// ID of the font.
     #[cfg(not(test))]

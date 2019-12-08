@@ -15,6 +15,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
+use std::fmt;
 
 use chromatica::css;
 
@@ -41,6 +42,13 @@ pub struct Button {
     pub hover: bool,
     pub borderless: bool,
     pub action: UIAction
+}
+
+impl fmt::Debug for Button {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Button {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}}}",
+            self.id, self.z_index, self.dimensions, self.action)
+    }
 }
 
 const BUTTON_LABEL_PADDING_W: f32 = 16.0;   // in pixels

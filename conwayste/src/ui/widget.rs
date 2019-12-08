@@ -34,7 +34,7 @@ use super::{
 ///
 /// When defining your own Widget, be sure to call the widget_from_id!(T) macro where T is your
 /// custom widget type.
-pub trait Widget: Downcast {
+pub trait Widget: Downcast + std::fmt::Debug {
     /// Retrieves the widget's unique identifer
     fn id(&self) -> WidgetID;
 
@@ -42,7 +42,7 @@ pub trait Widget: Downcast {
     fn z_index(&self) -> usize;
 
     /// Sets the widget's draw stack order
-    fn set_z_index(&mut self, new_z_index: usize) {
+    fn set_z_index(&mut self, _new_z_index: usize) {
         ()
     }
 

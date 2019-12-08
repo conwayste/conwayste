@@ -17,6 +17,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::fmt;
+
 use ggez::graphics::{self, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
@@ -40,6 +42,13 @@ pub struct Checkbox {
     pub dimensions: Rect,
     pub hover: bool,
     pub action: UIAction
+}
+
+impl fmt::Debug for Checkbox {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Checkbox {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}, Checked: {} }}",
+            self.id, self.z_index, self.dimensions, self.action, self.enabled)
+    }
 }
 
 const LABEL_OFFSET_X: f32 = 30.0;

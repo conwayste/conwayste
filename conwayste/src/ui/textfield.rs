@@ -16,6 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::fmt;
 use std::time::{Duration, Instant};
 
 use ggez::event::KeyCode;
@@ -56,6 +57,14 @@ pub struct TextField {
     font_info: FontInfo,
     pub bg_color: Option<Color>,
 }
+
+impl fmt::Debug for TextField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "TextField {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}, Input_State: {:?} }}",
+            self.id, self.z_index, self.dimensions, self.action, self.input_state)
+    }
+}
+
 
 /// A widget that can accept and display user-inputted text from the Keyboard.
 impl TextField {

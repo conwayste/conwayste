@@ -29,6 +29,7 @@ use super::{
     WidgetID
 };
 
+#[derive(Debug)]
 pub struct Label {
     id: WidgetID,
     z_index: usize,

@@ -46,6 +46,12 @@ pub struct Pane {
     // boundaries of the pane in the dragging case
 }
 
+impl fmt::Debug for Pane {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Pane {{ id: {:?}, z-index: {}, Dimensions: {:?} }}", self.id, self.z_index, self.dimensions)
+    }
+}
+
 /// A container of one or more widgets
 impl Pane {
     /// Specify the unique widget identifer for the pane, and its dimensional bounds
@@ -133,11 +139,6 @@ impl Widget for Pane {
 
     fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
-        /*
-        for w in self.widgets.iter_mut() {
-            w.on_hover(point);
-        }
-        */
     }
 
     fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
@@ -204,11 +205,6 @@ impl Widget for Pane {
             let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(1.0), self.dimensions, *PANE_BORDER_COLOR)?;
             graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
-
-        /*
-        for widget in self.widgets.iter_mut() {
-            widget.draw(ctx)?;
-        }*/
 
         Ok(())
     }
