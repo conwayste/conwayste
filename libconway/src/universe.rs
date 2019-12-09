@@ -819,7 +819,7 @@ impl Universe {
     pub fn toggle(&mut self, col: usize, row: usize, player_id: usize) -> ConwayResult<CellState> {
         use ConwayError::*;
         if !self.writable(col, row, player_id)? {
-            return Err(AccessDenied{reason: format!("outside writable area for player {}: col={}, row={}",
+            return Err(AccessDenied{reason: format!("player {} cannot write to col={}, row={}",
                                                     player_id, col, row)});
         }
 
@@ -1901,7 +1901,7 @@ mod universe_tests {
 
         // cannot test with player_one because this wall cell is outside their writable area
         assert_eq!(uni.toggle(row, col, player_two),
-                   Err(AccessDenied{reason: "cannot write to wall cell: col=0, row=0".to_owned()}));
+                   Err(AccessDenied{reason: "player 1 cannot write to col=0, row=0".to_owned()}));
     }
 
     #[test]
@@ -1916,7 +1916,7 @@ mod universe_tests {
         uni.gen_states[state_index].known.modify_bits_in_word(row, col, 1<<63, BitOperation::Set);
 
         assert_eq!(uni.toggle(row, col, player_one),
-                   Err(AccessDenied{reason: "outside writable area for player 0: col=0, row=0".to_owned()}));
+                   Err(AccessDenied{reason: "player 0 cannot write to col=0, row=0".to_owned()}));
         assert_eq!(uni.toggle(row, col, player_two), Ok(CellState::Alive(Some(player_two))));
     }
 

@@ -171,7 +171,7 @@ mod universe_tests {
         let col = 0;
 
         assert_eq!(uni.toggle(row, col, player_one),
-                   Err(AccessDenied{reason: "outside writable area for player 0: col=0, row=0".to_owned()}));
+                   Err(AccessDenied{reason: "player 0 cannot write to col=0, row=0".to_owned()}));
         assert_eq!(uni.toggle(row, col, player_two).unwrap(), CellState::Alive(Some(player_two)));
     }
 
