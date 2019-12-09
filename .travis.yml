@@ -1,11 +1,17 @@
 language: rust
 rust:
   - stable
-  - beta
   - nightly
 jobs:
   allow_failures:
     - rust: nightly
   fast_finish: true
 git:
-  depth: 3
+  depth: 5
+addons:
+  apt:
+    # Ubuntu
+    packages: libudev-dev libasound2-dev
+    update: true
+  #homebrew:
+  # https://docs.travis-ci.com/user/installing-dependencies#installing-packages-on-macos
