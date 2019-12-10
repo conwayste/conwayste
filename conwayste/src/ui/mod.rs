@@ -30,6 +30,7 @@ mod layer;
 mod pane;
 mod widget;
 mod textfield;
+mod context;
 pub(crate) mod ui_errors;
 
 use crate::Screen;
@@ -50,6 +51,7 @@ pub use pane::Pane;
 pub use textfield::{TextField, TextInputState};
 pub use ui_errors::{UIResult, UIError};
 pub use widget::Widget;
+pub use context::UIContext;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum UIAction {
