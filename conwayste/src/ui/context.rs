@@ -16,8 +16,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez;
 use crate::config;
+use ggez;
 
 pub enum UIContext<'a> {
     Draw(DrawContext<'a>),
@@ -25,18 +25,32 @@ pub enum UIContext<'a> {
 }
 
 impl<'a> UIContext<'a> {
-    fn unwrap_draw(&mut self) -> &mut DrawContext<'a> {
+    pub fn unwrap_draw(&mut self) -> &mut DrawContext<'a> {
         match *self {
             UIContext::Draw(ref mut draw_context) => draw_context,
             _ => panic!("Failed to unwrap DrawContext"),
         }
     }
 
-    fn unwrap_update(&mut self) -> &mut UpdateContext<'a> {
+    pub fn unwrap_update(&mut self) -> &mut UpdateContext<'a> {
         match *self {
             UIContext::Update(ref mut update_context) => update_context,
             _ => panic!("Failed to unwrap UpdateContext"),
         }
+    }
+
+    pub fn new_draw(ggez_context: &'a mut ggez::Context, config: &'a config::Config) -> Self {
+        UIContext::Draw(DrawContext {
+            ggez_context,
+            config,
+        })
+    }
+
+    pub fn new_update(ggez_context: &'a mut ggez::Context, config: &'a mut config::Config) -> Self {
+        UIContext::Update(UpdateContext {
+            ggez_context,
+            config,
+        })
     }
 }
 
