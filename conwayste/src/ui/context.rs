@@ -63,3 +63,24 @@ pub struct UpdateContext<'a> {
     pub ggez_context: &'a mut ggez::Context,
     pub config: &'a mut config::Config,
 }
+
+// TODO: move this elsewhere; it's in here to keep separate from other code (avoid merge conflicts)
+#[derive(Debug, Copy, Clone)]
+pub enum EventType {
+    Click,
+    KeyPress,
+    Move, // mouse move
+}
+
+// TODO: move this elsewhere; it's in here to keep separate from other code (avoid merge conflicts)
+#[derive(Debug, Clone)]
+pub struct Event {
+    what: EventType,
+    x: f32,
+    y: f32,
+}
+
+pub trait EventEmitter {
+    fn on(&mut self, what: EventType, f: Box<dyn FnMut(&mut UIContext, &Event)>);
+    fn emit(&mut self, event: &Event);
+}
