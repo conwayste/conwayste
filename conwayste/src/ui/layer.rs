@@ -66,8 +66,8 @@ pub struct Layering {
     pub with_transparency: bool,        // Determines if a transparent film is drawn in between two
                                         // adjacent layers
     pub widget_tree: Tree<BoxedWidget>,
-    highest_z_order: usize,                 // Number of layers allocated in the system + 1
-    focused_node_id: Option<NodeId>, // Currently active widget, one per z-order. If None, then
+    highest_z_order: usize,             // Number of layers allocated in the system + 1
+    focused_node_id: Option<NodeId>,    // Currently active widget, one per z-order. If None, then
                                         // the layer is not focused on any particular widget.
 }
 
