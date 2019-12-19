@@ -105,6 +105,8 @@ pub mod widget_ids {
     pub const INGAME_PANE1: WidgetID = WidgetID(10);
     pub const INGAME_PANE1_CHATBOX: WidgetID = WidgetID(11);
     pub const INGAME_PANE1_CHATBOXTEXTFIELD: WidgetID = WidgetID(12);
+    pub const MAINMENU_HDLRTESTBUTTON: WidgetID = WidgetID(13);
+    pub const MAINMENU_HDLRTESTBUTTONLABEL: WidgetID = WidgetID(14);
 }
 
 //////////////////////////////////////////////////////////////////////

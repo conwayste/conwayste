@@ -436,6 +436,7 @@ impl MainState {
 
 impl EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
+        let uictx = ui::UIContext::new_update(ctx, &mut self.config); // pass this in to the widgets
         let duration = timer::duration_to_f64(timer::delta(ctx)); // seconds
 
         self.receive_net_updates()?;

@@ -38,7 +38,10 @@ use crate::ui::{
     TextField,
     UIAction,
     common,
+    context,
 };
+
+use context::EmitEvent; // so we can call .on(...) on widgets that implement this
 
 pub struct UILayout {
     pub layers: HashMap<Screen, Vec<Layer>>,
@@ -229,6 +232,38 @@ impl UILayout {
                 );
             }
         }
+        // TODO: delete this once handlers are tested
+        let mut handler_test_button = Box::new(
+            Button::new(
+                ctx,
+                MAINMENU_HDLRTESTBUTTON,
+                UIAction::None,
+                MAINMENU_HDLRTESTBUTTONLABEL,
+                default_font_info,
+                "Handler Test".to_owned()
+            )
+        );
+        // add the handler!
+        let handler = |btn: &mut Button, uictx: &mut context::UIContext, evt: &context::Event| {
+            use context::Handled::*;
+
+            println!("YAYYYY BUTTON'S HANDLER CALLED!!!");
+
+            Ok(Handled)
+        };
+        handler_test_button.on(context::EventType::Click, Box::new(handler));
+
+        match pane.add(handler_test_button) {
+            Ok(()) => {},
+            Err(e) => {
+                error!("Could not add widget {:?} to pane {:?}! {:?}",
+                    MAINMENU_HDLRTESTBUTTON,
+                    MAINMENU_PANE1,
+                    e
+                );
+            }
+        }
+
         layer_mainmenu.add(pane);
         layer_ingame.add(chatpane);
 

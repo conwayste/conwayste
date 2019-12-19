@@ -30,7 +30,7 @@ mod layer;
 mod pane;
 mod widget;
 mod textfield;
-mod context;
+pub(crate) mod context;
 pub(crate) mod ui_errors;
 
 use crate::Screen;
@@ -58,6 +58,7 @@ pub enum UIAction {
     ScreenTransition(Screen),
     Toggle(bool),
     EnterText, // TODO: see if we still need this "gunk residue"
+    None,
 }
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
