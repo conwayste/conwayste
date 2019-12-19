@@ -18,11 +18,13 @@
 
 use chromatica::css;
 
+use std::error::Error;
 use ggez::graphics::{self, Rect, Color, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use super::{
+    context,
     label::Label,
     widget::Widget,
     common::{within_widget, color_with_alpha, center, FontInfo},
@@ -39,7 +41,8 @@ pub struct Button {
     pub dimensions: Rect,
     pub hover: bool,
     pub borderless: bool,
-    pub action: UIAction
+    pub action: UIAction,
+    pub handlers: Option<context::HandlerMap<Self>>,  // option solely so that we can not mut borrow self twice at once
 }
 
 const BUTTON_LABEL_PADDING_W: f32 = 16.0;   // in pixels
@@ -114,6 +117,7 @@ impl Button {
             hover: false,
             borderless: false,
             action: action,
+            handlers: Some(context::HandlerMap::<Self>::new()),
         };
         b.center_label_text();
         b
@@ -226,6 +230,41 @@ impl Widget for Button {
     fn translate(&mut self, dest: Vector2<f32>) {
         self.dimensions.translate(dest);
         self.label.translate(dest);
+    }
+}
+
+// TODO: make a macro for implementing this trait? May need variant for Panes (since they have
+// children). One argument to this macro would be the field name of the handler map.
+impl context::EmitEvent for Button {
+    // Setup a handler for an event type
+    fn on(&mut self, what: context::EventType, hdlr: context::Handler<Self>) {
+        // unwrap OK below because self.handlers is always Some except during brief time when emit() is running
+        let handlers = self.handlers.as_mut().unwrap();
+        let handler_vec: &mut Vec<context::Handler<Self>>;
+        if let Some(vref) = handlers.get_mut(&what) {
+            handler_vec = vref;
+        } else {
+            handlers.insert(what, vec![]);
+            handler_vec = handlers.get_mut(&what).unwrap();
+        }
+        handler_vec.push(hdlr);
+    }
+
+    // Emit an event -- call all handlers for this event's type (as long as they return NotHandled)
+    fn emit(&mut self, event: &context::Event, uictx: &mut context::UIContext) -> Result<(), Box<dyn Error>> {
+        use context::Handled::*;
+        let mut handlers = self.handlers.take().unwrap();  // HACK: prevent a borrow error when calling handlers
+        if let Some(handler_vec) = handlers.get_mut(&event.what) {
+            // call each handler for this event type, until a Handled is returned
+            for hdlr in handler_vec {
+                let handled = hdlr(self, uictx, event)?;
+                if handled == Handled {
+                    break;
+                }
+            }
+        }
+        self.handlers = Some(handlers); // put it back
+        Ok(())
     }
 }
 

@@ -16,6 +16,9 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::error::Error;
+use std::collections::HashMap;
+
 use crate::config;
 use ggez;
 
@@ -65,22 +68,44 @@ pub struct UpdateContext<'a> {
 }
 
 // TODO: move this elsewhere; it's in here to keep separate from other code (avoid merge conflicts)
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EventType {
     Click,
     KeyPress,
     Move, // mouse move
+    Translate,
+    Resize,
+    ParentTranslate,
+    ParentResize,
+    // TODO: not sure about Child* because we'd need a widget ID to say which child
+    //ChildTranslate,
+    //ChildResize,
 }
 
 // TODO: move this elsewhere; it's in here to keep separate from other code (avoid merge conflicts)
 #[derive(Debug, Clone)]
 pub struct Event {
-    what: EventType,
-    x: f32,
-    y: f32,
+    pub what: EventType,
+    pub x: f32,  // usually x position, but width if resize event
+    pub y: f32,
 }
 
-pub trait EventEmitter {
-    fn on(&mut self, what: EventType, f: Box<dyn FnMut(&mut UIContext, &Event)>);
-    fn emit(&mut self, event: &Event);
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum Handled {
+    Handled,  // no other handlers should be called
+    NotHandled, // continue calling handlers
+}
+
+// NOTE: typically widgets will want Handler<Self>
+pub type Handler<T> = Box<dyn FnMut(&mut T, &mut UIContext, &Event) -> Result<Handled, Box<dyn Error>> + Send>;
+
+// NOTE: typically widgets will want HandlerMap<Self>
+pub type HandlerMap<T> = HashMap<EventType, Vec<Handler<T>>>;
+
+pub trait EmitEvent {
+    // Setup a handler for an event type
+    fn on(&mut self, what: EventType, f: Handler<Self>);
+
+    // Emit an event -- call all handlers for this event's type (as long as they return NotHandled)
+    fn emit(&mut self, event: &Event, uictx: &mut UIContext) -> Result<(), Box<dyn Error>>;
 }
