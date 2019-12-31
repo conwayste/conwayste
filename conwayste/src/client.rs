@@ -1522,7 +1522,7 @@ impl MainState {
             _ => "", // unexpected
         };
         let pat = Pattern(rle_str.to_owned());
-        let (width, height) = pat.calc_size()?;  // calc_size will fail on valid RLE -- return it
+        let (width, height) = pat.calc_size()?;  // calc_size will fail on invalid RLE -- return it
         let grid = pat.to_new_bit_grid(width, height)?;
         Ok((grid, width, height))
     }
