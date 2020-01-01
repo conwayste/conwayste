@@ -236,10 +236,15 @@ impl Widget for Button {
 // TODO: make a macro for implementing this trait? May need variant for Panes (since they have
 // children). One argument to this macro would be the field name of the handler map.
 impl context::EmitEvent for Button {
-    // Setup a handler for an event type
-    fn on(&mut self, what: context::EventType, hdlr: context::Handler<Self>) {
-        // unwrap OK below because self.handlers is always Some except during brief time when emit() is running
-        let handlers = self.handlers.as_mut().unwrap();
+    /// Setup a handler for an event type
+    fn on(&mut self, what: context::EventType, hdlr: context::Handler<Self>) -> Result<(), Box<dyn Error>> {
+        let id = self.id;
+        let handlers = self.handlers
+            .as_mut()
+            .ok_or_else(|| -> Box<dyn Error> {
+                format!("during .on({:?}, ...): a .emit call is in progress for widget {:?}", what, id).into()
+            })?;
+
         let handler_vec: &mut Vec<context::Handler<Self>>;
         if let Some(vref) = handlers.get_mut(&what) {
             handler_vec = vref;
@@ -248,12 +253,20 @@ impl context::EmitEvent for Button {
             handler_vec = handlers.get_mut(&what).unwrap();
         }
         handler_vec.push(hdlr);
+        Ok(())
     }
 
-    // Emit an event -- call all handlers for this event's type (as long as they return NotHandled)
+    /// Emit an event -- call all handlers for this event's type (as long as they return NotHandled)
     fn emit(&mut self, event: &context::Event, uictx: &mut context::UIContext) -> Result<(), Box<dyn Error>> {
         use context::Handled::*;
-        let mut handlers = self.handlers.take().unwrap();  // HACK: prevent a borrow error when calling handlers
+        // HACK: prevent a borrow error when calling handlers
+        let id = self.id;
+        let mut handlers = self.handlers
+            .take()
+            .ok_or_else(|| -> Box<dyn Error> {
+                format!("during .emit({:?}, ...): another .emit call is in progress for widget {:?}", event.what, id).into()
+            })?;
+
         if let Some(handler_vec) = handlers.get_mut(&event.what) {
             // call each handler for this event type, until a Handled is returned
             for hdlr in handler_vec {

@@ -251,7 +251,8 @@ impl UILayout {
 
             Ok(Handled)
         };
-        handler_test_button.on(context::EventType::Click, Box::new(handler));
+        // unwrap OK here because we are not calling .on from within a handler
+        handler_test_button.on(context::EventType::Click, Box::new(handler)).unwrap();
 
         match pane.add(handler_test_button) {
             Ok(()) => {},

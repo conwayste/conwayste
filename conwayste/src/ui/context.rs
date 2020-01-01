@@ -102,10 +102,37 @@ pub type Handler<T> = Box<dyn FnMut(&mut T, &mut UIContext, &Event) -> Result<Ha
 // NOTE: typically widgets will want HandlerMap<Self>
 pub type HandlerMap<T> = HashMap<EventType, Vec<Handler<T>>>;
 
+/// Trait for widgets that can handle various events. Use `.on` to register a handler and `.emit`
+/// to emit an event which will cause all handlers for the event's type to be called.
+///
+/// # Errors
+///
+/// * It is an error to call `.emit` or `.on` from within a handler.
 pub trait EmitEvent {
-    // Setup a handler for an event type
-    fn on(&mut self, what: EventType, f: Handler<Self>);
+    /// Setup a handler for an event type
+    ///
+    /// ```
+    /// let handler = |w: &mut MyWidget, uictx: &mut context::UIContext, evt: &context::Event| {
+    ///     use context::Handled::*;
+    ///
+    ///     //... do stuff
+    ///
+    ///     Ok(Handled) // can also return NotHandled to allow other handlers for this event type to run
+    /// };
+    /// my_widget.on(context::EventType::Click, Box::new(handler));
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// * It is an error to call this from within a handler.
+    fn on(&mut self, what: EventType, f: Handler<Self>) -> Result<(), Box<dyn Error>>;
 
-    // Emit an event -- call all handlers for this event's type (as long as they return NotHandled)
+    /// Emit an event -- call all handlers for this event's type (as long as they return NotHandled)
+    ///
+    /// # Errors
+    ///
+    /// * It is an error to call this from within a handler.
+    /// * The first error to be returned by a handler will be returned here, and no other handlers
+    ///   will run.
     fn emit(&mut self, event: &Event, uictx: &mut UIContext) -> Result<(), Box<dyn Error>>;
 }
