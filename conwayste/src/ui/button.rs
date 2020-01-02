@@ -18,7 +18,6 @@
 
 use chromatica::css;
 
-use std::error::Error;
 use ggez::graphics::{self, Rect, Color, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
@@ -42,7 +41,8 @@ pub struct Button {
     pub hover: bool,
     pub borderless: bool,
     pub action: UIAction,
-    pub handlers: Option<context::HandlerMap<Self>>,  // option solely so that we can not mut borrow self twice at once
+    pub handlers: Option<context::HandlerMap<Self>>, // required for impl_emit_event!
+    // option solely so that we can not mut borrow self twice at once
 }
 
 const BUTTON_LABEL_PADDING_W: f32 = 16.0;   // in pixels
@@ -233,52 +233,5 @@ impl Widget for Button {
     }
 }
 
-// TODO: make a macro for implementing this trait? May need variant for Panes (since they have
-// children). One argument to this macro would be the field name of the handler map.
-impl context::EmitEvent for Button {
-    /// Setup a handler for an event type
-    fn on(&mut self, what: context::EventType, hdlr: context::Handler<Self>) -> Result<(), Box<dyn Error>> {
-        let id = self.id;
-        let handlers = self.handlers
-            .as_mut()
-            .ok_or_else(|| -> Box<dyn Error> {
-                format!("during .on({:?}, ...): a .emit call is in progress for widget {:?}", what, id).into()
-            })?;
-
-        let handler_vec: &mut Vec<context::Handler<Self>>;
-        if let Some(vref) = handlers.get_mut(&what) {
-            handler_vec = vref;
-        } else {
-            handlers.insert(what, vec![]);
-            handler_vec = handlers.get_mut(&what).unwrap();
-        }
-        handler_vec.push(hdlr);
-        Ok(())
-    }
-
-    /// Emit an event -- call all handlers for this event's type (as long as they return NotHandled)
-    fn emit(&mut self, event: &context::Event, uictx: &mut context::UIContext) -> Result<(), Box<dyn Error>> {
-        use context::Handled::*;
-        // HACK: prevent a borrow error when calling handlers
-        let id = self.id;
-        let mut handlers = self.handlers
-            .take()
-            .ok_or_else(|| -> Box<dyn Error> {
-                format!("during .emit({:?}, ...): another .emit call is in progress for widget {:?}", event.what, id).into()
-            })?;
-
-        if let Some(handler_vec) = handlers.get_mut(&event.what) {
-            // call each handler for this event type, until a Handled is returned
-            for hdlr in handler_vec {
-                let handled = hdlr(self, uictx, event)?;
-                if handled == Handled {
-                    break;
-                }
-            }
-        }
-        self.handlers = Some(handlers); // put it back
-        Ok(())
-    }
-}
-
+impl_emit_event!(Button, self.handlers);
 widget_from_id!(Button);

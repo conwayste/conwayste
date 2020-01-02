@@ -27,7 +27,8 @@ use super::{
     TextField,
     UIAction,
     UIError, UIResult,
-    WidgetID
+    WidgetID,
+    context,
 };
 
 use crate::constants::colors::*;
@@ -37,6 +38,8 @@ pub struct Layer {
     pub widgets: Vec<Box<dyn Widget>>,
     pub with_transparency: bool,
     pub focused_widget: Option<WidgetID>,
+    pub handlers: Option<context::HandlerMap<Self>>, // required for impl_emit_event!
+    // option solely so that we can not mut borrow self twice at once
 }
 
 /// A container of one or more widgets or panes
@@ -48,6 +51,7 @@ impl Layer {
             widgets: vec![],
             with_transparency: false,
             focused_widget: None,
+            handlers: None,
         }
     }
 
@@ -187,6 +191,8 @@ impl Widget for Layer {
         Ok(())
     }
 }
+
+impl_emit_event!(Layer, self.handlers);
 
 #[cfg(test)]
 mod tests {

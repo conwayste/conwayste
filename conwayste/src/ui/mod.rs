@@ -22,6 +22,8 @@ extern crate chromatica;
 
 #[macro_use]
 pub(crate) mod common;
+#[macro_use]
+pub(crate) mod context;
 mod button;
 mod chatbox;
 mod checkbox;
@@ -30,7 +32,6 @@ mod layer;
 mod pane;
 mod widget;
 mod textfield;
-pub(crate) mod context;
 pub(crate) mod ui_errors;
 
 use crate::Screen;

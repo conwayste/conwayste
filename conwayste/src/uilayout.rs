@@ -19,6 +19,7 @@
 use std::collections::HashMap;
 
 use ggez::graphics::{Rect, Font};
+use ggez::nalgebra::Vector2;
 
 use ggez::{Context};
 
@@ -41,7 +42,11 @@ use crate::ui::{
     context,
 };
 
-use context::EmitEvent; // so we can call .on(...) on widgets that implement this
+use context::{
+    EmitEvent, // so we can call .on(...) on widgets that implement this
+    Handler,
+    EventType,
+};
 
 pub struct UILayout {
     pub layers: HashMap<Screen, Vec<Layer>>,
@@ -122,7 +127,7 @@ impl UILayout {
         let mut layer_ingame = Layer::new(INGAME_LAYER1);
 
         // Create a new pane, and add two test buttons to it.
-        let mut pane = Box::new(Pane::new(MAINMENU_PANE1, Rect::new_i32(20, 20, 300, 250)));
+        let mut pane = Box::new(Pane::new(MAINMENU_PANE1, Rect::new_i32(20, 20, 410, 250)));
         let mut pane_button = Box::new(
             Button::new(
                 ctx,
@@ -244,16 +249,34 @@ impl UILayout {
             )
         );
         // add the handler!
-        let handler = |btn: &mut Button, uictx: &mut context::UIContext, evt: &context::Event| {
+        let handler: Handler<Button> = Box::new(|btn, uictx, evt| {
             use context::Handled::*;
+            let uictx = uictx.unwrap_update();
 
-            println!("YAYYYY BUTTON'S HANDLER CALLED!!!");
+            info!("YAYYYY BUTTON'S HANDLER CALLED!!!");
+
+            btn.translate(Vector2::new(1.0, 1.0)); // just for fun, move it diagonally by one pixel
+
+            // get the number of ticks, also just for fun
+            let num_ticks = ggez::timer::ticks(&uictx.ggez_context);
+            info!("number of ggez ticks: {}", num_ticks);
+
+            // ok now let's print out the event
+            info!("EVENT: what={:?} @ ({}, {})", evt.what, evt.x, evt.y);
 
             Ok(Handled)
-        };
+        });
         // unwrap OK here because we are not calling .on from within a handler
-        handler_test_button.on(context::EventType::Click, Box::new(handler)).unwrap();
+        handler_test_button.on(EventType::Click, handler).unwrap();
 
+        match handler_test_button.set_rect(Rect::new(200.0, 130.0, 180.0, 50.0)) {
+            Ok(()) => { },
+            Err(e) => {
+                error!("Could not set size for button during initialization! {:?} {:?}",
+                MAINMENU_HDLRTESTBUTTON,
+                e);
+            }
+        }
         match pane.add(handler_test_button) {
             Ok(()) => {},
             Err(e) => {

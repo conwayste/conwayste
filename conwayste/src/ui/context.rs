@@ -68,6 +68,7 @@ pub struct UpdateContext<'a> {
 }
 
 // TODO: move this elsewhere; it's in here to keep separate from other code (avoid merge conflicts)
+#[allow(unused)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EventType {
     Click,
@@ -90,6 +91,7 @@ pub struct Event {
     pub y: f32,
 }
 
+#[allow(unused)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Handled {
     Handled,  // no other handlers should be called
@@ -136,3 +138,56 @@ pub trait EmitEvent {
     ///   will run.
     fn emit(&mut self, event: &Event, uictx: &mut UIContext) -> Result<(), Box<dyn Error>>;
 }
+
+/// Implement EmitEvent for a widget (though strictly speaking non-widgets can implement it).
+#[macro_export]
+macro_rules! impl_emit_event {
+    ($widget_name:ty, self.$handler_field:ident) => {
+        impl crate::ui::context::EmitEvent for $widget_name {
+            /// Setup a handler for an event type
+            fn on(&mut self, what: crate::ui::context::EventType, hdlr: crate::ui::context::Handler<Self>) -> Result<(), Box<dyn std::error::Error>> {
+                let handlers = self.$handler_field
+                    .as_mut()
+                    .ok_or_else(|| -> Box<dyn std::error::Error> {
+                        format!("during .on({:?}, ...): a .emit call is in progress for {} widget", what, stringify!($widget_name)).into()
+                    })?;
+
+                let handler_vec: &mut Vec<crate::ui::context::Handler<Self>>;
+                if let Some(vref) = handlers.get_mut(&what) {
+                    handler_vec = vref;
+                } else {
+                    handlers.insert(what, vec![]);
+                    handler_vec = handlers.get_mut(&what).unwrap();
+                }
+                handler_vec.push(hdlr);
+                Ok(())
+            }
+
+            /// Emit an event -- call all handlers for this event's type (as long as they return NotHandled)
+            fn emit(&mut self, event: &crate::ui::context::Event, uictx: &mut crate::ui::context::UIContext) -> Result<(), Box<dyn std::error::Error>> {
+                use crate::ui::context::Handled::*;
+                // HACK: prevent a borrow error when calling handlers
+                let mut handlers = self.$handler_field
+                    .take()
+                    .ok_or_else(|| -> Box<dyn std::error::Error> {
+                        format!("during .on({:?}, ...): a .emit call is in progress for {} widget",
+                                event.what,
+                                stringify!($widget_name)).into()
+                    })?;
+
+                if let Some(handler_vec) = handlers.get_mut(&event.what) {
+                    // call each handler for this event type, until a Handled is returned
+                    for hdlr in handler_vec {
+                        let handled = hdlr(self, uictx, event)?;
+                        if handled == Handled {
+                            break;
+                        }
+                    }
+                }
+                self.$handler_field = Some(handlers); // put it back
+                Ok(())
+            }
+        }
+    };
+}
+

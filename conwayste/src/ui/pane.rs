@@ -22,10 +22,11 @@ use ggez::{Context, GameResult};
 
 use super::{
     widget::Widget,
-    common::{within_widget},
+    common::within_widget,
     UIAction,
     UIError, UIResult,
-    WidgetID
+    WidgetID,
+    context,
 };
 
 use crate::constants::colors::*;
@@ -39,6 +40,8 @@ pub struct Pane {
     pub previous_pos: Option<Point2<f32>>,
     pub border: f32,
     pub bg_color: Option<Color>,
+    pub handlers: Option<context::HandlerMap<Self>>, // required for impl_emit_event!
+    // option solely so that we can not mut borrow self twice at once
 
     // might need something to track mouse state to see if we are still clicked within the
     // boundaries of the pane in the dragging case
@@ -57,6 +60,7 @@ impl Pane {
             previous_pos: None,
             border: 1.0,
             bg_color: None,
+            handlers: None,
         }
     }
 
@@ -244,6 +248,7 @@ impl Widget for Pane {
 }
 
 widget_from_id!(Pane);
+impl_emit_event!(Pane, self.handlers);
 
 #[cfg(test)]
 mod tests {
