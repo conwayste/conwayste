@@ -41,7 +41,7 @@ pub struct Button {
     pub hover: bool,
     pub borderless: bool,
     pub action: UIAction,
-    pub handlers: Option<context::HandlerMap<Self>>, // required for impl_emit_event!
+    pub handlers: Option<context::HandlerMap>, // required for impl_emit_event!
     // option solely so that we can not mut borrow self twice at once
 }
 
@@ -117,7 +117,7 @@ impl Button {
             hover: false,
             borderless: false,
             action: action,
-            handlers: Some(context::HandlerMap::<Self>::new()),
+            handlers: Some(context::HandlerMap::new()),
         };
         b.center_label_text();
         b
@@ -230,6 +230,11 @@ impl Widget for Button {
     fn translate(&mut self, dest: Vector2<f32>) {
         self.dimensions.translate(dest);
         self.label.translate(dest);
+    }
+
+    /// convert to EmitEvent
+    fn as_emit_event(&mut self) -> Option<&mut dyn context::EmitEvent> {
+        Some(self)
     }
 }
 

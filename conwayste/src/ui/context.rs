@@ -19,6 +19,8 @@
 use std::error::Error;
 use std::collections::HashMap;
 
+use downcast_rs::Downcast;
+
 use crate::config;
 use ggez;
 
@@ -98,11 +100,9 @@ pub enum Handled {
     NotHandled, // continue calling handlers
 }
 
-// NOTE: typically widgets will want Handler<Self>
-pub type Handler<T> = Box<dyn FnMut(&mut T, &mut UIContext, &Event) -> Result<Handled, Box<dyn Error>> + Send>;
+pub type Handler = Box<dyn FnMut(&mut dyn EmitEvent, &mut UIContext, &Event) -> Result<Handled, Box<dyn Error>> + Send>;
 
-// NOTE: typically widgets will want HandlerMap<Self>
-pub type HandlerMap<T> = HashMap<EventType, Vec<Handler<T>>>;
+pub type HandlerMap = HashMap<EventType, Vec<Handler>>;
 
 /// Trait for widgets that can handle various events. Use `.on` to register a handler and `.emit`
 /// to emit an event which will cause all handlers for the event's type to be called.
@@ -110,12 +110,13 @@ pub type HandlerMap<T> = HashMap<EventType, Vec<Handler<T>>>;
 /// # Errors
 ///
 /// * It is an error to call `.emit` or `.on` from within a handler.
-pub trait EmitEvent {
+pub trait EmitEvent: Downcast {
     /// Setup a handler for an event type
     ///
     /// ```
-    /// let handler = |w: &mut MyWidget, uictx: &mut context::UIContext, evt: &context::Event| {
+    /// let handler = |obj: &mut dyn EmitEvent, uictx: &mut context::UIContext, evt: &context::Event| {
     ///     use context::Handled::*;
+    ///     let mut widget = obj.downcast_mut::<MyWidget>().unwrap();
     ///
     ///     //... do stuff
     ///
@@ -127,7 +128,7 @@ pub trait EmitEvent {
     /// # Errors
     ///
     /// * It is an error to call this from within a handler.
-    fn on(&mut self, what: EventType, f: Handler<Self>) -> Result<(), Box<dyn Error>>;
+    fn on(&mut self, what: EventType, f: Handler) -> Result<(), Box<dyn Error>>;
 
     /// Emit an event -- call all handlers for this event's type (as long as they return NotHandled)
     ///
@@ -139,20 +140,22 @@ pub trait EmitEvent {
     fn emit(&mut self, event: &Event, uictx: &mut UIContext) -> Result<(), Box<dyn Error>>;
 }
 
+impl_downcast!(EmitEvent);
+
 /// Implement EmitEvent for a widget (though strictly speaking non-widgets can implement it).
 #[macro_export]
 macro_rules! impl_emit_event {
     ($widget_name:ty, self.$handler_field:ident) => {
         impl crate::ui::context::EmitEvent for $widget_name {
             /// Setup a handler for an event type
-            fn on(&mut self, what: crate::ui::context::EventType, hdlr: crate::ui::context::Handler<Self>) -> Result<(), Box<dyn std::error::Error>> {
+            fn on(&mut self, what: crate::ui::context::EventType, hdlr: crate::ui::context::Handler) -> Result<(), Box<dyn std::error::Error>> {
                 let handlers = self.$handler_field
                     .as_mut()
                     .ok_or_else(|| -> Box<dyn std::error::Error> {
                         format!("during .on({:?}, ...): a .emit call is in progress for {} widget", what, stringify!($widget_name)).into()
                     })?;
 
-                let handler_vec: &mut Vec<crate::ui::context::Handler<Self>>;
+                let handler_vec: &mut Vec<crate::ui::context::Handler>;
                 if let Some(vref) = handlers.get_mut(&what) {
                     handler_vec = vref;
                 } else {

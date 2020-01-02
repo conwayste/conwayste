@@ -31,6 +31,8 @@ use super::{
     context,
 };
 
+use context::EmitEvent;
+
 use crate::constants::colors::*;
 
 pub struct Layer {
@@ -38,7 +40,7 @@ pub struct Layer {
     pub widgets: Vec<Box<dyn Widget>>,
     pub with_transparency: bool,
     pub focused_widget: Option<WidgetID>,
-    pub handlers: Option<context::HandlerMap<Self>>, // required for impl_emit_event!
+    pub handlers: Option<context::HandlerMap>, // required for impl_emit_event!
     // option solely so that we can not mut borrow self twice at once
 }
 
@@ -46,13 +48,32 @@ pub struct Layer {
 impl Layer {
     /// Specify the unique widget identifer for the layer
     pub fn new(widget_id: WidgetID) -> Self {
-        Layer {
+        let mut layer = Layer {
             id: widget_id,
             widgets: vec![],
             with_transparency: false,
             focused_widget: None,
             handlers: None,
-        }
+        };
+
+        // TODO: propagate events for other EventTypes
+        let handler: context::Handler = Box::new(|obj, uictx, evt| {
+            let mut layer = obj.downcast_mut::<Layer>().unwrap();
+            use context::Handled::*;
+
+            let point = Point2::<f32>::new(evt.x, evt.y); 
+
+            for w in layer.widgets.iter_mut() {
+                if within_widget(&point, &w.rect()) {
+                    let obj = w.as_emit_event();
+                    //XXX obj.on
+                }
+            }
+
+            Ok(Handled)
+        });
+        layer.on(context::EventType::Click, handler).unwrap(); // unwrap OK because we are not calling .on from within handler
+        layer
     }
 
     /// Add a widget to the layer
@@ -189,6 +210,11 @@ impl Widget for Layer {
         }
 
         Ok(())
+    }
+
+    /// convert to EmitEvent
+    fn as_emit_event(&mut self) -> Option<&mut dyn context::EmitEvent> {
+        Some(self)
     }
 }
 

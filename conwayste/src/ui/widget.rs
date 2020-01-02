@@ -25,7 +25,8 @@ use downcast_rs::Downcast;
 use super::{
     UIAction,
     UIResult,
-    WidgetID
+    WidgetID,
+    context,
 };
 
 /// A user interface element trait that defines graphical, interactive behavior to be specified.
@@ -93,6 +94,11 @@ pub trait Widget: Downcast {
 
     /// Translate the widget from one location to another.
     fn translate(&mut self, _dest: Vector2<f32>);
+
+    //XXX HACK
+    fn as_emit_event(&mut self) -> Option<&mut dyn context::EmitEvent> {
+        None
+    }
 }
 
 impl_downcast!(Widget);

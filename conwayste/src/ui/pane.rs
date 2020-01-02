@@ -40,7 +40,7 @@ pub struct Pane {
     pub previous_pos: Option<Point2<f32>>,
     pub border: f32,
     pub bg_color: Option<Color>,
-    pub handlers: Option<context::HandlerMap<Self>>, // required for impl_emit_event!
+    pub handlers: Option<context::HandlerMap>, // required for impl_emit_event!
     // option solely so that we can not mut borrow self twice at once
 
     // might need something to track mouse state to see if we are still clicked within the
@@ -244,6 +244,11 @@ impl Widget for Pane {
         }
 
         Ok(())
+    }
+
+    /// convert to EmitEvent
+    fn as_emit_event(&mut self) -> Option<&mut dyn context::EmitEvent> {
+        Some(self)
     }
 }
 
