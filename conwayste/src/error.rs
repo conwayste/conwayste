@@ -94,17 +94,23 @@
 /// ).unwrap(); // this unwrap will never panic because of the else block
 /// ```
 ///
+/// NOTE: when using `.unwrap()`, be sure to use parentheses for the macro call (e.g.,
+/// `handle_error!(...)`) and not curly braces, otherwise you will get a confusing `expected
+/// expression` error.
+///
 
 #[macro_export]
 macro_rules! handle_error {
    ($input:ident -> $type:ty $(, $matcher:ty => |$var:ident| $result:expr)*) => {
        $input
         $(
-            .or_else(|boxed_error| -> Result<$type, Box<dyn Error>> {
+            .or_else(|boxed_error: Box<dyn Error>| -> Result<$type, Box<dyn Error>> {
                 boxed_error.downcast::<$matcher>()
                     .and_then(|$var: Box<$matcher>| {
                         let $var = *$var; // unbox
+                        #[allow(unused_variables)]
                         let val = $result;
+                        #[allow(unreachable_code)]
                         Ok(val)
                     })
             })
@@ -117,9 +123,11 @@ macro_rules! handle_error {
                 , $matcher => |$var| $result
             )*
        )
-        .or_else(|boxed_error| -> Result<$type, Box<dyn Error>> {
+        .or_else(|boxed_error: Box<dyn Error>| -> Result<$type, Box<dyn Error>> {
             let $default_var = boxed_error;
+            #[allow(unused_variables)]
             let val = $default_result;
+            #[allow(unreachable_code)]
             Ok(val)
         })
    };

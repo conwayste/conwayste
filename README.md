@@ -2,6 +2,8 @@
 
 Multiplayer Conway's Game of Life!
 
+![build status](https://api.travis-ci.com/conwayste/conwayste.svg?branch=master)
+
 ![life in action](https://giant.gfycat.com/BlaringTidyDutchsmoushond.gif)
 
 ## Installation
