@@ -52,7 +52,12 @@ pub use pane::Pane;
 pub use textfield::{TextField, TextInputState};
 pub use ui_errors::{UIResult, UIError};
 pub use widget::Widget;
-pub use context::UIContext;
+pub use context::{
+    UIContext,
+    EmitEvent,
+    Event,
+    EventType,
+};
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum UIAction {

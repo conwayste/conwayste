@@ -53,7 +53,7 @@ impl Layer {
             widgets: vec![],
             with_transparency: false,
             focused_widget: None,
-            handlers: None,
+            handlers: Some(context::HandlerMap::new()),
         };
 
         // TODO: propagate events for other EventTypes
@@ -65,12 +65,14 @@ impl Layer {
 
             for w in layer.widgets.iter_mut() {
                 if within_widget(&point, &w.rect()) {
-                    let obj = w.as_emit_event();
-                    //XXX obj.on
+                    if let Some(obj) = w.as_emit_event() {
+                        obj.emit(evt, uictx)?;
+                        return Ok(Handled);
+                    }
                 }
             }
 
-            Ok(Handled)
+            Ok(NotHandled)
         });
         layer.on(context::EventType::Click, handler).unwrap(); // unwrap OK because we are not calling .on from within handler
         layer

@@ -91,6 +91,10 @@ use ui::{
     UIResult,
     Widget,
     WidgetID,
+    UIContext,
+    Event,
+    EmitEvent,
+    EventType,
 };
 use uilayout::UILayout;
 use uimanager::LayoutManager;
@@ -436,7 +440,6 @@ impl MainState {
 
 impl EventHandler for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
-        let uictx = ui::UIContext::new_update(ctx, &mut self.config); // pass this in to the widgets
         let duration = timer::duration_to_f64(timer::delta(ctx)); // seconds
 
         self.receive_net_updates()?;
@@ -478,6 +481,7 @@ impl EventHandler for MainState {
 
                 let screen = self.get_current_screen();
                 if let Some(layer) = LayoutManager::get_top_layer(&mut self.ui_layout, screen) {
+                    let mut uictx = UIContext::new_update(ctx, &mut self.config); // pass this in to the widgets
                     layer.on_hover(&mouse_point);
 
                     if let Some(action) = mouse_action {
@@ -487,6 +491,15 @@ impl EventHandler for MainState {
                     }
 
                     if left_mouse_click {
+                        // NEW! Create event for EmitEvent
+                        let click_event = Event {
+                            what: EventType::Click,
+                            x: mouse_point.x,
+                            y: mouse_point.y,
+                        };
+                        layer.emit(&click_event, &mut uictx).unwrap_or_else(|e| {
+                            error!("Error from layer.emit on left click: {:?}", e);
+                        });
                         if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
                             self.handle_ui_action(ctx, ui_id, ui_action).or_else(|e| -> UIResult<()> {
                                 error!("Failed to handle UI action: {}", e);

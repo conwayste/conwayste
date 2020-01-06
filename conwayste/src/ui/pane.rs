@@ -29,6 +29,8 @@ use super::{
     context,
 };
 
+use context::EmitEvent;
+
 use crate::constants::colors::*;
 
 pub struct Pane {
@@ -51,7 +53,7 @@ pub struct Pane {
 impl Pane {
     /// Specify the unique widget identifer for the pane, and its dimensional bounds
     pub fn new(widget_id: WidgetID, dimensions: Rect) -> Self {
-        Pane {
+        let mut pane = Pane {
             id: widget_id,
             dimensions: dimensions,
             widgets: vec![],
@@ -60,8 +62,28 @@ impl Pane {
             previous_pos: None,
             border: 1.0,
             bg_color: None,
-            handlers: None,
-        }
+            handlers: Some(context::HandlerMap::new()),
+        };
+        // TODO: propagate events for other EventTypes
+        let handler: context::Handler = Box::new(|obj, uictx, evt| {
+            let mut pane = obj.downcast_mut::<Pane>().unwrap();
+            use context::Handled::*;
+
+            let point = Point2::<f32>::new(evt.x, evt.y);
+
+            for w in pane.widgets.iter_mut() {
+                if within_widget(&point, &w.rect()) {
+                    if let Some(obj) = w.as_emit_event() {
+                        obj.emit(evt, uictx)?;
+                        return Ok(Handled);
+                    }
+                }
+            }
+
+            Ok(NotHandled)
+        });
+        pane.on(context::EventType::Click, handler).unwrap(); // unwrap OK because we are not calling .on from within handler
+        pane
     }
 
     /// Add a widget to the pane
