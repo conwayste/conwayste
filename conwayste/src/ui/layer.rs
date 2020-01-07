@@ -56,7 +56,7 @@ impl Widget for LayerRootNode {
     fn translate(&mut self, _dest: Vector2<f32>) { }
 }
 
-pub enum InsertModifier {
+pub enum InsertLocation {
     AtCurrentLayer,
     AtNextLayer,
     ToNestedPane(WidgetID)  // WidgetID of destination Pane
@@ -164,8 +164,8 @@ impl Layering {
     /// A `WidgetIDCollision` error can be returned if the widget-id exists in this layering.
     /// An `InvalidAction` error can be returned if the widget addition operation fails.
     /// A `WidgetNotFound` error can be returned if the nested container's widget-id does not exist.
-    // todo rename InsertModifier
-    pub fn add_widget(&mut self, mut widget: BoxedWidget, modifier: InsertModifier) -> UIResult<()> {
+    // todo rename InsertLocation
+    pub fn add_widget(&mut self, mut widget: BoxedWidget, modifier: InsertLocation) -> UIResult<()> {
         let widget_id = widget.id();
         if self.check_for_entry(widget_id) {
             return Err(Box::new(UIError::WidgetIDCollision {
@@ -175,7 +175,7 @@ impl Layering {
 
         let root_id = self.widget_tree.root_node_id().unwrap().clone();
         match modifier {
-            InsertModifier::AtCurrentLayer => {
+            InsertLocation::AtCurrentLayer => {
                 widget.set_z_index(self.highest_z_order);
                 self.widget_tree.insert(Node::new(widget), InsertBehavior::UnderNode(&root_id))
                     .or_else(|e| Err(Box::new(UIError::InvalidAction {
@@ -185,7 +185,7 @@ impl Layering {
                             e)
                     })))?;
             }
-            InsertModifier::AtNextLayer => {
+            InsertLocation::AtNextLayer => {
                 self.highest_z_order += 1;
                 widget.set_z_index(self.highest_z_order);
                 self.widget_tree.insert(Node::new(widget), InsertBehavior::UnderNode(&root_id))
@@ -196,7 +196,7 @@ impl Layering {
                             e)
                     })))?;
             }
-            InsertModifier::ToNestedPane(widget_id) => {
+            InsertLocation::ToNestedPane(widget_id) => {
                 if !self.check_for_entry(widget_id) {
                     return Err(Box::new(UIError::WidgetNotFound {
                         reason: format!("Pane with ID {:?} not found in tree. Cannot add {:?} to tree.", widget_id, widget.id())
@@ -419,7 +419,7 @@ mod test {
         let history_len = 5;
         let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
 
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertModifier::AtCurrentLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer).is_ok());
 
         let widget_result = layer_info.get_widget_mut(WidgetID(0));
         assert!(widget_result.is_ok());
@@ -434,10 +434,10 @@ mod test {
         let history_len = 5;
 
         let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertModifier::AtCurrentLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer).is_ok());
 
         let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertModifier::AtCurrentLayer).is_err());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer).is_err());
     }
 
     #[test]
@@ -447,10 +447,10 @@ mod test {
         let history_len = 5;
 
         let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertModifier::AtCurrentLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer).is_ok());
 
         let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertModifier::AtNextLayer).is_err());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::AtNextLayer).is_err());
     }
 
     #[test]
@@ -462,7 +462,7 @@ mod test {
         let widget_id = WidgetID(0);
         let chatbox = Chatbox::new(widget_id, font_info, history_len);
 
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertModifier::AtCurrentLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer).is_ok());
         let w = layer_info.get_widget_mut(widget_id).unwrap();
         assert_eq!(w.id(), WidgetID(0));
     }
@@ -476,7 +476,7 @@ mod test {
         let widget_id = WidgetID(0);
         let chatbox = Chatbox::new(widget_id, font_info, history_len);
 
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertModifier::AtNextLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::AtNextLayer).is_ok());
         let w = layer_info.get_widget_mut(widget_id).unwrap();
         assert_eq!(w.id(), WidgetID(0));
     }
@@ -495,7 +495,7 @@ mod test {
         let history_len = 5;
         let chatbox = Chatbox::new(WidgetID(1), font_info, history_len);
 
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertModifier::AtCurrentLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer).is_ok());
         assert!(layer_info.get_widget_mut(WidgetID(0)).is_err());
     }
 
@@ -505,7 +505,7 @@ mod test {
         let widget_id = WidgetID(0);
         let pane = Pane::new(widget_id, Rect::new(0.0, 0.0, 100.0, 100.0));
 
-        assert!(layer_info.add_widget(Box::new(pane), InsertModifier::AtCurrentLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).is_ok());
         let w = layer_info.get_widget_mut(widget_id).unwrap();
         assert_eq!(w.id(), widget_id);
     }
@@ -529,8 +529,8 @@ mod test {
         ));
 
         assert!(size_update_result.is_ok());
-        assert!(layer_info.add_widget(Box::new(pane), InsertModifier::AtCurrentLayer).is_ok());
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertModifier::ToNestedPane(pane_id)).is_ok());
+        assert!(layer_info.add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedPane(pane_id)).is_ok());
 
         let w = layer_info.get_widget_mut(chatbox_id).unwrap();
         assert_eq!(w.id(), WidgetID(1));
@@ -555,8 +555,8 @@ mod test {
         ));
 
         assert!(size_update_result.is_ok());
-        assert!(layer_info.add_widget(Box::new(pane), InsertModifier::AtCurrentLayer).is_ok());
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertModifier::ToNestedPane(pane_id)).is_ok());
+        assert!(layer_info.add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedPane(pane_id)).is_ok());
 
         assert!(layer_info.get_widget_mut(WidgetID(2)).is_err());
     }
@@ -580,8 +580,8 @@ mod test {
         ));
 
         assert!(size_update_result.is_ok());
-        assert!(layer_info.add_widget(Box::new(pane), InsertModifier::AtCurrentLayer).is_ok());
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertModifier::ToNestedPane(pane_id)).is_ok());
+        assert!(layer_info.add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedPane(pane_id)).is_ok());
 
         assert_eq!(layer_info.check_for_entry(WidgetID(2)), false);
     }
@@ -605,8 +605,8 @@ mod test {
         ));
 
         assert!(size_update_result.is_ok());
-        assert!(layer_info.add_widget(Box::new(pane), InsertModifier::AtCurrentLayer).is_ok());
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertModifier::ToNestedPane(pane_id)).is_ok());
+        assert!(layer_info.add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedPane(pane_id)).is_ok());
 
         assert_eq!(layer_info.check_for_entry(WidgetID(1)), true);
     }
@@ -618,7 +618,7 @@ mod test {
 
         let widget_id = WidgetID(0);
         let pane = Pane::new(widget_id, Rect::new(0.0, 0.0, 1.0, 1.0));
-        assert!(layer_info.add_widget(Box::new(pane), InsertModifier::AtCurrentLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).is_ok());
 
         assert!(layer_info.enter_focus(widget_id).is_ok());
         assert_eq!(layer_info.focused_widget_id(), Some(widget_id));
@@ -631,7 +631,7 @@ mod test {
 
         let widget_id = WidgetID(0);
         let pane = Pane::new(widget_id, Rect::new(0.0, 0.0, 1.0, 1.0));
-        assert!(layer_info.add_widget(Box::new(pane), InsertModifier::AtCurrentLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).is_ok());
 
         assert!(layer_info.enter_focus(WidgetID(1)).is_err());
         assert_eq!(layer_info.focused_widget_id(), None);
@@ -644,7 +644,7 @@ mod test {
 
         let widget_id = WidgetID(0);
         let pane = Pane::new(widget_id, Rect::new(0.0, 0.0, 1.0, 1.0));
-        assert!(layer_info.add_widget(Box::new(pane), InsertModifier::AtCurrentLayer).is_ok());
+        assert!(layer_info.add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).is_ok());
 
         assert!(layer_info.enter_focus(widget_id).is_ok());
         assert_eq!(layer_info.focused_widget_id(), Some(widget_id));
@@ -668,7 +668,7 @@ mod test {
         let dummy_widget = create_dummy_widget_id(dummy_widget_id);
         let mut layer_info = Layering::new();
 
-        let _result = layer_info.add_widget(dummy_widget, InsertModifier::AtCurrentLayer);
+        let _result = layer_info.add_widget(dummy_widget, InsertLocation::AtCurrentLayer);
         assert!(layer_info.check_for_entry(dummy_widget_id));
     }
 
@@ -678,7 +678,7 @@ mod test {
         let dummy_widget = create_dummy_widget_id(dummy_widget_id);
         let mut layer_info = Layering::new();
 
-        let _result = layer_info.add_widget(dummy_widget, InsertModifier::AtCurrentLayer);
+        let _result = layer_info.add_widget(dummy_widget, InsertLocation::AtCurrentLayer);
         assert!(layer_info.check_for_entry(dummy_widget_id));
 
         assert!(!layer_info.check_for_entry(WidgetID(1)));

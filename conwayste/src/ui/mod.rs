@@ -45,7 +45,7 @@ pub use common::{
     point_offset
 };
 pub use label::Label;
-pub use layer::{Layering, InsertModifier};
+pub use layer::{Layering, InsertLocation};
 pub use pane::Pane;
 pub use textfield::{TextField, TextInputState};
 pub use ui_errors::{UIResult, UIError};
