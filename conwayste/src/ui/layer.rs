@@ -31,7 +31,7 @@ use super::{
     WidgetID
 };
 
-use crate::constants::colors::*;
+use crate::constants::{colors::*, LAYERING_NODE_CAPACITY, LAYERING_SWAP_CAPACITY};
 
 /// Dummy Widget to act as a root node in the tree. Serves no other purpose.
 #[derive(Debug)]
@@ -59,7 +59,7 @@ impl Widget for LayerRootNode {
 pub enum InsertModifier {
     AtCurrentLayer,
     AtNextLayer,
-    ToNestedPane(WidgetID)
+    ToNestedPane(WidgetID)  // WidgetID of destination Pane
 }
 
 pub struct Layering {
@@ -75,15 +75,20 @@ pub struct Layering {
 /// ordered and drawn by by their `z_index`, to create the appearance of a depth for a given game
 /// screen. Each screen must have only one layering to store the set of visible widgets.
 ///
-/// A use case is a modal dialog, where a Pane (containing all of the dialog's widgets) could be
-/// added to the layering at a higher `z_index` than the pre-existing layer's widgets. When the
-/// modal dialog is dismissed, the Pane is removed from the layering by widget-id.
+/// Behind the scenes, a Layering uses a tree data-structure to organize widgets. Widgets can be
+/// nested, where the container (such as a Pane) would be the parent node. Widgets collected by the
+/// container are its children nodes.
 ///
-/// Widgets with a `z_index` of zero are drawn on the base (or zeroth) layer. Widgets with a
-/// `z_index` of one are drawn immediately above that layer, and so on. Only the two highest
-/// z-orders are drawn to minimize screen clutter. This means if three widgets -- each with a
-/// z-index of 0, 1, and 2, respectively -- are added to the `Layering`, only widgets 1 and 2 are
-/// drawn in that respective order.
+/// A use case for layering could be a modal dialog, where a Pane (containing all of the dialog's
+/// widgets) may be added to the layering at a higher z-order than what is currently present. When
+/// modal dialog is dismissed, the Pane is removed from the layering by widget-id, and the previously
+/// presented UI elements are then displayed unaffected.
+///
+/// Widgets declare their z-order by the `z_index` field. A z-order of zero corresponds to the
+/// base (or zeroth) layer. Widgets with a `z_index` of one are drawn immediately above that layer,
+/// and so on. Only the two highest z-orders are drawn to minimize screen clutter. This means if
+/// three widgets -- each with a z-index of 0, 1, and 2, respectively -- are added to the `Layering`,
+/// only widgets 1 and 2 are drawn in that respective order.
 ///
 /// Layerings also support an optional transparency between two adjacent z-orders. If the
 /// transparency option is enabled, `with_transparency == true`, then a transparent film spanning
@@ -92,8 +97,8 @@ impl Layering {
     pub fn new() -> Self {
         Layering {
             widget_tree: TreeBuilder::new()
-                            .with_node_capacity(100)
-                            .with_swap_capacity(10)
+                            .with_node_capacity(LAYERING_NODE_CAPACITY)
+                            .with_swap_capacity(LAYERING_SWAP_CAPACITY)
                             .with_root(Node::new(LayerRootNode::new()))
                             .build(),
             highest_z_order: 0,
@@ -112,14 +117,24 @@ impl Layering {
         self.widget_tree.traverse_level_order(&root_id).unwrap().find(|&node| node.data().id() == widget_id).is_some()
     }
 
-    /// Retreives a mutable reference to a widget. This will search one Pane-level deep
-    /// for the provided widget-id.
+    /// Collect all nodes in the tree belonging to the corresponding z_order
+    fn collect_node_ids(&self, z_order: usize) -> Vec<NodeId> {
+        let root_id = self.widget_tree.root_node_id().unwrap();
+        self.widget_tree.traverse_level_order_ids(&root_id).unwrap()
+            .filter(|node_id| {
+                let node = self.widget_tree.get(node_id).unwrap();
+                node.data().z_index() == z_order
+            })
+            .collect::<Vec<NodeId>>()
+    }
+
+    /// Retreives a mutable reference to a widget. This will search the widget tree for the
+    /// provided widget-id.
     ///
     /// # Error
     /// A WidgetNotFound error will be returned if the widget-id is not found.
     /// does not exist in the internal list of widgets.
     pub fn get_widget_mut(&mut self, widget_id: WidgetID) -> UIResult<&mut BoxedWidget> {
-        // If it doesn't belong to a pane, check the widget list for an entry
         // unwrap safe because a Layering should always have a dummy root-node
         let root_id = self.widget_tree.root_node_id().unwrap();
 
@@ -140,11 +155,15 @@ impl Layering {
         }
     }
 
-    /// Add a widget to the layering at the provided z_index depth. Internal data structure
-    /// maintains a list sorted by descending z_index.
+    /// Add a widget to the layering, where the z-order is specified by the insert modifier.
+    /// Widgets can be inserted at the current layer, at the next layer (one order higher), or nested
+    /// to a widget-container (like a Pane). The widget's z-index is overridden by the destination
+    /// layer's z-order.
     ///
     /// # Error
-    /// A WidgetIDCollision error can be returned if the widget-id exists in this layering.
+    /// A `WidgetIDCollision` error can be returned if the widget-id exists in this layering.
+    /// An `InvalidAction` error can be returned if the widget addition operation fails.
+    /// A `WidgetNotFound` error can be returned if the nested container's widget-id does not exist.
     // todo rename InsertModifier
     pub fn add_widget(&mut self, mut widget: BoxedWidget, modifier: InsertModifier) -> UIResult<()> {
         let widget_id = widget.id();
@@ -184,23 +203,29 @@ impl Layering {
                     }));
                 }
 
+                // First find the node_id that corresponds to the Pane we're adding to
                 let mut node_id_found = None;
                 for node_id in self.widget_tree.traverse_level_order_ids(&root_id).unwrap() {
                     let node = self.widget_tree.get(&node_id).unwrap();
                     let dyn_widget = node.data();
                     if let Some(pane) = downcast_widget!(dyn_widget, Pane) {
                         if pane.id() == widget_id {
+                            // Prepare the widget for insertion at the Pane's layer, translated to
+                            // an offset from the Pane's top-left corner
                             let point = pane.dimensions.point();
                             let vector = Vector2::new(point.x, point.y);
                             widget.translate(vector);
+                            widget.set_z_index(pane.z_index());
+
                             node_id_found = Some(node_id);
                             break;
                         }
                     }
                 }
 
-                let inserting_widget_id = widget.id();
+                // Insert the node under the found node_id corresponding to the Pane
                 if let Some(node_id) = node_id_found {
+                    let inserting_widget_id = widget.id();
                     self.widget_tree.insert(Node::new(widget), InsertBehavior::UnderNode(&node_id))
                         .or_else(|e| Err(Box::new(UIError::InvalidAction {
                             reason: format!("Error during insertion of {:?}, ToNestedPane({:?}, layer={}): {}",
@@ -220,7 +245,8 @@ impl Layering {
         Ok(())
     }
 
-    /// Removes a widget belonging to the layering
+    /// Removes a widget belonging to the layering. Will drop all child nodes if the target is a
+    /// container-based widget.
     ///
     /// # Error
     /// A WidgetNotFound error can be returned if a widget with the `widget_id` does not exist
@@ -252,7 +278,7 @@ impl Layering {
         self.focused_node_id.as_ref().map(|node_id| self.widget_tree.get(node_id).unwrap().data().id())
     }
 
-    /// Notifies the layer that the provided WidgetID is to hold focus.widget
+    /// Notifies the layer that the provided WidgetID is to capture input events
     ///
     /// # Error
     /// A WidgetNotFound error can be returned if a widget with the `widget_id` does not exist in
@@ -276,6 +302,7 @@ impl Layering {
             }
         }
 
+        // Call the widget's handler to enter focus
         if let Some(node_id) = &self.focused_node_id {
             let node = self.widget_tree.get_mut(node_id).unwrap();
             let dyn_widget = node.data_mut();
@@ -285,7 +312,7 @@ impl Layering {
         Ok(())
     }
 
-    /// Clears the focus of the highest layer
+    /// Clears the focus of the layering
     pub fn exit_focus(&mut self) {
         if let Some(widget_id) = self.focused_widget_id() {
             if let Ok(dyn_widget) = self.get_widget_mut(widget_id) {
@@ -298,13 +325,7 @@ impl Layering {
     }
 
     pub fn on_hover(&mut self, point: &Point2<f32>) {
-        let root_id = self.widget_tree.root_node_id().unwrap();
-        let node_ids = self.widget_tree.traverse_level_order_ids(&root_id).unwrap()
-            .filter(|node_id| {
-                let node = self.widget_tree.get(node_id).unwrap();
-                node.data().z_index() == self.highest_z_order
-            })
-            .collect::<Vec<NodeId>>();
+        let node_ids = self.collect_node_ids(self.highest_z_order);
 
         for node_id in node_ids {
             let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
@@ -313,13 +334,7 @@ impl Layering {
     }
 
     pub fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        let root_id = self.widget_tree.root_node_id().unwrap();
-        let node_ids = self.widget_tree.traverse_level_order_ids(&root_id).unwrap()
-            .filter(|node_id| {
-                let node = self.widget_tree.get(node_id).unwrap();
-                node.data().z_index() == self.highest_z_order
-            })
-            .collect::<Vec<NodeId>>();
+        let node_ids = self.collect_node_ids(self.highest_z_order);
 
         for node_id in node_ids {
             let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
@@ -332,13 +347,7 @@ impl Layering {
     }
 
     pub fn on_drag(&mut self, original_pos: &Point2<f32>, current_pos: &Point2<f32>) {
-        let root_id = self.widget_tree.root_node_id().unwrap();
-        let node_ids = self.widget_tree.traverse_level_order_ids(&root_id).unwrap()
-            .filter(|node_id| {
-                let node = self.widget_tree.get(node_id).unwrap();
-                node.data().z_index() == self.highest_z_order
-            })
-            .collect::<Vec<NodeId>>();
+        let node_ids = self.collect_node_ids(self.highest_z_order);
 
         for node_id in node_ids {
             let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
@@ -347,15 +356,9 @@ impl Layering {
     }
 
     pub fn draw(&mut self, ctx: &mut Context) -> UIResult<()> {
-        let root_id = self.widget_tree.root_node_id().unwrap().clone();
         if self.highest_z_order > 0 {
             // Draw the previous layer
-            let node_ids = self.widget_tree.traverse_level_order_ids(&root_id).unwrap()
-                .filter(|node_id| {
-                    let node = self.widget_tree.get(node_id).unwrap();
-                    node.data().z_index() == self.highest_z_order - 1
-                })
-                .collect::<Vec<NodeId>>();
+            let node_ids = self.collect_node_ids(self.highest_z_order - 1);
 
             for node_id in node_ids {
                 let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
@@ -374,12 +377,7 @@ impl Layering {
             }
         }
 
-        let node_ids = self.widget_tree.traverse_level_order_ids(&root_id).unwrap()
-            .filter(|node_id| {
-                let node = self.widget_tree.get(node_id).unwrap();
-                node.data().z_index() == self.highest_z_order
-            })
-            .collect::<Vec<NodeId>>();
+        let node_ids = self.collect_node_ids(self.highest_z_order);
 
         for node_id in node_ids {
             let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
