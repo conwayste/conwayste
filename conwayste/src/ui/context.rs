@@ -143,6 +143,26 @@ pub trait EmitEvent: Downcast {
 impl_downcast!(EmitEvent);
 
 /// Implement EmitEvent for a widget (though strictly speaking non-widgets can implement it).
+///
+/// # Example
+///
+/// ```
+/// struct MyWidget {
+///     handlers: Option<HandlerMap>,
+///     ...
+/// }
+///
+/// impl MyWidget {
+///     fn new() -> Self {
+///         MyWidget {
+///             handlers: Some(context::HandlerMap::new()),
+///             ...
+///         }
+///     }
+/// }
+/// // top level of the module
+/// impl_emit_event!(MyWidget, self.handlers);
+/// ```
 #[macro_export]
 macro_rules! impl_emit_event {
     ($widget_name:ty, self.$handler_field:ident) => {
