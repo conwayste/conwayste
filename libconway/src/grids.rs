@@ -15,6 +15,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
+use std::error::Error;
 use std::ops::{Index, IndexMut};
 use std::cmp;
 use crate::universe::Region;
@@ -26,6 +27,13 @@ pub enum BitOperation {
     Clear,
     Set,
     Toggle
+}
+
+/// Defines a rotation.
+#[derive(Eq, PartialEq, Debug, Clone, Copy)]
+pub enum Rotation {
+    CW,  // clockwise
+    CCW, // counter-clockwise
 }
 
 
@@ -198,6 +206,69 @@ impl BitGrid {
                 row[col_idx] = 0;
             }
         }
+    }
+
+    /// Calls callback on each bit that is set (1). Callback receives (col, row).
+    pub fn each_set<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        for row in 0 .. self.height() {
+            let mut col = 0;
+            for col_idx in 0 .. self.width_in_words() {
+                let word = self.0[row][col_idx];
+                for shift in (0..64).rev() {
+                    if (word>>shift)&1 == 1 {
+                        callback(col, row);
+                    }
+                    col += 1;
+                }
+            }
+        }
+    }
+
+    /// Rotates pattern with top-left corner at `(0,0)` in the grid and lower right corner at
+    /// `(width - 1, height - 1)` in the specified direction. This may change the dimensions of the
+    /// grid.
+    ///
+    /// # Errors
+    ///
+    /// An error is returned if the width or height are out of range.
+    pub fn rotate(&mut self, width: usize, height: usize, rotation: Rotation) -> Result<(), Box<dyn Error>> {
+        if width > self.width() || height > self.height() {
+            return Err(format!("Expected passed-in width={} and height={} to be less than grid width={} and height={}",
+                    width, height, self.width(), self.height()).into());
+        }
+        let new_width_in_words = (self.height() - 1)/64 + 1;   // number of words needed for this many cells
+        let new_height = self.width();
+        let mut new = BitGrid::new(new_width_in_words, new_height);
+        for row in 0 .. height {
+            let new_col = match rotation {
+                Rotation::CCW => row,
+                Rotation::CW => height - row - 1,
+            };
+            let new_col_idx = new_col/64; // the column index in the new grid
+            let mut col = 0;
+            'rowloop:
+            for col_idx in 0 .. self.width_in_words() {
+                let word = self.0[row][col_idx];
+                for shift in (0..64).rev() {
+                    if col >= width {
+                        break 'rowloop;
+                    }
+                    let new_row = match rotation {
+                        Rotation::CCW => width - col - 1,
+                        Rotation::CW => col,
+                    };
+                    if (word>>shift)&1 == 1 {
+                        let new_shift = 63 - (new_col - new_col_idx*64);
+                        // copy this bit to new but rotated
+                        new.0[new_row][new_col_idx] |= 1<<new_shift;
+                    }
+                    col += 1;
+                }
+            }
+        }
+        // replace self with new
+        self.0 = new.0;
+        Ok(())
     }
 }
 

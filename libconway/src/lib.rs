@@ -26,5 +26,7 @@ pub mod error;
 
 pub use error::{ConwayError, ConwayResult};
 
+pub use grids::Rotation;
+
 #[cfg(test)]
 pub mod tests;

@@ -57,6 +57,7 @@ pub mod colors {
         pub static ref LAYER_TRANSPARENCY_BG_COLOR: Color = color_with_alpha(css::HONEYDEW, 0.4);
         pub static ref OPTIONS_TEXT_FILL_COLOR: Color = Color::from(css::YELLOW);
         pub static ref OPTIONS_LABEL_TEXT_COLOR: Color = Color::from(css::WHITE);
+        pub static ref INSERT_PATTERN_UNWRITABLE: Color = Color::from(css::RED);
     }
 }
 
