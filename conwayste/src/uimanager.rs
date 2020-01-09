@@ -71,7 +71,7 @@ impl LayoutManager {
             }
         }
         Err(Box::new(UIError::WidgetNotFound {
-            reason: format!("Layering for screen {:?} does not have a TextFiled in focus", screen)
+            reason: format!("Layering for screen {:?} does not have a TextField in focus", screen)
         }))
     }
 }

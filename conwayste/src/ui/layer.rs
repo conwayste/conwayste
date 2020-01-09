@@ -24,6 +24,7 @@ use id_tree::{*, InsertBehavior, RemoveBehavior};
 
 use super::{
     BoxedWidget,
+    common::within_widget,
     widget::Widget,
     Pane,
     UIAction,
@@ -336,11 +337,17 @@ impl Layering {
     pub fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
         let node_ids = self.collect_node_ids(self.highest_z_order);
 
+        // Due to the way `collect_node_ids()` traverses the entire list, all children nodes will be
+        // collected for a parent node as they should be at the same z-order.
+        // TODO: After UIContext lands, reevaluate how a child's on_click Handled will propogate up.
+
         for node_id in node_ids {
             let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
-            let ui_action = widget.on_click(point);
-            if ui_action.is_some() {
-                return ui_action;
+            if within_widget(point, &widget.rect()) {
+                let ui_action = widget.on_click(point);
+                if ui_action.is_some() {
+                    return ui_action;
+                }
             }
         }
         None

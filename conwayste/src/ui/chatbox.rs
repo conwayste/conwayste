@@ -295,11 +295,8 @@ impl Widget for Chatbox {
         self.hover = within_widget(point, &self.dimensions);
     }
 
-    fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        if within_widget(point, &self.dimensions) {
-            return Some((self.id, self.action));
-        }
-        None
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
+        return Some((self.id, self.action));
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {

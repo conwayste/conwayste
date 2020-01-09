@@ -182,13 +182,10 @@ impl Widget for Checkbox {
         self.hover = within_widget(point, &self.dimensions) || within_widget(point, &label_dimensions);
     }
 
-    fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
     {
         // TODO: Check child label for an on_click event once it's refactored out
-        if within_widget(point, &self.dimensions) {
-            return Some(( self.id, UIAction::Toggle(self.toggle_checkbox()) ));
-        }
-        None
+        return Some(( self.id, UIAction::Toggle(self.toggle_checkbox()) ));
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
