@@ -16,8 +16,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use std::error::Error;
 use std::collections::HashMap;
+use std::error::Error;
 
 use downcast_rs::Downcast;
 
@@ -75,7 +75,7 @@ pub struct UpdateContext<'a> {
 pub enum EventType {
     Click,
     KeyPress,
-    Move, // mouse move
+    MouseMove,
     Translate,
     Resize,
     ParentTranslate,
@@ -89,18 +89,20 @@ pub enum EventType {
 #[derive(Debug, Clone)]
 pub struct Event {
     pub what: EventType,
-    pub x: f32,  // usually x position, but width if resize event
+    pub x: f32, // usually x position, but width if resize event
     pub y: f32,
 }
 
 #[allow(unused)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Handled {
-    Handled,  // no other handlers should be called
+    Handled,    // no other handlers should be called
     NotHandled, // continue calling handlers
 }
 
-pub type Handler = Box<dyn FnMut(&mut dyn EmitEvent, &mut UIContext, &Event) -> Result<Handled, Box<dyn Error>> + Send>;
+pub type Handler = Box<
+    dyn FnMut(&mut dyn EmitEvent, &mut UIContext, &Event) -> Result<Handled, Box<dyn Error>> + Send,
+>;
 
 pub type HandlerMap = HashMap<EventType, Vec<Handler>>;
 
@@ -172,7 +174,9 @@ macro_rules! impl_emit_event {
                 let handlers = self.$handler_field
                     .as_mut()
                     .ok_or_else(|| -> Box<dyn std::error::Error> {
-                        format!("during .on({:?}, ...): a .emit call is in progress for {} widget", what, stringify!($widget_name)).into()
+                        format!(".on({:?}, ...) was called while .emit call was in progress for {} widget",
+                        what,
+                        stringify!($widget_name)).into()
                     })?;
 
                 let handler_vec: &mut Vec<crate::ui::context::Handler>;
@@ -193,7 +197,7 @@ macro_rules! impl_emit_event {
                 let mut handlers = self.$handler_field
                     .take()
                     .ok_or_else(|| -> Box<dyn std::error::Error> {
-                        format!("during .on({:?}, ...): a .emit call is in progress for {} widget",
+                        format!(".emit({:?}, ...) was called while another .emit call was in progress for {} widget",
                                 event.what,
                                 stringify!($widget_name)).into()
                     })?;
@@ -213,4 +217,3 @@ macro_rules! impl_emit_event {
         }
     };
 }
-
