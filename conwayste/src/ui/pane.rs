@@ -66,13 +66,11 @@ impl Pane {
         };
         // TODO: propagate events for other EventTypes
         let handler: context::Handler = Box::new(|obj, uictx, evt| {
-            let mut pane = obj.downcast_mut::<Pane>().unwrap();
+            let pane = obj.downcast_mut::<Pane>().unwrap();
             use context::Handled::*;
 
-            let point = Point2::<f32>::new(evt.x, evt.y);
-
             for w in pane.widgets.iter_mut() {
-                if within_widget(&point, &w.rect()) {
+                if within_widget(&evt.point, &w.rect()) {
                     if let Some(obj) = w.as_emit_event() {
                         obj.emit(evt, uictx)?;
                         return Ok(Handled);

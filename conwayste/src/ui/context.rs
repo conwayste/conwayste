@@ -23,6 +23,8 @@ use downcast_rs::Downcast;
 
 use crate::config;
 use ggez;
+use ggez::event::MouseButton;
+use ggez::nalgebra::Point2;
 
 pub enum UIContext<'a> {
     Draw(DrawContext<'a>),
@@ -30,6 +32,7 @@ pub enum UIContext<'a> {
 }
 
 impl<'a> UIContext<'a> {
+    #[allow(dead_code)]
     pub fn unwrap_draw(&mut self) -> &mut DrawContext<'a> {
         match *self {
             UIContext::Draw(ref mut draw_context) => draw_context,
@@ -44,6 +47,7 @@ impl<'a> UIContext<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn new_draw(ggez_context: &'a mut ggez::Context, config: &'a config::Config) -> Self {
         UIContext::Draw(DrawContext {
             ggez_context,
@@ -89,8 +93,9 @@ pub enum EventType {
 #[derive(Debug, Clone)]
 pub struct Event {
     pub what: EventType,
-    pub x: f32, // usually x position, but width if resize event
-    pub y: f32,
+    pub point: Point2<f32>,
+    pub prev_point: Option<Point2<f32>>, // MouseMove / Drag
+    pub button: Option<MouseButton>,     // Click
 }
 
 #[allow(unused)]

@@ -58,13 +58,11 @@ impl Layer {
 
         // TODO: propagate events for other EventTypes
         let handler: context::Handler = Box::new(|obj, uictx, evt| {
-            let mut layer = obj.downcast_mut::<Layer>().unwrap();
+            let layer = obj.downcast_mut::<Layer>().unwrap();
             use context::Handled::*;
 
-            let point = Point2::<f32>::new(evt.x, evt.y); 
-
             for w in layer.widgets.iter_mut() {
-                if within_widget(&point, &w.rect()) {
+                if within_widget(&evt.point, &w.rect()) {
                     if let Some(obj) = w.as_emit_event() {
                         obj.emit(evt, uictx)?;
                         return Ok(Handled);

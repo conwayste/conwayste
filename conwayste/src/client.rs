@@ -494,8 +494,9 @@ impl EventHandler for MainState {
                         // NEW! Create event for EmitEvent
                         let click_event = Event {
                             what: EventType::Click,
-                            x: mouse_point.x,
-                            y: mouse_point.y,
+                            point: mouse_point,
+                            prev_point: None,
+                            button: Some(self.inputs.mouse_info.mousebutton),
                         };
                         layer.emit(&click_event, &mut uictx).unwrap_or_else(|e| {
                             error!("Error from layer.emit on left click: {:?}", e);

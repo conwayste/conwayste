@@ -252,7 +252,7 @@ impl UILayout {
         let handler: Handler = Box::new(|obj, uictx, evt| {
             use context::Handled::*;
             let uictx = uictx.unwrap_update();
-            let mut btn = obj.downcast_mut::<Button>().unwrap();
+            let btn = obj.downcast_mut::<Button>().unwrap();
 
             info!("YAYYYY BUTTON'S HANDLER CALLED!!!");
 
@@ -263,7 +263,7 @@ impl UILayout {
             info!("number of ggez ticks: {}", num_ticks);
 
             // ok now let's print out the event
-            info!("EVENT: what={:?} @ ({}, {})", evt.what, evt.x, evt.y);
+            info!("EVENT: what={:?} @ {}", evt.what, evt.point);
 
             Ok(Handled)
         });
