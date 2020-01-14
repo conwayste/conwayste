@@ -255,7 +255,31 @@ macro_rules! impl_emit_event {
     };
 }
 
-// TODO: docs
+/// Register a handler for this container widget to dispatch mouse events to whichever contained
+/// widget contains the `point` of the event. This will typically be done when creating the widget,
+/// in its `new` method.
+///
+/// # Example
+///
+/// ```
+/// fn new() -> Pane {
+///     let my_pane = Pane {
+///         ...
+///         widgets: vec![],
+///         ...
+///     };
+///     forward_mouse_events!(Pane, my_pane, widgets);
+///     my_pane
+/// }
+/// ```
+///
+/// # Panics
+///
+/// This will panic if there is any error returned by the `.on` method of the container widget.
+/// Verify that this is still true before relying on it, but at present, this error can only happen
+/// if this macro is expanded (and thus, `.on` is called) from within a handler for this container
+/// widget.
+//TODO: add a forward_keyboard_events! macro that uses focus rather than `within_widget`
 macro_rules! forward_mouse_events {
     ($widget_type:ty, $widget_var:ident, $vec_of_child_widgets:ident) => {
         for &event_type in crate::ui::context::MOUSE_EVENTS {
@@ -274,7 +298,7 @@ macro_rules! forward_mouse_events {
 
                 Ok(NotHandled)
             });
-            $widget_var.on(event_type, handler).unwrap(); // unwrap OK because we are not calling .on from within handler
+            $widget_var.on(event_type, handler).unwrap();
         }
     };
 }
