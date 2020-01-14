@@ -72,7 +72,7 @@ cargo build
 ## Running the server
 
 ```
-cargo run --bin server 0.0.0.0:9000
+cargo run --bin server
 ```
 
 ## Running the GUI client
