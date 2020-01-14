@@ -20,11 +20,12 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use downcast_rs::Downcast;
-
-use crate::config;
+use enum_iterator::IntoEnumIterator;
 use ggez;
 use ggez::event::MouseButton;
 use ggez::nalgebra::Point2;
+
+use crate::config;
 
 pub enum UIContext<'a> {
     Draw(DrawContext<'a>),
@@ -73,13 +74,14 @@ pub struct UpdateContext<'a> {
     pub config: &'a mut config::Config,
 }
 
-// TODO: move this elsewhere; it's in here to keep separate from other code (avoid merge conflicts)
+/// The type of an event.
 #[allow(unused)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, IntoEnumIterator)]
 pub enum EventType {
     Click,
     KeyPress,
     MouseMove,
+    Drag,
     Translate,
     Resize,
     ParentTranslate,
@@ -93,9 +95,27 @@ pub enum EventType {
 #[derive(Debug, Clone)]
 pub struct Event {
     pub what: EventType,
-    pub point: Point2<f32>,
+    pub point: Point2<f32>, // Must not be None if this is a mouse event type
     pub prev_point: Option<Point2<f32>>, // MouseMove / Drag
-    pub button: Option<MouseButton>,     // Click
+    pub button: Option<MouseButton>, // Click
+}
+
+/// A slice containing all EventTypes related to the keyboard.
+pub const KEY_EVENTS: &[EventType] = &[EventType::KeyPress];
+
+/// A slice containing all EventTypes related to the mouse.
+pub const MOUSE_EVENTS: &[EventType] = &[EventType::Click, EventType::MouseMove, EventType::Drag];
+
+impl EventType {
+    /// Returns true if and only if this is a keyboard event type.
+    pub fn is_key_event(self) -> bool {
+        KEY_EVENTS.contains(&self)
+    }
+
+    /// Returns true if and only if this is a mouse event type. This implies that point is valid.
+    pub fn is_mouse_event(self) -> bool {
+        MOUSE_EVENTS.contains(&self)
+    }
 }
 
 #[allow(unused)]
@@ -221,4 +241,16 @@ macro_rules! impl_emit_event {
             }
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_into_enum_iter() {
+        let all: Vec<EventType> = EventType::into_enum_iter().collect();
+        assert_eq!(all.len(), EventType::VARIANT_COUNT);
+        assert!(all.contains(&EventType::Click));
+    }
 }

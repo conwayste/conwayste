@@ -23,6 +23,7 @@ color-backtrace = "0.1"
 lazy_static  = "1.2"
 chromatica   = "1.0.1"
 custom_error = "1.4"
+enum-iterator = "0.5"
 
 [[bin]]
 name = "client"

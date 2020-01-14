@@ -63,8 +63,8 @@ impl Layer {
 
             for w in layer.widgets.iter_mut() {
                 if within_widget(&evt.point, &w.rect()) {
-                    if let Some(obj) = w.as_emit_event() {
-                        obj.emit(evt, uictx)?;
+                    if let Some(emitter) = w.as_emit_event() {
+                        emitter.emit(evt, uictx)?;
                         return Ok(Handled);
                     }
                 }
