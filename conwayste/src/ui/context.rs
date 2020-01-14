@@ -118,6 +118,18 @@ impl EventType {
     }
 }
 
+impl Event {
+    /// Returns true if and only if this is a keyboard event.
+    pub fn is_key_event(&self) -> bool {
+        self.what.is_key_event()
+    }
+
+    /// Returns true if and only if this is a mouse event. This implies that point is valid.
+    pub fn is_mouse_event(&self) -> bool {
+        self.what.is_mouse_event()
+    }
+}
+
 #[allow(unused)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Handled {
@@ -239,6 +251,30 @@ macro_rules! impl_emit_event {
                 self.$handler_field = Some(handlers); // put it back
                 Ok(())
             }
+        }
+    };
+}
+
+// TODO: docs
+macro_rules! forward_mouse_events {
+    ($widget_type:ty, $widget_var:ident, $vec_of_child_widgets:ident) => {
+        for &event_type in crate::ui::context::MOUSE_EVENTS {
+            let handler: crate::ui::context::Handler = Box::new(|obj, uictx, evt| {
+                let _self = obj.downcast_mut::<$widget_type>().unwrap();
+                use crate::ui::context::Handled::*;
+
+                for w in _self.$vec_of_child_widgets.iter_mut() {
+                    if within_widget(&evt.point, &w.rect()) {
+                        if let Some(emitter) = w.as_emit_event() {
+                            emitter.emit(evt, uictx)?;
+                            return Ok(Handled);
+                        }
+                    }
+                }
+
+                Ok(NotHandled)
+            });
+            $widget_var.on(event_type, handler).unwrap(); // unwrap OK because we are not calling .on from within handler
         }
     };
 }

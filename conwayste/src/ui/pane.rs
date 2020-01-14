@@ -64,23 +64,7 @@ impl Pane {
             bg_color: None,
             handlers: Some(context::HandlerMap::new()),
         };
-        // TODO: propagate events for other EventTypes
-        let handler: context::Handler = Box::new(|obj, uictx, evt| {
-            let pane = obj.downcast_mut::<Pane>().unwrap();
-            use context::Handled::*;
-
-            for w in pane.widgets.iter_mut() {
-                if within_widget(&evt.point, &w.rect()) {
-                    if let Some(emitter) = w.as_emit_event() {
-                        emitter.emit(evt, uictx)?;
-                        return Ok(Handled);
-                    }
-                }
-            }
-
-            Ok(NotHandled)
-        });
-        pane.on(context::EventType::Click, handler).unwrap(); // unwrap OK because we are not calling .on from within handler
+        forward_mouse_events!(Pane, pane, widgets);
         pane
     }
 
