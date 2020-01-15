@@ -116,7 +116,7 @@ impl Button {
 
         let mut b = Button {
             id: widget_id,
-            z_index: 0,
+            z_index: std::usize::MAX,
             label: label,
             button_color: color_with_alpha(css::DARKCYAN, 0.8),
             draw_mode: DrawMode::fill(),

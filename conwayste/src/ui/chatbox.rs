@@ -78,7 +78,7 @@ impl Chatbox {
         let rect = *constants::DEFAULT_CHATBOX_RECT;
         Chatbox {
             id: widget_id,
-            z_index: 0,
+            z_index: std::usize::MAX,
             history_lines,
             color: *CHATBOX_BORDER_COLOR,
             messages: VecDeque::with_capacity(history_lines),

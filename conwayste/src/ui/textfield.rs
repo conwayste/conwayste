@@ -93,7 +93,7 @@ impl TextField {
     pub fn new(widget_id: WidgetID, font_info: FontInfo, dimensions: Rect) -> TextField {
         TextField {
             id: widget_id,
-            z_index: 0,
+            z_index: std::usize::MAX,
             input_state: None,
             text: String::new(),
             cursor_index: 0,

@@ -277,6 +277,11 @@ impl Layering {
             }
         }
 
+        // Determine if the highest z-order changes due to the widget removal
+        while (self.collect_node_ids(self.highest_z_order).is_empty()) {
+            self.highest_z_order -= 1;
+        }
+
         Ok(())
     }
 

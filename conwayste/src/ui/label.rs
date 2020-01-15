@@ -100,7 +100,7 @@ impl Label {
 
         Label {
             id: widget_id,
-            z_index: 0,
+            z_index: std::usize::MAX,
             textfrag: text_fragment,
             dimensions: dimensions
         }

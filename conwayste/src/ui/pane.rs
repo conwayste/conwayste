@@ -58,7 +58,7 @@ impl Pane {
     pub fn new(widget_id: WidgetID, dimensions: Rect) -> Self {
         Pane {
             id: widget_id,
-            z_index: 0,
+            z_index: std::usize::MAX,
             dimensions: dimensions,
             hover: false,
             floating: true,

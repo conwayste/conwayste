@@ -100,7 +100,7 @@ impl Checkbox {
 
         Checkbox {
             id: widget_id,
-            z_index: 0,
+            z_index: std::usize::MAX,
             label: Label::new(ctx, widget_id, font_info, text, *CHECKBOX_TEXT_COLOR, label_origin),
             enabled: enabled,
             dimensions: dimensions,
