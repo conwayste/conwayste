@@ -34,7 +34,7 @@ use super::{
 
 use crate::constants::{colors::*, LAYERING_NODE_CAPACITY, LAYERING_SWAP_CAPACITY};
 
-/// Dummy Widget to act as a root node in the tree. Serves no other purpose.
+/// Dummy Widget to serve as a root node in the tree. Serves no other purpose.
 #[derive(Debug)]
 struct LayerRootNode;
 impl LayerRootNode {
@@ -42,6 +42,7 @@ impl LayerRootNode {
         Box::new(LayerRootNode{})
     }
 }
+
 impl Widget for LayerRootNode {
     fn id(&self) -> WidgetID {
         use std::usize::MAX;
@@ -58,15 +59,17 @@ impl Widget for LayerRootNode {
 }
 
 pub enum InsertLocation {
-    AtCurrentLayer,
-    AtNextLayer,
-    ToNestedPane(WidgetID)  // WidgetID of destination Pane
+    AtCurrentLayer,         // Insertion will be made at whatever the top-most layer order is
+    AtNextLayer,            // Insertion will increment the layer order, and insert
+    ToNestedContainer(WidgetID)  // Insert as a child to the node where node.data.id() matches WidgetID
 }
 
 pub struct Layering {
     pub with_transparency: bool,        // Determines if a transparent film is drawn in between two
                                         // adjacent layers
-    pub widget_tree: Tree<BoxedWidget>,
+    widget_tree: Tree<BoxedWidget>,     // Tree of widgets. Container-like widgets (think Panes)
+                                        // will have children nodes which are the nested elements
+                                        // (think Buttons) of the widget.
     highest_z_order: usize,             // Number of layers allocated in the system + 1
     focused_node_id: Option<NodeId>,    // Currently active widget, one per z-order. If None, then
                                         // the layer is not focused on any particular widget.
@@ -81,15 +84,18 @@ pub struct Layering {
 /// container are its children nodes.
 ///
 /// A use case for layering could be a modal dialog, where a Pane (containing all of the dialog's
-/// widgets) may be added to the layering at a higher z-order than what is currently present. When
-/// modal dialog is dismissed, the Pane is removed from the layering by widget-id, and the previously
-/// presented UI elements are then displayed unaffected.
+/// widgets) may be added to the layering at a higher z-order than what is currently present. Here
+/// the user would add to the tree using the `AtNextLayer` for the initial Pane, and
+/// `ToNestedContainer(...)` for all child widgets. When modal dialog is dismissed, the Pane is
+/// removed from the layering by widget-id using the remove API. Any previously presented UI prior
+/// to the new layer will be displayed unaffected by the addition and removal of the Pane.
 ///
 /// Widgets declare their z-order by the `z_index` field. A z-order of zero corresponds to the
 /// base (or zeroth) layer. Widgets with a `z_index` of one are drawn immediately above that layer,
 /// and so on. Only the two highest z-orders are drawn to minimize screen clutter. This means if
 /// three widgets -- each with a z-index of 0, 1, and 2, respectively -- are added to the `Layering`,
-/// only widgets 1 and 2 are drawn in that respective order.
+/// only widgets 1 and 2 are drawn in that respective order. Widgets will have their `z_index`
+/// updated based on the destination layer the widget ultimately ends up in.
 ///
 /// Layerings also support an optional transparency between two adjacent z-orders. If the
 /// transparency option is enabled, `with_transparency == true`, then a transparent film spanning
@@ -114,7 +120,7 @@ impl Layering {
         let root_id = self.widget_tree.root_node_id().unwrap();
         let mut s = String::new();
         let _ = self.widget_tree.write_formatted(&mut s);
-        println!("{}", s);
+        debug!("{}", s);
         self.widget_tree.traverse_level_order(&root_id).unwrap().find(|&node| node.data().id() == widget_id).is_some()
     }
 
@@ -197,7 +203,7 @@ impl Layering {
                             e)
                     })))?;
             }
-            InsertLocation::ToNestedPane(widget_id) => {
+            InsertLocation::ToNestedContainer(widget_id) => {
                 if !self.check_for_entry(widget_id) {
                     return Err(Box::new(UIError::WidgetNotFound {
                         reason: format!("Pane with ID {:?} not found in tree. Cannot add {:?} to tree.", widget_id, widget.id())
@@ -229,7 +235,7 @@ impl Layering {
                     let inserting_widget_id = widget.id();
                     self.widget_tree.insert(Node::new(widget), InsertBehavior::UnderNode(&node_id))
                         .or_else(|e| Err(Box::new(UIError::InvalidAction {
-                            reason: format!("Error during insertion of {:?}, ToNestedPane({:?}, layer={}): {}",
+                            reason: format!("Error during insertion of {:?}, ToNestedContainer({:?}, layer={}): {}",
                                 inserting_widget_id,
                                 widget_id,
                                 self.highest_z_order,
@@ -537,7 +543,7 @@ mod test {
 
         assert!(size_update_result.is_ok());
         assert!(layer_info.add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).is_ok());
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedPane(pane_id)).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedContainer(pane_id)).is_ok());
 
         let w = layer_info.get_widget_mut(chatbox_id).unwrap();
         assert_eq!(w.id(), WidgetID(1));
@@ -563,7 +569,7 @@ mod test {
 
         assert!(size_update_result.is_ok());
         assert!(layer_info.add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).is_ok());
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedPane(pane_id)).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedContainer(pane_id)).is_ok());
 
         assert!(layer_info.get_widget_mut(WidgetID(2)).is_err());
     }
@@ -588,7 +594,7 @@ mod test {
 
         assert!(size_update_result.is_ok());
         assert!(layer_info.add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).is_ok());
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedPane(pane_id)).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedContainer(pane_id)).is_ok());
 
         assert_eq!(layer_info.check_for_entry(WidgetID(2)), false);
     }
@@ -613,7 +619,7 @@ mod test {
 
         assert!(size_update_result.is_ok());
         assert!(layer_info.add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).is_ok());
-        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedPane(pane_id)).is_ok());
+        assert!(layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedContainer(pane_id)).is_ok());
 
         assert_eq!(layer_info.check_for_entry(WidgetID(1)), true);
     }

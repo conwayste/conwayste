@@ -172,14 +172,14 @@ impl UILayout {
         let menupane_id = pane.id();
         let chatpane_id = chatpane.id();
         layer_mainmenu.add_widget(pane, InsertLocation::AtCurrentLayer)?;
-        layer_mainmenu.add_widget(startgame_button, InsertLocation::ToNestedPane(menupane_id))?;
-        layer_mainmenu.add_widget(inroom_button, InsertLocation::ToNestedPane(menupane_id))?;
-        layer_mainmenu.add_widget(serverlist_button, InsertLocation::ToNestedPane(menupane_id))?;
-        layer_mainmenu.add_widget(checkbox, InsertLocation::ToNestedPane(menupane_id))?;
+        layer_mainmenu.add_widget(startgame_button, InsertLocation::ToNestedContainer(menupane_id))?;
+        layer_mainmenu.add_widget(inroom_button, InsertLocation::ToNestedContainer(menupane_id))?;
+        layer_mainmenu.add_widget(serverlist_button, InsertLocation::ToNestedContainer(menupane_id))?;
+        layer_mainmenu.add_widget(checkbox, InsertLocation::ToNestedContainer(menupane_id))?;
 
         layer_ingame.add_widget(chatpane, InsertLocation::AtCurrentLayer)?;
-        layer_ingame.add_widget(chatbox, InsertLocation::ToNestedPane(chatpane_id))?;
-        layer_ingame.add_widget(textfield, InsertLocation::ToNestedPane(chatpane_id))?;
+        layer_ingame.add_widget(chatbox, InsertLocation::ToNestedContainer(chatpane_id))?;
+        layer_ingame.add_widget(textfield, InsertLocation::ToNestedContainer(chatpane_id))?;
 
         ui_layers.insert(Screen::Menu, layer_mainmenu);
         ui_layers.insert(Screen::Run, layer_ingame);

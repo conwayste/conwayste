@@ -107,7 +107,7 @@ pub mod widget_ids {
     pub const INGAME_PANE1_CHATBOXTEXTFIELD: WidgetID = WidgetID(12);
 }
 
-// Layering's tree data structure
+// Layering's tree data structure capacities. Arbitrarily chosen.
 pub const LAYERING_NODE_CAPACITY: usize = 100;
 pub const LAYERING_SWAP_CAPACITY: usize = 10;
 
