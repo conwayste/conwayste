@@ -16,6 +16,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::fmt;
+
 use ggez::{Context, GameResult};
 use ggez::graphics::{self, Color, Rect, Text, TextFragment, DrawParam, Drawable};
 use ggez::nalgebra::{Point2, Vector2};
@@ -29,12 +31,17 @@ use super::{
     WidgetID
 };
 
-#[derive(Debug)]
 pub struct Label {
     id: WidgetID,
     z_index: usize,
     pub textfrag: TextFragment,
     pub dimensions: Rect,
+}
+
+impl fmt::Debug for Label {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Label {{ id: {:?}, z-index: {}, Dimensions: {:?} }}", self.id, self.z_index, self.dimensions)
+    }
 }
 
 /// A graphical widget representation of text
