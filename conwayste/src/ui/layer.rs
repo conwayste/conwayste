@@ -345,6 +345,8 @@ impl Layering {
         }
     }
 
+    //TODO: this doesn't let container widgets control whether or how their child widgets get the
+    //events. Consider only collecting a specific Node's childrens' NodeIds.
     pub fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
         let node_ids = self.collect_node_ids(self.highest_z_order);
 
