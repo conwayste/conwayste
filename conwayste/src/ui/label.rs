@@ -16,6 +16,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::fmt;
+
 use ggez::{Context, GameResult};
 use ggez::graphics::{self, Color, Rect, Text, TextFragment, DrawParam, Drawable};
 use ggez::nalgebra::{Point2, Vector2};
@@ -30,9 +32,16 @@ use super::{
 };
 
 pub struct Label {
-    pub id: WidgetID,
+    id: WidgetID,
+    z_index: usize,
     pub textfrag: TextFragment,
     pub dimensions: Rect,
+}
+
+impl fmt::Debug for Label {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Label {{ id: {:?}, z-index: {}, Dimensions: {:?} }}", self.id, self.z_index, self.dimensions)
+    }
 }
 
 /// A graphical widget representation of text
@@ -98,6 +107,7 @@ impl Label {
 
         Label {
             id: widget_id,
+            z_index: std::usize::MAX,
             textfrag: text_fragment,
             dimensions: dimensions
         }
@@ -108,6 +118,14 @@ impl Widget for Label {
     /// Retrieves the widget's unique identifer
     fn id(&self) -> WidgetID {
         self.id
+    }
+
+    fn z_index(&self) -> usize {
+        self.z_index
+    }
+
+    fn set_z_index(&mut self, new_z_index: usize) {
+        self.z_index = new_z_index;
     }
 
     /// Get the size of the widget. Widget must be sizable.

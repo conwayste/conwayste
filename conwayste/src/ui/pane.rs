@@ -1,4 +1,4 @@
-/*  Copyright 2019 the Conwayste Developers.
+/*  Copyright 2019-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -16,6 +16,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::fmt;
+
 use ggez::graphics::{self, Color, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
@@ -31,9 +33,9 @@ use super::{
 use crate::constants::colors::*;
 
 pub struct Pane {
-    pub id: WidgetID,
+    id: WidgetID,
+    z_index: usize,
     pub dimensions: Rect,
-    pub widgets: Vec<Box<dyn Widget>>,
     pub hover: bool,
     pub floating: bool, // can the window be dragged around?
     pub previous_pos: Option<Point2<f32>>,
@@ -44,48 +46,26 @@ pub struct Pane {
     // boundaries of the pane in the dragging case
 }
 
+impl fmt::Debug for Pane {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Pane {{ id: {:?}, z-index: {}, Dimensions: {:?} }}", self.id, self.z_index, self.dimensions)
+    }
+}
+
 /// A container of one or more widgets
 impl Pane {
     /// Specify the unique widget identifer for the pane, and its dimensional bounds
     pub fn new(widget_id: WidgetID, dimensions: Rect) -> Self {
         Pane {
             id: widget_id,
+            z_index: std::usize::MAX,
             dimensions: dimensions,
-            widgets: vec![],
             hover: false,
             floating: true,
             previous_pos: None,
             border: 1.0,
             bg_color: None,
         }
-    }
-
-    /// Add a widget to the pane
-    pub fn add(&mut self, mut widget: Box<dyn Widget>) -> UIResult<()> {
-        let mut dims = widget.rect();
-        // Widget-to-be-added's coordinates are with respect to the Pane's origin
-        dims.translate(self.dimensions.point());
-
-        if dims.w > self.dimensions.w || dims.h > self.dimensions.h {
-            return Err(Box::new(UIError::InvalidDimensions{
-                reason: format!("Widget of {:?} is larger than Pane of {:?}", widget.id(), self.id)
-            }));
-        }
-
-        if dims.right() > self.dimensions.right()
-        || dims.left() < self.dimensions.left()
-        || dims.top() < self.dimensions.top()
-        || dims.bottom() > self.dimensions.bottom() {
-            println!("{:?} Dims: {:?}", widget.id(), dims);
-            println!("Pane: {:?}", self.dimensions);
-            return Err(Box::new(UIError::InvalidDimensions{
-                reason: format!("Widget of {:?} is not fully enclosed by Pane of {:?}", widget.id(), self.id)
-            }));
-        }
-
-        widget.set_rect(dims)?;
-        self.widgets.push(widget);
-        Ok(())
     }
 
     /*
@@ -102,6 +82,14 @@ impl Pane {
 impl Widget for Pane {
     fn id(&self) -> WidgetID {
         self.id
+    }
+
+    fn z_index(&self) -> usize {
+        self.z_index
+    }
+
+    fn set_z_index(&mut self, new_z_index: usize) {
+        self.z_index = new_z_index;
     }
 
     fn rect(&self) -> Rect {
@@ -145,32 +133,16 @@ impl Widget for Pane {
         Ok(())
     }
 
-    fn translate(&mut self, dest: Vector2<f32>)
-    {
+    fn translate(&mut self, dest: Vector2<f32>) {
         self.dimensions.translate(dest);
     }
 
     fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
-        for w in self.widgets.iter_mut() {
-            w.on_hover(point);
-        }
     }
 
-    fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        let hover = self.hover;
-        self.hover = false;
-
-        if hover {
-            for w in self.widgets.iter_mut() {
-                if within_widget(point, &w.rect()) {
-                    let ui_action = w.on_click(point);
-                    if ui_action.is_some() {
-                        return ui_action;
-                    }
-                }
-            }
-        }
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
+        // TODO: Need to pass children nodes
         None
     }
 
@@ -235,116 +207,8 @@ impl Widget for Pane {
             graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
 
-        for widget in self.widgets.iter_mut() {
-            widget.draw(ctx)?;
-        }
-
         Ok(())
     }
 }
 
 widget_from_id!(Pane);
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use super::super::{chatbox::Chatbox, common::FontInfo, textfield::TextField};
-    use ggez::graphics::Scale;
-
-    fn create_dummy_pane(size: f32) -> Pane {
-        Pane::new(WidgetID(0), Rect::new(0.0, 0.0, size, size))
-    }
-
-    fn create_dummy_font() -> FontInfo {
-        FontInfo {
-            font: (), //dummy font because we can't create a real Font without ggez
-            scale: Scale::uniform(1.0), // Does not matter
-            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
-        }
-    }
-
-    fn create_dummy_textfield(rect: Rect) -> TextField {
-        let font_info = create_dummy_font();
-        TextField::new(WidgetID(0), font_info, rect)
-    }
-
-    #[test]
-    fn test_add_widget_to_pane_basic() {
-        let mut pane = create_dummy_pane(1000.0);
-        let font_info = create_dummy_font();
-        let history_len = 5;
-        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
-
-        assert!(pane.add(Box::new(chatbox)).is_ok());
-
-        for (i, w) in pane.widgets.iter().enumerate() {
-            assert_eq!(i, 0);
-            assert_eq!(w.id(), WidgetID(0));
-        }
-    }
-
-    #[test]
-    fn test_add_larger_widget_to_smaller_pane() {
-        let mut pane = create_dummy_pane(10.0);
-        let font_info = create_dummy_font();
-        let history_len = 5;
-        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
-
-        assert!(pane.add(Box::new(chatbox)).is_err());
-    }
-
-    #[test]
-    fn test_add_overflowing_widget_to_pane_exceeds_right_boundary() {
-        // Exceeds right-hand boundary
-        let mut pane = create_dummy_pane(10.0);
-        let rect = Rect::new(0.0, 0.0, 20.0, 9.0);
-        let textfield = create_dummy_textfield(rect);
-
-        assert!(pane.add(Box::new(textfield)).is_err());
-    }
-
-
-    #[test]
-    fn test_add_overflowing_widget_to_pane_exceeds_left_boundary() {
-        // Exceeds right-hand boundary
-        let mut pane = create_dummy_pane(10.0);
-        let rect = Rect::new(-10.0, 0.0, 9.0, 9.0);
-        let textfield = create_dummy_textfield(rect);
-
-        assert!(pane.add(Box::new(textfield)).is_err());
-    }
-
-    #[test]
-    fn test_add_overflowing_widget_to_pane_exceeds_top_boundary() {
-        // Exceeds right-hand boundary
-        let mut pane = create_dummy_pane(10.0);
-        let rect = Rect::new(0.0, -10.0, 9.0, 9.0);
-        let textfield = create_dummy_textfield(rect);
-
-        assert!(pane.add(Box::new(textfield)).is_err());
-    }
-
-    #[test]
-    fn test_add_overflowing_widget_to_pane_exceeds_bottom_boundary() {
-        // Exceeds right-hand boundary
-        let mut pane = create_dummy_pane(10.0);
-        let rect = Rect::new(0.0, 0.0, 9.0, 20.0);
-        let textfield = create_dummy_textfield(rect);
-
-        assert!(pane.add(Box::new(textfield)).is_err());
-    }
-
-    #[test]
-    #[ignore]
-    fn test_add_widgets_with_the_same_id_to_pane() {
-        let mut pane = create_dummy_pane(10.0);
-        let font_info = create_dummy_font();
-        let history_len = 5;
-        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
-        assert!(pane.add(Box::new(chatbox)).is_ok());
-
-        // TODO: This should return an Error since the Widget ID's collide
-        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
-        assert!(pane.add(Box::new(chatbox)).is_err());
-    }
-}

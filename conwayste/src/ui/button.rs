@@ -15,6 +15,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
+use std::fmt;
 
 use chromatica::css;
 
@@ -32,7 +33,8 @@ use super::{
 };
 
 pub struct Button {
-    pub id:     WidgetID,
+    id: WidgetID,
+    z_index: usize,
     pub label: Label,
     pub button_color: Color,
     pub draw_mode: DrawMode,
@@ -40,6 +42,13 @@ pub struct Button {
     pub hover: bool,
     pub borderless: bool,
     pub action: UIAction
+}
+
+impl fmt::Debug for Button {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Button {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}}}",
+            self.id, self.z_index, self.dimensions, self.action)
+    }
 }
 
 const BUTTON_LABEL_PADDING_W: f32 = 16.0;   // in pixels
@@ -107,6 +116,7 @@ impl Button {
 
         let mut b = Button {
             id: widget_id,
+            z_index: std::usize::MAX,
             label: label,
             button_color: color_with_alpha(css::DARKCYAN, 0.8),
             draw_mode: DrawMode::fill(),
@@ -136,6 +146,14 @@ impl Button {
 impl Widget for Button {
     fn id(&self) -> WidgetID {
         self.id
+    }
+
+    fn z_index(&self) -> usize {
+        self.z_index
+    }
+
+    fn set_z_index(&mut self, new_z_index: usize) {
+        self.z_index = new_z_index;
     }
 
     fn on_hover(&mut self, point: &Point2<f32>) {

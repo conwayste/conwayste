@@ -17,6 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::collections::VecDeque;
+use std::fmt;
 
 use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Rect, Text};
 use ggez::nalgebra::{Point2, Vector2};
@@ -34,6 +35,7 @@ use crate::constants::{self, colors::*};
 
 pub struct Chatbox {
     id: WidgetID,
+    z_index: usize,
     history_lines: usize,
     color: Color,
     messages: VecDeque<String>,
@@ -42,6 +44,13 @@ pub struct Chatbox {
     hover: bool,
     action: UIAction,
     font_info: FontInfo,
+}
+
+impl fmt::Debug for Chatbox {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Chatbox {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}, history_lines: {} }}",
+            self.id, self.z_index, self.dimensions, self.action, self.history_lines)
+    }
 }
 
 impl Chatbox {
@@ -69,6 +78,7 @@ impl Chatbox {
         let rect = *constants::DEFAULT_CHATBOX_RECT;
         Chatbox {
             id: widget_id,
+            z_index: std::usize::MAX,
             history_lines,
             color: *CHATBOX_BORDER_COLOR,
             messages: VecDeque::with_capacity(history_lines),
@@ -216,6 +226,14 @@ impl Chatbox {
 impl Widget for Chatbox {
     fn id(&self) -> WidgetID {
         self.id
+    }
+
+    fn z_index(&self) -> usize {
+        self.z_index
+    }
+
+    fn set_z_index(&mut self, new_z_index: usize) {
+        self.z_index = new_z_index;
     }
 
     fn rect(&self) -> Rect {
