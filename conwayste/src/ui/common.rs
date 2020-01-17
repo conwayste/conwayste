@@ -25,28 +25,65 @@ use crate::constants::DEFAULT_UI_FONT_SCALE;
 #[macro_export]
 macro_rules! widget_from_id {
     ($type:ident) => {
-        use super::layer::Layer;
+        use super::layer::Layering;
 
         impl $type {
-            pub fn widget_from_id(layer: &mut Layer, id: WidgetID) -> Option<&mut $type>
+            pub fn widget_from_id(layer: &mut Layering, id: WidgetID) -> UIResult<&mut $type>
             {
-                let layer_id = layer.id();
                 let widget_result = layer.get_widget_mut(id);
                 match widget_result {
                     Ok(widget) => {
-                        return widget.downcast_mut::<$type>();
+                        match widget.downcast_mut::<$type>() {
+                            Some(downcasted_widget) => {
+                                return Ok(downcasted_widget);
+                            }
+                            None => {
+                                return Err(Box::new(UIError::WidgetNotFound {
+                                    reason: format!("{:?} could not be downcasted to type $type", id)
+                                }));
+                            }
+                        }
                     }
                     Err(e) => {
-                        info!("Could not find $type widget of {:?} in layer of {:?}! {:?}",
-                        id,
-                        layer_id,
-                        e);
-                        return None;
+                        return Err(e);
                     }
                 }
             }
         }
     }
+}
+
+/// A macro to downcast a `dyn Widget` to a concrete type; added for readability.
+///
+/// # Arguments
+/// Two required arguments are the `dyn Widget` object and the destination type.
+/// An variant of this macro exists to return a mutable reference to a widget. See Usage section.
+///
+/// # Usage
+/// ```Rust
+/// downcast_widget!(widget, type)
+/// downcast_widget_mut!(widget, type)
+/// ```
+///
+/// # Examples
+/// ```rust
+/// let widget = layer.get_widget_mut(WidgetID(0));
+/// let textfield = downcast_widget_mut!(widget, TextField);
+/// textfield.enter_focus()
+/// ```
+///
+#[macro_export]
+macro_rules! downcast_widget {
+    ($widget:ident, $type:ident) => {
+        $widget.downcast_ref::<$type>()
+    };
+}
+
+#[macro_export]
+macro_rules! downcast_widget_mut {
+    ($widget:ident, $type:ident) => {
+        $widget.downcast_mut::<$type>()
+    };
 }
 
 /// Helper function to draw text onto the screen.
@@ -79,7 +116,7 @@ pub fn draw_text(
 /// Represents a font at a particular scale. Besides the ID of the font, it also includes the scale
 /// at which to draw it, and the dimensions of one character at that scale (this is only useful if
 /// the font is fixed width!).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct FontInfo {
     /// ID of the font.
     #[cfg(not(test))]

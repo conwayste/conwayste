@@ -15,11 +15,33 @@
  *  You should have received a copy of the GNU General Public License
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
+use crate::ggez::GameError;
+
 custom_error! {pub UIError
     InvalidDimensions {reason: String} = "UIError::InvalidDimensions({reason})",
     WidgetNotFound {reason: String} = "UIError::WidgetNotFound({reason})",
     InvalidAction {reason: String} = "UIError::InvalidAction({reason})",
-    ActionRestricted{reason: String} = "UIError::ActionRestricted({reason})"
+    ActionRestricted{reason: String} = "UIError::ActionRestricted({reason})",
+    WidgetIDCollision{reason: String} = "UIError::WidgetIDCollision({reason})",
+    InvalidArgument{reason: String} = "UIError::InvalidArgument({reason})",
 }
 
 pub type UIResult<T> = Result<T, Box<UIError>>;
+
+impl From<GameError> for UIError {
+    fn from(e: GameError) -> UIError {
+        GameError::from(e).into()
+    }
+}
+
+impl From<GameError> for Box<UIError> {
+    fn from(e: GameError) -> Box<UIError> {
+        GameError::from(e).into()
+    }
+}
+
+impl From<Box<UIError>> for GameError {
+    fn from(e: Box<UIError>) -> GameError {
+        e.into()
+    }
+}

@@ -17,6 +17,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::fmt;
+
 use ggez::graphics::{self, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
@@ -33,12 +35,20 @@ use super::{
 use crate::constants::colors::*;
 
 pub struct Checkbox {
-    pub id:     WidgetID,
+    id: WidgetID,
+    z_index: usize,
     pub label: Label,
     pub enabled: bool,
     pub dimensions: Rect,
     pub hover: bool,
     pub action: UIAction
+}
+
+impl fmt::Debug for Checkbox {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Checkbox {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}, Checked: {} }}",
+            self.id, self.z_index, self.dimensions, self.action, self.enabled)
+    }
 }
 
 const LABEL_OFFSET_X: f32 = 30.0;
@@ -90,6 +100,7 @@ impl Checkbox {
 
         Checkbox {
             id: widget_id,
+            z_index: std::usize::MAX,
             label: Label::new(ctx, widget_id, font_info, text, *CHECKBOX_TEXT_COLOR, label_origin),
             enabled: enabled,
             dimensions: dimensions,
@@ -109,6 +120,14 @@ impl Checkbox {
 impl Widget for Checkbox {
     fn id(&self) -> WidgetID {
         self.id
+    }
+
+    fn z_index(&self) -> usize {
+        self.z_index
+    }
+
+    fn set_z_index(&mut self, new_z_index: usize) {
+        self.z_index = new_z_index;
     }
 
     fn rect(&self) -> Rect {
@@ -165,6 +184,7 @@ impl Widget for Checkbox {
 
     fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
     {
+        // TODO: Check child label for an on_click event once it's refactored out
         return Some(( self.id, UIAction::Toggle(self.toggle_checkbox()) ));
     }
 

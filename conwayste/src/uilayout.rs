@@ -34,10 +34,12 @@ use crate::ui::{
     Button,
     Checkbox,
     Chatbox,
-    Layer,
+    InsertLocation,
+    Layering,
     Pane,
     TextField,
     UIAction,
+    UIResult,
     common,
     context,
 };
@@ -49,12 +51,12 @@ use context::{
 };
 
 pub struct UILayout {
-    pub layers: HashMap<Screen, Vec<Layer>>,
+    pub layers: HashMap<Screen, Layering>,
 }
 
 /// `UILayout` is responsible for the definition and storage of UI elements.
 impl UILayout {
-    pub fn new(ctx: &mut Context, config: &Config, font: Font) -> Self {
+    pub fn new(ctx: &mut Context, config: &Config, font: Font) -> UIResult<Self> {
         let mut ui_layers = HashMap::new();
 
         let chat_pane_rect = *constants::DEFAULT_CHATBOX_RECT;
@@ -102,33 +104,12 @@ impl UILayout {
         );
         textfield.bg_color = Some(*constants::colors::CHAT_PANE_FILL_COLOR);
 
-        match chatpane.add(chatbox) {
-            Ok(()) => {},
-            Err(e) => {
-                error!("Could not add widget {:?} to pane {:?}! {:?}",
-                    INGAME_PANE1_CHATBOX,
-                    INGAME_PANE1,
-                    e
-                );
-            }
-        }
-        match chatpane.add(textfield) {
-            Ok(()) => {},
-            Err(e) => {
-                error!("Could not add widget {:?} to pane {:?}! {:?}",
-                    INGAME_PANE1_CHATBOXTEXTFIELD,
-                    INGAME_PANE1,
-                    e
-                );
-            }
-        }
-
-        let mut layer_mainmenu = Layer::new(MAINMENU_LAYER1);
-        let mut layer_ingame = Layer::new(INGAME_LAYER1);
+        let mut layer_mainmenu = Layering::new();
+        let mut layer_ingame = Layering::new();
 
         // Create a new pane, and add two test buttons to it.
         let mut pane = Box::new(Pane::new(MAINMENU_PANE1, Rect::new_i32(20, 20, 410, 250)));
-        let mut pane_button = Box::new(
+        let mut serverlist_button = Box::new(
             Button::new(
                 ctx,
                 MAINMENU_PANE1_BUTTONYES,
@@ -138,7 +119,7 @@ impl UILayout {
                 "ServerList".to_owned()
             )
         );
-        match pane_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0)) {
+        match serverlist_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0)) {
             Ok(()) => { },
             Err(e) => {
                 error!("Could not set size for button during initialization! {:?}, {:?}",
@@ -147,19 +128,7 @@ impl UILayout {
                 );
             }
         }
-
-        match pane.add(pane_button) {
-            Ok(()) => {},
-            Err(e) => {
-                error!("Could not add widget {:?} to pane {:?}! {:?}",
-                    MAINMENU_PANE1_BUTTONYES,
-                    MAINMENU_PANE1,
-                    e
-                );
-            }
-        }
-
-        let mut pane_button = Box::new(
+        let mut inroom_button = Box::new(
             Button::new(
                 ctx,
                 MAINMENU_PANE1_BUTTONNO,
@@ -169,7 +138,7 @@ impl UILayout {
                 "InRoom".to_owned()
             )
         );
-        match pane_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0)) {
+        match inroom_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0)) {
             Ok(()) => { },
             Err(e) => {
                 error!("Could not set size for button during initialization! {:?} {:?}",
@@ -177,18 +146,8 @@ impl UILayout {
                 e);
             }
         }
-        match pane.add(pane_button) {
-            Ok(()) => {},
-            Err(e) => {
-                error!("Could not add widget {:?} to pane {:?}! {:?}",
-                    MAINMENU_PANE1_BUTTONNO,
-                    MAINMENU_PANE1,
-                    e
-                );
-            }
-        }
 
-        let mut pane_button = Box::new(
+        let mut startgame_button = Box::new(
             Button::new(
                 ctx,
                 MAINMENU_TESTBUTTON,
@@ -198,22 +157,12 @@ impl UILayout {
                 "StartGame".to_owned()
             )
         );
-        match pane_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0)) {
+        match startgame_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0)) {
             Ok(()) => { },
             Err(e) => {
                 error!("Could not set size for button during initialization! {:?} {:?}",
                 MAINMENU_TESTBUTTON,
                 e);
-            }
-        }
-        match pane.add(pane_button) {
-            Ok(()) => {},
-            Err(e) => {
-                error!("Could not add widget {:?} to pane {:?}! {:?}",
-                    MAINMENU_TESTBUTTON,
-                    MAINMENU_PANE1,
-                    e
-                );
             }
         }
 
@@ -227,16 +176,7 @@ impl UILayout {
                 Rect::new(10.0, 210.0, 20.0, 20.0),
             )
         );
-        match pane.add(checkbox) {
-            Ok(()) => {},
-            Err(e) => {
-                error!("Could not add widget {:?} to pane {:?}! {:?}",
-                    MAINMENU_TESTCHECKBOX,
-                    MAINMENU_PANE1,
-                    e
-                );
-            }
-        }
+
         // TODO: delete this once handlers are tested
         let mut handler_test_button = Box::new(
             Button::new(
@@ -278,25 +218,25 @@ impl UILayout {
                 e);
             }
         }
-        match pane.add(handler_test_button) {
-            Ok(()) => {},
-            Err(e) => {
-                error!("Could not add widget {:?} to pane {:?}! {:?}",
-                    MAINMENU_HDLRTESTBUTTON,
-                    MAINMENU_PANE1,
-                    e
-                );
-            }
-        }
 
-        layer_mainmenu.add(pane);
-        layer_ingame.add(chatpane);
+        let menupane_id = pane.id();
+        let chatpane_id = chatpane.id();
+        layer_mainmenu.add_widget(pane, InsertLocation::AtCurrentLayer)?;
+        layer_mainmenu.add_widget(startgame_button, InsertLocation::ToNestedContainer(menupane_id))?;
+        layer_mainmenu.add_widget(inroom_button, InsertLocation::ToNestedContainer(menupane_id))?;
+        layer_mainmenu.add_widget(serverlist_button, InsertLocation::ToNestedContainer(menupane_id))?;
+        layer_mainmenu.add_widget(handler_test_button, InsertLocation::ToNestedContainer(menupane_id))?;
+        layer_mainmenu.add_widget(checkbox, InsertLocation::ToNestedContainer(menupane_id))?;
 
-        ui_layers.insert(Screen::Menu, vec![layer_mainmenu]);
-        ui_layers.insert(Screen::Run, vec![layer_ingame]);
+        layer_ingame.add_widget(chatpane, InsertLocation::AtCurrentLayer)?;
+        layer_ingame.add_widget(chatbox, InsertLocation::ToNestedContainer(chatpane_id))?;
+        layer_ingame.add_widget(textfield, InsertLocation::ToNestedContainer(chatpane_id))?;
 
-        UILayout {
+        ui_layers.insert(Screen::Menu, layer_mainmenu);
+        ui_layers.insert(Screen::Run, layer_ingame);
+
+        Ok(UILayout {
             layers: ui_layers,
-        }
+        })
     }
 }

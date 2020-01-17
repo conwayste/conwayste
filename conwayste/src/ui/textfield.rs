@@ -16,6 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::fmt;
 use std::time::{Duration, Instant};
 
 use ggez::event::KeyCode;
@@ -43,6 +44,7 @@ pub enum TextInputState {
 
 pub struct TextField {
     id: WidgetID,
+    z_index: usize,
     action: UIAction,
     pub input_state: Option<TextInputState>,
     text: String,
@@ -55,6 +57,14 @@ pub struct TextField {
     font_info: FontInfo,
     pub bg_color: Option<Color>,
 }
+
+impl fmt::Debug for TextField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "TextField {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}, Input_State: {:?} }}",
+            self.id, self.z_index, self.dimensions, self.action, self.input_state)
+    }
+}
+
 
 /// A widget that can accept and display user-inputted text from the Keyboard.
 impl TextField {
@@ -82,13 +92,14 @@ impl TextField {
     ///
     pub fn new(widget_id: WidgetID, font_info: FontInfo, dimensions: Rect) -> TextField {
         TextField {
+            id: widget_id,
+            z_index: std::usize::MAX,
             input_state: None,
             text: String::new(),
             cursor_index: 0,
             cursor_blink_timestamp: None,
             draw_cursor: false,
             dimensions: dimensions,
-            id: widget_id,
             action: UIAction::EnterText,
             hover: false,
             visible_start_index: 0,
@@ -139,6 +150,7 @@ impl TextField {
                 KeyCode::Right => self.move_cursor_right(),
                 KeyCode::Home => self.cursor_home(),
                 KeyCode::End => self.cursor_end(),
+                KeyCode::Escape => self.exit_focus(),
                 _ => ()
             }
         }
@@ -242,22 +254,21 @@ impl TextField {
             self.visible_start_index = self.text.len() - self.max_visible_chars();
         }
     }
-
-    /// Textfield gains focus and begins accepting user input
-    pub fn enter_focus(&mut self) {
-        self.input_state = Some(TextInputState::EnteringText);
-        self.draw_cursor = true;
-        self.cursor_blink_timestamp = Some(Instant::now());
-    }
-
-    /// Textfield loses focus and does not accept user input
-    pub fn exit_focus(&mut self) {
-        self.input_state = None;
-        self.draw_cursor = false;
-    }
 }
 
 impl Widget for TextField {
+    fn id(&self) -> WidgetID {
+        self.id
+    }
+
+    fn z_index(&self) -> usize {
+        self.z_index
+    }
+
+    fn set_z_index(&mut self, new_z_index: usize) {
+        self.z_index = new_z_index;
+    }
+
     fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
     }
@@ -408,8 +419,17 @@ impl Widget for TextField {
         self.dimensions.translate(dest);
     }
 
-    fn id(&self) -> WidgetID {
-        self.id
+    /// Textfield gains focus and begins accepting user input
+    fn enter_focus(&mut self) {
+        self.input_state = Some(TextInputState::EnteringText);
+        self.draw_cursor = true;
+        self.cursor_blink_timestamp = Some(Instant::now());
+    }
+
+    /// Textfield loses focus and does not accept user input
+    fn exit_focus(&mut self) {
+        self.input_state = None;
+        self.draw_cursor = false;
     }
 }
 

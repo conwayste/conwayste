@@ -35,9 +35,17 @@ use super::{
 ///
 /// When defining your own Widget, be sure to call the widget_from_id!(T) macro where T is your
 /// custom widget type.
-pub trait Widget: Downcast {
+pub trait Widget: Downcast + std::fmt::Debug {
     /// Retrieves the widget's unique identifer
     fn id(&self) -> WidgetID;
+
+    /// Retreives the widget's draw stack order
+    fn z_index(&self) -> usize;
+
+    /// Sets the widget's draw stack order
+    fn set_z_index(&mut self, _new_z_index: usize) {
+        ()
+    }
 
     /// Action to be taken when the widget is given the provided point
     fn on_hover(&mut self, _point: &Point2<f32>) {
@@ -69,7 +77,17 @@ pub trait Widget: Downcast {
         Ok(())
     }
 
-    /// Get the size of the widget.
+    /// Widget gains focus and begins accepting user input
+    fn enter_focus(&mut self) {
+        ()
+    }
+
+    /// Widget loses focus and does not accept user input
+    fn exit_focus(&mut self) {
+        ()
+    }
+
+    /// Get the rectangle describing the widget.
     fn rect(&self) -> Rect;
 
     /// Get the origin point of the widget in screen coordinates.

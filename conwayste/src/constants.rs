@@ -109,6 +109,10 @@ pub mod widget_ids {
     pub const MAINMENU_HDLRTESTBUTTONLABEL: WidgetID = WidgetID(14);
 }
 
+// Layering's tree data structure capacities. Arbitrarily chosen.
+pub const LAYERING_NODE_CAPACITY: usize = 100;
+pub const LAYERING_SWAP_CAPACITY: usize = 10;
+
 //////////////////////////////////////////////////////////////////////
 
 // This enum is needed because there is no PartialEq on the graphics::DrawMode enum in ggez.

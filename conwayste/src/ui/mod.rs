@@ -47,7 +47,7 @@ pub use common::{
     point_offset
 };
 pub use label::Label;
-pub use layer::Layer;
+pub use layer::{Layering, InsertLocation};
 pub use pane::Pane;
 pub use textfield::{TextField, TextInputState};
 pub use ui_errors::{UIResult, UIError};
@@ -59,6 +59,8 @@ pub use context::{
     EventType,
 };
 
+type BoxedWidget = Box<dyn Widget>;
+
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum UIAction {
     ScreenTransition(Screen),
@@ -67,5 +69,5 @@ pub enum UIAction {
     None,
 }
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(PartialOrd, PartialEq, Eq, Debug, Copy, Clone, Hash)]
 pub struct WidgetID(pub usize);
