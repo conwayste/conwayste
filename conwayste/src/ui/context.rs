@@ -95,7 +95,7 @@ pub enum EventType {
 #[derive(Debug, Clone)]
 pub struct Event {
     pub what: EventType,
-    pub point: Point2<f32>, // Must not be None if this is a mouse event type
+    pub point: Option<Point2<f32>>, // Must not be None if this is a mouse event type
     pub prev_point: Option<Point2<f32>>, // MouseMove / Drag
     pub button: Option<MouseButton>, // Click
 }
@@ -287,8 +287,12 @@ macro_rules! forward_mouse_events {
                 let _self = obj.downcast_mut::<$widget_type>().unwrap();
                 use crate::ui::context::Handled::*;
 
+                if evt.point.is_none() {
+                    return Err(format!("Event {:?} is a mouse event but point is None", evt).into());
+                }
+
                 for w in _self.$vec_of_child_widgets.iter_mut() {
-                    if within_widget(&evt.point, &w.rect()) {
+                    if within_widget(&evt.point.unwrap(), &w.rect()) {
                         if let Some(emitter) = w.as_emit_event() {
                             emitter.emit(evt, uictx)?;
                             return Ok(Handled);

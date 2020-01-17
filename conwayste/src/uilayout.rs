@@ -263,7 +263,7 @@ impl UILayout {
             info!("number of ggez ticks: {}", num_ticks);
 
             // ok now let's print out the event
-            info!("EVENT: what={:?} @ {}", evt.what, evt.point);
+            info!("EVENT: what={:?} @ {}", evt.what, evt.point.unwrap());
 
             Ok(Handled)
         });

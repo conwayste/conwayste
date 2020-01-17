@@ -494,7 +494,7 @@ impl EventHandler for MainState {
                         // NEW! Create event for EmitEvent
                         let click_event = Event {
                             what: EventType::Click,
-                            point: mouse_point,
+                            point: Some(mouse_point),
                             prev_point: None,
                             button: Some(self.inputs.mouse_info.mousebutton),
                         };
