@@ -58,6 +58,7 @@ impl Widget for LayerRootNode {
     fn translate(&mut self, _dest: Vector2<f32>) {}
 }
 
+#[allow(unused)]
 pub enum InsertLocation {
     AtCurrentLayer, // Insertion will be made at whatever the top-most layer order is
     AtNextLayer,    // Insertion will increment the layer order, and insert
