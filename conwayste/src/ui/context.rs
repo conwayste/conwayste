@@ -24,7 +24,9 @@ use enum_iterator::IntoEnumIterator;
 use ggez;
 use ggez::event::MouseButton;
 use ggez::nalgebra::Point2;
+use id_tree::Tree;
 
+use super::BoxedWidget;
 use crate::config;
 
 pub enum UIContext<'a> {
@@ -49,17 +51,27 @@ impl<'a> UIContext<'a> {
     }
 
     #[allow(dead_code)]
-    pub fn new_draw(ggez_context: &'a mut ggez::Context, config: &'a config::Config) -> Self {
+    pub fn new_draw(
+        ggez_context: &'a mut ggez::Context,
+        config: &'a config::Config,
+        tree: &'a mut Tree<BoxedWidget>,
+    ) -> Self {
         UIContext::Draw(DrawContext {
             ggez_context,
             config,
+            widget_tree: tree,
         })
     }
 
-    pub fn new_update(ggez_context: &'a mut ggez::Context, config: &'a mut config::Config) -> Self {
+    pub fn new_update(
+        ggez_context: &'a mut ggez::Context,
+        config: &'a mut config::Config,
+        tree: &'a mut Tree<BoxedWidget>,
+    ) -> Self {
         UIContext::Update(UpdateContext {
             ggez_context,
             config,
+            widget_tree: tree,
         })
     }
 }
@@ -67,11 +79,13 @@ impl<'a> UIContext<'a> {
 pub struct DrawContext<'a> {
     pub ggez_context: &'a mut ggez::Context,
     pub config: &'a config::Config,
+    pub widget_tree: &'a mut Tree<BoxedWidget>,
 }
 
 pub struct UpdateContext<'a> {
     pub ggez_context: &'a mut ggez::Context,
     pub config: &'a mut config::Config,
+    pub widget_tree: &'a mut Tree<BoxedWidget>,
 }
 
 /// The type of an event.
@@ -277,7 +291,7 @@ macro_rules! impl_emit_event {
 ///
 /// This will panic if there is any error returned by the `.on` method of the container widget.
 /// Verify that this is still true before relying on it, but at present, this error can only happen
-/// if this macro is expanded (and thus, `.on` is called) from within a handler for this container
+/// if this macro is invoked (and thus, `.on` is called) from within a handler for this container
 /// widget.
 //TODO: add a forward_keyboard_events! macro that uses focus rather than `within_widget`
 macro_rules! forward_mouse_events {
@@ -288,7 +302,9 @@ macro_rules! forward_mouse_events {
                 use crate::ui::context::Handled::*;
 
                 if evt.point.is_none() {
-                    return Err(format!("Event {:?} is a mouse event but point is None", evt).into());
+                    return Err(
+                        format!("Event {:?} is a mouse event but point is None", evt).into(),
+                    );
                 }
 
                 for w in _self.$vec_of_child_widgets.iter_mut() {

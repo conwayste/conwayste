@@ -72,7 +72,7 @@ impl Pane {
             bg_color: None,
             handlers: Some(context::HandlerMap::new()),
         };
-        forward_mouse_events!(Pane, pane, widgets);
+        //XXX forward_mouse_events!(Pane, pane, widgets);
         pane
     }
 

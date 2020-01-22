@@ -16,26 +16,27 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::error::Error;
+
 use ggez::graphics::{self, DrawMode, DrawParam, Rect};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::Context;
 
-use id_tree::{InsertBehavior, RemoveBehavior, *};
+use id_tree::{InsertBehavior, RemoveBehavior, Tree, NodeId, Node, TreeBuilder};
 
 use super::{
-    common::within_widget,
     widget::Widget,
     BoxedWidget,
     Pane,
-    TextField,
     UIAction,
     UIError, UIResult,
     WidgetID,
     context,
 };
 
-use context::EmitEvent;
 use crate::constants::{colors::*, LAYERING_NODE_CAPACITY, LAYERING_SWAP_CAPACITY};
+use crate::config;
+use context::EmitEvent;
 
 /// Dummy Widget to serve as a root node in the tree. Serves no other purpose.
 #[derive(Debug)]
@@ -83,8 +84,6 @@ pub struct Layering {
     highest_z_order: usize, // Number of layers allocated in the system + 1
     focused_node_id: Option<NodeId>, // Currently active widget, one per z-order. If None, then
                             // the layer is not focused on any particular widget.
-    pub handlers: Option<context::HandlerMap>, // required for impl_emit_event!
-    // option solely so that we can not mut borrow self twice at once
 }
 
 /// A `Layering` is a container of one or more widgets or panes (hereby referred to as widgets),
@@ -123,10 +122,9 @@ impl Layering {
             highest_z_order: 0,
             with_transparency: false,
             focused_node_id: None,
-            handlers: Some(context::HandlerMap::new()),
         };
 
-        forward_mouse_events!(Layering, layering, widget_tree); //XXX macro needs fixin
+        //XXX forward_mouse_events!(Layering, layering, widget_tree); //XXX macro needs fixin
         layering
     }
 
@@ -144,7 +142,9 @@ impl Layering {
             .is_some()
     }
 
-    /// Collect all nodes in the tree belonging to the corresponding z_order
+    /// Collect all nodes in the tree belonging to the corresponding z_order. The node IDs are
+    /// collected in level order, meaning the root appears before its children, and its children
+    /// before their children, and so on.
     fn collect_node_ids(&self, z_order: usize) -> Vec<NodeId> {
         let root_id = self.widget_tree.root_node_id().unwrap();
         self.widget_tree
@@ -160,7 +160,8 @@ impl Layering {
     /// Retreives a mutable reference to a widget. This will search the widget tree for the
     /// provided widget-id.
     ///
-    /// # Error
+    /// # Errors
+    ///
     /// A WidgetNotFound error will be returned if the widget-id is not found.
     /// does not exist in the internal list of widgets.
     pub fn get_widget_mut(&mut self, widget_id: WidgetID) -> UIResult<&mut BoxedWidget> {
@@ -191,7 +192,8 @@ impl Layering {
     /// to a widget-container (like a Pane). The widget's z-index is overridden by the destination
     /// layer's z-order.
     ///
-    /// # Error
+    /// # Errors
+    ///
     /// A `WidgetIDCollision` error can be returned if the widget-id exists in this layering.
     /// An `InvalidAction` error can be returned if the widget addition operation fails.
     /// A `WidgetNotFound` error can be returned if the nested container's widget-id does not exist.
@@ -400,12 +402,13 @@ impl Layering {
     //TODO: this doesn't let container widgets control whether or how their child widgets get the
     //events. Consider only collecting a specific Node's childrens' NodeIds.
     pub fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        let node_ids = self.collect_node_ids(self.highest_z_order);
+        //XXX let node_ids = self.widget_tree.get(&node_id).unwrap().children();
 
         // Due to the way `collect_node_ids()` traverses the entire list, all children nodes will be
         // collected for a parent node as they should be at the same z-order.
         // TODO: After UIContext lands, reevaluate how a child's on_click Handled will propogate up.
 
+        /*XXX
         for node_id in node_ids {
             let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
             if within_widget(point, &widget.rect()) {
@@ -415,6 +418,7 @@ impl Layering {
                 }
             }
         }
+        XXX*/
         None
     }
 
@@ -459,13 +463,18 @@ impl Layering {
         Ok(())
     }
 
-    /// convert to EmitEvent
-    fn as_emit_event(&mut self) -> Option<&mut dyn context::EmitEvent> {
-        Some(self)
+    /// Emit an event on this Layering. Note that this is not part of impl EmitEvent for Layering!
+    /// Layering does not implement this trait! It is this way to avoid mutably borrowing things
+    /// more than once.
+    pub fn emit(&mut self, event: &context::Event, ggez_context: &mut ggez::Context, cfg: &mut config::Config) -> Result<(), Box<dyn Error>> {
+
+        let root_id = self.widget_tree.root_node_id().unwrap();  //XXX just send this on to the first non-fake node; it's wrong but whatever
+        let wrong_container = self.widget_tree.children(&root_id).unwrap().nth(0).unwrap().data_mut();
+        let mut uictx = context::UIContext::new_update(ggez_context, cfg, &mut self.widget_tree);
+        wrong_container.as_emit_event().unwrap().emit(event, &mut uictx);
+        Ok(()) //XXX
     }
 }
-
-impl_emit_event!(Layer, self.handlers);
 
 #[cfg(test)]
 mod test {

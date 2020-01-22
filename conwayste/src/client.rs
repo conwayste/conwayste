@@ -478,11 +478,11 @@ impl EventHandler for MainState {
 
                 let mouse_action = self.inputs.mouse_info.action;
 
-                let left_mouse_click = mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
+                let left_mouse_click = mouse_action == Some(MouseAction::Click) &&
+                    self.inputs.mouse_info.mousebutton == MouseButton::Left;
 
                 let screen = self.get_current_screen();
                 if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, screen) {
-                    let mut uictx = UIContext::new_update(ctx, &mut self.config); // pass this in to the widgets
                     layer.on_hover(&mouse_point);
 
                     if let Some(action) = mouse_action {
@@ -499,7 +499,7 @@ impl EventHandler for MainState {
                             prev_point: None,
                             button: Some(self.inputs.mouse_info.mousebutton),
                         };
-                        layer.emit(&click_event, &mut uictx).unwrap_or_else(|e| {
+                        layer.emit(&click_event, ctx, &mut self.config).unwrap_or_else(|e| {
                             error!("Error from layer.emit on left click: {:?}", e);
                         });
                         if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
