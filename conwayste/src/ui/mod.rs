@@ -32,6 +32,7 @@ mod layer;
 mod pane;
 mod widget;
 mod textfield;
+mod treeview;
 pub(crate) mod ui_errors;
 
 use crate::Screen;
