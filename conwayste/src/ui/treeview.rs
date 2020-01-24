@@ -16,20 +16,34 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-// KNOWN ISSUES: this code is too magical and will give the reader a headache. At least 3 espresso
-// shots are recommended.
-
+///! This module implements a `TreeView` over an `id_tree::Tree`. It uses `unsafe` to do what the
+///! Rust aliasing rules would usually not allow, but in a (hopefully) sound way.
+///!
+///! It supports operations that modify the `Tree` structure, but only when there are no other
+///! references to parts of the `Tree`.
+///!
+///! # Known issues
+///!
+///! * The assumption here is that a `.get_mut` on an `id_tree::Tree` does not modify anything in
+///!   the `Tree` (for example, it doesn't alter any bookkeeping counters or whatever) that is read
+///!   by common immutable operations on the `Tree`. If this assumption holds, it is sound to
+///!   have one or more `&Node` references while there is one or more `&mut Node` (as long as the
+///!   Nodes are different, which the `TreeView` checks). Undefined behavior will result if this
+///!   assumption does not hold!
+///!
+///! * This code is too magical and will give the reader a headache. At least 3 espresso
+///!   shots are recommended.
 use std::cell::UnsafeCell;
 use std::error::Error;
 use std::rc::Rc;
 
-use id_tree::{self, Node, NodeId, Tree, NodeIdError};
+use id_tree::{self, Node, NodeId, NodeIdError, Tree};
 
 #[derive(PartialEq, Debug)]
 enum Restriction {
     None,                     // TreeView has full access to the Tree
-    SubTree(NodeId),          // TreeView has access to this Node and all Nodes under it
-    ExclusiveSubTree(NodeId), // TreeView has access to all Nodes under this Node, but not this Node
+    SubTree(NodeId),          // TreeView has access to all Nodes under this Node, but not this Node
+    InclusiveSubTree(NodeId), // TreeView has access to this Node and all Nodes under it // TODO: need method for this?
 }
 
 impl Restriction {
@@ -38,14 +52,15 @@ impl Restriction {
     pub fn root(&self) -> Option<&NodeId> {
         match self {
             Restriction::None => None,
-            Restriction::ExclusiveSubTree(ref root_node_id) => Some(root_node_id),
             Restriction::SubTree(ref root_node_id) => Some(root_node_id),
+            Restriction::InclusiveSubTree(ref root_node_id) => Some(root_node_id),
         }
     }
 }
 
-/// Allows getting separate mutable references to a Node and to all of the Nodes under that Node,
-/// without any Node having more than one mutable reference to it at once.
+/// A view onto a Tree, either in whole or a subtree thereof. A TreeView can be split up into a
+/// mutable Node reference and a TreeView on the Nodes under that Node; in other words, it supports
+/// multiple non-overlapping mutable references to Nodes in a Tree.
 pub struct TreeView<'a, T> {
     tree: Rc<UnsafeCell<&'a mut Tree<T>>>,
     restriction: Restriction,
@@ -70,10 +85,10 @@ impl<'a, T> TreeView<'a, T> {
         match self.restriction {
             Restriction::None => {
                 tree.get(node_id)?; // return error if the node_id is invalid
-                // unrestricted, so any valid node is accessible
+                                    // unrestricted, so any valid node is accessible
                 return Ok(true);
             }
-            Restriction::ExclusiveSubTree(ref root_node_id) => {
+            Restriction::SubTree(ref root_node_id) => {
                 if root_node_id == node_id {
                     // can't access the root node of its subtree if this is an _exclusive_ subtree
                     // restriction.
@@ -83,7 +98,7 @@ impl<'a, T> TreeView<'a, T> {
                 // accessible.
                 Ok(tree.ancestor_ids(node_id)?.any(|n| n == root_node_id))
             }
-            Restriction::SubTree(ref root_node_id) => {
+            Restriction::InclusiveSubTree(ref root_node_id) => {
                 if root_node_id == node_id {
                     // it's totally fine to access the root node of a non-exclusive subtree.
                     return Ok(true);
@@ -97,6 +112,8 @@ impl<'a, T> TreeView<'a, T> {
 
     /// Takes a mutable reference to a TreeView and returns a new TreeView that is restricted to
     /// all Nodes below the specified Node. It takes a mutable reference to prevent Node aliasing.
+    /// It is analogous to the .split_at_mut method of a slice. Like that method, it
+    /// (unfortunately) has to use `unsafe`.
     ///
     /// # Errors
     ///
@@ -114,7 +131,7 @@ impl<'a, T> TreeView<'a, T> {
         let node_mut_ref = tree_mut_ref.get_mut(node_id)?;
         let subtree = TreeView {
             tree: self.tree.clone(),
-            restriction: Restriction::ExclusiveSubTree(node_id.clone()),
+            restriction: Restriction::SubTree(node_id.clone()),
         };
         Ok((node_mut_ref, subtree))
     }
@@ -127,20 +144,46 @@ impl<'a, T> TreeView<'a, T> {
             Some(tree.children(root_id).unwrap())
         } else {
             tree.root_node_id()
-                .map(|root_id| {
-                    tree.children(root_id).unwrap()
-                })
+                .map(|root_id| tree.children(root_id).unwrap())
         }
     }
 
-    //XXX children_ids
+    /// If this tree has any Nodes at all, this will return (as Some) an iterator over the NodeIds
+    /// of the root node's children.
+    pub fn children_ids(&self) -> Option<id_tree::ChildrenIds> {
+        let tree = unsafe { &*self.tree.get() };
+        if let Some(root_id) = self.restriction.root() {
+            Some(tree.children_ids(root_id).unwrap())
+        } else {
+            tree.root_node_id()
+                .map(|root_id| tree.children_ids(root_id).unwrap())
+        }
+    }
 
-    /////// following only ok if .can_access
-    //XXX get
-    //XXX get_mut
+    /// Get an immutable reference to a Node. The specified Node must be accessible.
+    pub fn get(&self, node_id: &NodeId) -> Result<&Node<T>, Box<dyn Error>> {
+        let tree = unsafe { &*self.tree.get() };
 
+        if !self.can_access(node_id)? {
+            return Err("the TreeView does not have access to the specified Node".into());
+        }
 
-    /////// following only ok if restriction is None
+        tree.get(node_id).map_err(|e| e.into())
+    }
+
+    /// Get a mutable reference to a Node. The specified Node must be accessible.
+    pub fn get_mut(&mut self, node_id: &NodeId) -> Result<&mut Node<T>, Box<dyn Error>> {
+        let tree = unsafe { &mut *self.tree.get() };
+
+        if !self.can_access(node_id)? {
+            return Err("the TreeView does not have access to the specified Node".into());
+        }
+
+        tree.get_mut(node_id).map_err(|e| e.into())
+    }
+
+    /////// XXX following only ok if restriction is None
+
     //XXX insert
     //XXX remove
 }
