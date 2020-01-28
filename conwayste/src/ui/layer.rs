@@ -32,11 +32,11 @@ use super::{
     UIError, UIResult,
     WidgetID,
     context,
+    treeview,
 };
 
 use crate::constants::{colors::*, LAYERING_NODE_CAPACITY, LAYERING_SWAP_CAPACITY};
 use crate::config;
-use context::EmitEvent;
 
 /// Dummy Widget to serve as a root node in the tree. Serves no other purpose.
 #[derive(Debug)]
@@ -468,9 +468,13 @@ impl Layering {
     /// more than once.
     pub fn emit(&mut self, event: &context::Event, ggez_context: &mut ggez::Context, cfg: &mut config::Config) -> Result<(), Box<dyn Error>> {
 
-        let root_id = self.widget_tree.root_node_id().unwrap();  //XXX just send this on to the first non-fake node; it's wrong but whatever
-        let wrong_container = self.widget_tree.children(&root_id).unwrap().nth(0).unwrap().data_mut();
-        let mut uictx = context::UIContext::new_update(ggez_context, cfg, &mut self.widget_tree);
+        let root_id = self.widget_tree.root_node_id().unwrap().clone();  //XXX just send this on to the first non-fake node; it's wrong but whatever
+        let child_node_id = self.widget_tree.children_ids(&root_id).unwrap().nth(0).unwrap().clone();
+
+        let mut widget_view = treeview::TreeView::new(&mut self.widget_tree);
+        let (wrong_container_node, subtree) = widget_view.sub_tree(&root_id).unwrap();
+        let wrong_container = wrong_container_node.data_mut();
+        let mut uictx = context::UIContext::new_update(ggez_context, cfg, subtree);
         wrong_container.as_emit_event().unwrap().emit(event, &mut uictx);
         Ok(()) //XXX
     }

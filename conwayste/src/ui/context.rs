@@ -26,6 +26,7 @@ use ggez::event::MouseButton;
 use ggez::nalgebra::Point2;
 use id_tree::Tree;
 
+use super::treeview::TreeView;
 use super::BoxedWidget;
 use crate::config;
 
@@ -54,24 +55,24 @@ impl<'a> UIContext<'a> {
     pub fn new_draw(
         ggez_context: &'a mut ggez::Context,
         config: &'a config::Config,
-        tree: &'a mut Tree<BoxedWidget>,
+        view: TreeView<'a, BoxedWidget>,
     ) -> Self {
         UIContext::Draw(DrawContext {
             ggez_context,
             config,
-            widget_tree: tree,
+            widget_view: view,
         })
     }
 
     pub fn new_update(
         ggez_context: &'a mut ggez::Context,
         config: &'a mut config::Config,
-        tree: &'a mut Tree<BoxedWidget>,
+        view: TreeView<'a, BoxedWidget>,
     ) -> Self {
         UIContext::Update(UpdateContext {
             ggez_context,
             config,
-            widget_tree: tree,
+            widget_view: view,
         })
     }
 }
@@ -79,13 +80,13 @@ impl<'a> UIContext<'a> {
 pub struct DrawContext<'a> {
     pub ggez_context: &'a mut ggez::Context,
     pub config: &'a config::Config,
-    pub widget_tree: &'a mut Tree<BoxedWidget>,
+    pub widget_view: TreeView<'a, BoxedWidget>,
 }
 
 pub struct UpdateContext<'a> {
     pub ggez_context: &'a mut ggez::Context,
     pub config: &'a mut config::Config,
-    pub widget_tree: &'a mut Tree<BoxedWidget>,
+    pub widget_view: TreeView<'a, BoxedWidget>,
 }
 
 /// The type of an event.

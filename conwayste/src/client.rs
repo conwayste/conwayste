@@ -92,9 +92,7 @@ use ui::{
     UIResult,
     Widget,
     WidgetID,
-    UIContext,
     Event,
-    EmitEvent,
     EventType,
 };
 use uilayout::UILayout;
