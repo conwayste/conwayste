@@ -37,7 +37,7 @@ use std::error::Error;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 
-use id_tree::{self, Node, NodeId, NodeIdError, Tree};
+use id_tree::{self, Node, NodeId, NodeIdError, Tree, InsertBehavior, RemoveBehavior};
 
 #[derive(PartialEq, Debug)]
 enum Restriction {
@@ -54,6 +54,13 @@ impl Restriction {
             Restriction::None => None,
             Restriction::SubTree(ref root_node_id) => Some(root_node_id),
             Restriction::InclusiveSubTree(ref root_node_id) => Some(root_node_id),
+        }
+    }
+
+    pub fn is_none(&self) -> bool {
+        match self {
+            Restriction::None => true,
+            _ => false,
         }
     }
 }
@@ -121,10 +128,25 @@ impl<'a, T> TreeView<'a, T> {
     ///
     /// * NodeId is invalid for the underlying Tree.
     /// * NodeId refers to a Node that is outside of this TreeView.
+    ///
+    /// NOTE: the `'_` in the returned subtree is needed to make this fail to compile:
+    ///
+    /// ```compile_fail
+    /// let mut tree: Tree<i64> = id_tree::TreeBuilder::new().build();
+    /// let node_r = Node::new(0);
+    /// let root_node_id = tree.insert(node_r, InsertBehavior::AsRoot).unwrap();
+    /// let child_node_id = tree.insert(Node::new(1), InsertBehavior::UnderNode(&root_node_id)).unwrap();
+    /// let mut view = TreeView::new(&mut tree);
+    /// let (_, mut copy1) = view.sub_tree(&root_node_id).unwrap();
+    /// let (_, mut copy2) = view.sub_tree(&root_node_id).unwrap();
+    /// let alias1 = copy1.get_mut(&child_node_id).unwrap();
+    /// let alias2 = copy2.get_mut(&child_node_id).unwrap();
+    /// drop((alias1, alias2));
+    /// ```
     pub fn sub_tree(
         &mut self,
         node_id: &NodeId,
-    ) -> Result<(&mut Node<T>, TreeView<'a, T>), Box<dyn Error>> {
+    ) -> Result<(&mut Node<T>, TreeView<'_, T>), Box<dyn Error>> {
         if !self.can_access(node_id)? {
             return Err("the TreeView does not have access to the specified Node".into());
         }
@@ -188,10 +210,37 @@ impl<'a, T> TreeView<'a, T> {
         tree.get_mut(node_id).map_err(|e| e.into())
     }
 
-    /////// XXX following only ok if restriction is None
+    /// Inserts a node into the underlying Tree. See documentation for Tree.insert.
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors from Tree.insert, an error is returned when the TreeView is
+    /// sharing the Tree.
+    pub fn insert(&mut self, node: Node<T>, behavior: InsertBehavior) -> Result<NodeId, Box<dyn Error>> {
+        if !self.restriction.is_none() {
+            return Err("the TreeView must have full access to the Tree to insert a node".into());
+        }
 
-    //XXX insert
-    //XXX remove
+        let tree = unsafe { self.tree.as_mut() };
+
+        Ok(tree.insert(node, behavior)?)
+    }
+
+    /// Removes a node from the underlying Tree. See documentation for Tree.remove_node.
+    ///
+    /// # Errors
+    ///
+    /// In addition to errors from Tree.remove_node, an error is returned when the TreeView is
+    /// sharing the Tree.
+    pub fn remove(&mut self, node_id: NodeId, behavior: RemoveBehavior) -> Result<Node<T>, Box<dyn Error>> {
+        if !self.restriction.is_none() {
+            return Err("the TreeView must have full access to the Tree to remove a node".into());
+        }
+
+        let tree = unsafe { self.tree.as_mut() };
+
+        Ok(tree.remove_node(node_id, behavior)?)
+    }
 }
 
 #[cfg(test)]
@@ -212,18 +261,17 @@ mod tests {
                 .unwrap();
         }
 
-        {
-            let mut view = TreeView::new(&mut tree);
+        let mut view = TreeView::new(&mut tree);
 
-            let (root_node_ref, mut sub_tree_ref) = view.sub_tree(&root_node_id).unwrap();
-            for child_id in sub_tree_ref.children_ids().unwrap().iter() {
-                let child_ref = sub_tree_ref.get_mut(child_id).unwrap().data_mut();
-                // root += child
-                *root_node_ref.data_mut() += *child_ref;
-                // zero out child
-                *child_ref = 0;
-            }
+        let (root_node_ref, mut sub_tree_ref) = view.sub_tree(&root_node_id).unwrap();
+        for child_id in sub_tree_ref.children_ids().unwrap().iter() {
+            let child_ref = sub_tree_ref.get_mut(child_id).unwrap().data_mut();
+            // root += child
+            *root_node_ref.data_mut() += *child_ref;
+            // zero out child
+            *child_ref = 0;
         }
+        drop(view);
         assert_eq!(*tree.get(&root_node_id).unwrap().data(), 1 + 2 + 3);
     }
 }
