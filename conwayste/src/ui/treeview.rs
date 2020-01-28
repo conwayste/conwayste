@@ -33,9 +33,11 @@
 ///!
 ///! * This code is too magical and will give the reader a headache. At least 3 espresso
 ///!   shots are recommended.
-use std::cell::UnsafeCell;
+
+
 use std::error::Error;
-use std::rc::Rc;
+use std::marker::PhantomData;
+use std::ptr::NonNull;
 
 use id_tree::{self, Node, NodeId, NodeIdError, Tree};
 
@@ -61,15 +63,17 @@ impl Restriction {
 /// A view onto a Tree, either in whole or a subtree thereof. A TreeView can be split up into a
 /// mutable Node reference and a TreeView on the Nodes under that Node; in other words, it supports
 /// multiple non-overlapping mutable references to Nodes in a Tree.
-pub struct TreeView<'a, T> {
-    tree: Rc<UnsafeCell<&'a mut Tree<T>>>,
+pub struct TreeView<'a, T: 'a> {
+    tree: NonNull<Tree<T>>,
+    lifetime: PhantomData<&'a mut T>,
     restriction: Restriction,
 }
 
 impl<'a, T> TreeView<'a, T> {
     pub fn new(tree: &'a mut Tree<T>) -> Self {
         return TreeView::<'a> {
-            tree: Rc::new(UnsafeCell::new(tree)),
+            tree: NonNull::new(tree).unwrap(), // unwrap OK because the tree reference will never be null
+            lifetime: PhantomData,
             restriction: Restriction::None,
         };
     }
@@ -80,7 +84,7 @@ impl<'a, T> TreeView<'a, T> {
     ///
     /// * `NodeIdError` if the underlying Tree reports that this NodeId is invalid.
     pub fn can_access(&self, node_id: &NodeId) -> Result<bool, NodeIdError> {
-        let tree = unsafe { &*self.tree.get() };
+        let tree = unsafe { self.tree.as_ref() };
 
         match self.restriction {
             Restriction::None => {
@@ -127,19 +131,20 @@ impl<'a, T> TreeView<'a, T> {
             return Err("the TreeView does not have access to the specified Node".into());
         }
 
-        let tree_mut_ref = unsafe { &mut *self.tree.get() };
-        let node_mut_ref = tree_mut_ref.get_mut(node_id)?;
         let subtree = TreeView {
-            tree: self.tree.clone(),
+            tree: self.tree,
+            lifetime: PhantomData,
             restriction: Restriction::SubTree(node_id.clone()),
         };
+        let tree_mut_ref = unsafe { self.tree.as_mut() };
+        let node_mut_ref = tree_mut_ref.get_mut(node_id)?;
         Ok((node_mut_ref, subtree))
     }
 
     /// If this tree has any Nodes at all, this will return (as Some) an iterator over the root
     /// node's children.
     pub fn children(&self) -> Option<id_tree::Children<T>> {
-        let tree = unsafe { &*self.tree.get() };
+        let tree = unsafe { self.tree.as_ref() };
         if let Some(root_id) = self.restriction.root() {
             Some(tree.children(root_id).unwrap())
         } else {
@@ -151,7 +156,7 @@ impl<'a, T> TreeView<'a, T> {
     /// If this tree has any Nodes at all, this will return (as Some) an iterator over the NodeIds
     /// of the root node's children.
     pub fn children_ids(&self) -> Option<id_tree::ChildrenIds> {
-        let tree = unsafe { &*self.tree.get() };
+        let tree = unsafe { self.tree.as_ref() };
         if let Some(root_id) = self.restriction.root() {
             Some(tree.children_ids(root_id).unwrap())
         } else {
@@ -162,7 +167,7 @@ impl<'a, T> TreeView<'a, T> {
 
     /// Get an immutable reference to a Node. The specified Node must be accessible.
     pub fn get(&self, node_id: &NodeId) -> Result<&Node<T>, Box<dyn Error>> {
-        let tree = unsafe { &*self.tree.get() };
+        let tree = unsafe { self.tree.as_ref() };
 
         if !self.can_access(node_id)? {
             return Err("the TreeView does not have access to the specified Node".into());
@@ -173,7 +178,7 @@ impl<'a, T> TreeView<'a, T> {
 
     /// Get a mutable reference to a Node. The specified Node must be accessible.
     pub fn get_mut(&mut self, node_id: &NodeId) -> Result<&mut Node<T>, Box<dyn Error>> {
-        let tree = unsafe { &mut *self.tree.get() };
+        let tree = unsafe { self.tree.as_mut() };
 
         if !self.can_access(node_id)? {
             return Err("the TreeView does not have access to the specified Node".into());
