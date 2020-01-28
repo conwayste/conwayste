@@ -33,8 +33,6 @@
 ///!
 ///! * This code is too magical and will give the reader a headache. At least 3 espresso
 ///!   shots are recommended.
-
-
 use std::error::Error;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
@@ -153,16 +151,19 @@ impl<'a, T> TreeView<'a, T> {
         }
     }
 
-    /// If this tree has any Nodes at all, this will return (as Some) an iterator over the NodeIds
+    /// If this tree has any Nodes at all, this will return (as Some) a vector of the NodeIds
     /// of the root node's children.
-    pub fn children_ids(&self) -> Option<id_tree::ChildrenIds> {
+    pub fn children_ids(&self) -> Option<Vec<NodeId>> {
         let tree = unsafe { self.tree.as_ref() };
-        if let Some(root_id) = self.restriction.root() {
-            Some(tree.children_ids(root_id).unwrap())
-        } else {
-            tree.root_node_id()
-                .map(|root_id| tree.children_ids(root_id).unwrap())
-        }
+        self.restriction
+            .root()
+            .or(tree.root_node_id())
+            .map(|root_id| {
+                tree.children_ids(root_id)
+                    .unwrap()
+                    .map(|id| id.clone())
+                    .collect()
+            })
     }
 
     /// Get an immutable reference to a Node. The specified Node must be accessible.
@@ -178,11 +179,11 @@ impl<'a, T> TreeView<'a, T> {
 
     /// Get a mutable reference to a Node. The specified Node must be accessible.
     pub fn get_mut(&mut self, node_id: &NodeId) -> Result<&mut Node<T>, Box<dyn Error>> {
-        let tree = unsafe { self.tree.as_mut() };
-
         if !self.can_access(node_id)? {
             return Err("the TreeView does not have access to the specified Node".into());
         }
+
+        let tree = unsafe { self.tree.as_mut() };
 
         tree.get_mut(node_id).map_err(|e| e.into())
     }
@@ -191,4 +192,38 @@ impl<'a, T> TreeView<'a, T> {
 
     //XXX insert
     //XXX remove
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use id_tree::InsertBehavior;
+
+    #[test]
+    fn test_subtree_and_children_ids() {
+        let mut tree: Tree<i64> = id_tree::TreeBuilder::new().build();
+        let node_r = Node::new(0);
+        let root_node_id = tree.insert(node_r, InsertBehavior::AsRoot).unwrap();
+
+        let child_nodes = vec![Node::new(1), Node::new(2), Node::new(3)];
+
+        for c in child_nodes.into_iter() {
+            tree.insert(c, InsertBehavior::UnderNode(&root_node_id))
+                .unwrap();
+        }
+
+        {
+            let mut view = TreeView::new(&mut tree);
+
+            let (root_node_ref, mut sub_tree_ref) = view.sub_tree(&root_node_id).unwrap();
+            for child_id in sub_tree_ref.children_ids().unwrap().iter() {
+                let child_ref = sub_tree_ref.get_mut(child_id).unwrap().data_mut();
+                // root += child
+                *root_node_ref.data_mut() += *child_ref;
+                // zero out child
+                *child_ref = 0;
+            }
+        }
+        assert_eq!(*tree.get(&root_node_id).unwrap().data(), 1 + 2 + 3);
+    }
 }
