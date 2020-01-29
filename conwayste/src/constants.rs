@@ -1,4 +1,4 @@
-/*  Copyright 2018 the Conwayste Developers.
+/*  Copyright 2018-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
