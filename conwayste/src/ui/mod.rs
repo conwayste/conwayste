@@ -59,6 +59,3 @@ pub enum UIAction {
     Toggle(bool),
     EnterText, // TODO: see if we still need this "gunk residue"
 }
-
-#[derive(PartialOrd, PartialEq, Eq, Debug, Copy, Clone, Hash)]
-pub struct WidgetID(pub usize);

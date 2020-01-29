@@ -79,7 +79,6 @@ use constants::{
     HISTORY_SIZE,
     INTRO_DURATION,
     INTRO_PAUSE_DURATION,
-    widget_ids::*,
     colors::*,
 };
 use input::{MouseAction, ScrollEvent};
@@ -91,7 +90,6 @@ use ui::{
     UIError,
     UIResult,
     Widget,
-    WidgetID,
 };
 use uilayout::UILayout;
 use uimanager::LayoutManager;
@@ -1439,47 +1437,23 @@ impl MainState {
         }
     }
 
-    fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> UIResult<()> {
-        match widget_id {
-            MAINMENU_PANE1_BUTTONYES
-            | MAINMENU_PANE1_BUTTONNO
-            | MAINMENU_TESTBUTTON  => {
-                match action {
-                    UIAction::ScreenTransition(s) => {
-                        self.screen_stack.push(s);
-                    }
-                    _ => {
-                        return Err(Box::new(UIError::InvalidAction{
-                            reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)
-                        }));
-                    }
-                }
-            },
-            MAINMENU_TESTCHECKBOX => {
-                match action {
-                    UIAction::Toggle(enabled) => {
-                        self.config.modify(|settings| {
-                            settings.video.fullscreen = enabled;
-                        });
-                        self.video_settings.is_fullscreen = enabled;
-                        self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
-                    }
-                    _ => {
-                        return Err(Box::new(UIError::InvalidAction{
-                            reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)
-                        }));
-                     }
-                }
-            },
-            MAINMENU_PANE1
-            | MAINMENU_LAYER1
-            | INGAME_LAYER1
-            | INGAME_PANE1 => {
-                return Err(Box::new(UIError::ActionRestricted{
-                    reason: format!("Widget: {:?} is either a Pane or Layer element. Actions are not allowed for Widgets of these types.", widget_id)
+    fn handle_ui_action(&mut self, ctx: &mut Context, action: UIAction) -> UIResult<()> {
+        match action {
+            UIAction::ScreenTransition(s) => {
+                self.screen_stack.push(s);
+            }
+            UIAction::Toggle(enabled) => {
+                self.config.modify(|settings| {
+                    settings.video.fullscreen = enabled;
+                });
+                self.video_settings.is_fullscreen = enabled;
+                self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
+            }
+            _ => {
+                return Err(Box::new(UIError::InvalidAction{
+                    reason: format!("Action: {:?}", action)
                 }));
-            },
-            ui::WidgetID(_) => {},
+            }
         }
 
         Ok(())
@@ -1488,8 +1462,9 @@ impl MainState {
     fn handle_user_chat_complete(&mut self, _ctx: &mut Context) {
         let username = self.config.get().user.name.clone();
         let mut msg = String::new();
+        let id = self.ui_layout.chatbox_tf_id.clone();
 
-        match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+        match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
             Ok(tf) => {
                 if let Some(m) = tf.text() {
                     msg = format!("{}: {}", username, m);
@@ -1503,7 +1478,8 @@ impl MainState {
         }
 
         if !msg.is_empty() {
-            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOX) {
+            let id = self.ui_layout.chatbox_id.clone();
+            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
                 Ok(cb) => {
                     cb.add_message(msg.clone());
 

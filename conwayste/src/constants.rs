@@ -90,23 +90,6 @@ pub const CHATBOX_LINE_SPACING: f32 = 2.0;
 pub const CHATBOX_HISTORY: usize = 20;
 pub const CHAT_TEXTFIELD_HEIGHT: f32 = (25.0);
 
-pub mod widget_ids {
-    use crate::ui::WidgetID;
-    pub const MAINMENU_LAYER1: WidgetID = WidgetID(0);
-    pub const MAINMENU_TESTBUTTON: WidgetID = WidgetID(1);
-    pub const MAINMENU_TESTBUTTONLABEL: WidgetID = WidgetID(2);
-    pub const MAINMENU_TESTCHECKBOX: WidgetID = WidgetID(3);
-    pub const MAINMENU_PANE1: WidgetID = WidgetID(4);
-    pub const MAINMENU_PANE1_BUTTONYES: WidgetID = WidgetID(5);
-    pub const MAINMENU_PANE1_BUTTONYESLABEL: WidgetID = WidgetID(6);
-    pub const MAINMENU_PANE1_BUTTONNO: WidgetID = WidgetID(7);
-    pub const MAINMENU_PANE1_BUTTONNOLABEL: WidgetID = WidgetID(8);
-    pub const INGAME_LAYER1: WidgetID = WidgetID(9);
-    pub const INGAME_PANE1: WidgetID = WidgetID(10);
-    pub const INGAME_PANE1_CHATBOX: WidgetID = WidgetID(11);
-    pub const INGAME_PANE1_CHATBOXTEXTFIELD: WidgetID = WidgetID(12);
-}
-
 // Layering's tree data structure capacities. Arbitrarily chosen.
 pub const LAYERING_NODE_CAPACITY: usize = 100;
 pub const LAYERING_SWAP_CAPACITY: usize = 10;
