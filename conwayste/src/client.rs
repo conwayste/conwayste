@@ -485,8 +485,8 @@ impl EventHandler for MainState {
                     }
 
                     if left_mouse_click {
-                        if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
-                            self.handle_ui_action(ctx, ui_id, ui_action).or_else(|e| -> UIResult<()> {
+                        if let Some( ui_action ) = layer.on_click(&mouse_point) {
+                            self.handle_ui_action(ctx, ui_action).or_else(|e| -> UIResult<()> {
                                 error!("Failed to handle UI action: {}", e);
                                 Ok(())
                             }).unwrap();
@@ -500,7 +500,8 @@ impl EventHandler for MainState {
                 // TODO Disable FSP limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
                 let mut textfield_under_focus = false;
-                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                let id = self.ui_layout.chatbox_tf_id.clone();
+                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
                     Ok(tf) => {
                         match tf.input_state {
                             Some(TextInputState::TextInputComplete) =>  {
@@ -1068,11 +1069,12 @@ impl MainState {
                 return Ok(());
             }
             KeyCode::Return => {
-                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                let id = self.ui_layout.chatbox_tf_id.clone();
+                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
                     Ok(tf) => {
                         if tf.input_state.is_none() {
                             if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, Screen::Run) {
-                                layer.enter_focus(INGAME_PANE1_CHATBOXTEXTFIELD)?;
+                                layer.enter_focus(&id)?;
                             }
                         }
                     }
@@ -1390,8 +1392,9 @@ impl MainState {
             }
         }
 
+        let id = self.ui_layout.chatbox_tf_id.clone();
         for msg in incoming_messages {
-            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOX) {
+            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
                 Ok(cb) => cb.add_message(msg),
                 Err(e) => error!("Could not add mesasge to Chatbox on network message receive: {:?}", e)
             }

@@ -24,12 +24,14 @@ use ggez::graphics::{self, Color, DrawMode, DrawParam, Rect};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
+use id_tree::NodeId;
+
 #[cfg(not(test))]
 use super::common::draw_text;
 use super::{
     common::{within_widget, FontInfo},
     widget::Widget,
-    UIAction, UIError, UIResult, WidgetID,
+    UIAction, UIError, UIResult,
 };
 
 use crate::constants::{colors::*, CHATBOX_BORDER_PIXELS};
@@ -43,7 +45,7 @@ pub enum TextInputState {
 }
 
 pub struct TextField {
-    id: WidgetID,
+    id: Option<NodeId>,
     z_index: usize,
     action: UIAction,
     pub input_state: Option<TextInputState>,
@@ -71,7 +73,6 @@ impl TextField {
     /// Creates a TextField widget.
     ///
     /// # Arguments
-    /// * `widget_id` - Unique widget identifier
     /// * `font_info` - font descriptor to be used when drawing the text
     /// * `dimensions` - rectangle describing the size of the text field
     ///
@@ -85,14 +86,14 @@ impl TextField {
     /// let font_info = common::FontInfo::new(ctx, font, Some(20.0));
     /// let dimensions = Rect::new(0.0, 0.0, 300.0, 20.0);
     ///
-    /// let textfield = TextField::new(ui::ChatboxTextField, font_info, dimensions);
+    /// let textfield = TextField::new(font_info, dimensions);
     ///
     /// textfield.draw(ctx);
     /// ```
     ///
-    pub fn new(widget_id: WidgetID, font_info: FontInfo, dimensions: Rect) -> TextField {
+    pub fn new(font_info: FontInfo, dimensions: Rect) -> TextField {
         TextField {
-            id: widget_id,
+            id: None,
             z_index: std::usize::MAX,
             input_state: None,
             text: String::new(),
@@ -257,8 +258,12 @@ impl TextField {
 }
 
 impl Widget for TextField {
-    fn id(&self) -> WidgetID {
-        self.id
+    fn id(&self) -> Option<&NodeId> {
+        self.id.as_ref()
+    }
+
+    fn set_id(&mut self, new_id: NodeId) {
+        self.id = Some(new_id);
     }
 
     fn z_index(&self) -> usize {
@@ -273,9 +278,9 @@ impl Widget for TextField {
         self.hover = within_widget(point, &self.dimensions);
     }
 
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction> {
         self.enter_focus();
-        return Some((self.id, self.action));
+        return Some(self.action);
     }
 
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
@@ -446,7 +451,7 @@ mod test {
             scale: Scale::uniform(1.0), // I don't think this matters
             char_dimensions: Vector2::<f32>::new(5.0, 5.0), // any positive values will do
         };
-        TextField::new(WidgetID(1), font_info, Rect::new(0.0, 0.0, 100.0, 100.0))
+        TextField::new(font_info, Rect::new(0.0, 0.0, 100.0, 100.0))
     }
 
     #[test]

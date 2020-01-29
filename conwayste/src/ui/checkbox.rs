@@ -23,19 +23,20 @@ use ggez::graphics::{self, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
+use id_tree::NodeId;
+
 use super::{
     label::Label,
     widget::Widget,
     common::{within_widget, FontInfo},
     UIAction,
     UIError, UIResult,
-    WidgetID,
 };
 
 use crate::constants::colors::*;
 
 pub struct Checkbox {
-    id: WidgetID,
+    id: Option<NodeId>,
     z_index: usize,
     pub label: Label,
     pub enabled: bool,
@@ -60,7 +61,6 @@ impl Checkbox {
     ///
     /// # Arguments
     /// * `ctx` - GGEZ context
-    /// * `widget_id` - Unique widget identifier
     /// * `enabled` - initial to checked or unchecked
     /// * `font_info` - font descriptor to be used when drawing the text
     /// * `text` - Label text
@@ -76,7 +76,6 @@ impl Checkbox {
     /// let font_info = common::FontInfo::new(ctx, font, Some(20.0));
     /// let checkbox = Checkbox::new(
     ///     ctx,
-    ///     ui::TestCheckbox,
     ///     false,
     ///     font_info,
     ///     "Toggle Me",
@@ -87,7 +86,6 @@ impl Checkbox {
     ///
     pub fn new(
         ctx: &mut Context,
-        widget_id: WidgetID,
         enabled: bool,
         font_info: FontInfo,
         text: String,
@@ -99,9 +97,9 @@ impl Checkbox {
         );
 
         Checkbox {
-            id: widget_id,
+            id: None,
             z_index: std::usize::MAX,
-            label: Label::new(ctx, widget_id, font_info, text, *CHECKBOX_TEXT_COLOR, label_origin),
+            label: Label::new(ctx, font_info, text, *CHECKBOX_TEXT_COLOR, label_origin),
             enabled: enabled,
             dimensions: dimensions,
             hover: false,
@@ -118,8 +116,12 @@ impl Checkbox {
 
 
 impl Widget for Checkbox {
-    fn id(&self) -> WidgetID {
-        self.id
+    fn id(&self) -> Option<&NodeId> {
+        self.id.as_ref()
+    }
+
+    fn set_id(&mut self, new_id: NodeId) {
+        self.id = Some(new_id);
     }
 
     fn z_index(&self) -> usize {
@@ -182,10 +184,10 @@ impl Widget for Checkbox {
         self.hover = within_widget(point, &self.dimensions) || within_widget(point, &label_dimensions);
     }
 
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction>
     {
         // TODO: Check child label for an on_click event once it's refactored out
-        return Some(( self.id, UIAction::Toggle(self.toggle_checkbox()) ));
+        return Some(UIAction::Toggle(self.toggle_checkbox()));
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
