@@ -412,15 +412,6 @@ mod test {
     use crate::constants;
     use crate::ggez::{graphics::Scale, nalgebra::Vector2};
 
-    fn create_dummy_widget_id(widget_id: WidgetID) -> Box<Chatbox> {
-        let font_info = FontInfo {
-            font: (),
-            scale: Scale::uniform(1.0),
-            char_dimensions: Vector2::<f32>::new(5.0, 5.0),
-        };
-        Box::new(Chatbox::new(widget_id, font_info, 5))
-    }
-
     fn create_dummy_font() -> FontInfo {
         FontInfo {
             font: (),                   //dummy font because we can't create a real Font without ggez
@@ -434,50 +425,18 @@ mod test {
         let mut layer_info = Layering::new();
         let font_info = create_dummy_font();
         let history_len = 5;
-        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
+        let chatbox = Chatbox::new(font_info, history_len);
 
-        assert!(layer_info
-            .add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer)
-            .is_ok());
+        let id = layer_info
+            .add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer);
 
-        let widget_result = layer_info.get_widget_mut(WidgetID(0));
+        assert!(id.is_ok());
+        let id = id.unwrap();
+
+        let widget_result = layer_info.get_widget_mut(&id);
         assert!(widget_result.is_ok());
         let widget = widget_result.unwrap();
-        assert_eq!(widget.id(), WidgetID(0));
-    }
-
-    #[test]
-    fn test_add_widget_two_widget_share_the_same_id_at_same_z_depth() {
-        let mut layer_info = Layering::new();
-        let font_info = create_dummy_font();
-        let history_len = 5;
-
-        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
-        assert!(layer_info
-            .add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer)
-            .is_ok());
-
-        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
-        assert!(layer_info
-            .add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer)
-            .is_err());
-    }
-
-    #[test]
-    fn test_add_widget_two_widget_share_the_same_id_at_different_z_depths() {
-        let mut layer_info = Layering::new();
-        let font_info = create_dummy_font();
-        let history_len = 5;
-
-        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
-        assert!(layer_info
-            .add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer)
-            .is_ok());
-
-        let chatbox = Chatbox::new(WidgetID(0), font_info, history_len);
-        assert!(layer_info
-            .add_widget(Box::new(chatbox), InsertLocation::AtNextLayer)
-            .is_err());
+        assert_eq!(widget.id(), Some(&id));
     }
 
     #[test]
@@ -486,14 +445,15 @@ mod test {
         let font_info = create_dummy_font();
         let history_len = 5;
 
-        let widget_id = WidgetID(0);
-        let chatbox = Chatbox::new(widget_id, font_info, history_len);
+        let chatbox = Chatbox::new(font_info, history_len);
 
-        assert!(layer_info
-            .add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer)
-            .is_ok());
-        let w = layer_info.get_widget_mut(widget_id).unwrap();
-        assert_eq!(w.id(), WidgetID(0));
+        let id = layer_info
+            .add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer);
+        assert!(id.is_ok());
+        let id = id.unwrap();
+
+        let w = layer_info.get_widget_mut(&id).unwrap();
+        assert_eq!(w.id(), Some(&id));
     }
 
     #[test]
@@ -502,59 +462,63 @@ mod test {
         let font_info = create_dummy_font();
         let history_len = 5;
 
-        let widget_id = WidgetID(0);
-        let chatbox = Chatbox::new(widget_id, font_info, history_len);
+        let chatbox = Chatbox::new(font_info, history_len);
 
-        assert!(layer_info
-            .add_widget(Box::new(chatbox), InsertLocation::AtNextLayer)
-            .is_ok());
-        let w = layer_info.get_widget_mut(widget_id).unwrap();
-        assert_eq!(w.id(), WidgetID(0));
+        let id = layer_info
+            .add_widget(Box::new(chatbox), InsertLocation::AtNextLayer).unwrap();
+
+        let w = layer_info.get_widget_mut(&id).unwrap();
+        assert_eq!(w.id(), Some(&id));
     }
 
     #[test]
-    fn test_get_widget_mut_widget_does_not_exist_list_is_empty() {
-        let mut layer_info = Layering::new();
+    fn test_new_widget_tree_has_root_node_only() {
+        let layer_info = Layering::new();
 
-        assert!(layer_info.get_widget_mut(WidgetID(0)).is_err());
+        let id = layer_info.widget_tree.root_node_id();
+        assert!(id.is_some());
+        let id = id.unwrap();
+        let mut children = layer_info.widget_tree.children_ids(&id).unwrap();
+        assert_eq!(children.next(), None);
     }
 
     #[test]
-    fn test_get_widget_mut_widget_does_not_exist_list_non_empty() {
+    fn test_get_widget_mut_widget_does_not_exist_list() {
         let mut layer_info = Layering::new();
         let font_info = create_dummy_font();
         let history_len = 5;
-        let chatbox = Chatbox::new(WidgetID(1), font_info, history_len);
+        let chatbox = Chatbox::new(font_info, history_len);
 
-        assert!(layer_info
-            .add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer)
-            .is_ok());
-        assert!(layer_info.get_widget_mut(WidgetID(0)).is_err());
+        // Add the widget to generate a NodeId
+        let id = layer_info
+            .add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer).unwrap();
+
+        // Remove the widget and perform a check of the ID
+        let removal = layer_info.remove_widget(id.clone());
+        assert_eq!(removal.is_ok(), true);
+        assert!(layer_info.get_widget_mut(&id).is_err());
     }
 
     #[test]
     fn test_get_widget_mut_widget_is_a_pane() {
         let mut layer_info = Layering::new();
-        let widget_id = WidgetID(0);
-        let pane = Pane::new(widget_id, Rect::new(0.0, 0.0, 100.0, 100.0));
+        let pane = Pane::new(Rect::new(0.0, 0.0, 100.0, 100.0));
 
-        assert!(layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
-            .is_ok());
-        let w = layer_info.get_widget_mut(widget_id).unwrap();
-        assert_eq!(w.id(), widget_id);
+        let pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+
+        let w = layer_info.get_widget_mut(&pane_id).unwrap();
+        assert_eq!(w.id(), Some(&pane_id));
     }
 
     #[test]
     fn test_get_widget_mut_widget_is_within_a_pane() {
         let mut layer_info = Layering::new();
         let font_info = create_dummy_font();
-        let pane_id = WidgetID(0);
-        let chatbox_id = WidgetID(1);
 
-        let pane = Pane::new(pane_id, *constants::DEFAULT_CHATBOX_RECT);
+        let pane = Pane::new(*constants::DEFAULT_CHATBOX_RECT);
         let history_len = 5;
-        let mut chatbox = Chatbox::new(chatbox_id, font_info, history_len);
+        let mut chatbox = Chatbox::new(font_info, history_len);
 
         let size_update_result = chatbox.set_rect(Rect::new(
             0.0,
@@ -564,62 +528,26 @@ mod test {
         ));
 
         assert!(size_update_result.is_ok());
-        assert!(layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
-            .is_ok());
-        assert!(layer_info
+        let pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+        let chatbox_id = layer_info
             .add_widget(
                 Box::new(chatbox),
-                InsertLocation::ToNestedContainer(pane_id)
-            )
-            .is_ok());
+                InsertLocation::ToNestedContainer(&pane_id)
+            ).unwrap();
 
-        let w = layer_info.get_widget_mut(chatbox_id).unwrap();
-        assert_eq!(w.id(), WidgetID(1));
-    }
-
-    #[test]
-    fn test_get_widget_mut_sub_widget_in_pane_but_id_does_not_exist() {
-        let mut layer_info = Layering::new();
-        let font_info = create_dummy_font();
-        let pane_id = WidgetID(0);
-        let chatbox_id = WidgetID(1);
-
-        let pane = Pane::new(pane_id, *constants::DEFAULT_CHATBOX_RECT);
-        let history_len = 5;
-        let mut chatbox = Chatbox::new(chatbox_id, font_info, history_len);
-
-        let size_update_result = chatbox.set_rect(Rect::new(
-            0.0,
-            0.0,
-            constants::DEFAULT_CHATBOX_RECT.w,
-            constants::DEFAULT_CHATBOX_RECT.h - 20.0,
-        ));
-
-        assert!(size_update_result.is_ok());
-        assert!(layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
-            .is_ok());
-        assert!(layer_info
-            .add_widget(
-                Box::new(chatbox),
-                InsertLocation::ToNestedContainer(pane_id)
-            )
-            .is_ok());
-
-        assert!(layer_info.get_widget_mut(WidgetID(2)).is_err());
+        let w = layer_info.get_widget_mut(&chatbox_id).unwrap();
+        assert_eq!(w.id(), Some(&chatbox_id));
     }
 
     #[test]
     fn test_search_panes_for_widget_id_widget_not_found() {
         let mut layer_info = Layering::new();
         let font_info = create_dummy_font();
-        let pane_id = WidgetID(0);
-        let chatbox_id = WidgetID(1);
 
-        let pane = Pane::new(pane_id, *constants::DEFAULT_CHATBOX_RECT);
+        let pane = Pane::new(*constants::DEFAULT_CHATBOX_RECT);
         let history_len = 5;
-        let mut chatbox = Chatbox::new(chatbox_id, font_info, history_len);
+        let mut chatbox = Chatbox::new(font_info, history_len);
 
         let size_update_result = chatbox.set_rect(Rect::new(
             0.0,
@@ -629,29 +557,28 @@ mod test {
         ));
 
         assert!(size_update_result.is_ok());
-        assert!(layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
-            .is_ok());
-        assert!(layer_info
+        let pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+        let chatbox_id = layer_info
             .add_widget(
                 Box::new(chatbox),
-                InsertLocation::ToNestedContainer(pane_id)
-            )
-            .is_ok());
+                InsertLocation::ToNestedContainer(&pane_id)
+            ).unwrap();
 
-        assert_eq!(layer_info.check_for_entry(WidgetID(2)), false);
+        let removal = layer_info.remove_widget(chatbox_id.clone());
+        assert_eq!(removal.is_ok(), true);
+
+        assert!(layer_info.get_widget_mut(&chatbox_id).is_err());
     }
 
     #[test]
     fn test_search_panes_for_widget_id_found() {
         let mut layer_info = Layering::new();
         let font_info = create_dummy_font();
-        let pane_id = WidgetID(0);
-        let chatbox_id = WidgetID(1);
 
-        let pane = Pane::new(pane_id, *constants::DEFAULT_CHATBOX_RECT);
+        let pane = Pane::new(*constants::DEFAULT_CHATBOX_RECT);
         let history_len = 5;
-        let mut chatbox = Chatbox::new(chatbox_id, font_info, history_len);
+        let mut chatbox = Chatbox::new(font_info, history_len);
 
         let size_update_result = chatbox.set_rect(Rect::new(
             0.0,
@@ -661,44 +588,46 @@ mod test {
         ));
 
         assert!(size_update_result.is_ok());
-        assert!(layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
-            .is_ok());
-        assert!(layer_info
+        let pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+        let chatbox_id = layer_info
             .add_widget(
                 Box::new(chatbox),
-                InsertLocation::ToNestedContainer(pane_id)
-            )
-            .is_ok());
+                InsertLocation::ToNestedContainer(&pane_id)
+            ).unwrap();
 
-        assert_eq!(layer_info.check_for_entry(WidgetID(1)), true);
+        assert_eq!(layer_info.check_for_entry(&pane_id), true);
+        assert_eq!(layer_info.check_for_entry(&chatbox_id), true);
     }
 
     #[test]
     fn test_layering_enter_focus_basic() {
         let mut layer_info = Layering::new();
 
-        let widget_id = WidgetID(0);
-        let pane = Pane::new(widget_id, Rect::new(0.0, 0.0, 1.0, 1.0));
-        assert!(layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
-            .is_ok());
+        let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
+        let pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
 
-        assert!(layer_info.enter_focus(widget_id).is_ok());
-        assert_eq!(layer_info.focused_widget_id(), Some(widget_id));
+        assert!(layer_info.enter_focus(&pane_id).is_ok());
+        assert_eq!(layer_info.focused_widget_id(), Some(pane_id));
     }
 
     #[test]
     fn test_layering_enter_focus_widget_not_found() {
         let mut layer_info = Layering::new();
 
-        let widget_id = WidgetID(0);
-        let pane = Pane::new(widget_id, Rect::new(0.0, 0.0, 1.0, 1.0));
-        assert!(layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
-            .is_ok());
+        let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
+        let _pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
 
-        assert!(layer_info.enter_focus(WidgetID(1)).is_err());
+        let pane2 = Pane::new(Rect::new(10.0, 10.0, 1.0, 1.0));
+        let pane_id2 = layer_info
+            .add_widget(Box::new(pane2), InsertLocation::AtCurrentLayer).unwrap();
+
+        let removal = layer_info.remove_widget(pane_id2.clone());
+        assert_eq!(removal.is_ok(), true);
+
+        assert!(layer_info.enter_focus(&pane_id2).is_err());
         assert_eq!(layer_info.focused_widget_id(), None);
     }
 
@@ -706,46 +635,65 @@ mod test {
     fn test_layering_exit_focus() {
         let mut layer_info = Layering::new();
 
-        let widget_id = WidgetID(0);
-        let pane = Pane::new(widget_id, Rect::new(0.0, 0.0, 1.0, 1.0));
-        assert!(layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
-            .is_ok());
+        let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
+        let pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
 
-        assert!(layer_info.enter_focus(widget_id).is_ok());
-        assert_eq!(layer_info.focused_widget_id(), Some(widget_id));
+        assert!(layer_info.enter_focus(&pane_id).is_ok());
+        assert_eq!(layer_info.focused_widget_id(), Some(pane_id));
 
         layer_info.exit_focus();
         assert_eq!(layer_info.focused_widget_id(), None);
     }
 
     #[test]
-    fn test_check_for_entry_widget_not_found() {
-        let dummy_widget_id = WidgetID(0);
-        let layer_info = Layering::new();
-
-        assert!(!layer_info.check_for_entry(dummy_widget_id));
-    }
-
-    #[test]
     fn test_check_for_entry_widget_found() {
-        let dummy_widget_id = WidgetID(0);
-        let dummy_widget = create_dummy_widget_id(dummy_widget_id);
         let mut layer_info = Layering::new();
 
-        let _result = layer_info.add_widget(dummy_widget, InsertLocation::AtCurrentLayer);
-        assert!(layer_info.check_for_entry(dummy_widget_id));
+        let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
+        let pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+        assert_eq!(layer_info.check_for_entry(&pane_id), true);
     }
 
     #[test]
     fn test_check_for_entry_widget_not_found_list_non_empty() {
-        let dummy_widget_id = WidgetID(0);
-        let dummy_widget = create_dummy_widget_id(dummy_widget_id);
         let mut layer_info = Layering::new();
 
-        let _result = layer_info.add_widget(dummy_widget, InsertLocation::AtCurrentLayer);
-        assert!(layer_info.check_for_entry(dummy_widget_id));
+        let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
+        let pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+        assert_eq!(layer_info.check_for_entry(&pane_id), true);
 
-        assert!(!layer_info.check_for_entry(WidgetID(1)));
+        let removal = layer_info.remove_widget(pane_id.clone());
+        assert_eq!(removal.is_ok(), true);
+        assert_eq!(layer_info.check_for_entry(&pane_id), false);
+    }
+
+    #[test]
+    fn test_remove_widget_successfully() {
+        let mut layer_info = Layering::new();
+
+        let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
+        let pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+
+        let removal = layer_info.remove_widget(pane_id.clone());
+        assert_eq!(removal.is_ok(), true);
+    }
+
+    #[test]
+    fn test_remove_widget_twice_fails() {
+        let mut layer_info = Layering::new();
+
+        let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
+        let pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+
+        let removal = layer_info.remove_widget(pane_id.clone());
+        assert_eq!(removal.is_ok(), true);
+
+        let removal = layer_info.remove_widget(pane_id.clone());
+        assert_eq!(removal.is_ok(), false);
     }
 }
