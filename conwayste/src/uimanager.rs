@@ -16,6 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 #![allow(unused)]
+use id_tree::NodeId;
 
 use crate::Screen;
 use crate::uilayout::UILayout;
@@ -29,20 +30,18 @@ use crate::ui::{
     TextField,
     UIError,
     UIResult,
-    WidgetID,
 };
 
 // When adding support for a new widget, use this macro to define a routine which allows the
 // developer to search in a `UILayout`/`Screen` pair for a widget by its ID
 macro_rules! add_layering_support {
     ($type:ident) => {
-
-        impl $type {
+        impl<'a> $type {
             pub fn widget_from_screen_and_id(
-                ui: &mut UILayout,
+                ui: &'a mut UILayout,
                 screen: Screen,
-                id: WidgetID
-            ) -> UIResult<&mut $type> {
+                id: &'a NodeId
+            ) -> UIResult<&'a mut $type> {
                 if let Some(layer) = LayoutManager::get_screen_layering(ui, screen) {
                     return $type::widget_from_id(layer, id);
                 }
@@ -67,7 +66,7 @@ impl LayoutManager {
     pub fn focused_textfield_mut(ui: &mut UILayout, screen: Screen) -> UIResult<&mut TextField> {
         if let Some(layer) = Self::get_screen_layering(ui, screen) {
             if let Some(id) = layer.focused_widget_id() {
-                return TextField::widget_from_id(layer, id);
+                return TextField::widget_from_id(layer, &id);
             }
         }
         Err(Box::new(UIError::WidgetNotFound {

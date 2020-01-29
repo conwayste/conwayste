@@ -28,7 +28,7 @@ macro_rules! widget_from_id {
         use super::layer::Layering;
 
         impl $type {
-            pub fn widget_from_id(layer: &mut Layering, id: WidgetID) -> UIResult<&mut $type>
+            pub fn widget_from_id<'a, 'b>(layer: &'b mut Layering, id: &'a NodeId) -> UIResult<&'b mut $type>
             {
                 let widget_result = layer.get_widget_mut(id);
                 match widget_result {
@@ -67,7 +67,7 @@ macro_rules! widget_from_id {
 ///
 /// # Examples
 /// ```rust
-/// let widget = layer.get_widget_mut(WidgetID(0));
+/// let widget = layer.get_widget_mut(a_node_id);
 /// let textfield = downcast_widget_mut!(widget, TextField);
 /// textfield.enter_focus()
 /// ```

@@ -20,28 +20,41 @@ use ggez::graphics::{self, DrawMode, DrawParam, Rect};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::Context;
 
-use id_tree::{InsertBehavior, RemoveBehavior, *};
+use id_tree::{
+    InsertBehavior,
+    RemoveBehavior,
+    NodeId,
+    Tree,
+    TreeBuilder,
+    Node
+};
 
 use super::{
-    common::within_widget, widget::Widget, BoxedWidget, Pane, UIAction, UIError, UIResult, WidgetID,
+    common::within_widget, widget::Widget, BoxedWidget, Pane, UIAction, UIError, UIResult,
 };
 
 use crate::constants::{colors::*, LAYERING_NODE_CAPACITY, LAYERING_SWAP_CAPACITY};
 
 /// Dummy Widget to serve as a root node in the tree. Serves no other purpose.
 #[derive(Debug)]
-struct LayerRootNode;
+struct LayerRootNode {
+    root_id: Option<NodeId>
+}
 impl LayerRootNode {
     fn new() -> BoxedWidget {
-        Box::new(LayerRootNode {})
+        Box::new(LayerRootNode {root_id: None})
     }
 }
 
 impl Widget for LayerRootNode {
-    fn id(&self) -> WidgetID {
-        use std::usize::MAX;
-        WidgetID(MAX)
+    fn id(&self) -> Option<&NodeId> {
+        self.root_id.as_ref()
     }
+
+    fn set_id(&mut self, _new_id: NodeId) {
+        // do nothing for now
+    }
+
     fn z_index(&self) -> usize {
         use std::usize::MAX;
         MAX
@@ -59,10 +72,10 @@ impl Widget for LayerRootNode {
 }
 
 #[allow(unused)]
-pub enum InsertLocation {
+pub enum InsertLocation<'a> {
     AtCurrentLayer, // Insertion will be made at whatever the top-most layer order is
     AtNextLayer,    // Insertion will increment the layer order, and insert
-    ToNestedContainer(WidgetID), // Insert as a child to the node where node.data.id() matches WidgetID
+    ToNestedContainer(&'a NodeId), // Inserted as a child to the specified node in the tree
 }
 
 pub struct Layering {
@@ -88,7 +101,7 @@ pub struct Layering {
 /// widgets) may be added to the layering at a higher z-order than what is currently present. Here
 /// the user would add to the tree using the `AtNextLayer` for the initial Pane, and
 /// `ToNestedContainer(...)` for all child widgets. When modal dialog is dismissed, the Pane is
-/// removed from the layering by widget-id using the remove API. Any previously presented UI prior
+/// removed from the layering by node id using the remove API. Any previously presented UI prior
 /// to the new layer will be displayed unaffected by the addition and removal of the Pane.
 ///
 /// Widgets declare their z-order by the `z_index` field. A z-order of zero corresponds to the
@@ -115,18 +128,12 @@ impl Layering {
         }
     }
 
-    /// Returns true if an entry with the provided WidgetID exists.
-    fn check_for_entry(&self, widget_id: WidgetID) -> bool {
-        // unwrap safe because a Layering should always have a dummy root-node
-        let root_id = self.widget_tree.root_node_id().unwrap();
+    /// Returns true if an entry with the provided NodeId exists.
+    fn check_for_entry(&self, id: &NodeId) -> bool {
         let mut s = String::new();
         let _ = self.widget_tree.write_formatted(&mut s);
         debug!("{}", s);
-        self.widget_tree
-            .traverse_level_order(&root_id)
-            .unwrap() // unwrap safe because we got a valid NodeId for the dummy root-node, above
-            .find(|&node| node.data().id() == widget_id)
-            .is_some()
+        self.widget_tree.traverse_level_order(id).is_ok()
     }
 
     /// Collect all nodes in the tree belonging to the corresponding z_order
@@ -143,30 +150,17 @@ impl Layering {
     }
 
     /// Retreives a mutable reference to a widget. This will search the widget tree for the
-    /// provided widget-id.
+    /// provided node id.
     ///
     /// # Error
-    /// A WidgetNotFound error will be returned if the widget-id is not found.
+    /// A WidgetNotFound error will be returned if the node id is not found.
     /// does not exist in the internal list of widgets.
-    pub fn get_widget_mut(&mut self, widget_id: WidgetID) -> UIResult<&mut BoxedWidget> {
-        // unwrap safe because a Layering should always have a dummy root-node
-        let root_id = self.widget_tree.root_node_id().unwrap();
-
-        if let Some(node_id) = self
-            .widget_tree
-            .traverse_level_order_ids(&root_id)
-            .unwrap()
-            .filter(|node_id| {
-                let node = self.widget_tree.get(&node_id).unwrap();
-                node.data().id() == widget_id
-            })
-            .next()
-        {
-            let node = self.widget_tree.get_mut(&node_id).unwrap();
+    pub fn get_widget_mut(&mut self, id: &NodeId) -> UIResult<&mut BoxedWidget> {
+        if let Ok(node) = self.widget_tree.get_mut(id) {
             Ok(node.data_mut())
         } else {
             Err(Box::new(UIError::WidgetNotFound {
-                reason: format!("{:?} not found in layering's widget list", widget_id).to_owned(),
+                reason: format!("{:?} not found in layering's widget list", id).to_owned(),
             }))
         }
     }
@@ -176,36 +170,40 @@ impl Layering {
     /// to a widget-container (like a Pane). The widget's z-index is overridden by the destination
     /// layer's z-order.
     ///
+    /// # Return
+    /// Returns a unique node identifier assigned to the successfully inserted widget.
+    ///
     /// # Error
-    /// A `WidgetIDCollision` error can be returned if the widget-id exists in this layering.
+    /// A `NodeIDCollision` error can be returned if the node id exists in this layering.
     /// An `InvalidAction` error can be returned if the widget addition operation fails.
-    /// A `WidgetNotFound` error can be returned if the nested container's widget-id does not exist.
+    /// A `WidgetNotFound` error can be returned if the nested container's node id does not exist.
     pub fn add_widget(
         &mut self,
         mut widget: BoxedWidget,
         modifier: InsertLocation,
-    ) -> UIResult<()> {
-        let widget_id = widget.id();
-        if self.check_for_entry(widget_id) {
-            return Err(Box::new(UIError::WidgetIDCollision {
-                reason: format!(
-                    "Widget with ID {:?} exists in layer's widget list.",
-                    widget_id
-                ),
-            }));
+    ) -> UIResult<NodeId> {
+        // Check that we aren't inserting a widget into the tree that already exists
+         if let Some(id) = widget.id() {
+            if self.check_for_entry(id) {
+                return Err(Box::new(UIError::NodeIDCollision {
+                    reason: format!("Widget with ID {:?} exists in layer's widget tree.", id),
+                }));
+            }
         }
 
+        // Unwrap safe because our tree will always have a dummy root node
         let root_id = self.widget_tree.root_node_id().unwrap().clone();
+        let inserted_node_id;
         match modifier {
             InsertLocation::AtCurrentLayer => {
                 widget.set_z_index(self.highest_z_order);
-                self.widget_tree
+                inserted_node_id = self.widget_tree
                     .insert(Node::new(widget), InsertBehavior::UnderNode(&root_id))
                     .or_else(|e| {
                         Err(Box::new(UIError::InvalidAction {
                             reason: format!(
-                                "Error during insertion of {:?}, AtCurrentLayer({}): {}",
-                                widget_id, self.highest_z_order, e
+                                "Error during insertion AtCurrentLayer({}): {}",
+                                self.highest_z_order, e
                             ),
                         }))
                     })?;
@@ -213,74 +211,56 @@ impl Layering {
             InsertLocation::AtNextLayer => {
                 self.highest_z_order += 1;
                 widget.set_z_index(self.highest_z_order);
-                self.widget_tree
+                inserted_node_id = self.widget_tree
                     .insert(Node::new(widget), InsertBehavior::UnderNode(&root_id))
                     .or_else(|e| {
                         Err(Box::new(UIError::InvalidAction {
                             reason: format!(
-                                "Error during insertion of {:?}, AtCurrentLayer({}): {}",
-                                widget_id, self.highest_z_order, e
+                                "Error during insertion AtNextLayer({}): {}",
+                                self.highest_z_order, e
                             ),
                         }))
                     })?;
             }
-            InsertLocation::ToNestedContainer(widget_id) => {
-                if !self.check_for_entry(widget_id) {
+            InsertLocation::ToNestedContainer(parent_id) => {
+                if !self.check_for_entry(parent_id) {
                     return Err(Box::new(UIError::WidgetNotFound {
                         reason: format!(
-                            "Pane with ID {:?} not found in tree. Cannot add {:?} to tree.",
-                            widget_id,
-                            widget.id()
+                            "Parent Container with NodeId {:?} not found in tree. Cannot nest {:?}.",
+                            parent_id,
+                            widget
                         ),
                     }));
                 }
 
-                // First find the node_id that corresponds to the Pane we're adding to
-                let mut node_id_found = None;
-                for node_id in self.widget_tree.traverse_level_order_ids(&root_id).unwrap() {
-                    let node = self.widget_tree.get(&node_id).unwrap();
-                    let dyn_widget = node.data();
-                    if let Some(pane) = downcast_widget!(dyn_widget, Pane) {
-                        if pane.id() == widget_id {
-                            // Prepare the widget for insertion at the Pane's layer, translated to
-                            // an offset from the Pane's top-left corner
-                            let point = pane.dimensions.point();
-                            let vector = Vector2::new(point.x, point.y);
-                            widget.translate(vector);
-                            widget.set_z_index(pane.z_index());
-
-                            node_id_found = Some(node_id);
-                            break;
-                        }
-                    }
+                // First find the node_id that corresponds to the container we're adding to
+                let node = self.widget_tree.get(&parent_id).unwrap();
+                let dyn_widget = node.data();
+                if let Some(pane) = downcast_widget!(dyn_widget, Pane) {
+                    // Prepare the widget for insertion at the Pane's layer, translated to
+                    // an offset from the Pane's top-left corner
+                    let point = pane.dimensions.point();
+                    let vector = Vector2::new(point.x, point.y);
+                    widget.translate(vector);
+                    widget.set_z_index(pane.z_index());
                 }
 
                 // Insert the node under the found node_id corresponding to the Pane
-                if let Some(node_id) = node_id_found {
-                    let inserting_widget_id = widget.id();
-                    self.widget_tree.insert(Node::new(widget), InsertBehavior::UnderNode(&node_id))
-                        .or_else(|e| Err(Box::new(UIError::InvalidAction {
-                            reason: format!("Error during insertion of {:?}, ToNestedContainer({:?}, layer={}): {}",
-                                inserting_widget_id,
-                                widget_id,
-                                self.highest_z_order,
-                                e)
-                        })))?;
-                } else {
-                    return Err(Box::new(UIError::WidgetNotFound {
-                        reason: format!(
-                            concat!(
-                                "Pane with ID {:?} not found in tree but was checked",
-                                " for entry. Cannot add {:?} to tree."
-                            ),
-                            widget_id,
-                            widget.id()
-                        ),
-                    }));
-                }
+                inserted_node_id = self.widget_tree.insert(Node::new(widget), InsertBehavior::UnderNode(&parent_id))
+                    .or_else(|e| Err(Box::new(UIError::InvalidAction {
+                        reason: format!("Error during insertion, ToNestedContainer({:?}, layer={}): {}",
+                            parent_id,
+                            self.highest_z_order,
+                            e)
+                })))?;
             }
         }
-        Ok(())
+
+        // Unwrap *should* be safe because otherwise we would have bailed prior to insertion
+        let node = self.widget_tree.get_mut(&inserted_node_id).unwrap();
+        node.data_mut().set_id(inserted_node_id.clone());
+
+        Ok(inserted_node_id)
     }
 
     /// Removes a widget belonging to the layering. Will drop all child nodes if the target is a
@@ -291,65 +271,45 @@ impl Layering {
     /// in the internal list of widgets.
     // Implemented API for future use. TODO: Remove comment once function is used
     #[allow(unused)]
-    pub fn remove_widget(&mut self, widget_id: WidgetID) -> UIResult<()> {
-        if !self.check_for_entry(widget_id) {
+    pub fn remove_widget(&mut self, id: NodeId) -> UIResult<()> {
+        if !self.check_for_entry(&id) {
             return Err(Box::new(UIError::WidgetNotFound {
-                reason: format!("{:?} not found in layer during removal", widget_id).to_owned(),
+                reason: format!("{:?} not found in layer during removal", id).to_owned(),
             }));
         }
 
-        let root_id = self.widget_tree.root_node_id().unwrap();
-        for node_id in self.widget_tree.traverse_level_order_ids(&root_id).unwrap() {
-            let node = self.widget_tree.get(&node_id).unwrap();
-            let dyn_widget = node.data();
-            if dyn_widget.id() == widget_id {
-                self.widget_tree
-                    .remove_node(node_id, RemoveBehavior::DropChildren);
-                break;
-            }
-        }
+        self.widget_tree.remove_node(id, RemoveBehavior::DropChildren);
 
-        // Determine if the highest z-order changes due to the widget removal
-        while (self.collect_node_ids(self.highest_z_order).is_empty()) {
+        // Determine if the highest z-order changes due to the widget removal by checking no other
+        // widgets are present at that z_order
+        while (self.highest_z_order != 0 &&
+            self.collect_node_ids(self.highest_z_order).is_empty()) {
             self.highest_z_order -= 1;
         }
 
         Ok(())
     }
 
-    /// Returns the WidgetID of the widget currently in-focus
-    pub fn focused_widget_id(&self) -> Option<WidgetID> {
-        self.focused_node_id
-            .as_ref()
-            .map(|node_id| self.widget_tree.get(node_id).unwrap().data().id())
+    /// Returns the NodeId of the widget currently in-focus
+    pub fn focused_widget_id(&self) -> Option<NodeId> {
+        self.focused_node_id.clone()
     }
 
-    /// Notifies the layer that the provided WidgetID is to capture input events
+    /// Notifies the layer that the provided NodeId is to capture input events
     ///
     /// # Error
     /// A WidgetNotFound error can be returned if a widget with the `widget_id` does not exist in
     /// the internal list of widgets.
-    pub fn enter_focus(&mut self, widget_id: WidgetID) -> UIResult<()> {
-        if !self.check_for_entry(widget_id) {
+    pub fn enter_focus(&mut self, id: &NodeId) -> UIResult<()> {
+        if !self.check_for_entry(id) {
             return Err(Box::new(UIError::WidgetNotFound {
-                reason: format!(
-                    "{:?} not found in layering's widget list during enter focus",
-                    widget_id
-                ),
+                reason: format!("{:?} not found in layering's widget list during enter focus", id),
             }));
         }
 
-        let root_id = self.widget_tree.root_node_id().unwrap();
-        for node_id in self.widget_tree.traverse_level_order_ids(&root_id).unwrap() {
-            let node = self.widget_tree.get(&node_id).unwrap();
-            let dyn_widget = node.data();
-            if dyn_widget.id() == widget_id {
-                // Will overwrite any previously focused widget. This is acceptable because the user
-                // may be switching focuses, like from one textfield to another
-                self.focused_node_id = Some(node_id);
-                break;
-            }
-        }
+        // Will overwrite any previously focused widget. This is acceptable because the user
+        // may be switching focuses, like from one textfield to another.
+        self.focused_node_id = Some((*id).clone());
 
         // Call the widget's handler to enter focus
         if let Some(node_id) = &self.focused_node_id {
@@ -363,8 +323,8 @@ impl Layering {
 
     /// Clears the focus of the layering
     pub fn exit_focus(&mut self) {
-        if let Some(widget_id) = self.focused_widget_id() {
-            if let Ok(dyn_widget) = self.get_widget_mut(widget_id) {
+        if let Some(id) = self.focused_widget_id() {
+            if let Ok(dyn_widget) = self.get_widget_mut(&id) {
                 dyn_widget.exit_focus();
             }
         }
@@ -384,7 +344,7 @@ impl Layering {
 
     //TODO: this doesn't let container widgets control whether or how their child widgets get the
     //events. Consider only collecting a specific Node's childrens' NodeIds.
-    pub fn on_click(&mut self, point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
+    pub fn on_click(&mut self, point: &Point2<f32>) -> Option<UIAction> {
         let node_ids = self.collect_node_ids(self.highest_z_order);
 
         // Due to the way `collect_node_ids()` traverses the entire list, all children nodes will be
