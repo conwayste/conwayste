@@ -129,7 +129,7 @@ impl Layering {
     }
 
     /// Returns true if an entry with the provided NodeId exists.
-    fn check_for_entry(&self, id: &NodeId) -> bool {
+    fn widget_exists(&self, id: &NodeId) -> bool {
         let mut s = String::new();
         let _ = self.widget_tree.write_formatted(&mut s);
         debug!("{}", s);
@@ -152,7 +152,8 @@ impl Layering {
     /// Retreives a mutable reference to a widget. This will search the widget tree for the
     /// provided node id.
     ///
-    /// # Error
+    /// # Errors
+    ///
     /// A WidgetNotFound error will be returned if the node id is not found.
     /// does not exist in the internal list of widgets.
     pub fn get_widget_mut(&mut self, id: &NodeId) -> UIResult<&mut BoxedWidget> {
@@ -173,7 +174,8 @@ impl Layering {
     /// # Return
     /// Returns a unique node identifier assigned to the successfully inserted widget.
     ///
-    /// # Error
+    /// # Errors
+    ///
     /// A `NodeIDCollision` error can be returned if the node id exists in this layering.
     /// An `InvalidAction` error can be returned if the widget addition operation fails.
     /// A `WidgetNotFound` error can be returned if the nested container's node id does not exist.
@@ -184,7 +186,7 @@ impl Layering {
     ) -> UIResult<NodeId> {
         // Check that we aren't inserting a widget into the tree that already exists
          if let Some(id) = widget.id() {
-            if self.check_for_entry(id) {
+            if self.widget_exists(id) {
                 return Err(Box::new(UIError::NodeIDCollision {
                     reason: format!("Widget with ID {:?} exists in layer's widget tree.", id),
                 }));
@@ -223,7 +225,7 @@ impl Layering {
                     })?;
             }
             InsertLocation::ToNestedContainer(parent_id) => {
-                if !self.check_for_entry(parent_id) {
+                if !self.widget_exists(parent_id) {
                     return Err(Box::new(UIError::WidgetNotFound {
                         reason: format!(
                             "Parent Container with NodeId {:?} not found in tree. Cannot nest {:?}.",
@@ -266,13 +268,14 @@ impl Layering {
     /// Removes a widget belonging to the layering. Will drop all child nodes if the target is a
     /// container-based widget.
     ///
-    /// # Error
+    /// # Errors
+    ///
     /// A WidgetNotFound error can be returned if a widget with the `widget_id` does not exist
     /// in the internal list of widgets.
     // Implemented API for future use. TODO: Remove comment once function is used
     #[allow(unused)]
     pub fn remove_widget(&mut self, id: NodeId) -> UIResult<()> {
-        if !self.check_for_entry(&id) {
+        if !self.widget_exists(&id) {
             return Err(Box::new(UIError::WidgetNotFound {
                 reason: format!("{:?} not found in layer during removal", id).to_owned(),
             }));
@@ -297,11 +300,12 @@ impl Layering {
 
     /// Notifies the layer that the provided NodeId is to capture input events
     ///
-    /// # Error
+    /// # Errors
+    ///
     /// A WidgetNotFound error can be returned if a widget with the `widget_id` does not exist in
     /// the internal list of widgets.
     pub fn enter_focus(&mut self, id: &NodeId) -> UIResult<()> {
-        if !self.check_for_entry(id) {
+        if !self.widget_exists(id) {
             return Err(Box::new(UIError::WidgetNotFound {
                 reason: format!("{:?} not found in layering's widget list during enter focus", id),
             }));
@@ -596,8 +600,8 @@ mod test {
                 InsertLocation::ToNestedContainer(&pane_id)
             ).unwrap();
 
-        assert_eq!(layer_info.check_for_entry(&pane_id), true);
-        assert_eq!(layer_info.check_for_entry(&chatbox_id), true);
+        assert_eq!(layer_info.widget_exists(&pane_id), true);
+        assert_eq!(layer_info.widget_exists(&chatbox_id), true);
     }
 
     #[test]
@@ -647,27 +651,27 @@ mod test {
     }
 
     #[test]
-    fn test_check_for_entry_widget_found() {
+    fn test_widget_exists_widget_found() {
         let mut layer_info = Layering::new();
 
         let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
         let pane_id = layer_info
             .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
-        assert_eq!(layer_info.check_for_entry(&pane_id), true);
+        assert_eq!(layer_info.widget_exists(&pane_id), true);
     }
 
     #[test]
-    fn test_check_for_entry_widget_not_found_list_non_empty() {
+    fn test_widget_exists_widget_not_found_list_non_empty() {
         let mut layer_info = Layering::new();
 
         let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
         let pane_id = layer_info
             .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
-        assert_eq!(layer_info.check_for_entry(&pane_id), true);
+        assert_eq!(layer_info.widget_exists(&pane_id), true);
 
         let removal = layer_info.remove_widget(pane_id.clone());
         assert_eq!(removal.is_ok(), true);
-        assert_eq!(layer_info.check_for_entry(&pane_id), false);
+        assert_eq!(layer_info.widget_exists(&pane_id), false);
     }
 
     #[test]
