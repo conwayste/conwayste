@@ -133,7 +133,7 @@ impl Layering {
         let mut s = String::new();
         let _ = self.widget_tree.write_formatted(&mut s);
         debug!("{}", s);
-        self.widget_tree.traverse_level_order(id).is_ok()
+        self.widget_tree.get(id).is_ok()
     }
 
     /// Collect all nodes in the tree belonging to the corresponding z_order
