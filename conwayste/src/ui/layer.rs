@@ -16,6 +16,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::collections::HashSet;
+
 use ggez::graphics::{self, DrawMode, DrawParam, Rect};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::Context;
@@ -82,8 +84,9 @@ pub struct Layering {
     pub with_transparency: bool, // Determines if a transparent film is drawn in between two
     // adjacent layers
     widget_tree: Tree<BoxedWidget>, // Tree of widgets. Container-like widgets (think Panes)
-    // will have children nodes which are the nested elements
-    // (think Buttons) of the widget.
+                                    // will have children nodes which are the nested elements
+                                    // (think Buttons) of the widget.
+    removed_node_ids: HashSet<NodeId>, // Set of all node-ids that have been removed from the Tree
     highest_z_order: usize, // Number of layers allocated in the system + 1
     focused_node_id: Option<NodeId>, // Currently active widget, one per z-order. If None, then
                             // the layer is not focused on any particular widget.
@@ -122,6 +125,7 @@ impl Layering {
                 .with_swap_capacity(LAYERING_SWAP_CAPACITY)
                 .with_root(Node::new(LayerRootNode::new()))
                 .build(),
+            removed_node_ids: HashSet::new(),
             highest_z_order: 0,
             with_transparency: false,
             focused_node_id: None,
@@ -185,7 +189,7 @@ impl Layering {
         modifier: InsertLocation,
     ) -> UIResult<NodeId> {
         // Check that we aren't inserting a widget into the tree that already exists
-         if let Some(id) = widget.id() {
+        if let Some(id) = widget.id() {
             return Err(Box::new(UIError::NodeIDCollision {
                 reason: format!("Widget with ID {:?} exists was assigned an ID already.", id),
             }));
@@ -260,6 +264,11 @@ impl Layering {
         let node = self.widget_tree.get_mut(&inserted_node_id).unwrap();
         node.data_mut().set_id(inserted_node_id.clone());
 
+        // Report the error but keep going
+        if self.removed_node_ids.contains(&inserted_node_id) {
+            error!("NodeId {:?} found in HashSet during widget insertion. Possible reusage! Please report the bug!", inserted_node_id);
+        }
+
         Ok(inserted_node_id)
     }
 
@@ -279,7 +288,18 @@ impl Layering {
             }));
         }
 
-        self.widget_tree.remove_node(id, RemoveBehavior::DropChildren);
+        // clone is okay because it is required
+        self.widget_tree.remove_node(id.clone(), RemoveBehavior::DropChildren).or_else(|e| {
+            return Err(Box::new(UIError::InvalidAction {
+                // clone is okay for error reporting
+                reason: format!("NodeIDError occurred during removal of {:?}: {:?}", id.clone(), e)
+            }));
+        });
+
+        // clone is okay because the HashSet is intended to keep track of all removed widgets
+        if !self.removed_node_ids.insert(id.clone()) {
+            error!("NodeId {:?} found in HashSet during widget removal. Possible reusage! Please report the bug!", id);
+        }
 
         // Determine if the highest z-order changes due to the widget removal by checking no other
         // widgets are present at that z_order
@@ -697,5 +717,35 @@ mod test {
 
         let removal = layer_info.remove_widget(pane_id.clone());
         assert_eq!(removal.is_ok(), false);
+    }
+
+    #[test]
+    fn test_remove_widget_adds_id_to_hashset() {
+        let mut layer_info = Layering::new();
+
+        let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
+        let pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+
+        let removal = layer_info.remove_widget(pane_id.clone());
+        assert_eq!(removal.is_ok(), true);
+
+        assert!(layer_info.removed_node_ids.contains(&pane_id));
+    }
+
+        #[test]
+        #[should_panic]
+    fn test_reinserting_widget_fails() {
+        let mut layer_info = Layering::new();
+
+        let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
+        let mut pane2 = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
+        let pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+        let _removal = layer_info.remove_widget(pane_id.clone());
+
+        pane2.set_id(pane_id);
+        let _ = layer_info
+            .add_widget(Box::new(pane2), InsertLocation::AtCurrentLayer).unwrap();
     }
 }
