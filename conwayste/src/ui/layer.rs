@@ -169,7 +169,7 @@ impl Layering {
     /// Add a widget to the layering, where the z-order is specified by the insert modifier.
     /// Widgets can be inserted at the current layer, at the next layer (one order higher), or nested
     /// to a widget-container (like a Pane). The widget's z-index is overridden by the destination
-    /// layer's z-order.
+    /// layer's z-order. `set_id` is called on the widget after insertion to update the widget's id.
     ///
     /// # Return
     /// Returns a unique node identifier assigned to the successfully inserted widget.
@@ -186,11 +186,9 @@ impl Layering {
     ) -> UIResult<NodeId> {
         // Check that we aren't inserting a widget into the tree that already exists
          if let Some(id) = widget.id() {
-            if self.widget_exists(id) {
-                return Err(Box::new(UIError::NodeIDCollision {
-                    reason: format!("Widget with ID {:?} exists in layer's widget tree.", id),
-                }));
-            }
+            return Err(Box::new(UIError::NodeIDCollision {
+                reason: format!("Widget with ID {:?} exists was assigned an ID already.", id),
+            }));
         }
 
         // Unwrap safe because our tree will always have a dummy root node
