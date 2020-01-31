@@ -75,12 +75,8 @@ impl UILayout {
             chatbox_font_info,
             constants::CHATBOX_HISTORY
         );
-        match chatbox.set_rect(chatbox_rect) {
-            Ok(()) => { },
-            Err(e) => {
-                error!("Could not set size for chatbox during initialization! {:?}", e);
-            }
-        }
+        chatbox.set_rect(chatbox_rect)?;
+
         let chatbox = Box::new(chatbox);
 
         let textfield_rect = Rect::new(
@@ -111,12 +107,8 @@ impl UILayout {
                 "ServerList".to_owned()
             )
         );
-        match serverlist_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0)) {
-            Ok(()) => { },
-            Err(e) => {
-                error!("Could not set size for serverlist button during initialization! {:?}", e );
-            }
-        }
+        serverlist_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0))?;
+
         let mut inroom_button = Box::new(
             Button::new(
                 ctx,
@@ -125,12 +117,7 @@ impl UILayout {
                 "InRoom".to_owned()
             )
         );
-        match inroom_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0)) {
-            Ok(()) => { },
-            Err(e) => {
-                error!("Could not set size for inroom button during initialization! {:?}", e);
-            }
-        }
+        inroom_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0))?;
 
         let mut startgame_button = Box::new(
             Button::new(
@@ -140,12 +127,7 @@ impl UILayout {
                 "StartGame".to_owned()
             )
         );
-        match startgame_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0)) {
-            Ok(()) => { },
-            Err(e) => {
-                error!("Could not set size for startgame button during initialization! {:?}", e);
-            }
-        }
+        startgame_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0))?;
 
         let checkbox = Box::new(
             Checkbox::new(
