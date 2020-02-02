@@ -191,7 +191,7 @@ impl Layering {
         // Check that we aren't inserting a widget into the tree that already exists
         if let Some(id) = widget.id() {
             return Err(Box::new(UIError::NodeIDCollision {
-                reason: format!("Widget with ID {:?} exists was assigned an ID already.", id),
+                reason: format!("Attempted to insert widget with previously assigned ID {:?}.", id),
             }));
         }
 
@@ -264,10 +264,11 @@ impl Layering {
         let node = self.widget_tree.get_mut(&inserted_node_id).unwrap();
         node.data_mut().set_id(inserted_node_id.clone());
 
-        // Report the error but keep going
-        if self.removed_node_ids.contains(&inserted_node_id) {
-            error!("NodeId {:?} found in HashSet during widget insertion. Possible reusage! Please report the bug!", inserted_node_id);
+        // Note the behavior if id_tree (somehow) reused an ID
+        if !self.removed_node_ids.contains(&inserted_node_id) {
+            warn!("NodeId {:?} found in removed-hashset during widget insertion. Possible reusage!", inserted_node_id);
         }
+
 
         Ok(inserted_node_id)
     }
@@ -288,6 +289,21 @@ impl Layering {
             }));
         }
 
+        // Insert the node's children ids to the removed hash-set
+        if let Ok(children_ids ) = self.widget_tree.children_ids(&id) {
+            // collect nodes to bypass issue with double borrow on ChildrenIds iterator
+            let children_ids: Vec<&NodeId> = children_ids.collect();
+            for node_id_ref in children_ids {
+                self.removed_node_ids.insert((*node_id_ref).clone());
+            }
+        }
+
+        // Finally check the node itself
+        // clone is okay because the HashSet is intended to keep track of all removed widget ids
+        // result not checked as this is reported during widget insertion
+        #[allow(unused)]
+        self.removed_node_ids.insert(id.clone());
+
         // clone is okay because it is required
         self.widget_tree.remove_node(id.clone(), RemoveBehavior::DropChildren).or_else(|e| {
             return Err(Box::new(UIError::InvalidAction {
@@ -295,11 +311,6 @@ impl Layering {
                 reason: format!("NodeIDError occurred during removal of {:?}: {:?}", id.clone(), e)
             }));
         });
-
-        // clone is okay because the HashSet is intended to keep track of all removed widgets
-        if !self.removed_node_ids.insert(id.clone()) {
-            error!("NodeId {:?} found in HashSet during widget removal. Possible reusage! Please report the bug!", id);
-        }
 
         // Determine if the highest z-order changes due to the widget removal by checking no other
         // widgets are present at that z_order
@@ -733,8 +744,7 @@ mod test {
         assert!(layer_info.removed_node_ids.contains(&pane_id));
     }
 
-        #[test]
-        #[should_panic]
+    #[test]
     fn test_reinserting_widget_fails() {
         let mut layer_info = Layering::new();
 
@@ -744,8 +754,35 @@ mod test {
             .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
         let _removal = layer_info.remove_widget(pane_id.clone());
 
+        // Try to re-insert with a previously allocated node_id
         pane2.set_id(pane_id);
-        let _ = layer_info
-            .add_widget(Box::new(pane2), InsertLocation::AtCurrentLayer).unwrap();
+        assert!(layer_info.add_widget(Box::new(pane2), InsertLocation::AtCurrentLayer).is_err());
+    }
+
+    #[test]
+    fn test_remove_container_widget_adds_children_to_hashset() {
+        let mut layer_info = Layering::new();
+        let font_info = create_dummy_font();
+        let history_len = 5;
+
+        let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
+        let pane_id = layer_info
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+
+        let child_node_ids: Vec<NodeId> = (0..5).map(|_| {
+            let chatbox = Chatbox::new(font_info, history_len);
+            layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedContainer(&pane_id)).unwrap()
+        }).collect();
+
+        let removal = layer_info.remove_widget(pane_id.clone());
+        assert_eq!(removal.is_ok(), true);
+
+        let mut all_ids = HashSet::new();
+        all_ids.insert(pane_id);
+        for node_id in child_node_ids {
+            all_ids.insert(node_id);
+        }
+
+        assert_eq!(all_ids.difference(&layer_info.removed_node_ids).count(), 0);
     }
 }
