@@ -265,7 +265,7 @@ impl Layering {
         node.data_mut().set_id(inserted_node_id.clone());
 
         // Note the behavior if id_tree (somehow) reused an ID
-        if !self.removed_node_ids.contains(&inserted_node_id) {
+        if self.removed_node_ids.contains(&inserted_node_id) {
             warn!("NodeId {:?} found in removed-hashset during widget insertion. Possible reusage!", inserted_node_id);
         }
 
@@ -292,7 +292,6 @@ impl Layering {
         // Insert the node's children ids to the removed hash-set
         if let Ok(children_ids ) = self.widget_tree.children_ids(&id) {
             // collect nodes to bypass issue with double borrow on ChildrenIds iterator
-            let children_ids: Vec<&NodeId> = children_ids.collect();
             for node_id_ref in children_ids {
                 self.removed_node_ids.insert((*node_id_ref).clone());
             }
@@ -301,7 +300,6 @@ impl Layering {
         // Finally check the node itself
         // clone is okay because the HashSet is intended to keep track of all removed widget ids
         // result not checked as this is reported during widget insertion
-        #[allow(unused)]
         self.removed_node_ids.insert(id.clone());
 
         // clone is okay because it is required
@@ -310,12 +308,12 @@ impl Layering {
                 // clone is okay for error reporting
                 reason: format!("NodeIDError occurred during removal of {:?}: {:?}", id.clone(), e)
             }));
-        });
+        })?;
 
         // Determine if the highest z-order changes due to the widget removal by checking no other
         // widgets are present at that z_order
-        while (self.highest_z_order != 0 &&
-            self.collect_node_ids(self.highest_z_order).is_empty()) {
+        while self.highest_z_order != 0 &&
+            self.collect_node_ids(self.highest_z_order).is_empty() {
             self.highest_z_order -= 1;
         }
 
