@@ -1,4 +1,4 @@
-/*  Copyright 2019 the Conwayste Developers.
+/*  Copyright 2019-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -69,6 +69,3 @@ pub enum UIAction {
     EnterText, // TODO: see if we still need this "gunk residue"
     None,
 }
-
-#[derive(PartialOrd, PartialEq, Eq, Debug, Copy, Clone, Hash)]
-pub struct WidgetID(pub usize);

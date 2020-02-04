@@ -1,4 +1,4 @@
-/*  Copyright 2019 the Conwayste Developers.
+/*  Copyright 2019-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -23,6 +23,8 @@ use ggez::graphics::{self, Rect, Color, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
+use id_tree::NodeId;
+
 use super::{
     context,
     label::Label,
@@ -30,11 +32,10 @@ use super::{
     common::{within_widget, color_with_alpha, center, FontInfo},
     UIAction,
     UIError, UIResult,
-    WidgetID
 };
 
 pub struct Button {
-    id: WidgetID,
+    id: Option<NodeId>,
     z_index: usize,
     pub label: Label,
     pub button_color: Color,
@@ -65,9 +66,7 @@ impl Button {
     ///
     /// # Arguments
     /// * `ctx` - GGEZ context
-    /// * `widget_id` - Unique widget identifier
     /// * `action` - Unique action identifer
-    /// * `label_id` - Unique widget identifier for the associated label representing the button's text
     /// * `font_info` - font descriptor to be used when drawing the text
     /// * `button_text` - Text to be displayed
     ///
@@ -80,9 +79,8 @@ impl Button {
     /// let font = Font::Default;
     /// let font_info = common::FontInfo::new(ctx, font, Some(20.0));
     /// let b = Button::new(
-    ///     ctx, ui::TestButton1,
+    ///     ctx,
     ///     UIAction::PrintHelloWorld,
-    ///     ui::TestButton1Label,
     ///     font_info,
     ///     "TestButton"
     /// );
@@ -92,9 +90,7 @@ impl Button {
     ///
     pub fn new(
         ctx: &mut Context,
-        widget_id: WidgetID,
         action: UIAction,
-        label_id: WidgetID,
         font_info: FontInfo,
         button_text: String,
     ) -> Self {
@@ -102,7 +98,6 @@ impl Button {
         let label_position = Point2::new(0.0, 0.0);
         let label = Label::new(
             ctx,
-            label_id,
             font_info,
             button_text,
             color_with_alpha(css::WHITE, 0.1),
@@ -118,7 +113,7 @@ impl Button {
         );
 
         let mut b = Button {
-            id: widget_id,
+            id: None,
             z_index: std::usize::MAX,
             label: label,
             button_color: color_with_alpha(css::DARKCYAN, 0.8),
@@ -148,8 +143,12 @@ impl Button {
 }
 
 impl Widget for Button {
-    fn id(&self) -> WidgetID {
-        self.id
+    fn id(&self) -> Option<&NodeId> {
+        self.id.as_ref()
+    }
+
+    fn set_id(&mut self, new_id: NodeId) {
+        self.id = Some(new_id);
     }
 
     fn z_index(&self) -> usize {
@@ -164,9 +163,9 @@ impl Widget for Button {
         self.hover = within_widget(point, &self.dimensions);
     }
 
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)>
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction>
     {
-        return Some((self.id, self.action));
+        return Some(self.action);
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {

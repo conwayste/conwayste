@@ -1,4 +1,4 @@
-/*  Copyright 2019 the Conwayste Developers.
+/*  Copyright 2019-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -23,18 +23,19 @@ use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Rect, Text};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
+use id_tree::NodeId;
+
 use super::{
     common::{within_widget, FontInfo},
     widget::Widget,
     UIAction,
     UIError, UIResult,
-    WidgetID
 };
 
 use crate::constants::{self, colors::*};
 
 pub struct Chatbox {
-    id: WidgetID,
+    id: Option<NodeId>,
     z_index: usize,
     history_lines: usize,
     color: Color,
@@ -57,7 +58,6 @@ impl Chatbox {
     /// Creates a Chatbox widget.
     ///
     /// # Arguments
-    /// * `widget_id` - Unique widget identifier
     /// * `font_info` - a `FontInfo` struct to represent that chat text's font
     /// * `history_lines` - Number of lines of chat history to maintain
     ///
@@ -69,15 +69,15 @@ impl Chatbox {
     ///
     /// let font = Font::Default;
     /// let chatbox_font_info = common::FontInfo::new(ctx, font, Some(20.0));
-    /// let chatbox = Chatbox::new(ui::TestChatbox, chatbox_font_info, 20);
+    /// let chatbox = Chatbox::new(chatbox_font_info, 20);
     /// checkbox.draw(ctx);
     /// ```
     ///
-    pub fn new(widget_id: WidgetID, font_info: FontInfo, history_lines: usize) -> Self {
+    pub fn new(font_info: FontInfo, history_lines: usize) -> Self {
         // TODO: affix to bottom left corner once "anchoring"/"gravity" is implemented
         let rect = *constants::DEFAULT_CHATBOX_RECT;
         Chatbox {
-            id: widget_id,
+            id: None,
             z_index: std::usize::MAX,
             history_lines,
             color: *CHATBOX_BORDER_COLOR,
@@ -224,9 +224,14 @@ impl Chatbox {
 }
 
 impl Widget for Chatbox {
-    fn id(&self) -> WidgetID {
-        self.id
+    fn id(&self) -> Option<&NodeId> {
+        self.id.as_ref()
     }
+
+    fn set_id(&mut self, new_id: NodeId) {
+        self.id = Some(new_id);
+    }
+
 
     fn z_index(&self) -> usize {
         self.z_index
@@ -295,8 +300,8 @@ impl Widget for Chatbox {
         self.hover = within_widget(point, &self.dimensions);
     }
 
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        return Some((self.id, self.action));
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction> {
+        return Some(self.action);
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
@@ -381,7 +386,7 @@ mod tests {
         // The following must be the reverse of the `max_chars_per_line` calculation in
         // `reflow_message`, plus 0.01 padding.
         let width = font_info.char_dimensions.x * (max_chars_per_line as f32) + 0.01;
-        let mut cb = Chatbox::new(WidgetID(0), font_info, history_lines);
+        let mut cb = Chatbox::new(font_info, history_lines);
         let _result = cb.set_rect(Rect::new(0.0, 0.0, width, height));
         cb
     }

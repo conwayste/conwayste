@@ -79,7 +79,6 @@ use constants::{
     HISTORY_SIZE,
     INTRO_DURATION,
     INTRO_PAUSE_DURATION,
-    widget_ids::*,
     colors::*,
 };
 use input::{MouseAction, ScrollEvent};
@@ -91,7 +90,6 @@ use ui::{
     UIError,
     UIResult,
     Widget,
-    WidgetID,
     Event,
     EventType,
 };
@@ -500,8 +498,8 @@ impl EventHandler for MainState {
                         layer.emit(&click_event, ctx, &mut self.config).unwrap_or_else(|e| {
                             error!("Error from layer.emit on left click: {:?}", e);
                         });
-                        if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
-                            self.handle_ui_action(ctx, ui_id, ui_action).or_else(|e| -> UIResult<()> {
+                        if let Some( ui_action ) = layer.on_click(&mouse_point) {
+                            self.handle_ui_action(ctx, ui_action).or_else(|e| -> UIResult<()> {
                                 error!("Failed to handle UI action: {}", e);
                                 Ok(())
                             }).unwrap();
@@ -515,7 +513,8 @@ impl EventHandler for MainState {
                 // TODO Disable FSP limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
                 let mut textfield_under_focus = false;
-                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                let id = self.ui_layout.chatbox_tf_id.clone();
+                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
                     Ok(tf) => {
                         match tf.input_state {
                             Some(TextInputState::TextInputComplete) =>  {
@@ -818,8 +817,6 @@ impl EventHandler for MainState {
             return;
         }
 
-        // PR_GATE: Ameen to look at why it doesn't print the error after a TF loses focus
-        // and then remove the er ror message once fixed, and this misspelled comment
         let screen = self.get_current_screen();
         match LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
             Ok(tf) => tf.on_char(character),
@@ -1083,11 +1080,12 @@ impl MainState {
                 return Ok(());
             }
             KeyCode::Return => {
-                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                let id = self.ui_layout.chatbox_tf_id.clone();
+                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
                     Ok(tf) => {
                         if tf.input_state.is_none() {
                             if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, Screen::Run) {
-                                layer.enter_focus(INGAME_PANE1_CHATBOXTEXTFIELD)?;
+                                layer.enter_focus(&id)?;
                             }
                         }
                     }
@@ -1405,8 +1403,9 @@ impl MainState {
             }
         }
 
+        let id = self.ui_layout.chatbox_tf_id.clone();
         for msg in incoming_messages {
-            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOX) {
+            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
                 Ok(cb) => cb.add_message(msg),
                 Err(e) => error!("Could not add mesasge to Chatbox on network message receive: {:?}", e)
             }
@@ -1452,47 +1451,23 @@ impl MainState {
         }
     }
 
-    fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> UIResult<()> {
-        match widget_id {
-            MAINMENU_PANE1_BUTTONYES
-            | MAINMENU_PANE1_BUTTONNO
-            | MAINMENU_TESTBUTTON  => {
-                match action {
-                    UIAction::ScreenTransition(s) => {
-                        self.screen_stack.push(s);
-                    }
-                    _ => {
-                        return Err(Box::new(UIError::InvalidAction{
-                            reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)
-                        }));
-                    }
-                }
-            },
-            MAINMENU_TESTCHECKBOX => {
-                match action {
-                    UIAction::Toggle(enabled) => {
-                        self.config.modify(|settings| {
-                            settings.video.fullscreen = enabled;
-                        });
-                        self.video_settings.is_fullscreen = enabled;
-                        self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
-                    }
-                    _ => {
-                        return Err(Box::new(UIError::InvalidAction{
-                            reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)
-                        }));
-                     }
-                }
-            },
-            MAINMENU_PANE1
-            | MAINMENU_LAYER1
-            | INGAME_LAYER1
-            | INGAME_PANE1 => {
-                return Err(Box::new(UIError::ActionRestricted{
-                    reason: format!("Widget: {:?} is either a Pane or Layer element. Actions are not allowed for Widgets of these types.", widget_id)
+    fn handle_ui_action(&mut self, ctx: &mut Context, action: UIAction) -> UIResult<()> {
+        match action {
+            UIAction::ScreenTransition(s) => {
+                self.screen_stack.push(s);
+            }
+            UIAction::Toggle(enabled) => {
+                self.config.modify(|settings| {
+                    settings.video.fullscreen = enabled;
+                });
+                self.video_settings.is_fullscreen = enabled;
+                self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
+            }
+            _ => {
+                return Err(Box::new(UIError::InvalidAction{
+                    reason: format!("Action: {:?}", action)
                 }));
-            },
-            ui::WidgetID(_) => {},
+            }
         }
 
         Ok(())
@@ -1501,8 +1476,9 @@ impl MainState {
     fn handle_user_chat_complete(&mut self, _ctx: &mut Context) {
         let username = self.config.get().user.name.clone();
         let mut msg = String::new();
+        let id = self.ui_layout.chatbox_tf_id.clone();
 
-        match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+        match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
             Ok(tf) => {
                 if let Some(m) = tf.text() {
                     msg = format!("{}: {}", username, m);
@@ -1516,7 +1492,8 @@ impl MainState {
         }
 
         if !msg.is_empty() {
-            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOX) {
+            let id = self.ui_layout.chatbox_id.clone();
+            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
                 Ok(cb) => {
                     cb.add_message(msg.clone());
 
