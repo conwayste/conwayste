@@ -462,11 +462,21 @@ impl Layering {
         let child_node_id = self.widget_tree.children_ids(&root_id).unwrap().nth(0).unwrap().clone();
 
         let mut widget_view = treeview::TreeView::new(&mut self.widget_tree);
-        let (wrong_container_node, subtree) = widget_view.sub_tree(&root_id).unwrap();
+        let (_root_node, mut subtree) = widget_view.sub_tree(&root_id).unwrap();
+
+        let (wrong_container_node, subsubtree) = subtree.sub_tree(&child_node_id).unwrap();
         let wrong_container = wrong_container_node.data_mut();
-        let mut uictx = context::UIContext::new_update(ggez_context, cfg, subtree);
-        wrong_container.as_emit_event().unwrap().emit(event, &mut uictx);
-        Ok(()) //XXX
+        let mut uictx = context::UIContext::new_update(ggez_context, cfg, subsubtree);
+
+        debug!("about to emit event...");
+        if let Some(container) = wrong_container.as_emit_event() {
+            debug!("emitting!");
+            container.emit(event, &mut uictx)
+        } else {
+            debug!("nothing to emit on; container is not an EmitEvent");
+
+            Ok(())
+        }
     }
 }
 
