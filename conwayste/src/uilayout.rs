@@ -159,7 +159,6 @@ impl UILayout {
         // add the handler!
         let handler: Handler = Box::new(|obj, uictx, evt| {
             use context::Handled::*;
-            let uictx = uictx.unwrap_update();
             let btn = obj.downcast_mut::<Button>().unwrap();
 
             info!("YAYYYY BUTTON'S HANDLER CALLED!!!");

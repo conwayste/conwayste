@@ -461,17 +461,14 @@ impl Layering {
         let root_id = self.widget_tree.root_node_id().unwrap().clone();  //XXX just send this on to the first non-fake node; it's wrong but whatever
         let child_node_id = self.widget_tree.children_ids(&root_id).unwrap().nth(0).unwrap().clone();
 
-        let mut widget_view = treeview::TreeView::new(&mut self.widget_tree);
-        let (_root_node, mut subtree) = widget_view.sub_tree(&root_id).unwrap();
-
-        let (wrong_container_node, subsubtree) = subtree.sub_tree(&child_node_id).unwrap();
-        let wrong_container = wrong_container_node.data_mut();
-        let mut uictx = context::UIContext::new_update(ggez_context, cfg, subsubtree);
+        let widget_view = treeview::TreeView::new(&mut self.widget_tree);
+        let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view);
+        let (wrong_container, mut subuictx) = uictx.derive(&child_node_id).unwrap();
 
         debug!("about to emit event...");
         if let Some(container) = wrong_container.as_emit_event() {
             debug!("emitting!");
-            container.emit(event, &mut uictx)
+            container.emit(event, &mut subuictx)
         } else {
             debug!("nothing to emit on; container is not an EmitEvent");
 

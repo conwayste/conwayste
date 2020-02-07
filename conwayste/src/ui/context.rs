@@ -24,69 +24,46 @@ use enum_iterator::IntoEnumIterator;
 use ggez;
 use ggez::event::MouseButton;
 use ggez::nalgebra::Point2;
-use id_tree::Tree;
+use id_tree::{NodeId, Tree};
 
 use super::treeview::TreeView;
 use super::BoxedWidget;
 use crate::config;
 
-pub enum UIContext<'a> {
-    Draw(DrawContext<'a>),
-    Update(UpdateContext<'a>),
+pub struct UIContext<'a> {
+    pub ggez_context: &'a mut ggez::Context,
+    pub config: &'a mut config::Config,
+    pub widget_view: TreeView<'a, BoxedWidget>,
 }
 
 impl<'a> UIContext<'a> {
-    #[allow(dead_code)]
-    pub fn unwrap_draw(&mut self) -> &mut DrawContext<'a> {
-        match *self {
-            UIContext::Draw(ref mut draw_context) => draw_context,
-            _ => panic!("Failed to unwrap DrawContext"),
-        }
-    }
-
-    pub fn unwrap_update(&mut self) -> &mut UpdateContext<'a> {
-        match *self {
-            UIContext::Update(ref mut update_context) => update_context,
-            _ => panic!("Failed to unwrap UpdateContext"),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn new_draw(
-        ggez_context: &'a mut ggez::Context,
-        config: &'a config::Config,
-        view: TreeView<'a, BoxedWidget>,
-    ) -> Self {
-        UIContext::Draw(DrawContext {
-            ggez_context,
-            config,
-            widget_view: view,
-        })
-    }
-
-    pub fn new_update(
+    pub fn new(
         ggez_context: &'a mut ggez::Context,
         config: &'a mut config::Config,
         view: TreeView<'a, BoxedWidget>,
     ) -> Self {
-        UIContext::Update(UpdateContext {
+        UIContext {
             ggez_context,
             config,
             widget_view: view,
-        })
+        }
     }
-}
 
-pub struct DrawContext<'a> {
-    pub ggez_context: &'a mut ggez::Context,
-    pub config: &'a config::Config,
-    pub widget_view: TreeView<'a, BoxedWidget>,
-}
-
-pub struct UpdateContext<'a> {
-    pub ggez_context: &'a mut ggez::Context,
-    pub config: &'a mut config::Config,
-    pub widget_view: TreeView<'a, BoxedWidget>,
+    pub fn derive(
+        &mut self,
+        node_id: &NodeId,
+    ) -> Result<(&mut BoxedWidget, UIContext), Box<dyn Error>> {
+        let (node_ref, subtree) = self.widget_view.sub_tree(node_id)?;
+        let widget_ref = node_ref.data_mut();
+        Ok((
+            widget_ref,
+            UIContext {
+                ggez_context: self.ggez_context,
+                config: self.config,
+                widget_view: subtree,
+            },
+        ))
+    }
 }
 
 /// The type of an event.

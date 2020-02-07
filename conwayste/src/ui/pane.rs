@@ -17,6 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::fmt;
+use std::error::Error;
 
 use ggez::graphics::{self, Color, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
@@ -32,7 +33,7 @@ use super::{
     context,
 };
 
-use context::EmitEvent;
+use context::{EmitEvent, Handled, EventType};
 
 use crate::constants::colors::*;
 
@@ -73,7 +74,29 @@ impl Pane {
             bg_color: None,
             handlers: Some(context::HandlerMap::new()),
         };
-        //XXX forward_mouse_events!(Pane, pane, widgets);
+
+        // forward_mouse_events
+        // TODO: all mouse event types, not just Click
+        let handler = Box::new(|_obj: &mut dyn EmitEvent, uictx: &mut context::UIContext, evt: &context::Event| -> Result<Handled, Box<dyn Error>> {
+            // let pane = obj.downcast_mut::<Pane>()?; // uncomment if we need a Pane
+
+            // XXX also verify unwrapping children_ids() doesn't panic
+            for child_id in uictx.widget_view.children_ids().unwrap() {
+                let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap();
+
+                let point = &evt.point.unwrap(); // unwrap OK because a Click event always has a point
+                if within_widget(&point, &widget_ref.rect()) {
+                    if let Some(emittable_ref) = widget_ref.as_emit_event() {
+                        emittable_ref.emit(evt, &mut subuictx)?;
+                    } else {
+                        warn!("Widget at point of click ({:?}) does not implement EmitEvent", evt.point.unwrap());
+                    }
+                }
+            }
+            Ok(Handled::Handled)
+        });
+        pane.on(EventType::Click, handler).unwrap(); //XXX unwrp ok?
+
         pane
     }
 
