@@ -80,16 +80,15 @@ impl Pane {
         let handler = Box::new(|_obj: &mut dyn EmitEvent, uictx: &mut context::UIContext, evt: &context::Event| -> Result<Handled, Box<dyn Error>> {
             // let pane = obj.downcast_mut::<Pane>()?; // uncomment if we need a Pane
 
-            // XXX also verify unwrapping children_ids() doesn't panic
-            for child_id in uictx.widget_view.children_ids().unwrap() {
-                let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap();
+            for child_id in uictx.widget_view.children_ids() {
+                let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK because 1) valid ID, 2) in view
 
                 let point = &evt.point.unwrap(); // unwrap OK because a Click event always has a point
                 if within_widget(&point, &widget_ref.rect()) {
                     if let Some(emittable_ref) = widget_ref.as_emit_event() {
                         emittable_ref.emit(evt, &mut subuictx)?;
                     } else {
-                        warn!("Widget at point of click ({:?}) does not implement EmitEvent", evt.point.unwrap());
+                        warn!("Widget at point of click ({:?}) does not implement EmitEvent", evt.point);
                     }
                 }
             }

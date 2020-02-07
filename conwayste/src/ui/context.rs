@@ -49,6 +49,18 @@ impl<'a> UIContext<'a> {
         }
     }
 
+    /// Create a new UIContext derived from this one, also returning a mutable reference to a
+    /// `Box<dyn Widget>` for widget with the specified `NodeId`. This exists because the
+    /// `UIContext` is mutably borrowing a subset of the Widgets in this `Layering` (using a
+    /// `TreeView`) and we need a smaller subset to be borrowed. That way, the specified `Widget`
+    /// is not double mutably borrow.
+    ///
+    /// # Errors
+    ///
+    /// This returns an error in the same cases that `TreeView::sub_tree` returns an error:
+    ///
+    /// * NodeId is invalid for the underlying Tree.
+    /// * NodeId refers to a Node that is outside of this TreeView.
     pub fn derive(
         &mut self,
         node_id: &NodeId,

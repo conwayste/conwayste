@@ -37,7 +37,7 @@ use std::error::Error;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 
-use id_tree::{self, Node, NodeId, NodeIdError, Tree, InsertBehavior, RemoveBehavior};
+use id_tree::{self, InsertBehavior, Node, NodeId, NodeIdError, RemoveBehavior, Tree};
 
 #[derive(PartialEq, Debug)]
 enum Restriction {
@@ -173,19 +173,20 @@ impl<'a, T> TreeView<'a, T> {
         }
     }
 
-    /// If this tree has any Nodes at all, this will return (as Some) a vector of the NodeIds
-    /// of the root node's children.
-    pub fn children_ids(&self) -> Option<Vec<NodeId>> {
+    /// Return a vector of the NodeIds of the root node's children.
+    pub fn children_ids(&self) -> Vec<NodeId> {
         let tree = unsafe { self.tree.as_ref() };
         self.restriction
             .root()
             .or(tree.root_node_id())
             .map(|root_id| {
                 tree.children_ids(root_id)
-                    .unwrap()
+                    .unwrap() // unwrap OK because children_ids only errors if the passed in NodeId is invalid
                     .map(|id| id.clone())
                     .collect()
             })
+            .or_else(|| Some(vec![]))
+            .unwrap()  // unwrap OK because it will always be Some() due to the .or_else above
     }
 
     /// Get an immutable reference to a Node. The specified Node must be accessible.
@@ -216,7 +217,11 @@ impl<'a, T> TreeView<'a, T> {
     ///
     /// In addition to errors from Tree.insert, an error is returned when the TreeView is
     /// sharing the Tree.
-    pub fn insert(&mut self, node: Node<T>, behavior: InsertBehavior) -> Result<NodeId, Box<dyn Error>> {
+    pub fn insert(
+        &mut self,
+        node: Node<T>,
+        behavior: InsertBehavior,
+    ) -> Result<NodeId, Box<dyn Error>> {
         if !self.restriction.is_none() {
             return Err("the TreeView must have full access to the Tree to insert a node".into());
         }
@@ -232,7 +237,11 @@ impl<'a, T> TreeView<'a, T> {
     ///
     /// In addition to errors from Tree.remove_node, an error is returned when the TreeView is
     /// sharing the Tree.
-    pub fn remove(&mut self, node_id: NodeId, behavior: RemoveBehavior) -> Result<Node<T>, Box<dyn Error>> {
+    pub fn remove(
+        &mut self,
+        node_id: NodeId,
+        behavior: RemoveBehavior,
+    ) -> Result<Node<T>, Box<dyn Error>> {
         if !self.restriction.is_none() {
             return Err("the TreeView must have full access to the Tree to remove a node".into());
         }
@@ -264,7 +273,7 @@ mod tests {
         let mut view = TreeView::new(&mut tree);
 
         let (root_node_ref, mut sub_tree_ref) = view.sub_tree(&root_node_id).unwrap();
-        for child_id in sub_tree_ref.children_ids().unwrap().iter() {
+        for child_id in sub_tree_ref.children_ids().iter() {
             let child_ref = sub_tree_ref.get_mut(child_id).unwrap().data_mut();
             // root += child
             *root_node_ref.data_mut() += *child_ref;
@@ -274,4 +283,20 @@ mod tests {
         drop(view);
         assert_eq!(*tree.get(&root_node_id).unwrap().data(), 1 + 2 + 3);
     }
+
+    /*
+    #[test]
+    fn test_compile_fail_double_mut_borrow() {
+        let mut tree: Tree<i64> = id_tree::TreeBuilder::new().build();
+        let node_r = Node::new(0);
+        let root_node_id = tree.insert(node_r, InsertBehavior::AsRoot).unwrap();
+        let child_node_id = tree.insert(Node::new(1), InsertBehavior::UnderNode(&root_node_id)).unwrap();
+        let mut view = TreeView::new(&mut tree);
+        let (_, mut copy1) = view.sub_tree(&root_node_id).unwrap();
+        let (_, mut copy2) = view.sub_tree(&root_node_id).unwrap();
+        let alias1 = copy1.get_mut(&child_node_id).unwrap();
+        let alias2 = copy2.get_mut(&child_node_id).unwrap();
+        drop((alias1, alias2));
+    }
+    */
 }
