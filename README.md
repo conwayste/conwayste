@@ -6,22 +6,40 @@ Multiplayer Conway's Game of Life!
 
 ![life in action](https://giant.gfycat.com/BlaringTidyDutchsmoushond.gif)
 
+## How to Play
+
+Use the arrow keys to navigate the menu (*Buttons are coming soon!*).
+
+When in the game:
+
+* Left click toggles a cell (by default).
+* The number keys control what left click does (whether it toggles a cell or drops a pattern).
+* If dropping a pattern, you can use `Shift-left` and `Shift-right` to rotate the pattern.
+* Press `r` to toggle running/paused (*Will not work in multiplayer mode*).
+* `Enter` to toggle chatbox focus.
+* `Space` to single step
+* `+` and `-` to zoom in and out
+* `Esc` to go to the menu
+
 ## Installation
-Clone this repository:
+First, install the `cargo` command if you have not already done so. The recommended way is [Rustup](https://rustup.rs/).
+
+Next, clone this repository, and build the game:
 
 ```
 $ git clone https://github.com/conwayste/conwayste
+$ cargo build --bin client
 ```
 
-The GUI client (`cargo run --bin client`) depends on `SDL2`, `SDL2_Mixer` and `SDL2_Image`. We do plan on bundling these libraries with the binary at some point in the future, but for now you will need to manually install them. The versions (at least) needed are:
+Now, you can run the game like this:
 
-* `SDL2 v2.0.5`
-* `SDL2_Mixer v2.0.1`
-* `SDL2_Image v2.0.1`
+```
+$ cargo run --bin client
+```
+
+The GUI client (`cargo run --bin client`) depends on ALSA. We do plan on bundling these libraries with the binary at some point in the future, but for now you will need to manually install them.
 
 Please follow the instructions listed on the [rust-sdl2](https://github.com/Rust-SDL2/rust-sdl2) bindings page for your specific platform.
-
-Make sure your Rust is up to date! The easiest way is through `rustup update`.
 
 ### Windows
 _Note: This has been validated as working on Windows 10; tread carefully elsewhere_:smile:_._
@@ -31,42 +49,31 @@ Also place the `SDL2.dll` within the crate root folder.
 
 You will not need to do this step once there is proper binary release of Conwayste (TBD).
 
-### Mac/Linux
-_Note: I used homebrew on Mac to accomplish these steps._
+### macOS
 
+**TODO: revise this section for ggez 0.5**
+_Note: I used [homebrew](https://brew.sh/) to accomplish these steps._
 ```
 brew install sdl2
 brew install sdl2_image 
 brew install sdl2_mixer --with-libvorbis
+
 ```
+
+### Linux
+
+On Ubuntu, you can install with `apt`:
+
+```
+sudo apt install libudev-dev libasound2-dev
+```
+
+_Note: if installation doesn't work on Ubuntu we may not have kept this up to date. Check the Ubuntu section in `.travis.yml` for a guaranteed up-to-date list of packages :)_
 
 On Fedora you can use `dnf`; this will install pretty much everything you will need:
 
 ```
-sudo dnf install SDL2*
-```
-
-**Note:** Debian stable only supports SDL2 v.2.0.4 so you will need to compile SDL2 from source.
-If you are compiling from source make sure you specify vorbis support.
-
-```
-...
-./configure --with-vorbis
-```
-
-**(If necessary)** Add the libraries to your path. This step is necessary if cargo fails to link against the SDL2 libraries.
- 
-Under Linux, I had to export `$LD_LIBRARY_PATH`, but in Mac it was `$LIBRARY_PATH`.
-Homebrew will install the libraries to the Cellar. 
-```
-export LIBRARY_PATH="/usr/local/Cellar/sdl2_mixer/2.0.1/lib/:/usr/local/Cellar/sdl2_image/2.0.1_2/lib/:/usr/local/Cellar/sdl2/2.0.5/lib/"
-```
-I ended up adding these to my `~/.profile` .
-
-## Building
-
-```
-cargo build
+sudo dnf install alsa-lib-devel
 ```
 
 ## Running the server
@@ -74,20 +81,6 @@ cargo build
 ```
 cargo run --bin server
 ```
-
-## Running the GUI client
-
-```
-cargo run --bin client
-```
-Note: at the time of this writing, it does not have network support.
-
-## Running the CLI client
-
-```
-cargo run --bin cli-client
-```
-Note: at the time of this writing, it only has partial network support.
 
 ## FAQ
 
