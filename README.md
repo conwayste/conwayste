@@ -15,11 +15,11 @@ When in the game:
 * Left click toggles a cell (by default).
 * The number keys control what left click does (whether it toggles a cell or drops a pattern).
 * If dropping a pattern, you can use `Shift-left` and `Shift-right` to rotate the pattern.
-* Press `r` to toggle running/paused (*Will not work in multiplayer mode*).
 * `Enter` to toggle chatbox focus.
-* `Space` to single step
 * `+` and `-` to zoom in and out
-* `Esc` to go to the menu
+* Press `r` to toggle running/paused (*Will not work in multiplayer mode*).
+* `Space` to single step (*Will not work in multiplayer mode*).
+* `Esc` to go back to the menu.
 
 ## Installation
 First, install the `cargo` command if you have not already done so. The recommended way is [Rustup](https://rustup.rs/).
