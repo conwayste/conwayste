@@ -40,14 +40,16 @@
 ///     );
 ///
 /// # Arguments
-///     input_result - a result type
-///     custom_return_type - (optional) specify a type T for Ok(T); Default type is ()
-///     ErrorType - a concrete error type which implements Error trait
-///     err_var - a variable which will contain the error downcast into ErrorType
-///     box_err_var - like `err_var` except boxed, because the else doesn't have a concrete type to
-///     unbox into.
+///
+/// input_result - a result type
+/// custom_return_type - (optional) specify a type T for Ok(T); Default type is ()
+/// ErrorType - a concrete error type which implements Error trait
+/// err_var - a variable which will contain the error downcast into ErrorType
+/// box_err_var - like `err_var` except boxed, because the else doesn't have a concrete type to
+/// unbox into.
 ///
 /// # Examples
+///
 /// Here we match on a `SuperError`.
 /// ```rust,ignore
 /// // See the Error documentation page for the SuperError and SuperSideKickError definitions
