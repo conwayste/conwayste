@@ -141,7 +141,6 @@ impl Layering {
             focused_node_id: None,
         };
 
-        //XXX forward_mouse_events!(Layering, layering, widget_tree); //XXX macro needs fixin
         layering
     }
 
@@ -456,24 +455,43 @@ impl Layering {
     /// Emit an event on this Layering. Note that this is not part of impl EmitEvent for Layering!
     /// Layering does not implement this trait! It is this way to avoid mutably borrowing things
     /// more than once.
-    pub fn emit(&mut self, event: &context::Event, ggez_context: &mut ggez::Context, cfg: &mut config::Config) -> Result<(), Box<dyn Error>> {
-
-        let root_id = self.widget_tree.root_node_id().unwrap().clone();  //XXX just send this on to the first non-fake node; it's wrong but whatever
-        let child_node_id = self.widget_tree.children_ids(&root_id).unwrap().nth(0).unwrap().clone();
-
+    pub fn emit(
+        &mut self,
+        event: &context::Event,
+        ggez_context: &mut ggez::Context,
+        cfg: &mut config::Config,
+    ) -> Result<(), Box<dyn Error>> {
         let widget_view = treeview::TreeView::new(&mut self.widget_tree);
         let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view);
-        let (wrong_container, mut subuictx) = uictx.derive(&child_node_id).unwrap();
-
-        debug!("about to emit event...");
-        if let Some(container) = wrong_container.as_emit_event() {
-            debug!("emitting!");
-            container.emit(event, &mut subuictx)
+        if event.is_mouse_event() {
+            Layering::emit_mouse_event(event, &mut uictx)
+        } else if event.is_key_event() {
+            unimplemented!(); //XXX
+            // TODO: handle keyboard events
         } else {
-            debug!("nothing to emit on; container is not an EmitEvent");
-
+            warn!("Don't know how to handle event type {:?}", event.what); // nothing to do if this is not a key or a mouse event
             Ok(())
         }
+    }
+
+    fn emit_mouse_event(event: &context::Event, uictx: &mut context::UIContext) -> Result<(), Box<dyn Error>> {
+        let point = event.point.as_ref().ok_or_else(|| -> Box<dyn Error> {
+            format!("event of type {:?} has no point", event.what).into()
+        })?;
+        for child_id in uictx.widget_view.children_ids() {
+            // Get a mutable reference to a BoxedWidget, as well as a UIContext with a view on the
+            // widgets in the tree under this widget.
+            let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK b/c NodeId valid & in view
+
+            if within_widget(point, &widget_ref.rect()) {
+                if let Some(container) = widget_ref.as_emit_event() {
+                    return container.emit(event, &mut subuictx);
+                } else {
+                    debug!("nothing to emit on; container is not an EmitEvent");
+                }
+            }
+        }
+        Ok(())
     }
 }
 

@@ -24,6 +24,7 @@ use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use id_tree::NodeId;
+use enum_iterator::IntoEnumIterator;
 
 use super::{
     widget::Widget,
@@ -77,24 +78,37 @@ impl Pane {
 
         // forward_mouse_events
         // TODO: all mouse event types, not just Click
-        let handler = Box::new(|_obj: &mut dyn EmitEvent, uictx: &mut context::UIContext, evt: &context::Event| -> Result<Handled, Box<dyn Error>> {
-            // let pane = obj.downcast_mut::<Pane>()?; // uncomment and rename _obj to obj above if we need a Pane
+        for event_type in EventType::into_enum_iter() {
+            if event_type.is_mouse_event() {
+                let handler = Box::new(
+                    |_obj: &mut dyn EmitEvent,
+                     uictx: &mut context::UIContext,
+                     evt: &context::Event|
+                     -> Result<Handled, Box<dyn Error>> {
+                        // let pane = obj.downcast_mut::<Pane>()?; // uncomment and rename _obj to obj above if we need a Pane
 
-            for child_id in uictx.widget_view.children_ids() {
-                let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK because 1) valid ID, 2) in view
+                        for child_id in uictx.widget_view.children_ids() {
+                            let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK because 1) valid ID, 2) in view
 
-                let point = &evt.point.unwrap(); // unwrap OK because a Click event always has a point
-                if within_widget(&point, &widget_ref.rect()) {
-                    if let Some(emittable_ref) = widget_ref.as_emit_event() {
-                        emittable_ref.emit(evt, &mut subuictx)?;
-                    } else {
-                        warn!("Widget at point of click ({:?}) does not implement EmitEvent", evt.point);
-                    }
-                }
+                            let point = &evt.point.unwrap(); // unwrap OK because a Click event always has a point
+                            if within_widget(&point, &widget_ref.rect()) {
+                                if let Some(emittable_ref) = widget_ref.as_emit_event() {
+                                    emittable_ref.emit(evt, &mut subuictx)?;
+                                } else {
+                                    warn!("Widget at point of click ({:?}) does not implement EmitEvent", evt.point);
+                                }
+                            }
+                        }
+                        Ok(Handled::Handled)
+                    },
+                );
+                pane.on(event_type, handler).unwrap(); // unwrap OK because we aren't calling from within a handler
+            } else if event_type.is_key_event() {
+                continue; // XXX TODO keyboard events
+            } else {
+                // nothing to do if this is not a key or a mouse event
             }
-            Ok(Handled::Handled)
-        });
-        pane.on(EventType::Click, handler).unwrap(); // unwrap OK because we aren't calling from within a handler
+        }
 
         pane
     }

@@ -271,60 +271,6 @@ macro_rules! impl_emit_event {
     };
 }
 
-/// Register a handler for this container widget to dispatch mouse events to whichever contained
-/// widget contains the `point` of the event. This will typically be done when creating the widget,
-/// in its `new` method.
-///
-/// # Example
-///
-/// ```
-/// fn new() -> Pane {
-///     let my_pane = Pane {
-///         ...
-///         widgets: vec![],
-///         ...
-///     };
-///     forward_mouse_events!(Pane, my_pane, widgets);
-///     my_pane
-/// }
-/// ```
-///
-/// # Panics
-///
-/// This will panic if there is any error returned by the `.on` method of the container widget.
-/// Verify that this is still true before relying on it, but at present, this error can only happen
-/// if this macro is invoked (and thus, `.on` is called) from within a handler for this container
-/// widget.
-//TODO: add a forward_keyboard_events! macro that uses focus rather than `within_widget`
-macro_rules! forward_mouse_events {
-    ($widget_type:ty, $widget_var:ident, $vec_of_child_widgets:ident) => {
-        for &event_type in crate::ui::context::MOUSE_EVENTS {
-            let handler: crate::ui::context::Handler = Box::new(|obj, uictx, evt| {
-                let _self = obj.downcast_mut::<$widget_type>().unwrap();
-                use crate::ui::context::Handled::*;
-
-                if evt.point.is_none() {
-                    return Err(
-                        format!("Event {:?} is a mouse event but point is None", evt).into(),
-                    );
-                }
-
-                for w in _self.$vec_of_child_widgets.iter_mut() {
-                    if within_widget(&evt.point.unwrap(), &w.rect()) {
-                        if let Some(emitter) = w.as_emit_event() {
-                            emitter.emit(evt, uictx)?;
-                            return Ok(Handled);
-                        }
-                    }
-                }
-
-                Ok(NotHandled)
-            });
-            $widget_var.on(event_type, handler).unwrap();
-        }
-    };
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
