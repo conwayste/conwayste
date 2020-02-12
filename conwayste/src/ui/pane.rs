@@ -78,7 +78,7 @@ impl Pane {
         // forward_mouse_events
         // TODO: all mouse event types, not just Click
         let handler = Box::new(|_obj: &mut dyn EmitEvent, uictx: &mut context::UIContext, evt: &context::Event| -> Result<Handled, Box<dyn Error>> {
-            // let pane = obj.downcast_mut::<Pane>()?; // uncomment if we need a Pane
+            // let pane = obj.downcast_mut::<Pane>()?; // uncomment and rename _obj to obj above if we need a Pane
 
             for child_id in uictx.widget_view.children_ids() {
                 let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK because 1) valid ID, 2) in view
@@ -94,7 +94,7 @@ impl Pane {
             }
             Ok(Handled::Handled)
         });
-        pane.on(EventType::Click, handler).unwrap(); //XXX unwrp ok?
+        pane.on(EventType::Click, handler).unwrap(); // unwrap OK because we aren't calling from within a handler
 
         pane
     }

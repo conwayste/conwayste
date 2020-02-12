@@ -76,6 +76,18 @@ impl<'a> UIContext<'a> {
             },
         ))
     }
+
+    /// Return a Result containing a reference to a `Box<dyn Widget>` for the specified `NodeId` if
+    /// it exists and is in view in the tree, or else a `NodeIdError`.
+    pub fn get(&self, node_id: &NodeId) -> Result<&BoxedWidget, Box<dyn Error>> {
+        Ok(self.widget_view.get(node_id)?.data())
+    }
+
+    /// Return a Result containing a mutable reference to a `Box<dyn Widget>` for the specified
+    /// `NodeId` if it exists and is in view in the tree, or else a `NodeIdError`.
+    pub fn get_mut(&mut self, node_id: &NodeId) -> Result<&mut BoxedWidget, Box<dyn Error>> {
+        Ok(self.widget_view.get_mut(node_id)?.data_mut())
+    }
 }
 
 /// The type of an event.

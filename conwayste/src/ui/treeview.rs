@@ -173,7 +173,9 @@ impl<'a, T> TreeView<'a, T> {
         }
     }
 
-    /// Return a vector of the NodeIds of the root node's children.
+    /// Return a vector of the NodeIds of the root node's children if this is a view of the entire
+    /// tree, or else a vector of the NodeIds of the children of whichever Node this view is
+    /// restricted on.
     pub fn children_ids(&self) -> Vec<NodeId> {
         let tree = unsafe { self.tree.as_ref() };
         self.restriction
@@ -185,7 +187,7 @@ impl<'a, T> TreeView<'a, T> {
                     .map(|id| id.clone())
                     .collect()
             })
-            .or_else(|| Some(vec![]))
+            .or_else(|| Some(vec![])) // empty tree
             .unwrap()  // unwrap OK because it will always be Some() due to the .or_else above
     }
 
