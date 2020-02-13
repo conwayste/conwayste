@@ -76,8 +76,6 @@ impl Pane {
             handlers: Some(context::HandlerMap::new()),
         };
 
-        // forward_mouse_events
-        // TODO: all mouse event types, not just Click
         for event_type in EventType::into_enum_iter() {
             if event_type.is_mouse_event() {
                 let handler = Box::new(
@@ -94,12 +92,13 @@ impl Pane {
                             if within_widget(&point, &widget_ref.rect()) {
                                 if let Some(emittable_ref) = widget_ref.as_emit_event() {
                                     emittable_ref.emit(evt, &mut subuictx)?;
+                                    return Ok(Handled::Handled);
                                 } else {
                                     warn!("Widget at point of click ({:?}) does not implement EmitEvent", evt.point);
                                 }
                             }
                         }
-                        Ok(Handled::Handled)
+                        Ok(Handled::NotHandled)
                     },
                 );
                 pane.on(event_type, handler).unwrap(); // unwrap OK because we aren't calling from within a handler
