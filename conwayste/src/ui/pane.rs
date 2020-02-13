@@ -16,25 +16,19 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use std::fmt;
 use std::error::Error;
+use std::fmt;
 
-use ggez::graphics::{self, Color, Rect, DrawMode, DrawParam};
+use ggez::graphics::{self, Color, DrawMode, DrawParam, Rect};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
-use id_tree::NodeId;
 use enum_iterator::IntoEnumIterator;
+use id_tree::NodeId;
 
-use super::{
-    widget::Widget,
-    common::within_widget,
-    UIError,
-    UIResult,
-    context,
-};
+use super::{common::within_widget, context, widget::Widget, UIError, UIResult};
 
-use context::{EmitEvent, Handled, EventType};
+use context::{EmitEvent, EventType, Handled};
 
 use crate::constants::colors::*;
 
@@ -48,15 +42,19 @@ pub struct Pane {
     pub border: f32,
     pub bg_color: Option<Color>,
     pub handlers: Option<context::HandlerMap>, // required for impl_emit_event!
-    // option solely so that we can not mut borrow self twice at once
+                                               // option solely so that we can not mut borrow self twice at once
 
-    // might need something to track mouse state to see if we are still clicked within the
-    // boundaries of the pane in the dragging case
+                                               // might need something to track mouse state to see if we are still clicked within the
+                                               // boundaries of the pane in the dragging case
 }
 
 impl fmt::Debug for Pane {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Pane {{ id: {:?}, z-index: {}, Dimensions: {:?} }}", self.id, self.z_index, self.dimensions)
+        write!(
+            f,
+            "Pane {{ id: {:?}, z-index: {}, Dimensions: {:?} }}",
+            self.id, self.z_index, self.dimensions
+        )
     }
 }
 
@@ -146,8 +144,11 @@ impl Widget for Pane {
 
     fn set_rect(&mut self, new_dims: Rect) -> UIResult<()> {
         if new_dims.w == 0.0 || new_dims.h == 0.0 {
-            return Err(Box::new(UIError::InvalidDimensions{
-                reason: format!("Cannot set the size of a Pane {:?} to a width or height of zero", self.id())
+            return Err(Box::new(UIError::InvalidDimensions {
+                reason: format!(
+                    "Cannot set the size of a Pane {:?} to a width or height of zero",
+                    self.id()
+                ),
             }));
         }
 
@@ -171,7 +172,10 @@ impl Widget for Pane {
     fn set_size(&mut self, w: f32, h: f32) -> UIResult<()> {
         if w == 0.0 || h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions {
-                reason: format!("Cannot set the width or height of Pane {:?} to zero", self.id())
+                reason: format!(
+                    "Cannot set the width or height of Pane {:?} to zero",
+                    self.id()
+                ),
             }));
         }
 
@@ -240,12 +244,18 @@ impl Widget for Pane {
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         if let Some(bg_color) = self.bg_color {
-            let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), self.dimensions, bg_color)?;
+            let mesh =
+                graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), self.dimensions, bg_color)?;
             graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
 
         if self.border > 0.0 {
-            let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(1.0), self.dimensions, *PANE_BORDER_COLOR)?;
+            let mesh = graphics::Mesh::new_rectangle(
+                ctx,
+                DrawMode::stroke(1.0),
+                self.dimensions,
+                *PANE_BORDER_COLOR,
+            )?;
             graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
 
