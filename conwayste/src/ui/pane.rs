@@ -76,30 +76,31 @@ impl Pane {
 
         for event_type in EventType::into_enum_iter() {
             if event_type.is_mouse_event() {
-                let handler = Box::new(
-                    |_obj: &mut dyn EmitEvent,
-                     uictx: &mut context::UIContext,
-                     evt: &context::Event|
-                     -> Result<Handled, Box<dyn Error>> {
-                        // let pane = obj.downcast_mut::<Pane>()?; // uncomment and rename _obj to obj above if we need a Pane
+                let handler = |_obj: &mut dyn EmitEvent,
+                               uictx: &mut context::UIContext,
+                               evt: &context::Event|
+                 -> Result<Handled, Box<dyn Error>> {
+                    // let pane = obj.downcast_mut::<Pane>()?; // uncomment and rename _obj to obj above if we need a Pane
 
-                        for child_id in uictx.widget_view.children_ids() {
-                            let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK because 1) valid ID, 2) in view
+                    for child_id in uictx.widget_view.children_ids() {
+                        let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK because 1) valid ID, 2) in view
 
-                            let point = &evt.point.unwrap(); // unwrap OK because a Click event always has a point
-                            if within_widget(&point, &widget_ref.rect()) {
-                                if let Some(emittable_ref) = widget_ref.as_emit_event() {
-                                    emittable_ref.emit(evt, &mut subuictx)?;
-                                    return Ok(Handled::Handled);
-                                } else {
-                                    warn!("Widget at point of click ({:?}) does not implement EmitEvent", evt.point);
-                                }
+                        let point = &evt.point.unwrap(); // unwrap OK because a Click event always has a point
+                        if within_widget(&point, &widget_ref.rect()) {
+                            if let Some(emittable_ref) = widget_ref.as_emit_event() {
+                                emittable_ref.emit(evt, &mut subuictx)?;
+                                return Ok(Handled::Handled);
+                            } else {
+                                warn!(
+                                    "Widget at point of click ({:?}) does not implement EmitEvent",
+                                    evt.point
+                                );
                             }
                         }
-                        Ok(Handled::NotHandled)
-                    },
-                );
-                pane.on(event_type, handler).unwrap(); // unwrap OK because we aren't calling from within a handler
+                    }
+                    Ok(Handled::NotHandled)
+                };
+                pane.on(event_type, Box::new(handler)).unwrap(); // unwrap OK because we aren't calling from within a handler
             } else if event_type.is_key_event() {
                 continue; // XXX TODO keyboard events
             } else {
