@@ -51,7 +51,7 @@ test_script:
 
 before_deploy:
   # Update this to build the artifacts that matter to you
-  - cargo rustc --target %TARGET% --release --bin client -- -C lto
+  - cargo rustc --target %TARGET% --release --package conwayste --bin client -- -C lto
   - ps: ci\before_deploy.ps1
 
 deploy:
