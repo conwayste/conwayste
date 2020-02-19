@@ -7,11 +7,12 @@ $STAGE = [System.Guid]::NewGuid().ToString()
 Set-Location $env:TEMP
 New-Item -Type Directory -Name $STAGE
 Set-Location $STAGE
+New-Item -Type Directory -Name resources
 
 $ZIP = "$SRC_DIR\conwayste-$($env:APPVEYOR_REPO_TAG_NAME)-$($env:TARGET).zip"
 
-# Update this to package the right artifacts
 Copy-Item "$SRC_DIR\target\$($env:TARGET)\release\client.exe" '.\'
+Copy-Item -Path "$SRC_DIR\resources" -Destination '.\' -Recurse
 
 7z a "$ZIP" *
 

@@ -4,12 +4,7 @@ set -ex
 
 # TODO This is the "test phase", tweak it as you see fit
 main() {
-    # TODO: verify this works
-    if which apt-get > /dev/null; then
-        # this is Ubuntu
-        sudo -E apt-get -yq --no-install-suggests --no-install-recommends $(travis_apt_get_options) install libudev-dev libasound2-dev
-    fi
-
+    # XXX run in docker: sudo apt-get -yq --no-install-suggests --no-install-recommends install libudev-dev libasound2-dev
     cross build --target $TARGET
     cross build --target $TARGET --release
 
