@@ -9,13 +9,13 @@ sudo: required
 # from old conwayste .travis.yml
 git:
   depth: 5
-addons:
-  apt:
-    # Ubuntu
-    packages: libudev-dev libasound2-dev
-    update: true
-  #homebrew:
-  # https://docs.travis-ci.com/user/installing-dependencies#installing-packages-on-macos
+#addons:
+#  apt:
+#    # Ubuntu
+#    packages: libudev-dev libasound2-dev
+#    update: true
+#  homebrew:
+#    https://docs.travis-ci.com/user/installing-dependencies#installing-packages-on-macos
 
 # Rust builds on stable by default, this can be
 # overridden on a case by case basis down below.
