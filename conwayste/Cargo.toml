@@ -1,6 +1,6 @@
 [package]
 name = "conwayste"
-version = "0.2.0"
+version = "0.3.2-alpha3"
 authors = [ "Ameen Manghi <manghirs@gmail.com>", "Aaron Miller <aaron.miller04@gmail.com>" ]
 license = "GPL-3.0+"
 edition = "2018"
