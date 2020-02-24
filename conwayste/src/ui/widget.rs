@@ -17,7 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::{Context, GameResult};
-use ggez::graphics::{Rect};
+use ggez::graphics::Rect;
 use ggez::nalgebra::{Point2, Vector2};
 
 use downcast_rs::Downcast;
@@ -46,7 +46,8 @@ pub trait Widget: Downcast + std::fmt::Debug {
     /// Retreives the widget's draw stack order
     fn z_index(&self) -> usize;
 
-    /// Sets the widget's draw stack order
+    /// Sets the widget's draw stack order. Normally this is set when this widget is provided
+    /// to Layering::add_widget.
     fn set_z_index(&mut self, _new_z_index: usize) {
         ()
     }
@@ -120,6 +121,11 @@ pub trait Widget: Downcast + std::fmt::Debug {
     //XXX HACK
     fn as_emit_event(&mut self) -> Option<&mut dyn context::EmitEvent> {
         None
+    }
+
+    /// Whether this widget accepts keyboard events
+    fn accepts_keyboard_events(&self) -> bool {
+        false
     }
 }
 
