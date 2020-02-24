@@ -18,6 +18,7 @@
 
 use std::collections::HashMap;
 use std::error::Error;
+use std::mem;
 
 use downcast_rs::Downcast;
 use enum_iterator::IntoEnumIterator;
@@ -34,6 +35,7 @@ pub struct UIContext<'a> {
     pub ggez_context: &'a mut ggez::Context,
     pub config: &'a mut config::Config,
     pub widget_view: TreeView<'a, BoxedWidget>,
+    child_events: Vec<Event>,
 }
 
 impl<'a> UIContext<'a> {
@@ -46,6 +48,7 @@ impl<'a> UIContext<'a> {
             ggez_context,
             config,
             widget_view: view,
+            child_events: vec![],
         }
     }
 
@@ -73,6 +76,7 @@ impl<'a> UIContext<'a> {
                 ggez_context: self.ggez_context,
                 config: self.config,
                 widget_view: subtree,
+                child_events: vec![],
             },
         ))
     }
@@ -87,6 +91,29 @@ impl<'a> UIContext<'a> {
     /// `NodeId` if it exists and is in view in the tree, or else a `NodeIdError`.
     pub fn get_mut(&mut self, node_id: &NodeId) -> Result<&mut BoxedWidget, Box<dyn Error>> {
         Ok(self.widget_view.get_mut(node_id)?.data_mut())
+    }
+
+    /// Adds an event to be later collected by the parent of this widget (or one of its parents,
+    /// etc.). It must be retrieved by collect_child_events() before this UIContext is dropped.
+    pub fn child_event(&mut self, event: Event) {
+        self.child_events.push(event);
+    }
+
+    pub fn collect_child_events(&mut self) -> Vec<Event> {
+        let mut events = vec![];
+        mem::swap(&mut self.child_events, &mut events);
+        events
+    }
+}
+
+impl<'a> Drop for UIContext<'a> {
+    fn drop(&mut self) {
+        if self.child_events.len() > 0 {
+            warn!(
+                "UIContext dropped but collect_child_events() not called. {} events to collect.",
+                self.child_events.len(),
+            );
+        }
     }
 }
 
