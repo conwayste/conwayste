@@ -436,6 +436,11 @@ impl Widget for TextField {
         self.input_state = None;
         self.draw_cursor = false;
     }
+
+    /// Text fields can receive keyboard focus.
+    fn accepts_keyboard_events(&self) -> bool {
+        true
+    }
 }
 
 widget_from_id!(TextField);
