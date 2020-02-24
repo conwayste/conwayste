@@ -69,6 +69,10 @@ deploy:
     # and nightly channels. This condition makes sure there is only one release
     # for such targets and that's generated using the stable channel
     RUST_VERSION: stable
+
+    # NOTE: to get Conwayste Windows build .zip files, always do it this way:
+    #    $ TAG=v0.3.2-alpha10  #!!!!!! CHANGE THIS !!!!!
+    #    $ git tag -a $TAG && git push && git push origin $TAG # branch then tag
     appveyor_repo_tag: true
   provider: GitHub
 

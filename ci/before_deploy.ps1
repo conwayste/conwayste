@@ -12,8 +12,7 @@ New-Item -Type Directory -Name resources
 $ZIP = "$SRC_DIR\conwayste-$($env:APPVEYOR_REPO_TAG_NAME)-$($env:TARGET).zip"
 
 Copy-Item "$SRC_DIR\target\$($env:TARGET)\release\client.exe" ".\"
-Copy-Item -Path "$SRC_DIR\resources" -Destination ".\" -Recurse
-Copy-Item -Path "$SRC_DIR\resources\*" -Destination ".\resources\" -Recurse
+Copy-Item -Path "$SRC_DIR\conwayste\resources" -Destination ".\" -Recurse
 
 7z a "$ZIP" *
 
