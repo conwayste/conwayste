@@ -21,6 +21,10 @@ main() {
     cross rustc --bin client --target $TARGET --package conwayste --release -- -C lto
 
     # TODO Update this to package the right artifacts
+    # XXX remove the following ls commands!
+    ls -trl target
+    ls -trl target/$TARGET
+    ls -trl target/$TARGET/release
     cp target/$TARGET/release/client $stage/
 
     cd $stage
