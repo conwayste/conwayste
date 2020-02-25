@@ -1,4 +1,4 @@
-/*  Copyright 2017-2018 the Conwayste Developers.
+/*  Copyright 2017-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -17,22 +17,27 @@
  *  <http://www.gnu.org/licenses/>. */
 
 extern crate conway;
+#[macro_use] extern crate custom_error;
+#[macro_use] extern crate downcast_rs;
 extern crate env_logger;
 extern crate ggez;
 #[macro_use] extern crate log;
-extern crate sdl2;
 #[macro_use] extern crate serde;
 #[macro_use] extern crate version;
 extern crate rand;
 extern crate color_backtrace;
 #[macro_use] extern crate lazy_static;
+extern crate chromatica;
 
 mod config;
 mod constants;
+mod error;
 mod input;
 mod menu;
 mod network;
-mod utils;
+mod ui;
+mod uilayout;
+mod uimanager;
 mod video;
 mod viewport;
 
@@ -40,23 +45,28 @@ use chrono::Local;
 use log::LevelFilter;
 
 use conway::universe::{BigBang, Universe, CellState, Region, PlayerBuilder};
-use conway::grids::CharGrid;
+use conway::grids::{CharGrid, BitGrid};
 use conway::rle::Pattern;
 use conway::ConwayResult;
+use conway::error::ConwayError;
+use conway::Rotation;
 
 use netwayste::net::NetwaysteEvent;
 
 use ggez::conf;
 use ggez::event::*;
 use ggez::{GameError, GameResult, Context, ContextBuilder};
-use ggez::graphics;
-use ggez::graphics::{Point2, Color};
+use ggez::graphics::{self, Color, DrawParam, Font};
+use ggez::nalgebra::{Point2, Vector2};
 use ggez::timer;
 
 use std::env;
+use std::error::Error;
 use std::io::Write; // For env logger
 use std::path;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap};
+
+use std::time::Instant;
 
 use constants::{
     CURRENT_PLAYER_ID,
@@ -69,11 +79,27 @@ use constants::{
     HISTORY_SIZE,
     INTRO_DURATION,
     INTRO_PAUSE_DURATION,
+    widget_ids::*,
+    colors::*,
 };
+use input::{MouseAction, ScrollEvent};
+use ui::{
+    Chatbox,
+    TextField,
+    TextInputState,
+    UIAction,
+    UIError,
+    UIResult,
+    Widget,
+    WidgetID,
+};
+use uilayout::UILayout;
+use uimanager::LayoutManager;
 
-#[derive(PartialEq, Clone, Copy)]
-enum Stage {
-    Intro(f64),   // seconds
+
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
+pub enum Screen {
+    Intro,   // seconds
     Menu,
     ServerList,
     InRoom,
@@ -83,28 +109,33 @@ enum Stage {
 
 // All game state
 struct MainState {
-    small_font:          graphics::Font,
-    stage:              Stage,            // Where are we in the game (Intro/Menu Main/Running..)
+    system_font:         Font,
+    screen_stack:        Vec<Screen>,       // Where are we in the game (Intro/Menu Main/Running..)
     uni:                 Universe,          // Things alive and moving here
     intro_uni:           Universe,
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
     color_settings:      ColorSettings,
+    uni_draw_params:     UniDrawParams,
     running:             bool,
     menu_sys:            menu::MenuSystem,
     video_settings:      video::VideoSettings,
     config:              config::Config,
-    viewport:            viewport::Viewport,
-    input_manager:       input::InputManager,
-    net_worker:     Option<network::ConwaysteNetWorker>,
+    viewport:            viewport::GridView,
+    intro_viewport:      viewport::GridView,
+    inputs:              input::InputManager,
+    net_worker:          Option<network::ConwaysteNetWorker>,
+    recvd_first_resize:  bool,       // work around an apparent ggez bug where the first resize event is bogus
 
     // Input state
     single_step:         bool,
     arrow_input:         (isize, isize),
     drag_draw:           Option<CellState>,
-    win_resize:          u8,
-    return_key_pressed:  bool,
-    escape_key_pressed:  bool,
+    insert_mode:         Option<(BitGrid, usize, usize)>,   // pattern to be drawn on click along with width and height;
+                                                            // if Some(...), dragging doesn't draw anything
     toggle_paused_game:  bool,
+    current_intro_duration:  f64,
+
+    ui_layout:           UILayout,
 }
 
 
@@ -136,7 +167,6 @@ impl ColorSettings {
 
     }
 }
-
 
 fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
     let _pat = Pattern("10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW$10bW$10bW$10b16W48$100b2A5b2A$100b2A5b2A2$104b2A$104b2A5$122b2Ab2A$121bA5bA$121bA6bA2b2A$121b3A3bA3b2A$126bA!".to_owned());
@@ -256,6 +286,1273 @@ fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
 }
 
 
+// Then we implement the `ggez::game::GameState` trait on it, which
+// requires callbacks for creating the game state, updating it each
+// frame, and drawing it.
+//
+// The `GameState` trait also contains callbacks for event handling
+// that you can override if you wish, but the defaults are fine.
+impl MainState {
+
+    fn new(ctx: &mut Context) -> GameResult<MainState> {
+        let universe_width_in_cells  = 256;
+        let universe_height_in_cells = 120;
+        let intro_universe_width_in_cells  = 256;
+        let intro_universe_height_in_cells = 256;
+
+        let mut config = config::Config::new();
+        config.load_or_create_default().map_err(|e| {
+            let msg = format!("Error while loading config: {:?}", e);
+            GameError::FilesystemError(msg)
+        })?;
+
+        let mut vs = video::VideoSettings::new();
+        graphics::set_resizable(ctx, true)?;
+
+        /* TODO: delete this once we are sure resizable windows are OK.
+            vs.gather_display_modes(ctx)?;
+            vs.print_resolutions();
+        */
+
+        // On first-run, use default supported resolution
+        let (w, h) = config.get_resolution();
+        vs.set_resolution(ctx, video::Resolution{w, h}, true)?;
+
+        let is_fullscreen = config.get().video.fullscreen;
+        vs.is_fullscreen = is_fullscreen;
+        vs.update_fullscreen(ctx)?;
+
+        let intro_viewport = viewport::GridView::new(
+            DEFAULT_ZOOM_LEVEL,
+            intro_universe_width_in_cells,
+            intro_universe_height_in_cells);
+
+        let viewport = viewport::GridView::new(
+            config.get().gameplay.zoom,
+            universe_width_in_cells,
+            universe_height_in_cells);
+
+        let mut color_settings = ColorSettings {
+            cell_colors: BTreeMap::new(),
+            background:  *UNIVERSE_BG_COLOR,
+        };
+        color_settings.cell_colors.insert(CellState::Dead, *CELL_STATE_DEAD_COLOR);
+        if GRID_DRAW_STYLE == DrawStyle::Line {
+            // black background - for a "tetris-like" effect
+            color_settings.cell_colors.insert(CellState::Alive(None), *CELL_STATE_BG_FILL_HOLLOW_COLOR);
+        } else {
+            // light background - default setting
+            color_settings.cell_colors.insert(CellState::Alive(None), *CELL_STATE_BG_FILL_SOLID_COLOR);
+        }
+        color_settings.cell_colors.insert(CellState::Alive(Some(0)), *CELL_STATE_ALIVE_PLAYER_0_COLOR);  // 0 is red
+        color_settings.cell_colors.insert(CellState::Alive(Some(1)), *CELL_STATE_ALIVE_PLAYER_1_COLOR);  // 1 is blue
+        color_settings.cell_colors.insert(CellState::Wall, *CELL_STATE_WALL_COLOR);
+        color_settings.cell_colors.insert(CellState::Fog, *CELL_STATE_FOG_COLOR);
+
+        // Note: fixed-width fonts are required!
+        let font = Font::new(ctx, path::Path::new("/telegrama_render.ttf"))
+                    .map_err(|e| GameError::FilesystemError(format!("Could not load or find font. {:?}", e)))?;
+
+        let bigbang =
+        {
+            // we're going to have to tear this all out when this becomes a real game
+            let player0_writable = Region::new(100, 70, 34, 16);
+            let player1_writable = Region::new(0, 0, 80, 80);
+
+            let player0 = PlayerBuilder::new(player0_writable);
+            let player1 = PlayerBuilder::new(player1_writable);
+            let players = vec![player0, player1];
+
+            BigBang::new()
+            .width(universe_width_in_cells)
+            .height(universe_height_in_cells)
+            .server_mode(true) // TODO will change to false once we get server support up
+                               // Currently 'client' is technically both client and server
+            .history(HISTORY_SIZE)
+            .fog_radius(FOG_RADIUS)
+            .add_players(players)
+            .birth()
+        };
+
+        let intro_universe =
+        {
+            let player = PlayerBuilder::new(Region::new(0, 0, 256, 256));
+            BigBang::new()
+                .width(intro_universe_width_in_cells)
+                .height(intro_universe_height_in_cells)
+                .fog_radius(100)
+                .add_players(vec![player])
+                .birth()
+        };
+
+        let mut config = config::Config::new();
+        config.load_or_create_default().map_err(|e| {
+            let msg = format!("Error while loading config: {:?}", e);
+            GameError::ConfigError(msg)
+        })?;
+
+        let ui_layout = UILayout::new(ctx, &config, font.clone())?;
+
+        // Update universe draw parameters for intro
+        let intro_uni_draw_params = UniDrawParams {
+            bg_color: graphics::BLACK,
+            fg_color: graphics::BLACK,
+            player_id: -1,
+            draw_counter: true,
+        };
+
+        let mut s = MainState {
+            screen_stack:        vec![Screen::Intro],
+            system_font:         font.clone(),
+            uni:                 bigbang.unwrap(),
+            intro_uni:           intro_universe.unwrap(),
+            first_gen_was_drawn: false,
+            uni_draw_params:     intro_uni_draw_params,
+            color_settings:      color_settings,
+            running:             false,
+            menu_sys:            menu::MenuSystem::new(font),
+            video_settings:      vs,
+            config:              config,
+            viewport:            viewport,
+            intro_viewport:      intro_viewport,
+            inputs:              input::InputManager::new(),
+            net_worker:          None,
+            recvd_first_resize:  false,
+            single_step:         false,
+            arrow_input:         (0, 0),
+            drag_draw:           None,
+            insert_mode:         None,
+            toggle_paused_game:  false,
+            current_intro_duration:  0.0,
+            ui_layout:           ui_layout,
+        };
+
+        init_patterns(&mut s).unwrap();
+
+        init_title_screen(&mut s).unwrap();
+
+        Ok(s)
+    }
+}
+
+impl EventHandler for MainState {
+    fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
+        let duration = timer::duration_to_f64(timer::delta(ctx)); // seconds
+
+        self.receive_net_updates()?;
+
+        let current_screen = match self.screen_stack.last() {
+            Some(screen) => screen,
+            None => panic!("Error in main thread update! Screen_stack is empty!"),
+        };
+
+        match current_screen {
+            Screen::Intro => {
+                // Any key should skip the intro
+                if self.inputs.key_info.key.is_some() || (self.current_intro_duration > INTRO_DURATION) {
+                    self.screen_stack.pop();
+                    self.screen_stack.push(Screen::Menu);
+
+                    // update universe draw params now that intro is gone
+                    self.uni_draw_params = UniDrawParams {
+                        bg_color: self.color_settings.get_color(None),
+                        fg_color: self.color_settings.get_color(Some(CellState::Dead)),
+                        player_id: 1, // Current player, TODO sync with Server's CLIENT ID
+                        draw_counter: true,
+                    };
+                } else {
+                    self.current_intro_duration += duration;
+
+                    if self.current_intro_duration >= (INTRO_DURATION - INTRO_PAUSE_DURATION) {
+                        self.intro_uni.next();
+                    }
+                }
+            }
+            Screen::Menu => {
+                let mouse_point = self.inputs.mouse_info.position;
+                let origin_point = self.inputs.mouse_info.down_position;
+
+                let mouse_action = self.inputs.mouse_info.action;
+
+                let left_mouse_click = mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
+
+                let screen = self.get_current_screen();
+                if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, screen) {
+                    layer.on_hover(&mouse_point);
+
+                    if let Some(action) = mouse_action {
+                        if action == MouseAction::Drag {
+                            layer.on_drag(&origin_point, &mouse_point);
+                        }
+                    }
+
+                    if left_mouse_click {
+                        if let Some( (ui_id, ui_action) ) = layer.on_click(&mouse_point) {
+                            self.handle_ui_action(ctx, ui_id, ui_action).or_else(|e| -> UIResult<()> {
+                                error!("Failed to handle UI action: {}", e);
+                                Ok(())
+                            }).unwrap();
+                        }
+                    }
+                }
+
+                self.update_main_menu_selection(ctx)?;
+            }
+            Screen::Run => {
+                // TODO Disable FSP limit until we decide if we need it
+                // while timer::check_update_time(ctx, FPS) {
+                let mut textfield_under_focus = false;
+                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                    Ok(tf) => {
+                        match tf.input_state {
+                            Some(TextInputState::TextInputComplete) =>  {
+                                textfield_under_focus = false;
+                                self.handle_user_chat_complete(ctx);
+                            }
+                            Some(TextInputState::EnteringText) => {
+                                textfield_under_focus = true;
+                                tf.update(ctx)?;
+                            },
+                            None => {
+                                textfield_under_focus = false;
+                                tf.update(ctx)?;
+                            },
+                        }
+                    }
+                    Err(e) => {
+                        error!("could not update Chatbox's text input state: {:?}", e);
+                    }
+                }
+
+                if textfield_under_focus {
+                    self.process_text_field_inputs();
+                } else {
+                    let result = self.process_running_inputs();
+                    handle_error!(result,
+                        UIError => |e| {
+                            error!("Received UI Error from process_running_inputs(). {:?}", e);
+                        },
+                        else => |e| {
+                            error!("Received unexpected error from process_running_inputs(). {:?}", e);
+                        }
+                    ).unwrap(); // OK to call unwrap here because there is an else match arm (all errors handled)
+                }
+
+                let keymods = self.inputs.key_info.modifier;
+                let is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
+
+                // TODO: move this into process_running_inputs
+                if self.inputs.mouse_info.mousebutton == MouseButton::Left {
+                    let mouse_pos = self.inputs.mouse_info.position;
+
+                    if let Some((ref grid, width, height)) = self.insert_mode {
+                        // inserting a pattern
+                        if self.inputs.mouse_info.action == Some(MouseAction::Click) {
+                            if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                                let insert_col = cell.col as isize - (width/2) as isize;
+                                let insert_row = cell.row as isize - (height/2) as isize;
+                                let dst_region = Region::new(insert_col, insert_row, width, height);
+                                self.uni.copy_from_bit_grid(grid, dst_region, Some(CURRENT_PLAYER_ID));
+                            }
+                        }
+                    } else {
+                        // not inserting a pattern, just drawing single cells
+                        match self.inputs.mouse_info.action {
+                            Some(MouseAction::Click) => {
+                                // release
+                                self.drag_draw = None;
+                            }
+                            Some(MouseAction::Drag) => {
+                                // hold + motion
+                                if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                                    // Only make dead cells alive
+                                    if let Some(cell_state) = self.drag_draw {
+                                        self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
+                                    }
+                                }
+                            }
+                            Some(MouseAction::Held) => {
+                                // depress, no move yet
+                                if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                                    if self.drag_draw.is_none() {
+                                        self.drag_draw = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
+                                    }
+                                }
+                            }
+                            Some(MouseAction::DoubleClick) | None => {} // do nothing
+                        }
+                    }
+                } else if is_shift && self.arrow_input != (0, 0) {
+                    if let Some((ref mut grid, ref mut width, ref mut height)) = self.insert_mode {
+                        let rotation = match self.arrow_input {
+                            (-1, 0) => Some(Rotation::CCW),
+                            ( 1, 0) => Some(Rotation::CW),
+                            (0, 0) => unreachable!(),
+                            _ => None,   // do nothing in this case
+                        };
+                        if let Some(rotation) = rotation {
+                            grid.rotate(*width, *height, rotation).unwrap_or_else(|e| {
+                                error!("Failed to rotate pattern {:?}: {:?}", rotation, e);
+                            });
+                            // reverse the stored width and height
+                            let (new_width, new_height) = (*height, *width);
+                            *width = new_width;
+                            *height = new_height;
+                        } else {
+                            info!("Ignoring Shift-<Up/Down>");
+                        }
+                    }
+                }
+
+
+                let mouse_point = self.inputs.mouse_info.position;
+                let screen = self.get_current_screen();
+
+                if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, screen) {
+                    layer.on_hover(&mouse_point);
+                }
+
+                if self.single_step {
+                    self.running = false;
+                }
+
+                if self.first_gen_was_drawn && (self.running || self.single_step) {
+                    self.uni.next();     // next generation
+                    self.single_step = false;
+                }
+
+                if self.toggle_paused_game {
+                    self.pause_or_resume_game();
+                }
+
+                if !is_shift {
+                    // Arrow keys (but not Shift-<Arrow>!) move the player's view of the universe around
+                    self.viewport.update(self.arrow_input);
+                }
+            }
+            Screen::InRoom => {
+                // TODO implement
+                if let Some(_k) = self.inputs.key_info.key {
+                    debug!("Leaving InRoom to ServerList");
+                    self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
+                }
+            }
+            Screen::ServerList => {
+                if let Some(_k) = self.inputs.key_info.key {
+                    debug!("Leaving ServerList to MainMenu");
+                    self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
+                }
+                // TODO implement
+             },
+            Screen::Exit => {
+               let _ = ggez::event::quit(ctx);
+            }
+        }
+
+        self.post_update()?;
+
+        Ok(())
+    }
+
+    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
+        graphics::clear(ctx, [0.0, 0.0, 0.0, 1.0].into());
+
+        let current_screen = self.get_current_screen();
+
+        match current_screen {
+            Screen::Intro => {
+                self.draw_intro(ctx).unwrap_or_else(|e| {
+                    error!("Error from draw_intro: {}", e);
+                });
+            }
+            Screen::Menu => {
+                self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn)?;
+            }
+            Screen::Run => {
+                self.draw_universe(ctx).unwrap_or_else(|e| {
+                    error!("Error from draw_universe: {}", e);
+                });
+            }
+            Screen::InRoom => {
+                ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("In Room"), &Point2::new(100.0, 100.0))?;
+                // TODO
+            }
+            Screen::ServerList => {
+                ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("Server List"), &Point2::new(100.0, 100.0))?;
+                // TODO
+             },
+            Screen::Exit => {}
+        }
+
+        if let Some(layering) = LayoutManager::get_screen_layering(&mut self.ui_layout, current_screen) {
+            layering.draw(ctx)?;
+        }
+
+        graphics::present(ctx)?;
+        timer::yield_now();
+        Ok(())
+    }
+
+    // Note about coordinates: x and y are "screen coordinates", with the origin at the top left of
+    // the screen. x becomes more positive going from left to right, and y becomes more positive
+    // going top to bottom.
+    // Currently only allow one mouse button event at a time (e.g. left+right click not valid)
+    fn mouse_button_down_event(&mut self, _ctx: &mut Context, button: MouseButton, x: f32, y: f32) {
+        if self.inputs.mouse_info.mousebutton == MouseButton::Other(0) {
+            self.inputs.mouse_info.mousebutton = button;
+            self.inputs.mouse_info.down_timestamp = Some(Instant::now());
+            self.inputs.mouse_info.action = Some(MouseAction::Held);
+            self.inputs.mouse_info.position = Point2::new(x,y);
+            self.inputs.mouse_info.down_position = Point2::new(x,y);
+
+            if self.inputs.mouse_info.debug_print {
+                debug!("{:?} Down", button);
+            }
+        }
+    }
+
+    fn mouse_motion_event(&mut self, _ctx: &mut Context, x: f32, y: f32, _dx: f32, _dy: f32) {
+        self.inputs.mouse_info.position = Point2::new(x, y);
+
+        // Check that a valid mouse button was held down (but no motion yet), or that we are already
+        // dragging the mouse. If either case is true, update the action to reflect that the mouse
+        // is being dragged around
+        if self.inputs.mouse_info.mousebutton != MouseButton::Other(0)
+            && (self.inputs.mouse_info.action == Some(MouseAction::Held) || self.inputs.mouse_info.action == Some(MouseAction::Drag)) {
+            self.inputs.mouse_info.action = Some(MouseAction::Drag);
+
+            if self.inputs.mouse_info.debug_print {
+                debug!("Dragging {:?}, Current Position {:?}, Time Held: {:?}",
+                    self.inputs.mouse_info.mousebutton,
+                    self.inputs.mouse_info.position,
+                    self.inputs.mouse_info.down_timestamp.unwrap().elapsed());
+            }
+        }
+    }
+
+    fn mouse_button_up_event(&mut self, _ctx: &mut Context, button: MouseButton, x: f32, y: f32) {
+        // Register as a click if the same mouse button that clicked down is what triggered the event
+        if self.inputs.mouse_info.mousebutton == button {
+            self.inputs.mouse_info.action = Some(MouseAction::Click);
+            self.inputs.mouse_info.position = Point2::new(x, y);
+
+            if self.inputs.mouse_info.debug_print {
+                debug!("Clicked {:?}, Current Position {:?}, Time Held: {:?}",
+                    button,
+                    (x, y),
+                    self.inputs.mouse_info.down_timestamp.unwrap().elapsed());
+            }
+        }
+
+        self.drag_draw = None;   // probably unnecessary because of state.left() check in mouse_motion_event
+    }
+
+    /// Vertical scroll:   (y, positive away from and negative toward the user)
+    /// Horizontal scroll: (x, positive to the right and negative to the left)
+    fn mouse_wheel_event(&mut self, _ctx: &mut Context, _x: f32, y: f32) {
+        self.inputs.mouse_info.scroll_event = if y > 0.0 {
+                Some(ScrollEvent::ScrollUp)
+            } else if y < 0.0 {
+                Some(ScrollEvent::ScrollDown)
+            } else {
+                None
+            };
+
+        if self.inputs.mouse_info.debug_print {
+            debug!("Wheel Event {:?}", self.inputs.mouse_info.scroll_event);
+        }
+    }
+
+    fn key_down_event(&mut self, _ctx: &mut Context, keycode: KeyCode, keymod: KeyMods, repeat: bool ) {
+        let key_as_int32 = keycode as i32;
+
+        // Winit's KeyCode definition has no perceptible ordering so I'm selectively defining what keys we'll accept...
+        // for now at least
+        if key_as_int32 < (KeyCode::Numlock as i32)
+            || (key_as_int32 >= KeyCode::LAlt as i32 && key_as_int32 <= KeyCode::LWin as i32)
+            || (key_as_int32 >= KeyCode::RAlt as i32 && key_as_int32 <= KeyCode::RWin as i32)
+            || (key_as_int32 == KeyCode::Equals as i32 || key_as_int32 == KeyCode::Subtract as i32) {
+            if self.inputs.key_info.key.is_none() {
+                self.inputs.key_info.key = Some(keycode);
+            }
+
+            if self.inputs.key_info.key == Some(keycode) {
+                self.inputs.key_info.repeating = repeat;
+            }
+
+            self.inputs.key_info.modifier = keymod;
+        }
+
+        if self.inputs.key_info.debug_print {
+            debug!("Key_Down K: {:?}, M: {:?}, R: {}", self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating);
+        }
+    }
+
+    fn key_up_event(&mut self, _ctx: &mut Context, _keycode: KeyCode, keymod: KeyMods) {
+        // TODO: should probably only clear key if keycode matches key_info.key
+        self.inputs.key_info.modifier &= !keymod;  // clear whatever modifier key was released
+        self.inputs.key_info.key = None;
+        self.inputs.key_info.repeating = false;
+
+        if self.inputs.key_info.debug_print {
+            debug!("Key_Up K: {:?}, M: {:?}, R: {}", self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating);
+        }
+    }
+
+    fn text_input_event(&mut self, _ctx: &mut Context, character: char) {
+        // Ignore control characters (like Esc or Del)./
+        if character.is_control() {
+            return;
+        }
+
+        // PR_GATE: Ameen to look at why it doesn't print the error after a TF loses focus
+        // and then remove the er ror message once fixed, and this misspelled comment
+        let screen = self.get_current_screen();
+        match LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
+            Ok(tf) => tf.on_char(character),
+            Err(e) => error!(concat!("Could not get layer's focused ",
+                "textfield for {:?} during text input event: {:?}"), screen, e)
+        }
+    }
+
+    fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
+        if !self.recvd_first_resize {
+            // Work around apparent ggez bug -- bogus first resize_event
+            debug!("IGNORING resize_event: {}, {}", width, height);
+            self.recvd_first_resize = true;
+            return;
+        }
+        debug!("resize_event: {}, {}", width, height);
+        let new_rect = graphics::Rect::new(
+            0.0,
+            0.0,
+            width,
+            height,
+        );
+        if self.uni_draw_params.player_id < 0 {
+            self.intro_viewport.set_size(width, height);
+            self.center_intro_viewport(width, height);
+        }
+        graphics::set_screen_coordinates(ctx, new_rect).unwrap();
+        self.viewport.set_size(width, height);
+        if self.video_settings.is_fullscreen {
+            debug!("not saving resolution to config because is_fullscreen is true");
+        } else {
+            self.config.set_resolution(width, height);
+        }
+        self.video_settings.set_resolution(ctx, video::Resolution{w: width, h: height}, false).unwrap();
+    }
+
+    fn quit_event(&mut self, _ctx: &mut Context) -> bool {
+        println!("Got quit event!");
+        let mut quit = false;
+        let current_screen = match self.screen_stack.last() {
+            Some(screen) => screen,
+            None => panic!("Error in quit_event! Screen_stack is empty!"),
+        };
+
+        match current_screen {
+            Screen::Run => {
+                self.pause_or_resume_game();
+            }
+            Screen::Menu | Screen::InRoom | Screen::ServerList => {
+                // This is currently handled in the menu processing state path as well
+            }
+            Screen::Exit => {
+                quit = true;
+            }
+            _ => {}
+        }
+
+        if quit {
+            self.cleanup();
+        }
+
+        !quit
+    }
+
+}
+
+
+struct UniDrawParams {
+    bg_color: Color,
+    fg_color: Color,
+    player_id: isize, // Player color >=0, Playerless < 0  // TODO: use Option<usize> instead
+    draw_counter: bool,
+}
+
+impl MainState {
+
+    fn draw_game_of_life(&self, ctx: &mut Context, universe: &Universe) -> Result<(), Box<dyn Error>> {
+
+        let viewport = if self.uni_draw_params.player_id >= 0 {
+            &self.viewport
+        } else {
+            // intro
+            &self.intro_viewport
+        };
+        let viewport_rect = viewport.get_rect();
+
+        // grid background
+        let rectangle = graphics::Mesh::new_rectangle(ctx,
+            GRID_DRAW_STYLE.to_draw_mode(),
+            graphics::Rect::new(0.0, 0.0, viewport_rect.w, viewport_rect.h),
+            self.uni_draw_params.bg_color)?;
+        graphics::draw(ctx, &rectangle, DrawParam::new().dest(viewport_rect.point()))?;
+
+        // grid foreground (dead cells)
+        let full_rect = viewport.get_rect_from_origin();
+
+        let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
+        let mut main_spritebatch = graphics::spritebatch::SpriteBatch::new(image.clone());
+        let mut overlay_spritebatch = graphics::spritebatch::SpriteBatch::new(image);
+
+        // grid non-dead cells (walls, players, etc.)
+        let visibility = if self.uni_draw_params.player_id >= 0 {
+            Some(self.uni_draw_params.player_id as usize)
+        } else {
+            // used for random coloring in intro
+            Some(0)
+        };
+
+        // TODO: call each_non_dead with visible region (add method to viewport)
+        universe.each_non_dead_full(visibility, &mut |col, row, state| {
+            let color = if self.uni_draw_params.player_id >= 0 {
+                self.color_settings.get_color(Some(state))
+            } else {
+                self.color_settings.get_random_color()
+            };
+
+            if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col, row)) {
+                let p = graphics::DrawParam::new()
+                    .dest(Point2::new(rect.x, rect.y))
+                    .scale(Vector2::new(rect.w, rect.h))
+                    .color(color);
+
+                main_spritebatch.add(p);
+            }
+        });
+
+        // TODO: truncate if outside of writable region
+        // TODO: move to new function
+        if let Some((ref grid, width, height)) = self.insert_mode {
+            let unwritable_flash_on =  timer::time_since_start(ctx).subsec_millis() % 250 < 125;  // 50% duty cycle, 250ms period
+
+            if self.uni_draw_params.player_id < 0 {
+                return Err(format!("Unexpected player ID {}", self.uni_draw_params.player_id).into());
+            }
+            let player_cell_state = CellState::Alive(Some(self.uni_draw_params.player_id as usize));
+            let player_color = self.color_settings.get_color(Some(player_cell_state));
+            if let Some(cursor_cell) = viewport.game_coords_from_window(self.inputs.mouse_info.position) {
+                let (cursor_col, cursor_row) = (cursor_cell.col, cursor_cell.row);
+                grid.each_set(|grid_col, grid_row| {
+                    let col = (grid_col + cursor_col) as isize - width as isize/2;
+                    let row = (grid_row + cursor_row) as isize - height as isize/2;
+                    if col < 0 || row < 0 {
+                        // out of range
+                        return;
+                    }
+                    let (col, row) = (col as usize, row as usize);
+                    if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col, row)) {
+                        let mut color = player_color;
+                        // only error is due to player_id out of range, so unwrap OK here
+                        if !self.uni.writable(col, row, self.uni_draw_params.player_id as usize).unwrap() {
+                            // not writable, so draw flashing red cells
+                            if unwritable_flash_on {
+                                color = *constants::colors::INSERT_PATTERN_UNWRITABLE;
+                            } else {
+                                return;
+                            }
+                        }
+                        color.a = 0.5;  // semi-transparent since this is an overlay
+                        let p = graphics::DrawParam::new()
+                            .dest(Point2::new(rect.x, rect.y))
+                            .scale(Vector2::new(rect.w, rect.h))
+                            .color(color);
+
+                        overlay_spritebatch.add(p);
+                    }
+                });
+            }
+        }
+
+        if let Some(clipped_rect) = ui::intersection(full_rect, viewport_rect) {
+            let origin = graphics::DrawParam::new().dest(Point2::new(0.0, 0.0));
+            let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect,
+                                                          self.uni_draw_params.fg_color)?;
+
+            graphics::draw(ctx, &rectangle, origin)?;
+            graphics::draw(ctx, &main_spritebatch, origin)?;
+            graphics::draw(ctx, &overlay_spritebatch, origin)?;
+        }
+
+        // TODO: see if we need to do this
+        main_spritebatch.clear();
+        overlay_spritebatch.clear();
+
+        ////////// draw generation counter
+        if self.uni_draw_params.draw_counter {
+            let gen_counter = universe.latest_gen().to_string();
+            ui::draw_text(ctx, self.system_font.clone(), *GEN_COUNTER_COLOR, gen_counter, &Point2::new(0.0, 0.0))?;
+        }
+
+        Ok(())
+    }
+
+    fn center_intro_viewport(&mut self, win_width: f32, win_height: f32) {
+        let grid_width = self.intro_viewport.grid_width();
+        let grid_height = self.intro_viewport.grid_height();
+        let target_center_x = win_width/2.0 - grid_width/2.0;
+        let target_center_y = win_height/2.0 - grid_height/2.0;
+        self.intro_viewport.set_origin(Point2::new(target_center_x, target_center_y));
+    }
+
+    fn draw_intro(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
+        self.draw_game_of_life(ctx, &self.intro_uni)
+    }
+
+    fn draw_universe(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
+        self.first_gen_was_drawn = true;
+        self.draw_game_of_life(ctx, &self.uni)
+    }
+
+    fn pause_or_resume_game(&mut self) {
+        let cur_menu_state = self.menu_sys.menu_state;
+        let current_screen = match self.screen_stack.last() {
+            Some(screen) => screen,
+            None => panic!("Error in key_down_event! Screen_stack is empty!"),
+        };
+
+        match current_screen {
+            Screen::Menu => {
+                if cur_menu_state == menu::MenuState::MainMenu {
+                    self.screen_stack.push(Screen::Run);
+                    self.running = true;
+                }
+            }
+            Screen::Run => {
+                self.screen_stack.pop();
+                self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                self.running = false;
+            }
+            _ => unimplemented!()
+        }
+
+        self.toggle_paused_game = false;
+    }
+
+    /// Handles keyboard and mouse input stored in `self.inputs` by the ggez callbacks. This is
+    /// called from update() when we are in the Run screen, and the focus is not captured by, for
+    /// example, a text dialog.
+    fn process_running_inputs(&mut self) -> Result<(), Box<dyn Error>> {
+        let keycode;
+
+        if let Some(k) = self.inputs.key_info.key {
+            keycode = k;
+        } else {
+            return Ok(());
+        }
+
+        match keycode {
+            KeyCode::Key1 => {
+                // pressing 1 clears selection
+                self.insert_mode = None;
+            }
+            k if k >= KeyCode::Key2 && k <= KeyCode::Key0 => {
+                // select a pattern
+                let grid_info_result = self.bit_pattern_from_char(keycode);
+                let grid_info = handle_error!{grid_info_result -> (BitGrid, usize, usize),
+                    ConwayError => |e| {
+                        return Err(format!("Invalid pattern bound to keycode {:?}: {}", keycode, e).into())
+                    }
+                }?;
+                self.insert_mode = Some(grid_info);
+                return Ok(());
+            }
+            KeyCode::Return => {
+                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+                    Ok(tf) => {
+                        if tf.input_state.is_none() {
+                            if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, Screen::Run) {
+                                layer.enter_focus(INGAME_PANE1_CHATBOXTEXTFIELD)?;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Could not get Chatbox's textfield while processing key inputs: {:?}", e);
+                    }
+                }
+            }
+            KeyCode::R => {
+                if !self.inputs.key_info.repeating {
+                    self.running = !self.running;
+                }
+            }
+            KeyCode::Space => {
+                self.single_step = true;
+            }
+            KeyCode::Up => {
+                self.arrow_input = (0, -1);
+            }
+            KeyCode::Down => {
+                self.arrow_input = (0, 1);
+            }
+            KeyCode::Left => {
+                self.arrow_input = (-1, 0);
+            }
+            KeyCode::Right => {
+                self.arrow_input = (1, 0);
+            }
+            KeyCode::Add | KeyCode::Equals => {
+                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
+                let cell_size = self.viewport.get_cell_size();
+                self.config.modify(|settings| {
+                    settings.gameplay.zoom = cell_size;
+                });
+            }
+            KeyCode::Minus | KeyCode::Subtract => {
+                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
+                let cell_size = self.viewport.get_cell_size();
+                self.config.modify(|settings| {
+                    settings.gameplay.zoom = cell_size;
+                });
+            }
+            KeyCode::D => {
+                // TODO: do something with this debug code
+                let visibility = None;  // can also do Some(player_id)
+                let pat = self.uni.to_pattern(visibility);
+                println!("PATTERN DUMP:\n{}", pat.0);
+            }
+            KeyCode::Escape => {
+                self.toggle_paused_game = true;
+            }
+            _ => {
+                println!("Unrecognized keycode {:?}", keycode);
+            }
+        }
+        Ok(())
+    }
+
+    fn process_menu_inputs(&mut self) {
+        let keycode;
+
+        if let Some(k) = self.inputs.key_info.key {
+            keycode = k;
+        } else {
+            return;
+        }
+
+        match keycode {
+            KeyCode::Up => {
+                self.arrow_input = (0, -1);
+            }
+            KeyCode::Down => {
+                self.arrow_input = (0, 1);
+            }
+            KeyCode::Left => {
+                self.arrow_input = (-1, 0);
+            }
+            KeyCode::Right => {
+                self.arrow_input = (1, 0);
+            }
+            _ => {}
+        }
+    }
+
+    fn process_text_field_inputs(&mut self) {
+        let keycode;
+
+        if let Some(k) = self.inputs.key_info.key {
+            keycode = k;
+        } else {
+            return;
+        }
+
+        let screen = self.get_current_screen();
+
+        match keycode {
+            KeyCode::Escape => {
+                if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, screen) {
+                    layer.exit_focus();
+                }
+            }
+            KeyCode::Return | KeyCode::Back | KeyCode::Delete | KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
+                match LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
+                    Ok(tf) => tf.on_keycode(keycode),
+                    Err(e) => error!("Could not get focused textfield for {:?}
+                                      during process text field inputs: {:?}", screen, e)
+                }
+            }
+            _ => {} // do nothing for now
+        }
+    }
+
+    fn update_main_menu_selection(&mut self, ctx: &mut Context) -> GameResult<()> {
+        self.process_menu_inputs();
+
+        ////////////////////////////////////////
+        //// Directional Key / Menu movement
+        ////////////////////////////////////////
+        if self.arrow_input != (0,0) && self.inputs.key_info.key.is_some() {
+            // move selection accordingly
+            let (_,y) = self.arrow_input;
+            {
+                let container = self.menu_sys.get_menu_container_mut();
+                let mainmenu_md = container.get_metadata();
+                mainmenu_md.adjust_index(y);
+            }
+            self.menu_sys.get_controls().set_menu_key_pressed(true);
+        }
+        else {
+            /////////////////////////
+            //// Non-Arrow key was pressed
+            //////////////////////////
+            if let Some(k) = self.inputs.key_info.key {
+                let escape_key_pressed = k == KeyCode::Escape && !self.inputs.key_info.repeating;
+                let return_key_pressed = k == KeyCode::Return && !self.inputs.key_info.repeating;
+
+                if !escape_key_pressed && !return_key_pressed {
+                    return Ok(());
+                }
+
+                let mut id = {
+                    let container = self.menu_sys.get_menu_container();
+                    let index = container.get_menu_item_index();
+                    let menu_item_list = container.get_menu_item_list();
+                    let menu_item = menu_item_list.get(index).unwrap();
+                    menu_item.id
+                };
+
+                if escape_key_pressed {
+                    id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
+                }
+
+                match self.menu_sys.menu_state {
+                    menu::MenuState::MainMenu => {
+                        if !escape_key_pressed {
+                            match id {
+                                menu::MenuItemIdentifier::Connect => {
+                                    if self.net_worker.is_some() {
+                                        info!("already connected! Reconnecting...");
+                                    }
+                                    let mut net_worker = network::ConwaysteNetWorker::new();
+                                    net_worker.connect(self.config.get().user.name.clone());
+                                    info!("Connecting...");
+                                    self.net_worker = Some(net_worker);
+
+                                }
+                                menu::MenuItemIdentifier::StartGame => {
+                                    self.pause_or_resume_game();
+                                }
+                                menu::MenuItemIdentifier::ExitGame => {
+                                    self.screen_stack.push(Screen::Exit);
+                                }
+                                menu::MenuItemIdentifier::Options => {
+                                    self.menu_sys.menu_state = menu::MenuState::Options;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    menu::MenuState::Options => {
+                        match id {
+                            menu::MenuItemIdentifier::VideoSettings => {
+                                if !escape_key_pressed {
+                                    self.menu_sys.menu_state = menu::MenuState::Video;
+                                }
+                            }
+                            menu::MenuItemIdentifier::AudioSettings => {
+                                if !escape_key_pressed {
+                                    self.menu_sys.menu_state = menu::MenuState::Audio;
+                                }
+                            }
+                            menu::MenuItemIdentifier::GameplaySettings => {
+                                if !escape_key_pressed {
+                                    self.menu_sys.menu_state = menu::MenuState::Gameplay;
+                                }
+                            }
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                            }
+                            _ => {}
+                        }
+                    }
+                    menu::MenuState::Audio => {
+                        match id {
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                self.menu_sys.menu_state = menu::MenuState::Options;
+                            }
+                            _ => {
+                                if !escape_key_pressed { }
+                            }
+                        }
+                    }
+                    menu::MenuState::Gameplay => {
+                        match id {
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                self.menu_sys.menu_state = menu::MenuState::Options;
+                            }
+                            _ => {
+                                if !escape_key_pressed { }
+                            }
+                        }
+                    }
+                    menu::MenuState::Video => {
+                        match id {
+                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
+                                self.menu_sys.menu_state = menu::MenuState::Options;
+                            }
+                            menu::MenuItemIdentifier::Fullscreen => {
+                                if !escape_key_pressed {
+                                    // toggle
+                                    let is_fullscreen = !self.video_settings.is_fullscreen;
+                                    self.video_settings.is_fullscreen = is_fullscreen;
+                                    // actually update screen based on what we toggled
+                                    self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: rollback if fail
+                                    // save to persistent config storage
+                                    self.config.modify(|settings| {
+                                        settings.video.fullscreen = is_fullscreen;
+                                    });
+                                }
+                            }
+                            menu::MenuItemIdentifier::Resolution => {
+                                // NO-OP; menu item is effectively read-only
+                                /*
+                                if !escape_key_pressed {
+                                    self.video_settings.advance_to_next_resolution(ctx);
+
+                                    // Update the configuration file and resize the viewing
+                                    // screen
+                                    let (w,h) = self.video_settings.get_resolution();
+                                    self.config.set_resolution(w, h);
+                                    self.viewport.set_size(w, h);
+                                }
+                                */
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    // update
+    fn receive_net_updates(&mut self) -> GameResult<()> {
+        if self.net_worker.is_none() {
+            return Ok(());
+        }
+
+        let mut incoming_messages = vec![];
+
+        let net_worker = self.net_worker.as_mut().unwrap();
+        for e in net_worker.try_receive().into_iter() {
+            match e {
+                NetwaysteEvent::LoggedIn(server_version) => {
+                    info!("Logged in! Server version: v{}", server_version);
+                    self.screen_stack.push(Screen::ServerList); // XXX
+                    // do other stuff
+                    net_worker.try_send(NetwaysteEvent::List);
+                    net_worker.try_send(NetwaysteEvent::JoinRoom("room".to_owned()));
+                }
+                NetwaysteEvent::JoinedRoom(room_name) => {
+                    println!("Joined Room: {}", room_name);
+                    self.screen_stack.push(Screen::InRoom); // XXX
+                }
+                NetwaysteEvent::PlayerList(list) => {
+                    println!("PlayerList: {:?}",list);
+                }
+                NetwaysteEvent::RoomList(list) => {
+                    println!("RoomList: {:?}",list);
+                }
+                NetwaysteEvent::UniverseUpdate => {
+                    println!("Universe update");
+                }
+                NetwaysteEvent::ChatMessages(msgs) => {
+                    for m in msgs {
+                        let msg = format!("{}: {}", m.0, m.1);
+                        println!("{:?}", m); // print to stdout for dbg
+
+                        incoming_messages.push(msg);
+                    }
+                }
+                NetwaysteEvent::LeftRoom => {
+                    println!("Left Room");
+                }
+                NetwaysteEvent::BadRequest(error) => {
+                    println!("Server responded with Bad Request: {:?}", error);
+                }
+                NetwaysteEvent::ServerError(error) => {
+                    println!("Server encountered an error: {:?}", error);
+                }
+                _ => {
+                    panic!("Development panic: Unexpected NetwaysteEvent during netwayste receive update: {:?}", e);
+                }
+            }
+        }
+
+        for msg in incoming_messages {
+            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOX) {
+                Ok(cb) => cb.add_message(msg),
+                Err(e) => error!("Could not add mesasge to Chatbox on network message receive: {:?}", e)
+            }
+        }
+
+        Ok(())
+    }
+
+    fn post_update(&mut self) -> GameResult<()> {
+        if let Some(action) = self.inputs.mouse_info.action {
+            match action {
+                MouseAction::Click => {
+                    self.inputs.mouse_info.down_timestamp = None;
+                    self.inputs.mouse_info.action = None;
+                    self.inputs.mouse_info.mousebutton = MouseButton::Other(0);
+                    self.inputs.mouse_info.down_position = Point2::new(0.0, 0.0);
+                }
+                MouseAction::Drag | MouseAction::Held | MouseAction::DoubleClick => {}
+            }
+        }
+        self.inputs.mouse_info.scroll_event = None;
+
+        if self.inputs.key_info.key.is_some() {
+            self.inputs.key_info.key = None;
+        }
+
+        self.arrow_input = (0, 0);
+
+        // Flush config
+        self.config.flush().map_err(|e| {
+            GameError::FilesystemError(format!("Error while flushing config: {:?}", e))
+        })?;
+
+        Ok(())
+    }
+
+    // Clean up before we quit
+    fn cleanup(&mut self) {
+        if self.config.is_dirty() {
+            self.config.force_flush().unwrap_or_else(|e| {
+                error!("Failed to flush config on exit: {:?}", e);
+            });
+        }
+    }
+
+    fn handle_ui_action(&mut self, ctx: &mut Context, widget_id: WidgetID, action: UIAction) -> UIResult<()> {
+        match widget_id {
+            MAINMENU_PANE1_BUTTONYES
+            | MAINMENU_PANE1_BUTTONNO
+            | MAINMENU_TESTBUTTON  => {
+                match action {
+                    UIAction::ScreenTransition(s) => {
+                        self.screen_stack.push(s);
+                    }
+                    _ => {
+                        return Err(Box::new(UIError::InvalidAction{
+                            reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)
+                        }));
+                    }
+                }
+            },
+            MAINMENU_TESTCHECKBOX => {
+                match action {
+                    UIAction::Toggle(enabled) => {
+                        self.config.modify(|settings| {
+                            settings.video.fullscreen = enabled;
+                        });
+                        self.video_settings.is_fullscreen = enabled;
+                        self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
+                    }
+                    _ => {
+                        return Err(Box::new(UIError::InvalidAction{
+                            reason: format!("Widget: {:?}, Action: {:?}", widget_id, action)
+                        }));
+                     }
+                }
+            },
+            MAINMENU_PANE1
+            | MAINMENU_LAYER1
+            | INGAME_LAYER1
+            | INGAME_PANE1 => {
+                return Err(Box::new(UIError::ActionRestricted{
+                    reason: format!("Widget: {:?} is either a Pane or Layer element. Actions are not allowed for Widgets of these types.", widget_id)
+                }));
+            },
+            ui::WidgetID(_) => {},
+        }
+
+        Ok(())
+    }
+
+    fn handle_user_chat_complete(&mut self, _ctx: &mut Context) {
+        let username = self.config.get().user.name.clone();
+        let mut msg = String::new();
+
+        match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOXTEXTFIELD) {
+            Ok(tf) => {
+                if let Some(m) = tf.text() {
+                    msg = format!("{}: {}", username, m);
+                }
+                tf.input_state = None;
+                tf.clear();
+            }
+            Err(e) => {
+                error!("Could not access Chatbox's text entry field on user input complete: {:?}", e);
+            }
+        }
+
+        if !msg.is_empty() {
+            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, INGAME_PANE1_CHATBOX) {
+                Ok(cb) => {
+                    cb.add_message(msg.clone());
+
+                    if let Some(ref mut netwayste) = self.net_worker {
+                        netwayste.try_send(NetwaysteEvent::ChatMessage(msg));
+                    }
+                }
+                Err(e) => {
+                    error!("Could not add message to Chatbox on user input complete: {:?}", e);
+                }
+            }
+        }
+    }
+
+    fn get_current_screen(&self) -> Screen {
+        match self.screen_stack.last() {
+            Some(screen) => *screen,
+            None => panic!("Error in main thread draw! Screen_stack is empty!"),
+        }
+    }
+
+    /// This takes a keyboard code and returns a `Result` whose Ok value is a `(BitGrid, width,
+    /// height)` tuple.
+    ///
+    /// # Errors
+    ///
+    /// This will return an error if the selected RLE pattern is invalid.
+    fn bit_pattern_from_char(&self, keycode: KeyCode) -> Result<(BitGrid, usize, usize), Box<dyn Error>> {
+        let gameplay = &self.config.get().gameplay;
+        let rle_str = match keycode {
+            KeyCode::Key2 => &gameplay.pattern2,
+            KeyCode::Key3 => &gameplay.pattern3,
+            KeyCode::Key4 => &gameplay.pattern4,
+            KeyCode::Key5 => &gameplay.pattern5,
+            KeyCode::Key6 => &gameplay.pattern6,
+            KeyCode::Key7 => &gameplay.pattern7,
+            KeyCode::Key8 => &gameplay.pattern8,
+            KeyCode::Key9 => &gameplay.pattern9,
+            KeyCode::Key0 => &gameplay.pattern0,
+            _ => "", // unexpected
+        };
+        let pat = Pattern(rle_str.to_owned());
+        let (width, height) = pat.calc_size()?;  // calc_size will fail on valid RLE -- return it
+        let grid = pat.to_new_bit_grid(width, height)?;
+        Ok((grid, width, height))
+    }
+
+}
+
 enum Orientation {
     Vertical,
     Horizontal,
@@ -291,6 +1588,7 @@ fn toggle_line(s: &mut MainState, orientation: Orientation, col: isize, row: isi
     }
 }
 
+// TODO: this should really have "intro" in its name!
 fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
 
     // 1) Calculate width and height of rectangle which represents the intro logo
@@ -298,10 +1596,6 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     // 3) Center it
     // 4) get offset for row and column to draw at
 
-    let resolution = s.video_settings.get_active_resolution();
-    // let resolution = (DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT);
-    let win_width  = (resolution.0 / DEFAULT_ZOOM_LEVEL) as isize; // cells
-    let win_height = (resolution.1 / DEFAULT_ZOOM_LEVEL) as isize; // cells
     let player_id = 0;   // hardcoded for this intro
 
     let letter_width = 5;
@@ -311,8 +1605,11 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     let logo_width = 9*5 + 9*5;
     let logo_height = letter_height;
 
-    let mut offset_col = win_width/2  - logo_width/2;
-    let     offset_row = win_height/2 - logo_height/2;
+    let uni_width = s.intro_uni.width() as isize;
+    let uni_height = s.intro_uni.height() as isize;
+
+    let mut offset_col = uni_width/2  - logo_width/2;
+    let     offset_row = uni_height/2 - logo_height/2;
 
     let toggle = |s_: &mut MainState, col: isize, row: isize| {
         if col >= 0 || row >= 0 {
@@ -400,864 +1697,6 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
 }
 
 
-// Then we implement the `ggez::game::GameState` trait on it, which
-// requires callbacks for creating the game state, updating it each
-// frame, and drawing it.
-//
-// The `GameState` trait also contains callbacks for event handling
-// that you can override if you wish, but the defaults are fine.
-impl MainState {
-
-    fn new(ctx: &mut Context) -> GameResult<MainState> {
-        ctx.print_resource_stats();
-
-        let universe_width_in_cells  = 256;
-        let universe_height_in_cells = 120;
-
-        let mut config = config::Config::new();
-        config.load_or_create_default().map_err(|e| {
-            let msg = format!("Error while loading config: {:?}", e);
-            GameError::from(msg)
-        })?;
-
-        let mut vs = video::VideoSettings::new();
-        vs.gather_display_modes(ctx)?;
-
-        vs.print_resolutions();
-
-        /*
-         *  FIXME Disabling video module temporarily as we can now leverage ggez 0.4
-         */
-        /*
-        // On first-run, use default supported resolution
-        let (w, h) = config.get_resolution();
-        if (w,h) != (0,0) {
-            vs.set_active_resolution(ctx, w, h);
-        } else {
-            vs.advance_to_next_resolution(ctx);
-
-            // Some duplication here to update the config file
-            // I don't want to do this every load() to avoid
-            // unnecessary file writes
-            let (w,h) = vs.get_active_resolution();
-            config.set_resolution(w,h);
-        }
-        let (w,h) = vs.get_active_resolution();
-
-        graphics::set_fullscreen(ctx, config.is_fullscreen() == true);
-        vs.is_fullscreen = config.is_fullscreen() == true;
-        */
-
-        let viewport = viewport::Viewport::new(config.get().gameplay.zoom, universe_width_in_cells, universe_height_in_cells);
-
-        let mut color_settings = ColorSettings {
-            cell_colors: BTreeMap::new(),
-            background:  Color::new( 0.25,  0.25,  0.25, 1.0),
-        };
-        color_settings.cell_colors.insert(CellState::Dead,           Color::new(0.875, 0.875, 0.875, 1.0));
-        if GRID_DRAW_STYLE == DrawStyle::Line {
-            // black background - "tetris-like"
-            color_settings.cell_colors.insert(CellState::Alive(None), Color::new( 1.0, 1.0, 1.0, 1.0));
-        } else {
-            // light background
-            color_settings.cell_colors.insert(CellState::Alive(None), Color::new( 0.0, 0.0, 0.0, 1.0));
-        }
-        color_settings.cell_colors.insert(CellState::Alive(Some(0)), Color::new(  1.0,   0.0,   0.0, 1.0));  // 0 is red
-        color_settings.cell_colors.insert(CellState::Alive(Some(1)), Color::new(  0.0,   0.0,   1.0, 1.0));  // 1 is blue
-        color_settings.cell_colors.insert(CellState::Wall,           Color::new(0.617,  0.55,  0.41, 1.0));
-        color_settings.cell_colors.insert(CellState::Fog,            Color::new(0.780, 0.780, 0.780, 1.0));
-
-        let small_font = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
-        let menu_font  = graphics::Font::new(ctx, "//DejaVuSerif.ttf", 20)?;
-
-        /*
-         * Game Universe Initialization
-         */
-        let bigbang =
-        {
-            // we're going to have to tear this all out when this becomes a real game
-            let player0_writable = Region::new(100, 70, 34, 16);
-            let player1_writable = Region::new(0, 0, 80, 80);
-
-            let player0 = PlayerBuilder::new(player0_writable);
-            let player1 = PlayerBuilder::new(player1_writable);
-            let players = vec![player0, player1];
-
-            // TODO we should probably get these settings from the server's universe
-            BigBang::new()
-            .width(universe_width_in_cells)
-            .height(universe_height_in_cells)
-            // TODO (libconway#11) setting to false will crash because the `Known` BitGrid is not set up
-            .server_mode(true)
-            .history(HISTORY_SIZE)
-            .fog_radius(FOG_RADIUS)
-            .add_players(players)
-            .birth()
-        };
-
-        /*
-         * Introduction Universe Initialization
-         */
-        let intro_universe =
-        {
-            let player = PlayerBuilder::new(Region::new(0, 0, 256, 256));
-            BigBang::new()
-                .width(256)
-                .height(256)
-                .fog_radius(100)
-                .add_players(vec![player])
-                .birth()
-        };
-
-        /*
-         * Network Initialization
-         */
-
-        let mut s = MainState {
-            small_font:          small_font,
-            stage:              Stage::Intro(INTRO_DURATION),
-            uni:                 bigbang.unwrap(),
-            intro_uni:           intro_universe.unwrap(),
-            first_gen_was_drawn: false,
-            color_settings:      color_settings,
-            running:             false,
-            menu_sys:            menu::MenuSystem::new(menu_font),
-            video_settings:      vs,
-            config:              config,
-            viewport:            viewport,
-            input_manager:       input::InputManager::new(input::InputDeviceType::PRIMARY),
-            net_worker:          None,
-            single_step:         false,
-            arrow_input:         (0, 0),
-            drag_draw:           None,
-            win_resize:          0,
-            return_key_pressed:  false,
-            escape_key_pressed:  false,
-            toggle_paused_game:  false,
-        };
-
-        init_patterns(&mut s).unwrap();
-        init_title_screen(&mut s).unwrap();
-
-        Ok(s)
-    }
-}
-
-impl EventHandler for MainState {
-    fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
-        let duration = timer::duration_to_f64(timer::get_delta(ctx)); // seconds
-
-        self.receive_net_updates();
-
-        match self.stage {
-            Stage::Intro(mut remaining) => {
-
-                remaining -= duration;
-                if remaining > INTRO_DURATION - INTRO_PAUSE_DURATION {
-                    self.stage = Stage::Intro(remaining);
-                }
-                else {
-                    if remaining > 0.0 && remaining <= INTRO_DURATION - INTRO_PAUSE_DURATION {
-                        self.intro_uni.next();
-                        self.stage = Stage::Intro(remaining);
-                    }
-                    else {
-                        self.stage = Stage::Run; // XXX Menu Stage is disabled for the time being
-                    }
-                }
-            }
-            Stage::Menu => {
-                self.update_current_screen(ctx); // TODO rewrite for ui changes
-            }
-            Stage::Run => {
-                // while this works at limiting the FPS, its a bit glitchy for input events... that probably should be
-                // rewritten as it was hacked together originally
-               // while timer::check_update_time(ctx, FPS)
-
-                self.process_running_inputs();
-
-                if self.single_step {
-                    self.running = false;
-                }
-
-                if self.first_gen_was_drawn && (self.running || self.single_step) {
-                    self.uni.next();     // next generation
-                    self.single_step = false;
-                }
-
-                if self.toggle_paused_game {
-                    self.pause_or_resume_game();
-                }
-
-                self.viewport.update(self.arrow_input);
-            }
-            Stage::InRoom => {
-                // TODO implement
-            }
-            Stage::ServerList => {
-                // TODO implement
-             },
-            Stage::Exit => {
-               let _ = ctx.quit();
-            }
-        }
-
-        self.post_update()?;
-
-        Ok(())
-    }
-
-    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        graphics::clear(ctx);
-        graphics::set_background_color(ctx, (0, 0, 0, 1).into());
-
-        match self.stage {
-            Stage::Intro(_) => {
-                self.draw_intro(ctx)?;
-            }
-            Stage::Menu => {
-                self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn);
-            }
-            Stage::Run => {
-                self.draw_universe(ctx)?;
-            }
-            Stage::InRoom => {
-                // TODO
-            }
-            Stage::ServerList => {
-                // TODO
-             },
-            Stage::Exit => {}
-        }
-
-        graphics::present(ctx);
-        timer::yield_now();
-        Ok(())
-    }
-
-    // Note about coordinates: x and y are "screen coordinates", with the origin at the top left of
-    // the screen. x becomes more positive going from left to right, and y becomes more positive
-    // going top to bottom.
-    fn mouse_button_down_event(&mut self,
-                               _ctx: &mut Context,
-                               button: MouseButton,
-                               x: i32,
-                               y: i32
-                               ) {
-        self.input_manager.add(input::InputAction::MouseClick(button, x, y));
-    }
-
-    fn mouse_motion_event(&mut self,
-                          _ctx: &mut Context,
-                          state: MouseState,
-                          x: i32,
-                          y: i32,
-                          _xrel: i32,
-                          _yrel: i32
-                          ) {
-        match self.stage {
-            Stage::Intro(_) => {}
-            Stage::Menu | Stage::Run => {
-                if state.left() && self.drag_draw != None {
-                    self.input_manager.add(input::InputAction::MouseDrag(MouseButton::Left, x, y));
-                } else {
-                    self.input_manager.add(input::InputAction::MouseMovement(x, y));
-                }
-            }
-            Stage::InRoom => {
-                // TODO implement
-            }
-            Stage::ServerList => {
-                // TODO implement
-             },
-            Stage::Exit => { unreachable!() }
-        }
-    }
-
-    fn mouse_button_up_event(&mut self,
-                             _ctx: &mut Context,
-                             _button: MouseButton,
-                             _x: i32,
-                             _y: i32
-                             ) {
-        // TODO Later, we'll need to support drag-and-drop patterns as well as drag draw
-        self.drag_draw = None;   // probably unnecessary because of state.left() check in mouse_motion_event
-    }
-
-    fn key_down_event(&mut self,
-                      ctx: &mut Context,
-                      keycode: Keycode,
-                      _keymod: Mod,
-                      repeat: bool
-                      ) {
-
-        match self.stage {
-            Stage::Intro(_) => {
-                self.stage = Stage::Run; // TODO lets just go to the game for now...
-                self.menu_sys.reset();
-            }
-            Stage::Menu | Stage::Run | Stage::InRoom | Stage::ServerList => {
-                // TODO for now just quit the game
-                if keycode == Keycode::Escape {
-                    self.quit_event(ctx);
-                }
-
-                self.input_manager.add(input::InputAction::KeyPress(keycode, repeat));
-            }
-            Stage::Exit => {}
-        }
-    }
-
-    fn key_up_event(&mut self,
-                    _ctx: &mut Context,
-                    keycode: Keycode,
-                    _keymod: Mod,
-                    _repeat: bool
-                    ) {
-        //self.input_manager.clear_input_start_time();
-        self.input_manager.add(input::InputAction::KeyRelease(keycode));
-    }
-
-    fn quit_event(&mut self, _ctx: &mut Context) -> bool {
-        let mut quit = false;
-
-        match self.stage {
-            Stage::Run => {
-                self.pause_or_resume_game();
-            }
-            Stage::Menu | Stage::InRoom | Stage::ServerList => {
-                // This is currently handled in the return_key_pressed path as well
-                self.escape_key_pressed = true;
-            }
-            Stage::Exit => {
-                quit = true;
-            }
-            _ => {}
-        }
-
-        if quit {
-            self.cleanup();
-        }
-
-        !quit
-    }
-
-}
-
-
-struct GameOfLifeDrawParams {
-    bg_color: Color,
-    fg_color: Color,
-    player_id: isize, // Player color >=0, Playerless < 0  // TODO: use Option<usize> instead
-    draw_counter: bool,
-}
-
-impl MainState {
-
-    fn draw_game_of_life(&self,
-                         ctx: &mut Context,
-                         universe: &Universe,
-                         draw_params: &GameOfLifeDrawParams
-                         ) -> GameResult<()> {
-
-        // grid background
-        graphics::set_color(ctx, draw_params.bg_color)?;
-        graphics::rectangle(ctx,  GRID_DRAW_STYLE.to_draw_mode(), self.viewport.get_viewport())?;
-
-        // grid foreground (dead cells)
-        let full_rect = self.viewport.get_rect_from_origin();
-
-        if let Some(clipped_rect) = utils::Graphics::intersection(full_rect, self.viewport.get_viewport()) {
-            graphics::set_color(ctx, draw_params.fg_color)?;
-            graphics::rectangle(ctx,  GRID_DRAW_STYLE.to_draw_mode(), clipped_rect)?;
-        }
-
-        let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
-        let mut spritebatch = graphics::spritebatch::SpriteBatch::new(image);
-
-        // grid non-dead cells (walls, players, etc.)
-        let visibility = if draw_params.player_id >= 0 {
-            Some(draw_params.player_id as usize) //XXX, Player One
-        } else {
-            Some(0)
-        };
-
-        universe.each_non_dead_full(visibility, &mut |col, row, state| {
-            let color = if draw_params.player_id >= 0 {
-                self.color_settings.get_color(Some(state))
-            } else {
-                self.color_settings.get_random_color()
-            };
-
-            if let Some(rect) = self.viewport.get_screen_area(viewport::Cell::new(col, row)) {
-                let p = graphics::DrawParam {
-                    dest: Point2::new(rect.x, rect.y),
-                    scale: Point2::new(rect.w, rect.h), // scaling a 1x1 Image to correct cell size
-                    color: Some(color),
-                    ..Default::default()
-                };
-
-                spritebatch.add(p);
-            }
-        });
-
-        graphics::draw_ex(ctx, &spritebatch, graphics::DrawParam{ dest: Point2::new(0.0, 0.0), .. Default::default()} )?;
-        spritebatch.clear();
-
-        ////////// draw generation counter
-        if draw_params.draw_counter {
-            let gen_counter_str = universe.latest_gen().to_string();
-            let color = Color::new(1.0, 0.0, 0.0, 1.0);
-            utils::Graphics::draw_text(ctx, &self.small_font, color, &gen_counter_str, &Point2::new(0.0, 0.0), None)?;
-        }
-
-        ////////////////////// END
-        graphics::set_color(ctx, graphics::BLACK)?; // Clear color residue
-
-        Ok(())
-    }
-
-    fn draw_intro(&mut self, ctx: &mut Context) -> GameResult<()>{
-
-        let draw_params = GameOfLifeDrawParams {
-            bg_color: graphics::BLACK,
-            fg_color: graphics::BLACK,
-            player_id: -1,
-            draw_counter: true,
-        };
-
-        self.draw_game_of_life(ctx, &self.intro_uni, &draw_params)
-    }
-
-    fn draw_universe(&mut self, ctx: &mut Context) -> GameResult<()> {
-
-        let draw_params = GameOfLifeDrawParams {
-            bg_color: self.color_settings.get_color(None),
-            fg_color: self.color_settings.get_color(Some(CellState::Dead)),
-            player_id: 1, // Current player, TODO sync with Server's CLIENT ID
-            draw_counter: true,
-        };
-
-        self.first_gen_was_drawn = true;
-        self.draw_game_of_life(ctx, &self.uni, &draw_params)
-    }
-
-    fn pause_or_resume_game(&mut self) {
-        let cur_menu_state = self.menu_sys.menu_state;
-        let cur_stage = self.stage;
-
-        match cur_stage {
-            Stage::Menu => {
-                if cur_menu_state == menu::MenuState::MainMenu {
-                    self.stage = Stage::Run;
-                    self.running = true;
-                }
-            }
-            Stage::Run => {
-                self.stage = Stage::Menu;
-                self.menu_sys.menu_state = menu::MenuState::MainMenu;
-                self.running = false;
-            }
-            _ => unimplemented!()
-        }
-
-        self.toggle_paused_game = false;
-    }
-
-    // TODO
-    // Just had an idea... transform the user inputs events into game events
-    // That way differnt user inputs (gamepad, keyboard/mouse) resolve to a single game event
-    // This logic would be agnostic from how the user is interacting with the game
-    fn process_running_inputs(&mut self) {
-
-        while self.input_manager.has_more() {
-            if let Some(input) = self.input_manager.remove() {
-                match input {
-
-                    // MOUSE EVENTS
-                    input::InputAction::MouseClick(MouseButton::Left, x, y) => {
-                        // Need to go through UI manager to determine what we are interacting with, TODO
-                        // Could be UI element (drawpad) or playing field
-                        if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
-                            let result = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID);
-                            self.drag_draw = match result {
-                                Ok(state) => Some(state),
-                                Err(_)    => None,
-                            };
-                        }
-                    }
-                    input::InputAction::MouseClick(MouseButton::Right, _x, _y) => { }
-                    input::InputAction::MouseMovement(_x, _y) => { }
-                    input::InputAction::MouseDrag(MouseButton::Left, x, y) => {
-                        if let Some(cell) = self.viewport.get_cell(Point2::new(x as f32, y as f32)) {
-                            if let Some(cell_state) = self.drag_draw {
-                                self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
-                            }
-                        }
-                    }
-
-                    // KEYBOARD EVENTS
-                    input::InputAction::KeyPress(keycode, repeat) => {
-                        match keycode {
-                            Keycode::Return => {
-                                if !repeat {
-                                    self.running = !self.running;
-                                }
-                            }
-                            Keycode::Space => {
-                                self.single_step = true;
-                            }
-                            Keycode::Up => {
-                                self.arrow_input = (0, -1);
-                            }
-                            Keycode::Down => {
-                                self.arrow_input = (0, 1);
-                            }
-                            Keycode::Left => {
-                                self.arrow_input = (-1, 0);
-                            }
-                            Keycode::Right => {
-                                self.arrow_input = (1, 0);
-                            }
-                            Keycode::Plus | Keycode::Equals => {
-                                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
-                                let cell_size = self.viewport.get_cell_size();
-                                self.config.modify(|settings| {
-                                    settings.gameplay.zoom = cell_size;
-                                });
-                            }
-                            Keycode::Minus | Keycode::Underscore => {
-                                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
-                                let cell_size = self.viewport.get_cell_size();
-                                self.config.modify(|settings| {
-                                    settings.gameplay.zoom = cell_size;
-                                });
-                            }
-                            Keycode::Num1 => {
-                                self.win_resize = 1;
-                            }
-                            Keycode::Num2 => {
-                                self.win_resize = 2;
-                            }
-                            Keycode::Num3 => {
-                                self.win_resize = 3;
-                            }
-                            Keycode::LGui => {
-
-                            }
-                            Keycode::D => {
-                                // TODO: do something with this debug code
-                                let visibility = None;  // can also do Some(player_id)
-                                let pat = self.uni.to_pattern(visibility);
-                                println!("PATTERN DUMP:\n{}", pat.0);
-                            }
-                            _ => {
-                                println!("Unrecognized keycode {}", keycode);
-                            }
-                        }
-                    }
-
-                    _ => {},
-                }
-            }
-        }
-    }
-
-    fn process_menu_inputs(&mut self) {
-        while self.input_manager.has_more() {
-            if let Some(input) = self.input_manager.remove() {
-                match input {
-                    input::InputAction::MouseClick(MouseButton::Left, _x, _y) => {}
-                    input::InputAction::MouseClick(MouseButton::Right, _x, _y) => {}
-                    input::InputAction::MouseMovement(_x, _y) => {}
-                    input::InputAction::MouseDrag(MouseButton::Left, _x, _y) => {}
-                    input::InputAction::MouseRelease(_) => {}
-
-                    input::InputAction::KeyPress(keycode, repeat) => {
-                        if !self.menu_sys.get_controls().is_menu_key_pressed() {
-                            match keycode {
-                                Keycode::Up => {
-                                    self.arrow_input = (0, -1);
-                                }
-                                Keycode::Down => {
-                                    self.arrow_input = (0, 1);
-                                }
-                                Keycode::Left => {
-                                    self.arrow_input = (-1, 0);
-                                }
-                                Keycode::Right => {
-                                    self.arrow_input = (1, 0);
-                                }
-                                Keycode::Return => {
-                                    if !repeat {
-                                        self.return_key_pressed = true;
-                                    }
-                                }
-                                Keycode::Escape => {
-                                    self.escape_key_pressed = true;
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    input::InputAction::KeyRelease(keycode) => {
-                        match keycode {
-                            Keycode::Up | Keycode::Down | Keycode::Left | Keycode::Right => {
-                                self.arrow_input = (0, 0);
-                                self.menu_sys.get_controls().set_menu_key_pressed(false);
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    _ => {},
-                }
-            }
-        }
-
-    }
-
-    // update
-    fn update_current_screen(&mut self, ctx: &mut Context) {
-        self.process_menu_inputs();
-
-        let is_direction_key_pressed = {
-            self.menu_sys.get_controls().is_menu_key_pressed()
-        };
-
-        //// Directional Key / Menu movement
-        ////////////////////////////////////////
-        if self.arrow_input != (0,0) && !is_direction_key_pressed {
-            // move selection accordingly
-            let (_,y) = self.arrow_input;
-            {
-                let container = self.menu_sys.get_menu_container_mut();
-                let mainmenu_md = container.get_metadata();
-                mainmenu_md.adjust_index(y);
-            }
-            self.menu_sys.get_controls().set_menu_key_pressed(true);
-        }
-        else {
-            /////////////////////////
-            //// Non-Arrow key was pressed
-            //////////////////////////
-
-            if self.return_key_pressed || self.escape_key_pressed {
-
-                let mut id = {
-                    let container = self.menu_sys.get_menu_container();
-                    let index = container.get_menu_item_index();
-                    let menu_item_list = container.get_menu_item_list();
-                    let menu_item = menu_item_list.get(index).unwrap();
-                    menu_item.id
-                };
-
-                if self.escape_key_pressed {
-                    id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
-                }
-
-                match self.menu_sys.menu_state {
-                    menu::MenuState::MainMenu => {
-                        if !self.escape_key_pressed {
-                            match id {
-                                menu::MenuItemIdentifier::Connect => {
-                                    if self.net_worker.is_some() {
-                                        info!("already connected! Reconnecting...");
-                                    }
-                                    let mut net_worker = network::ConwaysteNetWorker::new();
-                                    net_worker.connect(self.config.get().user.name.clone());
-                                    info!("Connected.");
-                                    self.net_worker = Some(net_worker);
-
-                                }
-                                menu::MenuItemIdentifier::StartGame => {
-                                    self.pause_or_resume_game();
-                                }
-                                menu::MenuItemIdentifier::ExitGame => {
-                                    self.stage = Stage::Exit;
-                                }
-                                menu::MenuItemIdentifier::Options => {
-                                    self.menu_sys.menu_state = menu::MenuState::Options;
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    menu::MenuState::Options => {
-                        match id {
-                            menu::MenuItemIdentifier::VideoSettings => {
-                                if !self.escape_key_pressed {
-                                    self.menu_sys.menu_state = menu::MenuState::Video;
-                                }
-                            }
-                            menu::MenuItemIdentifier::AudioSettings => {
-                                if !self.escape_key_pressed {
-                                    self.menu_sys.menu_state = menu::MenuState::Audio;
-                                }
-                            }
-                            menu::MenuItemIdentifier::GameplaySettings => {
-                                if !self.escape_key_pressed {
-                                    self.menu_sys.menu_state = menu::MenuState::Gameplay;
-                                }
-                            }
-                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
-                            }
-                            _ => {}
-                        }
-                    }
-                    menu::MenuState::Audio => {
-                        match id {
-                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                self.menu_sys.menu_state = menu::MenuState::Options;
-                            }
-                            _ => {
-                                if !self.escape_key_pressed { }
-                            }
-                        }
-                    }
-                    menu::MenuState::Gameplay => {
-                        match id {
-                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                self.menu_sys.menu_state = menu::MenuState::Options;
-                            }
-                            _ => {
-                                if !self.escape_key_pressed { }
-                            }
-                        }
-                    }
-                    menu::MenuState::Video => {
-                        match id {
-                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                self.menu_sys.menu_state = menu::MenuState::Options;
-                            }
-                            menu::MenuItemIdentifier::Fullscreen => {
-                                if !self.escape_key_pressed {
-                                    self.video_settings.toggle_fullscreen(ctx);
-                                    let is_fullscreen = self.video_settings.is_fullscreen();
-                                    self.config.modify(|settings| {
-                                        settings.video.fullscreen = is_fullscreen;
-                                    });
-                                }
-                            }
-                            menu::MenuItemIdentifier::Resolution => {
-                                if !self.escape_key_pressed {
-                                    self.video_settings.advance_to_next_resolution(ctx);
-
-                                    // Update the configuration file and resize the viewing
-                                    // screen
-                                    let (w,h) = self.video_settings.get_active_resolution();
-                                    self.config.set_resolution(w as i32, h as i32);
-                                    self.viewport.set_dimensions(w, h);
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-        }
-
-        self.return_key_pressed = false;
-        self.escape_key_pressed = false;
-    }
-
-    // update
-    fn receive_net_updates(&mut self) {
-        if self.net_worker.is_none() {
-            return;
-        }
-        let net_worker = self.net_worker.as_mut().unwrap();
-        for e in net_worker.try_receive().into_iter() {
-            match e {
-                NetwaysteEvent::LoggedIn(server_version) => {
-                    info!("Logged in! Server version: v{}", server_version);
-                    self.stage = Stage::ServerList; //XXX
-                    // do other stuff
-                    net_worker.try_send(NetwaysteEvent::List);
-                }
-                NetwaysteEvent::JoinedRoom(room_name) => {
-                    println!("Joined Room: {}", room_name);
-                    self.stage = Stage::InRoom;
-                }
-                NetwaysteEvent::PlayerList(list) => {
-                    println!("PlayerList: {:?}",list);
-                }
-                NetwaysteEvent::RoomList(list) => {
-                    println!("RoomList: {:?}",list);
-                }
-                NetwaysteEvent::UniverseUpdate => {
-                    println!("Universe update");
-                }
-                NetwaysteEvent::ChatMessages(msgs) => {
-                    for m in msgs {
-                        println!("{:?}", m);
-                    }
-                }
-                NetwaysteEvent::LeftRoom => {
-                    println!("Left Room");
-                }
-                NetwaysteEvent::BadRequest(error) => {
-                    println!("Server responded with Bad Request: {:?}", error);
-                }
-                NetwaysteEvent::ServerError(error) => {
-                    println!("Server encountered an error: {:?}", error);
-                }
-                _ => {
-                    panic!("Development panic: Unexpected NetwaysteEvent during netwayste receive update: {:?}", e);
-                }
-            }
-        }
-    }
-
-    fn post_update(&mut self) -> GameResult<()> {
-        /*
-        match self.input_manager.peek() {
-            Some(&input::InputAction::KeyPress(keycode, repeat)) => {
-                if repeat {
-                    match keycode {
-                        Keycode::Up => {
-                            self.arrow_input = (0, -1);
-                        }
-                        Keycode::Down => {
-                            self.arrow_input = (0, 1);
-                        }
-                        Keycode::Left => {
-                            self.arrow_input = (-1, 0);
-                        }
-                        Keycode::Right => {
-                            self.arrow_input = (1, 0);
-                        }
-                        _ => self.arrow_input = (0, 0)
-                    }
-                }
-            }
-            _ => self.arrow_input = (0,0),
-        }
-        */
-
-        self.arrow_input = (0, 0);
-        self.input_manager.expunge();
-
-        // Flush config
-        self.config.flush().map_err(|e| {
-            GameError::UnknownError(format!("Error while flushing config: {:?}", e))
-        })?;
-
-        Ok(())
-    }
-
-    // Clean up before we quit
-    fn cleanup(&mut self) {
-        if self.config.is_dirty() {
-            self.config.force_flush().unwrap_or_else(|e| {
-                error!("Failed to flush config on exit: {:?}", e);
-            });
-        }
-    }
-}
-
-
 
 // Now our main function, which does three things:
 //
@@ -1292,12 +1731,11 @@ pub fn main() {
         .window_setup(conf::WindowSetup::default()
                       .title(format!("{} {} {}", "💥 conwayste", version!().to_owned(),"💥").as_str())
                       .icon("//conwayste.ico")
-                      .resizable(false)
-                      .allow_highdpi(true)
+                      .vsync(true)
                       )
         .window_mode(conf::WindowMode::default()
-                     .dimensions(DEFAULT_SCREEN_WIDTH as u32, DEFAULT_SCREEN_HEIGHT as u32)
-                     .vsync(true)
+                      .dimensions(DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT)
+                      .resizable(false)
                      );
 
     if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
@@ -1309,7 +1747,7 @@ pub fn main() {
         println!("Not building from cargo? Okie dokie.");
     }
 
-    let ctx = &mut cb.build().unwrap_or_else(|e| {
+    let (ctx, events_loop) = &mut cb.build().unwrap_or_else(|e| {
         error!("ContextBuilter failed: {:?}", e);
         std::process::exit(1);
     });
@@ -1320,7 +1758,7 @@ pub fn main() {
             println!("Error: {}", e);
         }
         Ok(ref mut game) => {
-            let result = run(ctx, game);
+            let result = run(ctx, events_loop, game);
             if let Err(e) = result {
                 println!("Error encountered while running game: {}", e);
             } else {

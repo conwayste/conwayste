@@ -1,4 +1,4 @@
-/*  Copyright 2017-2018 the Conwayste Developers.
+/*  Copyright 2017-2019 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -17,13 +17,13 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use ggez::{Context, GameResult};
-use ggez::graphics;
-use ggez::graphics::{Point2, Color};
-use std::collections::{HashMap};
+use ggez::graphics::{self, Font};
+use ggez::nalgebra::Point2;
+use std::collections::HashMap;
 
 use crate::video;
-use crate::utils;
-use crate::constants::{DEFAULT_ACTIVE_COLOR, DEFAULT_INACTIVE_COLOR};
+use crate::ui;
+use crate::constants::colors::*;
 
 #[derive(PartialEq, Eq, Hash, Debug, Copy, Clone)]
 pub enum MenuState {
@@ -84,21 +84,23 @@ pub struct MenuControls {
 
 #[derive(Debug, Clone)]
 pub struct MenuContainer {
-    anchor:     Point2,
+    anchor:     Point2<f32>,
+    width:      f32,
+    height:     f32,
+    text_width: f32,            // maximum width in pixels of any option
     menu_items: Vec<MenuItem>,
     metadata:   MenuMetaData,
-    bg_color:   Color,
-    fg_color:   Color,
 }
 
 impl MenuContainer {
-    pub fn new(x: f32, y: f32) -> MenuContainer {
+    pub fn new(width: f32, height: f32) -> MenuContainer {
         MenuContainer {
-            anchor: Point2::new(x, y),
+            anchor: Point2::new(0.0, 0.0),   // uninitialized; see adjust_anchors()
+            width,
+            height,
+            text_width: 0.0,
             menu_items: Vec::<MenuItem>::new(),
             metadata: MenuMetaData::new(0, 0),
-            bg_color: Color::new(1.0, 1.0, 1.0, 1.0),
-            fg_color: Color::new(0.0, 1.0, 1.0, 1.0),
         }
     }
 
@@ -129,7 +131,7 @@ impl MenuContainer {
         self.metadata.menu_index
     }
 
-    pub fn get_anchor(&self) -> Point2 {
+    pub fn get_anchor(&self) -> Point2<f32> {
         self.anchor
     }
 
@@ -143,7 +145,7 @@ pub struct MenuSystem {
     pub    menus:          HashMap<MenuState, MenuContainer >,
     pub    menu_state:     MenuState,
            controls:       MenuControls,
-           font:           graphics::Font,
+           font:           Font,
            inactive_color: graphics::Color,
            active_color:   graphics::Color,
 }
@@ -157,10 +159,6 @@ impl MenuControls {
 
     pub fn set_menu_key_pressed(&mut self, state: bool) {
         self.dir_key_pressed = state;
-    }
-
-    pub fn is_menu_key_pressed(&self) -> bool {
-        self.dir_key_pressed
     }
 }
 
@@ -196,10 +194,6 @@ impl MenuMetaData {
         }
     }
 
-    pub fn get_index(&self) -> usize {
-        self.menu_index as usize
-    }
-
     pub fn adjust_index(&mut self, amt: isize) {
         let size = self.menu_size;
         let mut new_index = ((self.menu_index as isize + amt) % (size as isize)) as usize;
@@ -213,21 +207,24 @@ impl MenuMetaData {
 }
 
 impl MenuSystem {
-    pub fn new(font: graphics::Font) -> MenuSystem {
+    pub fn new(font: Font) -> MenuSystem {
         let mut menu_sys = MenuSystem {
             menus:          HashMap::new(),
             menu_state:     MenuState::MainMenu,
             controls:       MenuControls::new(),
             font,
-            inactive_color: DEFAULT_INACTIVE_COLOR,
-            active_color:   DEFAULT_ACTIVE_COLOR,
+            inactive_color: *MENU_TEXT_COLOR,
+            active_color:   *MENU_TEXT_SELECTED_COLOR,
         };
 
-        menu_sys.menus.insert(MenuState::MainMenu, MenuContainer::new(400.0, 300.0));
-        menu_sys.menus.insert(MenuState::Options,  MenuContainer::new(400.0, 300.0));
-        menu_sys.menus.insert(MenuState::Video,    MenuContainer::new(200.0, 100.0));
-        menu_sys.menus.insert(MenuState::Audio,    MenuContainer::new(200.0, 100.0));
-        menu_sys.menus.insert(MenuState::Gameplay, MenuContainer::new(200.0, 100.0));
+        // FIXME: Hardcoded width and height. This is very hacky, but I expect this code to be
+        // replaced soon.  Note also that there is nothing stopping the contents from overflowing
+        // this container if they are larger.
+        menu_sys.menus.insert(MenuState::MainMenu, MenuContainer::new(159.0, 120.0));
+        menu_sys.menus.insert(MenuState::Options,  MenuContainer::new( 87.0, 120.0));
+        menu_sys.menus.insert(MenuState::Video,    MenuContainer::new(192.0,  50.0));
+        menu_sys.menus.insert(MenuState::Audio,    MenuContainer::new( 44.0,  30.0));
+        menu_sys.menus.insert(MenuState::Gameplay, MenuContainer::new( 44.0,  30.0));
 
         let start_game  = MenuItem::new(MenuItemIdentifier::StartGame,            String ::from("Start Game"), false, MenuItemValue::ValNone());
         let connect     = MenuItem::new(MenuItemIdentifier::Connect,              String ::from("Connect to Server"), false, MenuItemValue::ValNone());
@@ -316,9 +313,20 @@ impl MenuSystem {
         &mut self.controls
     }
 
-    fn draw_general_menu_view(&self, _ctx: &mut Context, has_game_started: bool) -> GameResult<()> {
+    /// Per-frame adjustment of anchors based on screen dims and width and height of MenuContainers
+    fn adjust_anchors(&mut self, ctx: &mut Context) -> GameResult<()> {
+        // get screen dims
+        let window_rect = graphics::window(ctx).get_inner_size().unwrap();
+        for menu in self.menus.values_mut() {
+            menu.anchor.x = (window_rect.width as f32 - menu.width) as f32 / 2.0;
+            menu.anchor.y = (window_rect.height as f32 - menu.height) as f32 / 2.0;
+        }
+        Ok(())
+    }
+
+    fn draw_general_menu_view(&mut self, _ctx: &mut Context, has_game_started: bool) -> GameResult<()> {
         let index = self.get_menu_container().get_menu_item_index(); // current position in this menu
-        // Menu Navigation 
+        // Menu Navigation
         /////////////////////////////////////////
         //TODO: is this match necessary still?
         match self.menu_state {
@@ -327,42 +335,35 @@ impl MenuSystem {
                 // Draw all menu Items
                 ////////////////////////////////////////////////
                 {
-                    let container = self.menus.get(&self.menu_state).unwrap();
-                    let coords = container.get_anchor();
-                    let mut offset = Point2::new(0.0,0.0);
+                    let container = self.menus.get_mut(&self.menu_state).unwrap();
+                    let mut coords = container.get_anchor();
 
+                    let mut max_text_width = container.text_width;
                     for (i, menu_item) in container.get_menu_item_list().iter().enumerate() {
-                        let mut menu_option_str: &str = &menu_item.text;
+                        let mut menu_option = menu_item.text.clone();
 
                         if menu_item.id == MenuItemIdentifier::StartGame && has_game_started {
-                            menu_option_str = "Resume Game";
+                            menu_option = String::from("Resume Game");
                         }
 
                         let color = if index == i { self.active_color } else { self.inactive_color };
-                        utils::Graphics::draw_text(_ctx, &self.font, color, &menu_option_str, &coords, Some(&offset))?;
+                        let (w, h) = ui::draw_text(_ctx, self.font.clone(), color, menu_option, &coords)?;
+                        if max_text_width < w {
+                            max_text_width = w;
+                        }
 
-                        offset = utils::Graphics::point_offset(offset, 0.0, 50.0);
+                        coords.y += h + 10.0;
+                    }
+                    if container.text_width < max_text_width {
+                        container.text_width = max_text_width;
                     }
                 }
-
-                /*
-                // Denote Current Selection
-                ////////////////////////////////////////////////////
-                {
-                    let cur_option_str = " >";
-                    let ref container = self.menus.get(&self.menu_state).unwrap();
-                    let coords = container.get_anchor();
-                    let offset = Point2::new(-50.0, (*index) as f32 * 50.0);
-
-                    utils::Graphics::draw_text(_ctx, &self.font, self.active_color, &cur_option_str, &coords, Some(&offset))?;
-                }
-                */
             }
         }
         Ok(())
     }
 
-    fn draw_specific_menu_view(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context) {
+    fn draw_specific_menu_view(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context) -> GameResult<()> {
         match self.menu_state {
             ////////////////////////////////////
             // V I D E O
@@ -370,41 +371,36 @@ impl MenuSystem {
             MenuState::Video => {
                 let ref container = self.menus.get(&MenuState::Video).unwrap();
                 let anchor = container.get_anchor();
+                let x = anchor.x + container.text_width + 10.0;
+                let y = anchor.y;
 
                 ///////////////////////////////
                 // Fullscreen
                 ///////////////////////////////
-                {
-                    let coords = Point2::new(anchor.x + 200.0, anchor.y);
-                    let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
+                let mut coords = Point2::new(x, y);
+                let is_fullscreen_str = if video_settings.is_fullscreen { "Yes" } else { "No" };
 
-                    // TODO: color
-                    utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color, &is_fullscreen_str, &coords, None);
-                }
+                let (_w, h) = ui::draw_text(_ctx, self.font, self.inactive_color, is_fullscreen_str.to_owned(), &coords)?;
 
                 ////////////////////////////////
                 // Resolution
                 ///////////////////////////////
-                {
-                    let coords = Point2::new(anchor.x + 200.0, anchor.y + 50.0);
-                    let (width, height) = video_settings.get_active_resolution();
-                    let cur_res_str = format!("{}x{}", width, height);
+                coords.y += h + 10.0;
+                let res = video_settings.get_resolution();
+                let cur_resolution = format!("{}x{}", res.w, res.h);
 
-                    // TODO: color
-                    utils::Graphics::draw_text(_ctx, &self.font, self.inactive_color, &cur_res_str, &coords, None);
-               }
+                ui::draw_text(_ctx, self.font.clone(), self.inactive_color, cur_resolution, &coords)?;
             }
-             _  => {}
+            _  => {}
         }
+        Ok(())
     }
 
-    pub fn draw_menu(&mut self, video_settings: &video::VideoSettings, _ctx: &mut Context, has_game_started: bool) {
-        self.draw_general_menu_view(_ctx, has_game_started);
-        self.draw_specific_menu_view(video_settings, _ctx);
-    }
-
-    pub fn reset(&mut self) {
-        self.menu_state = MenuState::MainMenu;
+    pub fn draw_menu(&mut self, video_settings: &video::VideoSettings, ctx: &mut Context, has_game_started: bool) -> GameResult<()> {
+        self.adjust_anchors(ctx)?;
+        self.draw_general_menu_view(ctx, has_game_started)?;
+        self.draw_specific_menu_view(video_settings, ctx)?;
+        Ok(())
     }
 }
 

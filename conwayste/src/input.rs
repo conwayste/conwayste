@@ -1,4 +1,4 @@
-/*  Copyright 2017-2018 the Conwayste Developers.
+/*  Copyright 2017-2019 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -16,151 +16,98 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use std::collections::VecDeque;
+use std::time::{Instant};
+use ggez::event::{KeyCode, KeyMods, MouseButton};
+use ggez::nalgebra::Point2;
 
-use ggez::event::{Keycode, MouseButton};
-//use ggez::event::{Button, Axis};
-
-const NUM_OF_QUEUED_INPUTS: usize = 10;
-
-#[derive(Debug, PartialEq)]
-pub enum InputDeviceType {
-    PRIMARY,
-//    GAMEPAD,
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum ScrollEvent {
+    ScrollUp, // Away from the user
+    ScrollDown, // Towards the user
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum InputAction {
-    KeyPress(Keycode, bool),
-    KeyRelease(Keycode),
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum MouseAction {
+    Held,
+    Drag,
+    Click,
+    DoubleClick, // For Aaron TODO :)
+}
 
-    MouseClick(MouseButton, i32, i32),
-    MouseDrag(MouseButton, i32, i32),
-    MouseRelease(MouseButton),
-    MouseMovement(i32, i32),
+pub struct MouseInfo {
+    pub mousebutton: MouseButton,
+    pub action: Option<MouseAction>,
+    pub scroll_event: Option<ScrollEvent>,
+    pub down_timestamp: Option<Instant>,
+    pub down_position: Point2<f32>,
+    pub position: Point2<f32>,
+    pub debug_print: bool
+}
 
-//    Gamepad((Button, Axis)),
+impl MouseInfo {
+    fn new() -> Self {
+        MouseInfo {
+            mousebutton: MouseButton::Other(0),
+            action: None,
+            scroll_event: None,
+            down_timestamp: None,
+            down_position: Point2::new(0.0, 0.0),
+            position: Point2::new(0.0, 0.0),
+            debug_print: false,
+        }
+    }
+
+    #[allow(unused)]
+    pub fn print_mouse_state(&mut self) {
+        if self.debug_print {
+            debug!("Button: {:?}", self.mousebutton);
+            debug!("Action: {:?}", self.action);
+            debug!("Scroll: {:?}", self.scroll_event);
+            debug!("Down TS: {:?}", self.down_timestamp);
+            debug!("Down Pos: {:?}", self.down_position);
+            debug!("Position: {:?}", self.position);
+        }
+    }
+}
+
+pub struct KeyInfo {
+    pub key: Option<KeyCode>,
+    pub repeating: bool,
+    pub modifier: KeyMods,
+    pub debug_print: bool,
+}
+
+impl KeyInfo {
+    fn new() -> Self {
+        KeyInfo {
+            key: None,
+            repeating: false,
+            modifier: KeyMods::NONE,
+            debug_print: false,
+        }
+    }
+
+    #[allow(unused)]
+    pub fn print_keyboard_state(&mut self) {
+        if self.debug_print {
+            debug!("Key: {:?}", self.key);
+            debug!("Modifier: {:?}", self.modifier);
+            debug!("Repeating: {:?}", self.repeating);
+        }
+    }
 }
 
 /// InputManager maps input from devices to in-game events.
 pub struct InputManager {
-    _device: InputDeviceType,
-    events: VecDeque<InputAction>,
+    pub mouse_info: MouseInfo,
+    pub key_info: KeyInfo,
 }
 
 impl InputManager {
-    /// Instantiates the InputManager for the specified device
-    /// and handles the associated events.
-    pub fn new(device_type: InputDeviceType) -> InputManager {
+    pub fn new() -> InputManager {
         InputManager {
-            _device: device_type,
-            events: VecDeque::<InputAction>::new(),
+            mouse_info: MouseInfo::new(),
+            key_info: KeyInfo::new(),
         }
-    }
-
-    /// Adds an event to the queue.
-    /// This will panic if we fill up the queue past `NUM_OF_QUEUED_INPUTS`.
-    pub fn add(&mut self, input: InputAction) {
-        // Curious to see if we actually can hit this condition
-        if self.events.len() >= NUM_OF_QUEUED_INPUTS {
-            println!("{:?}", self.events);
-            assert!(false);
-        }
-
-        self.events.push_back(input);
-    }
-
-    /// Pokes at the head of the queue and returns an event if available.
-    pub fn peek(&self) -> Option<&InputAction> {
-        self.events.front()
-    }
-    
-    /// Dequeues can input event.
-    pub fn remove(&mut self) -> Option<InputAction> {
-        self.events.pop_front()
-    }
-
-    /// Clears all events received during this frame.
-    pub fn expunge(&mut self) {
-        self.events.clear();
-    }
-    
-    /// Checks to see if there are any more input events in this frame to process.
-    pub fn has_more(&self) -> bool {
-        !self.events.is_empty()
-    }
-
-}
-
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_empty_inputmanager() {
-        let im = InputManager::new(InputDeviceType::PRIMARY);
-
-        assert_eq!(im._device, InputDeviceType::PRIMARY);
-        assert_eq!(im.events.len(), 0);
-        assert_eq!(im.has_more(), false);
-    }
-
-    #[test]
-    fn test_dequeue_empty_inputmanager() {
-        let mut im = InputManager::new(InputDeviceType::PRIMARY);
-
-        assert_eq!(im.has_more(), false);
-        assert_eq!(im.remove(), None);
-    }
-
-    #[test]
-    fn test_enqueue() {
-        let mut im = InputManager::new(InputDeviceType::PRIMARY);
-
-        let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
-        im.add(action);
-        
-        let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
-        assert_eq!(im.peek(), Some(&action));
-    }
-
-    #[test]
-    fn test_dequeue() {
-        let mut im = InputManager::new(InputDeviceType::PRIMARY);
-        assert_eq!(im.has_more(), false);
-
-        let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
-        im.add(action);
-        assert_eq!(im.has_more(), true);
-        
-        let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
-        assert_eq!(im.remove(), Some(action));
-        assert_eq!(im.has_more(), false);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_fill_up_queue() {
-        let mut im = InputManager::new(InputDeviceType::PRIMARY);
-
-        let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
-        for _ in 0..NUM_OF_QUEUED_INPUTS+1{
-            im.add(action.clone());
-        }
-    }
-
-    #[test]
-    fn test_clear_queue() {
-        let mut im = InputManager::new(InputDeviceType::PRIMARY);
-
-        let action = InputAction::MouseClick(MouseButton::Left, 10, 10);
-        for _ in 0..NUM_OF_QUEUED_INPUTS{
-            im.add(action.clone());
-        }
-
-        im.expunge();
-        assert_eq!(im.remove(), None);
-        assert_eq!(im.has_more(), false);
     }
 }

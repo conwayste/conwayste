@@ -2,6 +2,8 @@
 
 Multiplayer Conway's Game of Life!
 
+![build status](https://api.travis-ci.com/conwayste/conwayste.svg?branch=master)
+
 ![life in action](https://giant.gfycat.com/BlaringTidyDutchsmoushond.gif)
 
 ## Installation
@@ -65,14 +67,12 @@ I ended up adding these to my `~/.profile` .
 
 ```
 cargo build
-ln -s ../resources target    # Needed only for the Client
-                             # Run this if you are getting a ResourceNotFound error
 ```
 
 ## Running the server
 
 ```
-cargo run --bin server 0.0.0.0:9000
+cargo run --bin server
 ```
 
 ## Running the GUI client
