@@ -98,8 +98,9 @@ pub struct Layering {
                                     // (think Buttons) of the widget.
     removed_node_ids: HashSet<NodeId>, // Set of all node-ids that have been removed from the Tree
     highest_z_order: usize, // Number of layers allocated in the system + 1
-    focused_node_id: Option<NodeId>, // Currently active widget, one per z-order. If None, then
-                            // the layer is not focused on any particular widget.
+    focus_cycles: Vec<FocusCycle>,  // For each layer, a "FocusCycle" keeping track of which widgets
+                                    // can be tabbed through to get focus, in which order, and which
+                                    // widget of these (if any) has focus.
 }
 
 /// A `Layering` is a container of one or more widgets or panes (hereby referred to as widgets),
@@ -374,8 +375,7 @@ impl Layering {
             }
         }
 
-        #[allow(unused)]
-        self.focused_node_id.take();
+        self.focused_node_id = None;
     }
 
     pub fn on_hover(&mut self, point: &Point2<f32>) {
@@ -492,6 +492,71 @@ impl Layering {
             }
         }
         Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct FocusCycle {
+    index: Option<usize>,
+    ids: Vec<NodeId>,
+}
+
+impl FocusCycle {
+    pub fn new() -> Self {
+        FocusCycle {
+            index: None,
+            ids: vec![],
+        }
+    }
+
+    /// Return an Option containing the ID of the currently focused widget, if one exists.
+    pub fn focused_widget_id(&self) -> Option<&NodeId> {
+        self.index.map(|idx| &self.ids[idx])
+    }
+
+    /// Focus the next widget in the focus cycle. If none were focused, focus the first. Does
+    /// nothing if there are no IDs.
+    pub fn focus_next(&mut self) {
+        if self.ids.len() == 0 {
+            return;
+        }
+        if let Some(idx) = self.index {
+            self.index = Some((idx + 1) % self.ids.len());
+        } else {
+            self.index = Some(0);
+        }
+    }
+
+    /// Focus the previous widget in the focus cycle. If none were focused, focus the last. Does
+    /// nothing if there are no IDs.
+    pub fn focus_previous(&mut self) {
+        if self.ids.len() == 0 {
+            return;
+        }
+        if let Some(idx) = self.index {
+            self.index = Some((idx + self.ids.len() - 1) % self.ids.len());
+        } else {
+            self.index = Some(self.ids.len() - 1);
+        }
+    }
+
+    /// Append a widget ID to the focus cycle.
+    pub fn push(&mut self, node_id: NodeId) {
+        self.ids.push(node_id);
+    }
+
+    /// Remove a widget ID from the focus cycle. If the widget ID does not exist in the focus
+    /// cycle, nothing happens. If the widget ID is the one that currently has focus, nothing is
+    /// focused.
+    pub fn remove(&mut self, node_id: &NodeId) {
+        //XXX remove
+        //XXX fix self.index: index greater than idx of node_id ==> index--
+        //XXX fix self.index: index equal to idx of node_id ==> set to None
+    }
+
+    /// Return an immutable slice of all NodeIds in the focus cycle.
+    pub fn as_slice(&self) -> &[NodeId] {
+        self.ids.as_slice()
     }
 }
 
