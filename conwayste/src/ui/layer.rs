@@ -139,7 +139,7 @@ impl Layering {
             removed_node_ids: HashSet::new(),
             highest_z_order: 0,
             with_transparency: false,
-            focused_node_id: None,
+            focus_cycles: vec![FocusCycle::new()], // empty focus cycle for z_order 0
         };
 
         layering
@@ -229,6 +229,7 @@ impl Layering {
             }
             InsertLocation::AtNextLayer => {
                 self.highest_z_order += 1;
+                self.focus_cycles.push(FocusCycle::new());
                 widget.set_z_index(self.highest_z_order);
                 inserted_node_id = self.widget_tree
                     .insert(Node::new(widget), InsertBehavior::UnderNode(&root_id))
@@ -277,6 +278,11 @@ impl Layering {
 
         // Unwrap *should* be safe because otherwise we would have bailed prior to insertion
         let node = self.widget_tree.get_mut(&inserted_node_id).unwrap();
+
+        // If the widget we just inserted can accept keyboard events, add it to the focus cycle.
+        if node.data().accepts_keyboard_events() {
+            self.focus_cycles[self.highest_z_order].push(inserted_node_id.clone());
+        }
         node.data_mut().set_id(inserted_node_id.clone());
 
         // Note the behavior if id_tree (somehow) reused an ID
@@ -317,6 +323,9 @@ impl Layering {
         // result not checked as this is reported during widget insertion
         self.removed_node_ids.insert(id.clone());
 
+        // Remove from focus cycle
+        self.focus_cycles[self.highest_z_order].remove(&id);
+
         // clone is okay because it is required
         self.widget_tree.remove_node(id.clone(), RemoveBehavior::DropChildren).or_else(|e| {
             return Err(Box::new(UIError::InvalidAction {
@@ -330,14 +339,15 @@ impl Layering {
         while self.highest_z_order != 0 &&
             self.collect_node_ids(self.highest_z_order).is_empty() {
             self.highest_z_order -= 1;
+            self.focus_cycles.pop();
         }
 
         Ok(())
     }
 
     /// Returns the NodeId of the widget currently in-focus
-    pub fn focused_widget_id(&self) -> Option<NodeId> {
-        self.focused_node_id.clone()
+    pub fn focused_widget_id(&self) -> Option<&NodeId> {
+        self.focus_cycles[self.highest_z_order].focused_widget_id()
     }
 
     /// Notifies the layer that the provided NodeId is to capture input events
@@ -347,22 +357,26 @@ impl Layering {
     /// A WidgetNotFound error can be returned if a widget with the `widget_id` does not exist in
     /// the internal list of widgets.
     pub fn enter_focus(&mut self, id: &NodeId) -> UIResult<()> {
-        if !self.widget_exists(id) {
+        let focus_cycle = &mut self.focus_cycles[self.highest_z_order];
+        if focus_cycle.find(id).is_none() {
             return Err(Box::new(UIError::WidgetNotFound {
-                reason: format!("{:?} not found in layering's widget list during enter focus", id),
+                reason: format!("{:?} either not found in layering's widget list or can't receive focus", id),
             }));
         }
 
         // Will overwrite any previously focused widget. This is acceptable because the user
         // may be switching focuses, like from one textfield to another.
-        self.focused_node_id = Some((*id).clone());
+        let (was_successful, _) = focus_cycle.set_focused(id);
+        if !was_successful {
+            // if we failed to set the focus, don't call any focus change handlers
+            // (I don't think this is possible?)
+            return Ok(());
+        }
 
         // Call the widget's handler to enter focus
-        if let Some(node_id) = &self.focused_node_id {
-            let node = self.widget_tree.get_mut(node_id).unwrap();
-            let dyn_widget = node.data_mut();
-            dyn_widget.enter_focus();
-        }
+        let node = self.widget_tree.get_mut(id).unwrap();
+        let dyn_widget = node.data_mut();
+        dyn_widget.enter_focus();
 
         Ok(())
     }
@@ -370,12 +384,13 @@ impl Layering {
     /// Clears the focus of the layering
     pub fn exit_focus(&mut self) {
         if let Some(id) = self.focused_widget_id() {
+            let id = id.clone();
             if let Ok(dyn_widget) = self.get_widget_mut(&id) {
                 dyn_widget.exit_focus();
             }
         }
 
-        self.focused_node_id = None;
+        self.focus_cycles[self.highest_z_order].clear_focus();
     }
 
     pub fn on_hover(&mut self, point: &Point2<f32>) {
@@ -501,6 +516,8 @@ struct FocusCycle {
     ids: Vec<NodeId>,
 }
 
+// TODO: move this to a common file (ui/focus.rs?) because Pane will also use it
+// TODO: add top_level bool (Layering will have it be true, Pane will have it be false)
 impl FocusCycle {
     pub fn new() -> Self {
         FocusCycle {
@@ -512,6 +529,25 @@ impl FocusCycle {
     /// Return an Option containing the ID of the currently focused widget, if one exists.
     pub fn focused_widget_id(&self) -> Option<&NodeId> {
         self.index.map(|idx| &self.ids[idx])
+    }
+
+    /// Sets the currently focused widget ID. The return value is (was_successful, old_focused)
+    /// where old_focused is the previously focused widget ID, and was_successful indicates
+    /// whether the focus setting succeeded. It can only fail if the widget ID is not found in
+    /// this FocusCycle.
+    pub fn set_focused(&mut self, node_id: &NodeId) -> (bool, Option<NodeId>) {
+        let old_focused_widget = self.focused_widget_id().map(|id| id.clone());
+        let mut was_successful = false;
+        if let Some(found_idx) = self.find(node_id) {
+            was_successful = true;
+            self.index = Some(found_idx);
+        }
+        (was_successful, old_focused_widget)
+    }
+
+    /// Clears the focus.
+    pub fn clear_focus(&mut self) {
+        self.index = None;
     }
 
     /// Focus the next widget in the focus cycle. If none were focused, focus the first. Does
@@ -545,13 +581,32 @@ impl FocusCycle {
         self.ids.push(node_id);
     }
 
+    /// Find the index of the specified widget ID.
+    pub fn find(&self, node_id: &NodeId) -> Option<usize> {
+        for i in 0..self.ids.len() {
+            if self.ids[i] == *node_id {
+                return Some(i);
+            }
+        }
+        None
+    }
+
     /// Remove a widget ID from the focus cycle. If the widget ID does not exist in the focus
     /// cycle, nothing happens. If the widget ID is the one that currently has focus, nothing is
     /// focused.
     pub fn remove(&mut self, node_id: &NodeId) {
-        //XXX remove
-        //XXX fix self.index: index greater than idx of node_id ==> index--
-        //XXX fix self.index: index equal to idx of node_id ==> set to None
+        // remove
+        if let Some(remove_idx) = self.find(node_id) {
+            self.ids.remove(remove_idx);
+
+            if let Some(focused_idx) = self.index {
+                if focused_idx > remove_idx {
+                    self.index = Some(focused_idx - 1);
+                } else if focused_idx == remove_idx {
+                    self.index = None;
+                }
+            }
+        }
     }
 
     /// Return an immutable slice of all NodeIds in the focus cycle.
@@ -764,7 +819,7 @@ mod test {
             .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
 
         assert!(layer_info.enter_focus(&pane_id).is_ok());
-        assert_eq!(layer_info.focused_widget_id(), Some(pane_id));
+        assert_eq!(layer_info.focused_widget_id(), Some(&pane_id));
     }
 
     #[test]
@@ -795,7 +850,7 @@ mod test {
             .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
 
         assert!(layer_info.enter_focus(&pane_id).is_ok());
-        assert_eq!(layer_info.focused_widget_id(), Some(pane_id));
+        assert_eq!(layer_info.focused_widget_id(), Some(&pane_id));
 
         layer_info.exit_focus();
         assert_eq!(layer_info.focused_widget_id(), None);

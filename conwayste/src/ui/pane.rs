@@ -267,6 +267,11 @@ impl Widget for Pane {
     fn as_emit_event(&mut self) -> Option<&mut dyn context::EmitEvent> {
         Some(self)
     }
+
+    /// Pane can receive keyboard focus because it can contain widgets that can receive focus.
+    fn accepts_keyboard_events(&self) -> bool {
+        true
+    }
 }
 
 widget_from_id!(Pane);

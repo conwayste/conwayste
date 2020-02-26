@@ -25,7 +25,7 @@ use enum_iterator::IntoEnumIterator;
 use ggez;
 use ggez::event::MouseButton;
 use ggez::nalgebra::Point2;
-use id_tree::{NodeId, Tree};
+use id_tree::NodeId;
 
 use super::treeview::TreeView;
 use super::BoxedWidget;

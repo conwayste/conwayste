@@ -66,6 +66,7 @@ impl LayoutManager {
     pub fn focused_textfield_mut(ui: &mut UILayout, screen: Screen) -> UIResult<&mut TextField> {
         if let Some(layer) = Self::get_screen_layering(ui, screen) {
             if let Some(id) = layer.focused_widget_id() {
+                let id = id.clone();
                 return TextField::widget_from_id(layer, &id);
             }
         }
