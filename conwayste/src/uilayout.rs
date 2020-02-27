@@ -45,7 +45,6 @@ use crate::ui::{
 
 use context::{
     EmitEvent, // so we can call .on(...) on widgets that implement this
-    Handler,
     EventType,
 };
 
@@ -138,7 +137,7 @@ impl UILayout {
         );
         startgame_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0))?;
 
-        let checkbox = Box::new(
+        let mut fullscreen_checkbox = Box::new(
             Checkbox::new(
                 ctx,
                 config.get().video.fullscreen,
@@ -147,6 +146,8 @@ impl UILayout {
                 Rect::new(10.0, 210.0, 20.0, 20.0),
             )
         );
+        // unwrap OK here because we are not calling .on from within a handler
+        fullscreen_checkbox.on(EventType::Click, Box::new(fullscreen_toggle_handler)).unwrap();
 
         // TODO: delete this once handlers are tested
         let mut handler_test_button = Box::new(
@@ -159,9 +160,8 @@ impl UILayout {
         );
         // add the handler!
         // TODO: delete this
-        let handler: Handler = Box::new(test_handler);
         // unwrap OK here because we are not calling .on from within a handler
-        handler_test_button.on(EventType::Click, handler).unwrap();
+        handler_test_button.on(EventType::Click, Box::new(test_handler)).unwrap();
 
         match handler_test_button.set_rect(Rect::new(200.0, 130.0, 180.0, 50.0)) {
             Ok(()) => { },
@@ -175,7 +175,7 @@ impl UILayout {
         layer_mainmenu.add_widget(inroom_button, InsertLocation::ToNestedContainer(&menupane_id))?;
         layer_mainmenu.add_widget(serverlist_button, InsertLocation::ToNestedContainer(&menupane_id))?;
         layer_mainmenu.add_widget(handler_test_button, InsertLocation::ToNestedContainer(&menupane_id))?;
-        layer_mainmenu.add_widget(checkbox, InsertLocation::ToNestedContainer(&menupane_id))?;
+        layer_mainmenu.add_widget(fullscreen_checkbox, InsertLocation::ToNestedContainer(&menupane_id))?;
 
         let chatpane_id = layer_ingame.add_widget(chatpane, InsertLocation::AtCurrentLayer)?;
         let chatbox_id = layer_ingame.add_widget(chatbox, InsertLocation::ToNestedContainer(&chatpane_id))?;
@@ -191,6 +191,20 @@ impl UILayout {
         })
     }
 }
+fn fullscreen_toggle_handler(obj: &mut dyn EmitEvent, uictx: &mut context::UIContext, _evt: &context::Event) -> Result<context::Handled, Box<dyn Error>> {
+    use context::Handled::*;
+
+    // NOTE: the checkbox installed its own handler to toggle the `enabled` field on click
+    // We are running after it, since the handler registered first gets called first.
+
+    let checkbox = obj.downcast_ref::<Checkbox>().unwrap();
+
+    uictx.config.modify(|settings| {
+        settings.video.fullscreen = checkbox.enabled;
+    });
+    Ok(Handled)
+}
+
 fn test_handler(obj: &mut dyn EmitEvent, uictx: &mut context::UIContext, evt: &context::Event) -> Result<context::Handled, Box<dyn Error>> {
     use context::Handled::*;
     let btn = obj.downcast_mut::<Button>().unwrap();

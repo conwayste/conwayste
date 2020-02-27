@@ -655,6 +655,13 @@ impl EventHandler for MainState {
             }
         }
 
+        // HACK: propagate any video-related config settings from UI handlers to self.video_settings
+        // TODO: consider removing self.video_settings
+        if self.video_settings.is_fullscreen != self.config.get().video.fullscreen {
+            self.video_settings.is_fullscreen = self.config.get().video.fullscreen;
+            self.video_settings.update_fullscreen(ctx)?;
+        }
+
         self.post_update()?;
 
         Ok(())
@@ -1446,17 +1453,10 @@ impl MainState {
     }
 
     // TODO: remove this once the interesting bits are moved to handlers
-    fn handle_ui_action(&mut self, ctx: &mut Context, action: UIAction) -> UIResult<()> {
+    fn handle_ui_action(&mut self, _ctx: &mut Context, action: UIAction) -> UIResult<()> {
         match action {
             UIAction::ScreenTransition(s) => {
                 self.screen_stack.push(s);
-            }
-            UIAction::Toggle(enabled) => {
-                self.config.modify(|settings| {
-                    settings.video.fullscreen = enabled;
-                });
-                self.video_settings.is_fullscreen = enabled;
-                self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: need ConwaysteError variant
             }
             _ => {
                 return Err(Box::new(UIError::InvalidAction{

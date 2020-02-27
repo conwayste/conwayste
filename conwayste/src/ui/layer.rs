@@ -38,8 +38,8 @@ use super::{
     widget::Widget,
     BoxedWidget,
     Pane,
-    UIAction,
-    UIError, UIResult,
+    UIError,
+    UIResult,
     context,
     treeview,
 };
@@ -130,7 +130,7 @@ pub struct Layering {
 /// the screen size is drawn in between layers `n-1` and `n`.
 impl Layering {
     pub fn new() -> Self {
-        let mut layering = Layering {
+        Layering {
             widget_tree: TreeBuilder::new()
                 .with_node_capacity(LAYERING_NODE_CAPACITY)
                 .with_swap_capacity(LAYERING_SWAP_CAPACITY)
@@ -140,9 +140,7 @@ impl Layering {
             highest_z_order: 0,
             with_transparency: false,
             focus_cycles: vec![FocusCycle::new()], // empty focus cycle for z_order 0
-        };
-
-        layering
+        }
     }
 
     /// Returns true if an entry with the provided NodeId exists.

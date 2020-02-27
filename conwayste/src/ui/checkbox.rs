@@ -18,6 +18,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::fmt;
+use std::error::Error;
 
 use ggez::graphics::{self, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
@@ -29,8 +30,16 @@ use super::{
     label::Label,
     widget::Widget,
     common::{within_widget, FontInfo},
-    UIAction,
-    UIError, UIResult,
+    UIError,
+    UIResult,
+};
+use super::context::{
+    EmitEvent,
+    Event,
+    EventType,
+    Handled,
+    HandlerMap,
+    UIContext,
 };
 
 use crate::constants::colors::*;
@@ -41,14 +50,14 @@ pub struct Checkbox {
     pub label: Label,
     pub enabled: bool,
     pub dimensions: Rect,
-    pub hover: bool,
-    pub action: UIAction
+    pub draw_hover: bool,
+    pub handlers: Option<HandlerMap>, // required for impl_emit_event!
 }
 
 impl fmt::Debug for Checkbox {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Checkbox {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}, Checked: {} }}",
-            self.id, self.z_index, self.dimensions, self.action, self.enabled)
+        write!(f, "Checkbox {{ id: {:?}, z-index: {}, Dimensions: {:?}, Checked: {} }}",
+            self.id, self.z_index, self.dimensions, self.enabled)
     }
 }
 
@@ -96,21 +105,26 @@ impl Checkbox {
             dimensions.y + dimensions.h + LABEL_OFFSET_Y
         );
 
-        Checkbox {
+        let mut cb = Checkbox {
             id: None,
             z_index: std::usize::MAX,
             label: Label::new(ctx, font_info, text, *CHECKBOX_TEXT_COLOR, label_origin),
-            enabled: enabled,
-            dimensions: dimensions,
-            hover: false,
-            action: UIAction::Toggle(enabled)
-        }
+            enabled,
+            dimensions,
+            draw_hover: false,
+            handlers: Some(HandlerMap::new()),
+        };
+        cb.on(EventType::Click, Box::new(Checkbox::click_handler)).unwrap();
+        cb
     }
 
-    /// Toggles the checkbox between enabled or disabled, and returns its new state
-    pub fn toggle_checkbox(&mut self) -> bool {
-        self.enabled = !self.enabled;
-        self.enabled
+    fn click_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        let mut checkbox = obj.downcast_mut::<Checkbox>().unwrap();
+
+        // toggle
+        checkbox.enabled = !checkbox.enabled;
+
+        Ok(Handled::NotHandled)
     }
 }
 
@@ -181,18 +195,12 @@ impl Widget for Checkbox {
 
     fn on_hover(&mut self, point: &Point2<f32>) {
         let label_dimensions = self.label.rect();
-        self.hover = within_widget(point, &self.dimensions) || within_widget(point, &label_dimensions);
-    }
-
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction>
-    {
-        // TODO: Check child label for an on_click event once it's refactored out
-        return Some(UIAction::Toggle(self.toggle_checkbox()));
+        self.draw_hover = within_widget(point, &self.dimensions) || within_widget(point, &label_dimensions);
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
 
-        if self.hover {
+        if self.draw_hover {
             // Add in a violet border/fill while hovered. Color checkbox differently to indicate  hovered state.
             let border_rect = Rect::new(
                 self.dimensions.x-1.0,
@@ -237,6 +245,11 @@ impl Widget for Checkbox {
 
         Ok(())
     }
+
+    fn as_emit_event(&mut self) -> Option<&mut dyn EmitEvent> {
+        Some(self)
+    }
 }
 
+impl_emit_event!(Checkbox, self.handlers);
 widget_from_id!(Checkbox);

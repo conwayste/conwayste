@@ -65,7 +65,6 @@ type BoxedWidget = Box<dyn Widget>;
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum UIAction {
     ScreenTransition(Screen),
-    Toggle(bool),
     EnterText, // TODO: see if we still need this "gunk residue"
     None,
 }
