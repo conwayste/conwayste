@@ -402,30 +402,6 @@ impl Layering {
         }
     }
 
-    //TODO: this doesn't let container widgets control whether or how their child widgets get the
-    //events. Consider only collecting a specific Node's childrens' NodeIds.
-    pub fn on_click(&mut self, point: &Point2<f32>) -> Option<UIAction> {
-        //XXX let node_ids = self.collect_node_ids(self.highest_z_order);
-        //XXX let node_ids = self.widget_tree.get(&node_id).unwrap().children();
-
-        // Due to the way `collect_node_ids()` traverses the entire list, all children nodes will be
-        // collected for a parent node as they should be at the same z-order.
-        // TODO: After UIContext lands, reevaluate how a child's on_click Handled will propogate up.
-
-        /*XXX
-        for node_id in node_ids {
-            let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
-            if within_widget(point, &widget.rect()) {
-                let ui_action = widget.on_click(point);
-                if ui_action.is_some() {
-                    return ui_action;
-                }
-            }
-        }
-        XXX*/
-        None
-    }
-
     pub fn on_drag(&mut self, original_pos: &Point2<f32>, current_pos: &Point2<f32>) {
         let node_ids = self.collect_node_ids(self.highest_z_order);
 

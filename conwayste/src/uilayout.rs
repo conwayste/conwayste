@@ -17,6 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::collections::HashMap;
+use std::error::Error;
 
 use ggez::graphics::{Rect, Font};
 use ggez::nalgebra::Vector2;
@@ -106,7 +107,7 @@ impl UILayout {
         let mut layer_ingame = Layering::new();
 
         // Create a new pane, and add two test buttons to it.
-        let mut pane = Box::new(Pane::new(Rect::new_i32(20, 20, 410, 250)));
+        let pane = Box::new(Pane::new(Rect::new_i32(20, 20, 410, 250)));
         let mut serverlist_button = Box::new(
             Button::new(
                 ctx,
@@ -157,23 +158,8 @@ impl UILayout {
             )
         );
         // add the handler!
-        let handler: Handler = Box::new(|obj, uictx, evt| {
-            use context::Handled::*;
-            let btn = obj.downcast_mut::<Button>().unwrap();
-
-            info!("YAYYYY BUTTON'S HANDLER CALLED!!!");
-
-            btn.translate(Vector2::new(1.0, 1.0)); // just for fun, move it diagonally by one pixel
-
-            // get the number of ticks, also just for fun
-            let num_ticks = ggez::timer::ticks(&uictx.ggez_context);
-            info!("number of ggez ticks: {}", num_ticks);
-
-            // ok now let's print out the event
-            info!("EVENT: what={:?} @ {}", evt.what, evt.point.unwrap());
-
-            Ok(Handled)
-        });
+        // TODO: delete this
+        let handler: Handler = Box::new(test_handler);
         // unwrap OK here because we are not calling .on from within a handler
         handler_test_button.on(EventType::Click, handler).unwrap();
 
@@ -200,8 +186,25 @@ impl UILayout {
 
         Ok(UILayout {
             layers: ui_layers,
-            chatbox_id: chatbox_id,
-            chatbox_tf_id: chatbox_tf_id,
+            chatbox_id,
+            chatbox_tf_id,
         })
     }
+}
+fn test_handler(obj: &mut dyn EmitEvent, uictx: &mut context::UIContext, evt: &context::Event) -> Result<context::Handled, Box<dyn Error>> {
+    use context::Handled::*;
+    let btn = obj.downcast_mut::<Button>().unwrap();
+
+    info!("YAYYYY BUTTON'S HANDLER CALLED!!!");
+
+    btn.translate(Vector2::new(1.0, 1.0)); // just for fun, move it diagonally by one pixel
+
+    // get the number of ticks, also just for fun
+    let num_ticks = ggez::timer::ticks(&uictx.ggez_context);
+    info!("number of ggez ticks: {}", num_ticks);
+
+    // ok now let's print out the event
+    info!("EVENT: what={:?} @ {}", evt.what, evt.point.unwrap());
+
+    Ok(Handled)
 }

@@ -498,12 +498,6 @@ impl EventHandler for MainState {
                         layer.emit(&click_event, ctx, &mut self.config).unwrap_or_else(|e| {
                             error!("Error from layer.emit on left click: {:?}", e);
                         });
-                        if let Some( ui_action ) = layer.on_click(&mouse_point) {
-                            self.handle_ui_action(ctx, ui_action).or_else(|e| -> UIResult<()> {
-                                error!("Failed to handle UI action: {}", e);
-                                Ok(())
-                            }).unwrap();
-                        }
                     }
                 }
 
@@ -1451,6 +1445,7 @@ impl MainState {
         }
     }
 
+    // TODO: remove this once the interesting bits are moved to handlers
     fn handle_ui_action(&mut self, ctx: &mut Context, action: UIAction) -> UIResult<()> {
         match action {
             UIAction::ScreenTransition(s) => {
