@@ -27,6 +27,7 @@ pub(crate) mod context;
 mod button;
 mod chatbox;
 mod checkbox;
+mod focus;
 mod label;
 mod layer;
 mod pane;

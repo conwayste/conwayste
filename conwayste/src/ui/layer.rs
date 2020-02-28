@@ -42,6 +42,7 @@ use super::{
     UIResult,
     context,
     treeview,
+    focus::FocusCycle,
 };
 
 use crate::constants::{colors::*, LAYERING_NODE_CAPACITY, LAYERING_SWAP_CAPACITY};
@@ -481,111 +482,6 @@ impl Layering {
             }
         }
         Ok(())
-    }
-}
-
-#[derive(Clone, Debug)]
-struct FocusCycle {
-    index: Option<usize>,
-    ids: Vec<NodeId>,
-}
-
-// TODO: move this to a common file (ui/focus.rs?) because Pane will also use it
-// TODO: add top_level bool (Layering will have it be true, Pane will have it be false)
-impl FocusCycle {
-    pub fn new() -> Self {
-        FocusCycle {
-            index: None,
-            ids: vec![],
-        }
-    }
-
-    /// Return an Option containing the ID of the currently focused widget, if one exists.
-    pub fn focused_widget_id(&self) -> Option<&NodeId> {
-        self.index.map(|idx| &self.ids[idx])
-    }
-
-    /// Sets the currently focused widget ID. The return value is (was_successful, old_focused)
-    /// where old_focused is the previously focused widget ID, and was_successful indicates
-    /// whether the focus setting succeeded. It can only fail if the widget ID is not found in
-    /// this FocusCycle.
-    pub fn set_focused(&mut self, node_id: &NodeId) -> (bool, Option<NodeId>) {
-        let old_focused_widget = self.focused_widget_id().map(|id| id.clone());
-        let mut was_successful = false;
-        if let Some(found_idx) = self.find(node_id) {
-            was_successful = true;
-            self.index = Some(found_idx);
-        }
-        (was_successful, old_focused_widget)
-    }
-
-    /// Clears the focus.
-    pub fn clear_focus(&mut self) {
-        self.index = None;
-    }
-
-    /// Focus the next widget in the focus cycle. If none were focused, focus the first. Does
-    /// nothing if there are no IDs.
-    pub fn focus_next(&mut self) {
-        if self.ids.len() == 0 {
-            return;
-        }
-        if let Some(idx) = self.index {
-            self.index = Some((idx + 1) % self.ids.len());
-        } else {
-            self.index = Some(0);
-        }
-    }
-
-    /// Focus the previous widget in the focus cycle. If none were focused, focus the last. Does
-    /// nothing if there are no IDs.
-    pub fn focus_previous(&mut self) {
-        if self.ids.len() == 0 {
-            return;
-        }
-        if let Some(idx) = self.index {
-            self.index = Some((idx + self.ids.len() - 1) % self.ids.len());
-        } else {
-            self.index = Some(self.ids.len() - 1);
-        }
-    }
-
-    /// Append a widget ID to the focus cycle.
-    pub fn push(&mut self, node_id: NodeId) {
-        self.ids.push(node_id);
-    }
-
-    /// Find the index of the specified widget ID.
-    pub fn find(&self, node_id: &NodeId) -> Option<usize> {
-        for i in 0..self.ids.len() {
-            if self.ids[i] == *node_id {
-                return Some(i);
-            }
-        }
-        None
-    }
-
-    /// Remove a widget ID from the focus cycle. If the widget ID does not exist in the focus
-    /// cycle, nothing happens. If the widget ID is the one that currently has focus, nothing is
-    /// focused.
-    pub fn remove(&mut self, node_id: &NodeId) {
-        // remove
-        if let Some(remove_idx) = self.find(node_id) {
-            self.ids.remove(remove_idx);
-
-            if let Some(focused_idx) = self.index {
-                if focused_idx > remove_idx {
-                    self.index = Some(focused_idx - 1);
-                } else if focused_idx == remove_idx {
-                    self.index = None;
-                }
-            }
-        }
-    }
-
-    /// Return an immutable slice of all NodeIds in the focus cycle.
-    pub fn as_slice(&self) -> &[NodeId] {
-        self.ids.as_slice()
     }
 }
 
