@@ -20,9 +20,10 @@ use std::error::Error;
 
 use std::collections::HashSet;
 
-use ggez::graphics::{self, DrawMode, DrawParam, Rect};
-use ggez::nalgebra::{Point2, Vector2};
 use ggez::Context;
+use ggez::graphics::{self, DrawMode, DrawParam, Rect};
+use ggez::input::keyboard::KeyCode;
+use ggez::nalgebra::{Point2, Vector2};
 
 use id_tree::{
     InsertBehavior,
@@ -42,7 +43,10 @@ use super::{
     UIResult,
     context,
     treeview,
-    focus::FocusCycle,
+    focus::{
+        CycleType,
+        FocusCycle,
+    },
 };
 
 use crate::constants::{colors::*, LAYERING_NODE_CAPACITY, LAYERING_SWAP_CAPACITY};
@@ -140,7 +144,7 @@ impl Layering {
             removed_node_ids: HashSet::new(),
             highest_z_order: 0,
             with_transparency: false,
-            focus_cycles: vec![FocusCycle::new()], // empty focus cycle for z_order 0
+            focus_cycles: vec![FocusCycle::new(CycleType::TopLevel)], // empty focus cycle for z_order 0
         }
     }
 
@@ -228,7 +232,7 @@ impl Layering {
             }
             InsertLocation::AtNextLayer => {
                 self.highest_z_order += 1;
-                self.focus_cycles.push(FocusCycle::new());
+                self.focus_cycles.push(FocusCycle::new(CycleType::TopLevel));
                 widget.set_z_index(self.highest_z_order);
                 inserted_node_id = self.widget_tree
                     .insert(Node::new(widget), InsertBehavior::UnderNode(&root_id))
@@ -456,12 +460,41 @@ impl Layering {
         if event.is_mouse_event() {
             Layering::emit_mouse_event(event, &mut uictx)
         } else if event.is_key_event() {
-            unimplemented!(); //XXX
-            // TODO: handle keyboard events
+            Layering::handle_keyboard_event(event, &mut uictx, &mut self.focus_cycles[self.highest_z_order])
         } else {
             warn!("Don't know how to handle event type {:?}", event.what); // nothing to do if this is not a key or a mouse event
             Ok(())
         }
+    }
+
+    fn handle_keyboard_event(event: &context::Event, uictx: &mut context::UIContext, focus_cycle: &mut FocusCycle) -> Result<(), Box<dyn Error>> {
+        let key = event.key.ok_or_else(|| -> Box<dyn Error> {
+            format!("event of type {:?} has no key", event.what).into()
+        })?;
+
+        if key == KeyCode::Tab {
+            focus_cycle.focus_next();
+        } // TODO Ctrl-Tab
+
+        let focused_id = focus_cycle.focused_widget_id();
+        if let Some(id) = focused_id {
+            Layering::emit_keyboard_event(event, uictx, id)
+        } else {
+            // nothing focused; ignore
+            Ok(())
+        }
+    }
+
+    fn emit_keyboard_event(event: &context::Event, uictx: &mut context::UIContext, focused_id: &NodeId) -> Result<(), Box<dyn Error>> {
+        let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
+        if let Some(emittable) = widget_ref.as_emit_event() {
+            return emittable.emit(event, &mut subuictx);
+        } else {
+            // We probably won't ever get here due to the FocusCycle only holding widgets that can
+            // receive keyboard events.
+            debug!("nothing to emit on; widget is not an EmitEvent");
+        }
+        Ok(())
     }
 
     fn emit_mouse_event(event: &context::Event, uictx: &mut context::UIContext) -> Result<(), Box<dyn Error>> {
@@ -474,10 +507,10 @@ impl Layering {
             let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK b/c NodeId valid & in view
 
             if within_widget(point, &widget_ref.rect()) {
-                if let Some(container) = widget_ref.as_emit_event() {
-                    return container.emit(event, &mut subuictx);
+                if let Some(emittable) = widget_ref.as_emit_event() {
+                    return emittable.emit(event, &mut subuictx);
                 } else {
-                    debug!("nothing to emit on; container is not an EmitEvent");
+                    debug!("nothing to emit on; widget is not an EmitEvent");
                 }
             }
         }

@@ -494,6 +494,7 @@ impl EventHandler for MainState {
                             point: Some(mouse_point),
                             prev_point: None,
                             button: Some(self.inputs.mouse_info.mousebutton),
+                            key: None,
                         };
                         layer.emit(&click_event, ctx, &mut self.config).unwrap_or_else(|e| {
                             error!("Error from layer.emit on left click: {:?}", e);

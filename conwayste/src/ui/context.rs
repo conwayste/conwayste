@@ -25,6 +25,7 @@ use enum_iterator::IntoEnumIterator;
 use ggez;
 use ggez::event::MouseButton;
 use ggez::nalgebra::Point2;
+use ggez::input::keyboard::KeyCode;
 use id_tree::NodeId;
 
 use super::treeview::TreeView;
@@ -141,6 +142,8 @@ pub struct Event {
     pub point: Option<Point2<f32>>, // Must not be None if this is a mouse event type
     pub prev_point: Option<Point2<f32>>, // MouseMove / Drag
     pub button: Option<MouseButton>, // Click
+    pub key: Option<KeyCode>,
+    // TODO: keyboard modifiers?
 }
 
 /// A slice containing all EventTypes related to the keyboard.
