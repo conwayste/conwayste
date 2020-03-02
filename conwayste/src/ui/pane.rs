@@ -26,7 +26,18 @@ use ggez::{Context, GameResult};
 use enum_iterator::IntoEnumIterator;
 use id_tree::NodeId;
 
-use super::{common::within_widget, context, widget::Widget, UIError, UIResult};
+use super::{
+    BoxedWidget,
+    common::within_widget,
+    context,
+    focus::{
+        CycleType,
+        FocusCycle,
+    },
+    widget::Widget,
+    UIError,
+    UIResult,
+};
 
 use context::{EmitEvent, EventType, Handled};
 
@@ -41,6 +52,7 @@ pub struct Pane {
     pub previous_pos: Option<Point2<f32>>,
     pub border: f32,
     pub bg_color: Option<Color>,
+    pub focus_cycle: FocusCycle,
     pub handlers: Option<context::HandlerMap>, // required for impl_emit_event!
                                                // option solely so that we can not mut borrow self twice at once
 
@@ -71,6 +83,7 @@ impl Pane {
             previous_pos: None,
             border: 1.0,
             bg_color: None,
+            focus_cycle: FocusCycle::new(CycleType::OpenEnded),
             handlers: Some(context::HandlerMap::new()),
         };
 
@@ -120,6 +133,18 @@ impl Pane {
         }
     }
     */
+
+    pub fn add_widget(&mut self, widget: &BoxedWidget) {
+        if widget.accepts_keyboard_events() && self.id().is_some() {
+            self.focus_cycle.push(widget.id().unwrap().clone()); // unwrap OK because is_some check
+        }
+    }
+
+    pub fn remove_widget(&mut self, widget: &BoxedWidget) {
+        if let Some(id) = widget.id() {
+            self.focus_cycle.remove(id);
+        }
+    }
 }
 
 impl Widget for Pane {

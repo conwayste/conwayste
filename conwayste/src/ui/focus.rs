@@ -20,8 +20,8 @@ use id_tree::NodeId;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum CycleType {
-    TopLevel,
-    NonTopLevel,
+    Circular, // used at the top level (Layering)
+    OpenEnded, // used below the top level (Pane)
 }
 
 /// Represents keyboard focus changes for a cycle of widgets. Focus would typically be changed by
@@ -33,7 +33,6 @@ pub struct FocusCycle {
     pub cycle_type: CycleType,
 }
 
-// TODO: add top_level bool (Layering will have it be true, Pane will have it be false)
 impl FocusCycle {
     pub fn new(cycle_type: CycleType) -> Self {
         FocusCycle {
@@ -69,23 +68,25 @@ impl FocusCycle {
 
     /// Focus the next widget in the focus cycle. If none were focused, focus the first. Does
     /// nothing if there are no IDs.
-    /// Returns true if focus became lost due to reaching the end.
+    /// Returns true if focus became lost due to reaching the end (`CycleType::OpenEnded` only).
     pub fn focus_next(&mut self) -> bool {
-        // TODO: cycle type
         if self.ids.len() == 0 {
             return false;
         }
         if let Some(idx) = self.index {
-            if self.cycle_type == CycleType::TopLevel {
-                self.index = Some((idx + 1) % self.ids.len());
-            } else {
-                // non-top level -- no looping
-                let next_idx = idx + 1;
-                if idx == self.ids.len() {
-                    self.index = None;
-                    return true;
+            match self.cycle_type {
+                CycleType::Circular => {
+                    self.index = Some((idx + 1) % self.ids.len());
                 }
-                self.index = Some(next_idx);
+                CycleType::OpenEnded => {
+                    // non-top level -- no looping
+                    let next_idx = idx + 1;
+                    if idx == self.ids.len() {
+                        self.index = None;
+                        return true;
+                    }
+                    self.index = Some(next_idx);
+                }
             }
         } else {
             self.index = Some(0);
@@ -95,21 +96,24 @@ impl FocusCycle {
 
     /// Focus the previous widget in the focus cycle. If none were focused, focus the last. Does
     /// nothing if there are no IDs.
-    /// Returns true if focus became lost due to reaching the beginning.
+    /// Returns true if focus became lost due to reaching the beginning (`CycleType::OpenEnded` only).
     pub fn focus_previous(&mut self) -> bool {
         if self.ids.len() == 0 {
             return false;
         }
         if let Some(idx) = self.index {
-            if self.cycle_type == CycleType::TopLevel {
-                self.index = Some((idx + self.ids.len() - 1) % self.ids.len());
-            } else {
-                // non-top level -- no looping
-                if idx == 0 {
-                    self.index = None;
-                    return true;
+            match self.cycle_type {
+                CycleType::Circular => {
+                    self.index = Some((idx + self.ids.len() - 1) % self.ids.len());
                 }
-                self.index = Some(idx - 1);
+                CycleType::OpenEnded => {
+                    // non-top level -- no looping
+                    if idx == 0 {
+                        self.index = None;
+                        return true;
+                    }
+                    self.index = Some(idx - 1);
+                }
             }
         } else {
             self.index = Some(self.ids.len() - 1);

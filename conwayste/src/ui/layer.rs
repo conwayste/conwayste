@@ -144,7 +144,7 @@ impl Layering {
             removed_node_ids: HashSet::new(),
             highest_z_order: 0,
             with_transparency: false,
-            focus_cycles: vec![FocusCycle::new(CycleType::TopLevel)], // empty focus cycle for z_order 0
+            focus_cycles: vec![FocusCycle::new(CycleType::Circular)], // empty focus cycle for z_order 0
         }
     }
 
@@ -216,6 +216,7 @@ impl Layering {
         // Unwrap safe because our tree will always have a dummy root node
         let root_id = self.widget_tree.root_node_id().unwrap().clone();
         let inserted_node_id;
+        let mut added_to_pane_focus_cycle = false;
         match modifier {
             InsertLocation::AtCurrentLayer => {
                 widget.set_z_index(self.highest_z_order);
@@ -232,7 +233,7 @@ impl Layering {
             }
             InsertLocation::AtNextLayer => {
                 self.highest_z_order += 1;
-                self.focus_cycles.push(FocusCycle::new(CycleType::TopLevel));
+                self.focus_cycles.push(FocusCycle::new(CycleType::Circular));
                 widget.set_z_index(self.highest_z_order);
                 inserted_node_id = self.widget_tree
                     .insert(Node::new(widget), InsertBehavior::UnderNode(&root_id))
@@ -258,8 +259,8 @@ impl Layering {
 
                 // First find the node_id that corresponds to the container we're adding to
                 let node = self.widget_tree.get(&parent_id).unwrap();
-                let dyn_widget = node.data();
-                if let Some(pane) = downcast_widget!(dyn_widget, Pane) {
+                let parent_dyn_widget = node.data();
+                if let Some(pane) = downcast_widget!(parent_dyn_widget, Pane) {
                     // Prepare the widget for insertion at the Pane's layer, translated to
                     // an offset from the Pane's top-left corner
                     let point = pane.dimensions.point();
@@ -275,7 +276,13 @@ impl Layering {
                             parent_id,
                             self.highest_z_order,
                             e)
-                })))?;
+                    })))?;
+                let parent_dyn_widget = self.widget_tree.get_mut(&parent_id).unwrap().data_mut();
+                if let Some(pane) = downcast_widget_mut!(parent_dyn_widget, Pane) {
+                    // notify the Pane that we added a widget to it (used for keyboard focus)
+                    pane.add_widget(&inserted_node_id);
+                    added_to_pane_focus_cycle = true;
+                }
             }
         }
 
@@ -283,7 +290,7 @@ impl Layering {
         let node = self.widget_tree.get_mut(&inserted_node_id).unwrap();
 
         // If the widget we just inserted can accept keyboard events, add it to the focus cycle.
-        if node.data().accepts_keyboard_events() {
+        if !added_to_pane_focus_cycle && node.data().accepts_keyboard_events() {
             self.focus_cycles[self.highest_z_order].push(inserted_node_id.clone());
         }
         node.data_mut().set_id(inserted_node_id.clone());
@@ -311,6 +318,17 @@ impl Layering {
             return Err(Box::new(UIError::WidgetNotFound {
                 reason: format!("{:?} not found in layer during removal", id).to_owned(),
             }));
+        }
+
+        // call remove_widget on its containing Pane, if any
+        let pane_id = self.widget_tree.ancestor_ids(&id).unwrap().nth(0); // unwrap OK (id is valid)
+        if let Some(pane_id) = pane_id {
+            let pane_id = pane_id.clone();
+            let parent_dyn_widget = self.widget_tree.get_mut(&pane_id).unwrap().data_mut();
+            if let Some(pane) = downcast_widget_mut!(parent_dyn_widget, Pane) {
+                // notify the Pane that we removed a widget from it (used for keyboard focus)
+                pane.remove_widget(&id);
+            }
         }
 
         // Insert the node's children ids to the removed hash-set
