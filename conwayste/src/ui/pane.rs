@@ -134,16 +134,14 @@ impl Pane {
     }
     */
 
-    pub fn add_widget(&mut self, widget: &BoxedWidget) {
-        if widget.accepts_keyboard_events() && self.id().is_some() {
-            self.focus_cycle.push(widget.id().unwrap().clone()); // unwrap OK because is_some check
-        }
+    /// Add a widget ID to Pane's focus cycle. Must only be called if the widget accepts keyboard
+    /// events.
+    pub fn add_widget(&mut self, widget_id: NodeId) {
+            self.focus_cycle.push(widget_id);
     }
 
-    pub fn remove_widget(&mut self, widget: &BoxedWidget) {
-        if let Some(id) = widget.id() {
-            self.focus_cycle.remove(id);
-        }
+    pub fn remove_widget(&mut self, widget_id: &NodeId) {
+        self.focus_cycle.remove(widget_id);
     }
 }
 

@@ -143,7 +143,7 @@ pub struct Event {
     pub prev_point: Option<Point2<f32>>, // MouseMove / Drag
     pub button: Option<MouseButton>, // Click
     pub key: Option<KeyCode>,
-    // TODO: keyboard modifiers?
+    pub shift_pressed: bool,
 }
 
 /// A slice containing all EventTypes related to the keyboard.

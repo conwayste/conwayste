@@ -469,6 +469,10 @@ impl EventHandler for MainState {
                 }
             }
             Screen::Menu => {
+                let key = self.inputs.key_info.key;
+                let keymods = self.inputs.key_info.modifier;
+                let is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
+
                 let mouse_point = self.inputs.mouse_info.position;
                 let origin_point = self.inputs.mouse_info.down_position;
 
@@ -488,16 +492,30 @@ impl EventHandler for MainState {
                     }
 
                     if left_mouse_click {
-                        // NEW! Create event for EmitEvent
                         let click_event = Event {
                             what: EventType::Click,
                             point: Some(mouse_point),
                             prev_point: None,
                             button: Some(self.inputs.mouse_info.mousebutton),
                             key: None,
+                            shift_pressed: is_shift,
                         };
                         layer.emit(&click_event, ctx, &mut self.config).unwrap_or_else(|e| {
                             error!("Error from layer.emit on left click: {:?}", e);
+                        });
+                    }
+
+                    if let Some(key) = key {
+                        let key_event = Event {
+                            what: EventType::KeyPress,
+                            point: Some(mouse_point),
+                            prev_point: None,
+                            button: Some(self.inputs.mouse_info.mousebutton),
+                            key: Some(key),
+                            shift_pressed: is_shift,
+                        };
+                        layer.emit(&key_event, ctx, &mut self.config).unwrap_or_else(|e| {
+                            error!("Error from layer.emit on key press: {:?}", e);
                         });
                     }
                 }
@@ -785,8 +803,12 @@ impl EventHandler for MainState {
         if key_as_int32 < (KeyCode::Numlock as i32)
             || (key_as_int32 >= KeyCode::LAlt as i32 && key_as_int32 <= KeyCode::LWin as i32)
             || (key_as_int32 >= KeyCode::RAlt as i32 && key_as_int32 <= KeyCode::RWin as i32)
-            || (key_as_int32 == KeyCode::Equals as i32 || key_as_int32 == KeyCode::Subtract as i32) {
-            if self.inputs.key_info.key.is_none() {
+            || (key_as_int32 == KeyCode::Equals as i32 || key_as_int32 == KeyCode::Subtract as i32
+            ||  key_as_int32 == KeyCode::Tab as i32) {
+
+            // NOTE: we need to exclude modifiers we are using below.
+            let is_modifier_key = keycode == KeyCode::LShift || keycode == KeyCode::RShift;
+            if self.inputs.key_info.key.is_none() && !is_modifier_key {
                 self.inputs.key_info.key = Some(keycode);
             }
 

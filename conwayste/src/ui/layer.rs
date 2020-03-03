@@ -89,6 +89,7 @@ impl Widget for LayerRootNode {
 }
 
 #[allow(unused)]
+#[derive(Eq, PartialEq)]
 pub enum InsertLocation<'a> {
     AtCurrentLayer, // Insertion will be made at whatever the top-most layer order is
     AtNextLayer,    // Insertion will increment the layer order, and insert
@@ -212,36 +213,27 @@ impl Layering {
                 reason: format!("Attempted to insert widget with previously assigned ID {:?}.", id),
             }));
         }
+        let widget_accepts_keyboard_events = widget.accepts_keyboard_events();
 
         // Unwrap safe because our tree will always have a dummy root node
         let root_id = self.widget_tree.root_node_id().unwrap().clone();
         let inserted_node_id;
         let mut added_to_pane_focus_cycle = false;
+        if modifier == InsertLocation::AtNextLayer {
+            self.highest_z_order += 1;
+        }
         match modifier {
-            InsertLocation::AtCurrentLayer => {
+            InsertLocation::AtCurrentLayer | InsertLocation::AtNextLayer => {
                 widget.set_z_index(self.highest_z_order);
                 inserted_node_id = self.widget_tree
                     .insert(Node::new(widget), InsertBehavior::UnderNode(&root_id))
                     .or_else(|e| {
                         Err(Box::new(UIError::InvalidAction {
                             reason: format!(
-                                "Error during insertion AtCurrentLayer({}): {}",
-                                self.highest_z_order, e
-                            ),
-                        }))
-                    })?;
-            }
-            InsertLocation::AtNextLayer => {
-                self.highest_z_order += 1;
-                self.focus_cycles.push(FocusCycle::new(CycleType::Circular));
-                widget.set_z_index(self.highest_z_order);
-                inserted_node_id = self.widget_tree
-                    .insert(Node::new(widget), InsertBehavior::UnderNode(&root_id))
-                    .or_else(|e| {
-                        Err(Box::new(UIError::InvalidAction {
-                            reason: format!(
-                                "Error during insertion AtNextLayer({}): {}",
-                                self.highest_z_order, e
+                                "Error during insertion {}, z_order={}: {}",
+                                stringify!(modifier),
+                                self.highest_z_order,
+                                e,
                             ),
                         }))
                     })?;
@@ -280,8 +272,10 @@ impl Layering {
                 let parent_dyn_widget = self.widget_tree.get_mut(&parent_id).unwrap().data_mut();
                 if let Some(pane) = downcast_widget_mut!(parent_dyn_widget, Pane) {
                     // notify the Pane that we added a widget to it (used for keyboard focus)
-                    pane.add_widget(&inserted_node_id);
-                    added_to_pane_focus_cycle = true;
+                    if widget_accepts_keyboard_events {
+                        pane.add_widget(inserted_node_id.clone());
+                        added_to_pane_focus_cycle = true;
+                    }
                 }
             }
         }
@@ -290,7 +284,7 @@ impl Layering {
         let node = self.widget_tree.get_mut(&inserted_node_id).unwrap();
 
         // If the widget we just inserted can accept keyboard events, add it to the focus cycle.
-        if !added_to_pane_focus_cycle && node.data().accepts_keyboard_events() {
+        if !added_to_pane_focus_cycle && widget_accepts_keyboard_events {
             self.focus_cycles[self.highest_z_order].push(inserted_node_id.clone());
         }
         node.data_mut().set_id(inserted_node_id.clone());
@@ -491,8 +485,12 @@ impl Layering {
         })?;
 
         if key == KeyCode::Tab {
-            focus_cycle.focus_next();
-        } // TODO Ctrl-Tab
+            if event.shift_pressed {
+                focus_cycle.focus_previous();
+            } else {
+                focus_cycle.focus_next();
+            }
+        }
 
         let focused_id = focus_cycle.focused_widget_id();
         if let Some(id) = focused_id {
