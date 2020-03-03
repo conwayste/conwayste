@@ -221,6 +221,7 @@ impl Layering {
         let mut added_to_pane_focus_cycle = false;
         if modifier == InsertLocation::AtNextLayer {
             self.highest_z_order += 1;
+            self.focus_cycles.push(FocusCycle::new(CycleType::Circular));
         }
         match modifier {
             InsertLocation::AtCurrentLayer | InsertLocation::AtNextLayer => {
@@ -264,7 +265,7 @@ impl Layering {
                 // Insert the node under the found node_id corresponding to the Pane
                 inserted_node_id = self.widget_tree.insert(Node::new(widget), InsertBehavior::UnderNode(&parent_id))
                     .or_else(|e| Err(Box::new(UIError::InvalidAction {
-                        reason: format!("Error during insertion, ToNestedContainer({:?}, layer={}): {}",
+                        reason: format!("Error during insertion, ToNestedContainer({:?}, z_order={}): {}",
                             parent_id,
                             self.highest_z_order,
                             e)
@@ -485,11 +486,13 @@ impl Layering {
         })?;
 
         if key == KeyCode::Tab {
+            // TODO: if this is a pane, do not change focus until the right time
             if event.shift_pressed {
                 focus_cycle.focus_previous();
             } else {
                 focus_cycle.focus_next();
             }
+            return Ok(()); // do not pass this on to the currently focused widget
         }
 
         let focused_id = focus_cycle.focused_widget_id();

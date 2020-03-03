@@ -87,6 +87,7 @@ impl Pane {
             handlers: Some(context::HandlerMap::new()),
         };
 
+        // for each event type, define a handler of the appropriate type (mouse or keyboard)
         for event_type in EventType::into_enum_iter() {
             if event_type.is_mouse_event() {
                 let handler = |_obj: &mut dyn EmitEvent,
