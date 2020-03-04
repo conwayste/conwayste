@@ -1,4 +1,4 @@
-/*  Copyright 2019 the Conwayste Developers.
+/*  Copyright 2019-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -24,15 +24,16 @@ use ggez::nalgebra::{Point2, Vector2};
 #[cfg(test)]
 use ggez::graphics::Font;
 
+use id_tree::NodeId;
+
 use super::{
     common::FontInfo,
     widget::Widget,
     UIError, UIResult,
-    WidgetID
 };
 
 pub struct Label {
-    id: WidgetID,
+    id: Option<NodeId>,
     z_index: usize,
     pub textfrag: TextFragment,
     pub dimensions: Rect,
@@ -50,7 +51,6 @@ impl Label {
     ///
     /// # Arguments
     /// * `ctx` - GGEZ context
-    /// * `widget_id` - Unique widget identifier
     /// * `font` - font to be used when drawing the text
     /// * `string` - Label text
     /// * `color` - Text color
@@ -66,7 +66,6 @@ impl Label {
     /// let font_info = FontInfo::new(font, Some(20.0));
     /// let label = Label::new(
     ///     ctx,
-    ///     ui::TestLabel,
     ///     font_info,
     ///     "TestButton",
     ///     Color::from(css::DARKCYAN),
@@ -78,7 +77,6 @@ impl Label {
     ///
     pub fn new(
         ctx: &mut Context,
-        widget_id: WidgetID,
         font_info: FontInfo,
         string: String,
         color: Color,
@@ -106,7 +104,7 @@ impl Label {
         dimensions.move_to(dest);
 
         Label {
-            id: widget_id,
+            id: None,
             z_index: std::usize::MAX,
             textfrag: text_fragment,
             dimensions: dimensions
@@ -116,8 +114,12 @@ impl Label {
 
 impl Widget for Label {
     /// Retrieves the widget's unique identifer
-    fn id(&self) -> WidgetID {
-        self.id
+    fn id(&self) -> Option<&NodeId> {
+        self.id.as_ref()
+    }
+
+    fn set_id(&mut self, new_id: NodeId) {
+        self.id = Some(new_id);
     }
 
     fn z_index(&self) -> usize {

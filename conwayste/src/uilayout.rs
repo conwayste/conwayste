@@ -1,4 +1,4 @@
-/*  Copyright 2019 the Conwayste Developers.
+/*  Copyright 2019-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -19,13 +19,11 @@
 use std::collections::HashMap;
 
 use ggez::graphics::{Rect, Font};
+use ggez::Context;
 
-use ggez::{Context};
+use id_tree::NodeId;
 
-use crate::constants::{
-    self,
-    widget_ids::*,
-};
+use crate::constants::{self};
 use crate::config::Config;
 use crate::Screen;
 use crate::ui::{
@@ -44,6 +42,12 @@ use crate::ui::{
 
 pub struct UILayout {
     pub layers: HashMap<Screen, Layering>,
+
+    // The fields below correspond to static ui elements that the client may need to interact with
+    // regardless of what is displayed on screen. For example, new chat messages should always be
+    // forwarded to the UI widget.
+    pub chatbox_id: NodeId,
+    pub chatbox_tf_id: NodeId,
 }
 
 /// `UILayout` is responsible for the definition and storage of UI elements.
@@ -52,7 +56,7 @@ impl UILayout {
         let mut ui_layers = HashMap::new();
 
         let chat_pane_rect = *constants::DEFAULT_CHATBOX_RECT;
-        let mut chatpane = Box::new(Pane::new(INGAME_PANE1, chat_pane_rect));
+        let mut chatpane = Box::new(Pane::new(chat_pane_rect));
         chatpane.bg_color = Some(*constants::colors::CHAT_PANE_FILL_COLOR);
 
 
@@ -68,16 +72,11 @@ impl UILayout {
             Some(*constants::DEFAULT_CHATBOX_FONT_SCALE),
         );
         let mut chatbox = Chatbox::new(
-            INGAME_PANE1_CHATBOX,
             chatbox_font_info,
             constants::CHATBOX_HISTORY
         );
-        match chatbox.set_rect(chatbox_rect) {
-            Ok(()) => { },
-            Err(e) => {
-                error!("Could not set size for chatbox during initialization! {:?}", e);
-            }
-        }
+        chatbox.set_rect(chatbox_rect)?;
+
         let chatbox = Box::new(chatbox);
 
         let textfield_rect = Rect::new(
@@ -89,7 +88,6 @@ impl UILayout {
         let default_font_info = common::FontInfo::new(ctx, font, None);
         let mut textfield = Box::new(
             TextField::new(
-                INGAME_PANE1_CHATBOXTEXTFIELD,
                 default_font_info,
                 textfield_rect,
             )
@@ -100,68 +98,40 @@ impl UILayout {
         let mut layer_ingame = Layering::new();
 
         // Create a new pane, and add two test buttons to it.
-        let pane = Box::new(Pane::new(MAINMENU_PANE1, Rect::new_i32(20, 20, 300, 250)));
+        let pane = Box::new(Pane::new(Rect::new_i32(20, 20, 300, 250)));
         let mut serverlist_button = Box::new(
             Button::new(
                 ctx,
-                MAINMENU_PANE1_BUTTONYES,
                 UIAction::ScreenTransition(Screen::ServerList),
-                MAINMENU_PANE1_BUTTONYESLABEL,
                 default_font_info,
                 "ServerList".to_owned()
             )
         );
-        match serverlist_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0)) {
-            Ok(()) => { },
-            Err(e) => {
-                error!("Could not set size for button during initialization! {:?}, {:?}",
-                    MAINMENU_PANE1_BUTTONYES,
-                    e
-                );
-            }
-        }
+        serverlist_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0))?;
+
         let mut inroom_button = Box::new(
             Button::new(
                 ctx,
-                MAINMENU_PANE1_BUTTONNO,
                 UIAction::ScreenTransition(Screen::InRoom),
-                MAINMENU_PANE1_BUTTONNOLABEL,
                 default_font_info,
                 "InRoom".to_owned()
             )
         );
-        match inroom_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0)) {
-            Ok(()) => { },
-            Err(e) => {
-                error!("Could not set size for button during initialization! {:?} {:?}",
-                MAINMENU_PANE1_BUTTONNO,
-                e);
-            }
-        }
+        inroom_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0))?;
 
         let mut startgame_button = Box::new(
             Button::new(
                 ctx,
-                MAINMENU_TESTBUTTON,
                 UIAction::ScreenTransition(Screen::Run),
-                MAINMENU_TESTBUTTONLABEL,
                 default_font_info,
                 "StartGame".to_owned()
             )
         );
-        match startgame_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0)) {
-            Ok(()) => { },
-            Err(e) => {
-                error!("Could not set size for button during initialization! {:?} {:?}",
-                MAINMENU_TESTBUTTON,
-                e);
-            }
-        }
+        startgame_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0))?;
 
         let checkbox = Box::new(
             Checkbox::new(
                 ctx,
-                MAINMENU_TESTCHECKBOX,
                 config.get().video.fullscreen,
                 default_font_info,
                 "Toggle FullScreen".to_owned(),
@@ -169,23 +139,23 @@ impl UILayout {
             )
         );
 
-        let menupane_id = pane.id();
-        let chatpane_id = chatpane.id();
-        layer_mainmenu.add_widget(pane, InsertLocation::AtCurrentLayer)?;
-        layer_mainmenu.add_widget(startgame_button, InsertLocation::ToNestedContainer(menupane_id))?;
-        layer_mainmenu.add_widget(inroom_button, InsertLocation::ToNestedContainer(menupane_id))?;
-        layer_mainmenu.add_widget(serverlist_button, InsertLocation::ToNestedContainer(menupane_id))?;
-        layer_mainmenu.add_widget(checkbox, InsertLocation::ToNestedContainer(menupane_id))?;
+        let menupane_id = layer_mainmenu.add_widget(pane, InsertLocation::AtCurrentLayer)?;
+        layer_mainmenu.add_widget(startgame_button, InsertLocation::ToNestedContainer(&menupane_id))?;
+        layer_mainmenu.add_widget(inroom_button, InsertLocation::ToNestedContainer(&menupane_id))?;
+        layer_mainmenu.add_widget(serverlist_button, InsertLocation::ToNestedContainer(&menupane_id))?;
+        layer_mainmenu.add_widget(checkbox, InsertLocation::ToNestedContainer(&menupane_id))?;
 
-        layer_ingame.add_widget(chatpane, InsertLocation::AtCurrentLayer)?;
-        layer_ingame.add_widget(chatbox, InsertLocation::ToNestedContainer(chatpane_id))?;
-        layer_ingame.add_widget(textfield, InsertLocation::ToNestedContainer(chatpane_id))?;
+        let chatpane_id = layer_ingame.add_widget(chatpane, InsertLocation::AtCurrentLayer)?;
+        let chatbox_id = layer_ingame.add_widget(chatbox, InsertLocation::ToNestedContainer(&chatpane_id))?;
+        let chatbox_tf_id = layer_ingame.add_widget(textfield, InsertLocation::ToNestedContainer(&chatpane_id))?;
 
         ui_layers.insert(Screen::Menu, layer_mainmenu);
         ui_layers.insert(Screen::Run, layer_ingame);
 
         Ok(UILayout {
             layers: ui_layers,
+            chatbox_id: chatbox_id,
+            chatbox_tf_id: chatbox_tf_id,
         })
     }
 }

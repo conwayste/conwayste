@@ -1,4 +1,4 @@
-/*  Copyright 2019 the Conwayste Developers.
+/*  Copyright 2019-2020 the Conwayste Developers.
  *
  *  This file is part of Conwayste.
  *
@@ -22,7 +22,7 @@ custom_error! {pub UIError
     WidgetNotFound {reason: String} = "UIError::WidgetNotFound({reason})",
     InvalidAction {reason: String} = "UIError::InvalidAction({reason})",
     ActionRestricted{reason: String} = "UIError::ActionRestricted({reason})",
-    WidgetIDCollision{reason: String} = "UIError::WidgetIDCollision({reason})",
+    NodeIDCollision{reason: String} = "UIError::NodeIDCollision({reason})",
     InvalidArgument{reason: String} = "UIError::InvalidArgument({reason})",
 }
 

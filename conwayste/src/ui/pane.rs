@@ -22,18 +22,18 @@ use ggez::graphics::{self, Color, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
+use id_tree::NodeId;
+
 use super::{
     widget::Widget,
     common::{within_widget},
-    UIAction,
     UIError, UIResult,
-    WidgetID
 };
 
 use crate::constants::colors::*;
 
 pub struct Pane {
-    id: WidgetID,
+    id: Option<NodeId>,
     z_index: usize,
     pub dimensions: Rect,
     pub hover: bool,
@@ -54,10 +54,10 @@ impl fmt::Debug for Pane {
 
 /// A container of one or more widgets
 impl Pane {
-    /// Specify the unique widget identifer for the pane, and its dimensional bounds
-    pub fn new(widget_id: WidgetID, dimensions: Rect) -> Self {
+    /// Specify the dimensional bounds of the Pane container
+    pub fn new(dimensions: Rect) -> Self {
         Pane {
-            id: widget_id,
+            id: None,
             z_index: std::usize::MAX,
             dimensions: dimensions,
             hover: false,
@@ -80,8 +80,12 @@ impl Pane {
 }
 
 impl Widget for Pane {
-    fn id(&self) -> WidgetID {
-        self.id
+    fn id(&self) -> Option<&NodeId> {
+        self.id.as_ref()
+    }
+
+    fn set_id(&mut self, new_id: NodeId) {
+        self.id = Some(new_id);
     }
 
     fn z_index(&self) -> usize {
@@ -140,12 +144,6 @@ impl Widget for Pane {
     fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
     }
-
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        // TODO: Need to pass children nodes
-        None
-    }
-
 
     /* TODO: fix all the drag issues
     /// original_pos is the mouse position at which the button was held before any dragging occurred

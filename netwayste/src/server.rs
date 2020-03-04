@@ -1063,9 +1063,8 @@ impl ServerState {
         return Some(unsent_messages);
     }
 
-    pub fn expire_old_messages_in_all_rooms(&mut self) {
+    pub fn expire_old_messages_in_all_rooms(&mut self, current_timestamp: time::Instant) {
         if self.rooms.len() != 0 {
-            let current_timestamp = time::Instant::now();
             for room in self.rooms.values_mut() {
                 if room.has_players() && !room.messages.is_empty() {
                     room.messages.retain(|ref m| current_timestamp - m.timestamp < Duration::from_secs(MAX_AGE_CHAT_MESSAGES as u64) );
@@ -1255,7 +1254,7 @@ pub fn main() {
                 }
 
                 Event::TickEvent => {
-                    server_state.expire_old_messages_in_all_rooms();
+                    server_state.expire_old_messages_in_all_rooms(time::Instant::now());
                     let client_update_packets_result = server_state.construct_client_updates();
                     if client_update_packets_result.is_ok() {
                         let opt_update_packets = client_update_packets_result.unwrap();
@@ -1615,7 +1614,12 @@ mod netwayste_server_tests {
             room.add_message(ServerChatMessage::new(player_id, String::from("some name"), String::from("some msg"), 1));
 
             let message: &mut ServerChatMessage = room.messages.get_mut(0).unwrap();
-            message.timestamp = Instant::now() - Duration::from_secs(MAX_AGE_CHAT_MESSAGES as u64);
+            let travel_to_the_past = Instant::now().checked_sub(Duration::from_secs(MAX_AGE_CHAT_MESSAGES as u64));
+            if travel_to_the_past.is_none() {
+                warn!("skipping rest of test; cannot travel to the past :(");
+                return;
+            }
+            message.timestamp = travel_to_the_past.unwrap();
         }
         {
             // Sanity check to ensure player gets the chat message if left unacknowledged
@@ -1632,7 +1636,7 @@ mod netwayste_server_tests {
 
         {
             // Server drains expired messages for the room
-            server.expire_old_messages_in_all_rooms();
+            server.expire_old_messages_in_all_rooms(time::Instant::now());
         }
         {
             // A room that has no messages, but has player(s) who have acknowledged past messages
@@ -1896,7 +1900,7 @@ mod netwayste_server_tests {
         let room_name = "some room";
 
         server.create_new_room(None, room_name.to_owned().clone());
-        server.expire_old_messages_in_all_rooms();
+        server.expire_old_messages_in_all_rooms(time::Instant::now());
 
         for room in server.rooms.values() {
             assert_eq!(room.messages.len(), 0);
@@ -1930,7 +1934,7 @@ mod netwayste_server_tests {
         assert_eq!(message_count, 4);
 
         // Messages are not old enough to be expired
-        server.expire_old_messages_in_all_rooms();
+        server.expire_old_messages_in_all_rooms(time::Instant::now());
 
         for room in server.rooms.values() {
             assert_eq!(room.messages.len(), 4);
@@ -1975,7 +1979,7 @@ mod netwayste_server_tests {
         assert_eq!(message_count2, 2);
 
         // Messages are not old enough to be expired
-        server.expire_old_messages_in_all_rooms();
+        server.expire_old_messages_in_all_rooms(time::Instant::now());
 
         for room in server.rooms.values() {
             assert_eq!(room.messages.len(), 2);
@@ -2002,7 +2006,12 @@ mod netwayste_server_tests {
         server.handle_chat_message(player_id, "What's not to love?".to_owned());
 
         let current_timestamp = Instant::now();
-        let travel_to_the_past = current_timestamp - Duration::from_secs((MAX_AGE_CHAT_MESSAGES+1) as u64);
+        let travel_to_the_past = current_timestamp.checked_sub(Duration::from_secs((MAX_AGE_CHAT_MESSAGES+1) as u64));
+        if travel_to_the_past.is_none() {
+            warn!("skipping rest of test; cannot travel to the past :(");
+            return;
+        }
+        let travel_to_the_past = travel_to_the_past.unwrap();
         for ref mut room in server.rooms.values_mut() {
             println!("Room: {:?}", room.name);
             for m in room.messages.iter_mut() {
@@ -2012,7 +2021,7 @@ mod netwayste_server_tests {
         }
 
         // Messages are not old enough to be expired
-        server.expire_old_messages_in_all_rooms();
+        server.expire_old_messages_in_all_rooms(time::Instant::now());
 
         for room in server.rooms.values() {
             assert_eq!(room.messages.len(), 0);
@@ -2046,7 +2055,12 @@ mod netwayste_server_tests {
         server.handle_chat_message(player_id2, "What's not to love?".to_owned());
 
         let current_timestamp = Instant::now();
-        let travel_to_the_past = current_timestamp - Duration::from_secs((MAX_AGE_CHAT_MESSAGES+1) as u64);
+        let travel_to_the_past = current_timestamp.checked_sub(Duration::from_secs((MAX_AGE_CHAT_MESSAGES+1) as u64));
+        if travel_to_the_past.is_none() {
+            warn!("skipping rest of test; cannot travel to the past :(");
+            return;
+        }
+        let travel_to_the_past = travel_to_the_past.unwrap();
         for ref mut room in server.rooms.values_mut() {
             println!("Room: {:?}", room.name);
             for m in room.messages.iter_mut() {
@@ -2056,7 +2070,7 @@ mod netwayste_server_tests {
         }
 
         // Messages are not old enough to be expired
-        server.expire_old_messages_in_all_rooms();
+        server.expire_old_messages_in_all_rooms(time::Instant::now());
 
         for room in server.rooms.values() {
             assert_eq!(room.messages.len(), 0);
