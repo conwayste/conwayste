@@ -11,7 +11,7 @@ git:
 addons:
   apt:
     # Ubuntu
-    packages: libudev-dev libasound2-dev
+    packages: libudev-dev libasound2-dev wireshark libglib2.0-dev
     update: true
   #homebrew:
   # https://docs.travis-ci.com/user/installing-dependencies#installing-packages-on-macos
