@@ -1,4 +1,4 @@
-/*  Copyright 2019 the Conwayste Developers.
+/*  Copyright 2019-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -22,10 +22,11 @@ use ggez::nalgebra::{Point2, Vector2};
 
 use downcast_rs::Downcast;
 
+use id_tree::NodeId;
+
 use super::{
     UIAction,
     UIResult,
-    WidgetID
 };
 
 /// A user interface element trait that defines graphical, interactive behavior to be specified.
@@ -36,7 +37,10 @@ use super::{
 /// custom widget type.
 pub trait Widget: Downcast + std::fmt::Debug {
     /// Retrieves the widget's unique identifer
-    fn id(&self) -> WidgetID;
+    fn id(&self) -> Option<&NodeId>;
+
+    fn set_id(&mut self, new_id: NodeId);
+
 
     /// Retreives the widget's draw stack order
     fn z_index(&self) -> usize;
@@ -52,7 +56,7 @@ pub trait Widget: Downcast + std::fmt::Debug {
     }
 
     /// Action to be taken when the widget is given the provided point, and a mouse click occurs
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
+    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction> {
         None
     }
 

@@ -30,13 +30,13 @@ pub struct StaticCString(*const u8);
 unsafe impl Sync for StaticCString {}
 
 #[no_mangle]
-pub static plugin_version: StaticCString = StaticCString(b"0.0.1\0" as *const u8);
+pub static plugin_version: StaticCString = StaticCString(b"0.0.2\0" as *const u8);
 
 /// Wireshark major & minor version
 #[no_mangle]
 pub static plugin_want_major: c_int = 3;
 #[no_mangle]
-pub static plugin_want_minor: c_int = 1;
+pub static plugin_want_minor: c_int = 2;
 
 static mut plug_conwayste: ws::proto_plugin = ws::proto_plugin {
     register_protoinfo: None,
