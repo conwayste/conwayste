@@ -188,15 +188,18 @@ extern "C" fn dissect_conwayste(
     }
 }
 
-// called once
+/// Registers the protocol with Wireshark. This is called once during protocol registration.
+///
+/// #Unsafe
+/// Usage of unsafe encapsulates `proto_conwayste` which is initialized once via this function.
 #[no_mangle]
 extern "C" fn proto_register_conwayste() {
     println!("called proto_register_conwayste()");
     unsafe {
         proto_conwayste = ws::proto_register_protocol(
-            reg_proto_name.as_ptr(),
-            reg_short_name.as_ptr(),
-            reg_abbrev.as_ptr(),
+            reg_proto_name.as_ptr(),    // Full name, used in various places in Wireshark GUI
+            reg_short_name.as_ptr(),    // Short name, used in various places in Wireshark GUI
+            reg_abbrev.as_ptr(),        // Abbreviation, for filter
         );
 
         ws::proto_register_field_array(
@@ -212,7 +215,10 @@ lazy_static! {
     static ref handoff_match_name: CString = { CString::new("udp.port").unwrap() };
 }
 
-// called once
+/// Notifies Wireshark to call the dissector when finding UDP traffic on `ws::CONWAYSTE_PORT`.
+///
+/// #Unsafe
+/// Usage of unsafe encapsulates dissector registration, calling `dissect_conwayste` on Conwayste traffic
 #[no_mangle]
 extern "C" fn proto_reg_handoff_conwayste() {
     println!("called proto_reg_handoff_conwayste()");
@@ -227,7 +233,10 @@ extern "C" fn proto_reg_handoff_conwayste() {
     }
 }
 
-// see plugin.c
+/// Call during Wireshark plugin initialization to register the conwayste client.
+///
+/// #Unsafe
+/// Usage of unsafe encapsulates `plug_conwayste` which is initialized once via this function.
 #[no_mangle]
 pub extern "C" fn plugin_register() {
     unsafe {
