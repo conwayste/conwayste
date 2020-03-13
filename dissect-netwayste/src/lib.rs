@@ -59,6 +59,16 @@ pub struct sync_hf_register_info {
 
 unsafe impl Sync for sync_hf_register_info {}
 
+#[repr(C)]
+#[derive(Debug, Clone)]
+struct sync_named_packet_types {
+    index: c_int,
+    name: *const i8,
+}
+
+unsafe impl Sync for sync_named_packet_types {}
+
+
 lazy_static! {
     static ref reg_proto_name: CString = { CString::new("Conwayste Protocol").unwrap() };
     static ref reg_short_name: CString = { CString::new("CWTE").unwrap() };
@@ -70,6 +80,23 @@ lazy_static! {
 
     static ref enum_tag_field_name: CString = { CString::new("CW Enum Tag Field").unwrap() };
     static ref enum_tag_field_abbrev: CString = { CString::new("cw.enumtag").unwrap() };
+
+    static ref enum_names: Vec<CString> = vec![
+        CString::new("Request").unwrap(),
+        CString::new("Response").unwrap(),
+        CString::new("Update").unwrap(),
+        CString::new("UpdateReply").unwrap(),
+    ];
+    static ref enum_strings: Vec<sync_named_packet_types> = {
+        let mut _enum_strings = vec![];
+        for (i, enum_name) in enum_names.iter().enumerate() {
+            _enum_strings.push(sync_named_packet_types {
+                index: i as c_int,
+                name: enum_name.as_ptr(),
+            });
+        }
+        _enum_strings
+    };
 
     // setup protocol subtree array
     // this is actually a Vec<*mut c_int> containing a pointer to ett_conwayste
@@ -98,8 +125,8 @@ lazy_static! {
                 // typically converted by VALS(), RVALS() or TFS().
                 // If this is an FT_PROTOCOL or BASE_PROTOCOL_INFO then it points to the
                 // associated protocol_t structure
+                strings:           enum_strings.as_ptr() as *const c_void,
                 // < [BITMASK] bitmask of interesting bits
-                strings:           ptr::null(),
                 bitmask:           0,
                 blurb:             ptr::null(),   // < [FIELDDESCR] Brief description of field
                 id:                -1,   // < Field ID
@@ -128,13 +155,13 @@ fn print_hex(buf: &[u8]) {
 // THE MEAT
 // called multiple times
 extern "C" fn dissect_conwayste(
-    tvb: *mut ws::tvbuff_t,
-    pinfo: *mut ws::packet_info,
-    tree: *mut ws::proto_tree,
+    tvb: *mut ws::tvbuff_t,         // Buffer the packet resides in
+    pinfo: *mut ws::packet_info,    // general data about protocol
+    tree: *mut ws::proto_tree,      // detail dissection mapped to this tree
     _data: *mut c_void,
 ) -> c_int {
-    //println!("called dissect_conwayste()");
     unsafe {
+        /* Identify these packets as CWTE */
         ws::col_set_str(
             (*pinfo).cinfo,
             ws::COL_PROTOCOL as i32,
@@ -145,13 +172,14 @@ extern "C" fn dissect_conwayste(
 
         // decode packet into a Rust str
 
-        // set the info column
+        // All packet bytes are pulled into packet_vec
         let tvblen = ws::tvb_reported_length(tvb) as usize;
         let mut packet_vec = Vec::<u8>::with_capacity(tvblen);
         for i in 0..tvblen {
             packet_vec.push(ws::tvb_get_guint8(tvb, i as i32));
         }
-        //println!("first byte from tvb_get_guint8 is {:02x}", ws::tvb_get_guint8(tvb, 0));
+
+        // set the info column
         let (_, opt_packet) = LineCodec.decode(&dummy_addr, &packet_vec).unwrap();
         if let Some(packet) = opt_packet {
             let info_str = CString::new(format!("{:?}", packet)).unwrap();
