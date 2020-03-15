@@ -9,13 +9,13 @@ extern crate netwayste;
 extern crate lazy_static;
 extern crate tokio_core;
 
-use netwayste::net::LineCodec;
+use netwayste::net::{LineCodec, Packet as NetwaystePacket};
 use tokio_core::net::UdpCodec;
 
 use std::mem;
 use std::net::SocketAddr;
 use std::ptr;
-
+use std::io::{Error, ErrorKind};
 use std::ffi::CString;
 use std::os::raw::{c_int, c_void};
 
@@ -23,6 +23,11 @@ use std::os::raw::{c_int, c_void};
 mod ws {
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
+
+// TODO get this from somewhere else. Not sure if self definition is the best route?
+const UDP_MTU_SIZE: usize = 1460;
+// PR_GATE reevaluate this once other fields are added in
+const ENUM_SIZE: i32 = mem::size_of::<i32>() as i32;
 
 // :( https://stackoverflow.com/questions/33850189/how-to-publish-a-constant-string-in-the-rust-ffi
 #[repr(C)]
@@ -171,6 +176,57 @@ enum WSColumn {
     Info = ws::COL_INFO,
 }
 
+#[repr(u32)]
+enum WSEncoding {
+    BigEndian = ws::ENC_BIG_ENDIAN,
+    LittleEndian = ws::ENC_LITTLE_ENDIAN,
+}
+
+enum ConwaysteField {
+    EnumTag,
+}
+
+struct ConwaysteTree {
+    tree: *mut ws::proto_tree,
+}
+
+impl ConwaysteTree {
+    pub fn new(tvb: *mut ws::tvbuff_t, tree: *mut ws::proto_tree) -> Self {
+        unsafe {
+            //// make tree, etc.! See example 9.4+ from https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
+            // Add "Conwayste Protocol" tree (initially with nothing under it), under "User Datagram
+            // Protocol" in middle pane.
+            const tvb_data_start: c_int = 0;    // start of the tvb
+            const tvb_data_length: c_int = -1;  // until the end
+            const no_encoding: u32 = ws::ENC_NA;
+            let ti = ws::proto_tree_add_item(tree, proto_conwayste, tvb, tvb_data_start,
+                tvb_data_length, no_encoding);
+            let tree = ws::proto_item_add_subtree(ti, ett_conwayste);
+            ConwaysteTree { tree }
+        }
+    }
+
+    pub fn add_item(&self, tvb: *mut ws::tvbuff_t, field: ConwaysteField) {
+        const start: i32 = 0;
+        let hf_field: c_int;
+        let length: i32;
+        let encoding: WSEncoding;
+
+        match field {
+            ConwaysteField::EnumTag => {
+                unsafe {hf_field = hf_conwayste_enum_tag_field};
+                length = ENUM_SIZE;
+                encoding = WSEncoding::LittleEndian;
+            }
+        }
+
+        unsafe {
+            // Attach stuff under "Conwayste Protocol" tree
+            ws::proto_tree_add_item(self.tree, hf_field, tvb, start, length, encoding as u32);
+        }
+    }
+}
+
 /// A safe wrapper for `col_add_str`, which copies the provided string to the target column.
 fn column_add_str(pinfo: *mut ws::packet_info, column: WSColumn, name: CString) {
     unsafe { ws::col_add_str((*pinfo).cinfo, column as i32, name.as_ptr()); }
@@ -185,6 +241,50 @@ fn column_set_str(pinfo: *mut ws::packet_info, column: WSColumn, name: &CString)
 /// A safe wrapper for `col_clear`, which clears the specified column.
 fn column_clear(pinfo: *mut ws::packet_info, column: WSColumn) {
     unsafe { ws::col_clear((*pinfo).cinfo, column as i32); }
+}
+
+// For an explanation of the difference of captured vs reported tvb lengths,
+// see https://seclists.org/wireshark/2015/Sep/15
+// For our purposes, this should match the reported length of the tvb because we aren't snapshotting
+// in the buffer. We want the entire packet.
+/// The number of bytes captured from a packet in the tv buffer.
+fn tvb_captured_length(tvb: *mut ws::tvbuff_t) -> i32 {
+    unsafe {
+        let len = ws::tvb_captured_length(tvb) as i32;
+        assert!(len > 0);
+        len
+    }
+}
+
+/// The number of bytes in the the entire tv buffer.
+fn tvb_reported_length(tvb: *mut ws::tvbuff_t) -> usize {
+    unsafe {
+        let len = ws::tvb_reported_length(tvb) as i32;
+        assert!(len > 0); // a length of zero means we're at the end of the buffer
+        len as usize
+    }
+}
+
+/// Decode packet bytes from the tv buffer into a netwayste packet
+fn get_cwte_packet(tvb: *mut ws::tvbuff_t) -> Result<NetwaystePacket, std::io::Error> {
+    let tvblen = tvb_reported_length(tvb) as usize;
+    assert!(tvblen <= UDP_MTU_SIZE); // Panic if the length exceeds the UDP max transmission unit
+
+    let mut packet_vec = Vec::<u8>::with_capacity(tvblen);
+    for i in 0..tvblen {
+        let byte = unsafe { ws::tvb_get_guint8(tvb, i as i32) };
+        packet_vec.push(byte);
+    }
+
+    // set the info column
+    LineCodec.decode(&dummy_addr, &packet_vec)
+        .and_then(|(_socketaddr, opt_packet)| {
+            if let Some(packet) = opt_packet {
+                return Ok(packet);
+            } else {
+                return Err(Error::new(ErrorKind::InvalidData, "CWTE Decode Error"));
+            }
+        })
 }
 
 // THE MEAT
@@ -209,25 +309,18 @@ extern "C" fn dissect_conwayste(
         column_set_str(pinfo, WSColumn::Info, &protocol_strings.invalid_packet);
     }
 
-        //// make tree, etc.! See example 9.4+ from https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
-        // Add "Conwayste Protocol" tree (initially with nothing under it), under "User Datagram
-        // Protocol" in middle pane.
-        let ti = ws::proto_tree_add_item(tree, proto_conwayste, tvb, 0, -1, ws::ENC_NA);
-        let cw_tree = ws::proto_item_add_subtree(ti, ett_conwayste);
-
-        // Attach stuff under "Conwayste Protocol" tree
-        ws::proto_tree_add_item(
-            cw_tree,
-            hf_conwayste_enum_tag_field,
-            tvb,
-            0,   // start
-            mem::size_of::<u32>() as i32, // length
-            ws::ENC_LITTLE_ENDIAN, // encoding
-        );
+    let conwayste_tree = ConwaysteTree::new(tvb, tree);
+    conwayste_tree.add_item(tvb, ConwaysteField::EnumTag);
         // TODO: auto-generate more trees and items from inspecting AST of Packet
 
-        ws::tvb_captured_length(tvb) as i32 // return length of packet
+    // return the entire packet lenth.
+    let captured_len = tvb_captured_length(tvb);
+    let reported_len = tvb_reported_length(tvb) as i32;
+    if captured_len != reported_len {
+        println!("CWTE Dissection Warning: Captured length ({}) differs from reported length ({}).",
+            captured_len, reported_len);
     }
+    reported_len
 }
 
 /// Registers the protocol with Wireshark. This is called once during protocol registration.
