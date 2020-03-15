@@ -68,13 +68,26 @@ struct sync_named_packet_types {
 
 unsafe impl Sync for sync_named_packet_types {}
 
+struct ConwaysteProtocolStrings {
+    proto_full_name: CString,
+    proto_short_name: CString,
+    proto_abbrev: CString,
+    invalid_packet: CString,
+}
+
+impl ConwaysteProtocolStrings {
+    fn new() -> Self {
+        ConwaysteProtocolStrings {
+            proto_full_name: CString::new("Conwayste Protocol").unwrap(),
+            proto_short_name: CString::new("CWTE").unwrap(),
+            proto_abbrev: CString::new("udp.cw").unwrap(),
+            invalid_packet: CString::new("[INVALID PACKET]").unwrap(),
+        }
+    }
+}
 
 lazy_static! {
-    static ref reg_proto_name: CString = { CString::new("Conwayste Protocol").unwrap() };
-    static ref reg_short_name: CString = { CString::new("CWTE").unwrap() };
-    static ref reg_abbrev: CString = { CString::new("udp.cw").unwrap() };
-    static ref invalid_packet_str: CString = { CString::new("[INVALID PACKET]").unwrap() };
-
+    static ref protocol_strings: ConwaysteProtocolStrings = ConwaysteProtocolStrings::new();
     // our UDP codec expects a SocketAddr argument but we don't care
     static ref dummy_addr: SocketAddr = { SocketAddr::new([127,0,0,1].into(), 54321) };
 
@@ -152,6 +165,28 @@ fn print_hex(buf: &[u8]) {
     println!("[{}]", s);
 }
 
+#[repr(u32)]
+enum WSColumn {
+    Protocol = ws::COL_PROTOCOL,
+    Info = ws::COL_INFO,
+}
+
+/// A safe wrapper for `col_add_str`, which copies the provided string to the target column.
+fn column_add_str(pinfo: *mut ws::packet_info, column: WSColumn, name: CString) {
+    unsafe { ws::col_add_str((*pinfo).cinfo, column as i32, name.as_ptr()); }
+}
+
+/// A safe wrapper for `col_set_str`, which takes a pointer to the provided string and therefore
+/// must live for the duration of usage!
+fn column_set_str(pinfo: *mut ws::packet_info, column: WSColumn, name: &CString) {
+    unsafe { ws::col_set_str((*pinfo).cinfo, column as i32, name.as_ptr()); }
+}
+
+/// A safe wrapper for `col_clear`, which clears the specified column.
+fn column_clear(pinfo: *mut ws::packet_info, column: WSColumn) {
+    unsafe { ws::col_clear((*pinfo).cinfo, column as i32); }
+}
+
 // THE MEAT
 // called multiple times
 extern "C" fn dissect_conwayste(
@@ -160,40 +195,19 @@ extern "C" fn dissect_conwayste(
     tree: *mut ws::proto_tree,      // detail dissection mapped to this tree
     _data: *mut c_void,
 ) -> c_int {
-    unsafe {
-        /* Identify these packets as CWTE */
-        ws::col_set_str(
-            (*pinfo).cinfo,
-            ws::COL_PROTOCOL as i32,
-            reg_short_name.as_ptr(),
-        );
-        /* Clear out stuff in the info column */
-        ws::col_clear((*pinfo).cinfo, ws::COL_INFO as i32);
+    /* Identify these packets as CWTE */
+    column_set_str(pinfo, WSColumn::Protocol, &protocol_strings.proto_short_name);
 
-        // decode packet into a Rust str
+    /* Clear out stuff in the info column */
+    column_clear(pinfo, WSColumn::Info);
 
-        // All packet bytes are pulled into packet_vec
-        let tvblen = ws::tvb_reported_length(tvb) as usize;
-        let mut packet_vec = Vec::<u8>::with_capacity(tvblen);
-        for i in 0..tvblen {
-            packet_vec.push(ws::tvb_get_guint8(tvb, i as i32));
-        }
-
-        // set the info column
-        let (_, opt_packet) = LineCodec.decode(&dummy_addr, &packet_vec).unwrap();
-        if let Some(packet) = opt_packet {
-            let info_str = CString::new(format!("{:?}", packet)).unwrap();
-
-            // col_add_str copies from the provided pointer, so info_str can be dropped safely
-            ws::col_add_str((*pinfo).cinfo, ws::COL_INFO as i32, info_str.as_ptr());
-        } else {
-            // col_set_str takes the provided pointer! Must live long enough
-            ws::col_set_str(
-                (*pinfo).cinfo,
-                ws::COL_INFO as i32,
-                invalid_packet_str.as_ptr(),
-            );
-        }
+    /* decode packet into a Rust str */
+    if let Ok(packet) = get_cwte_packet(tvb) {
+        let info_str = CString::new(format!("{:?}", packet)).unwrap();
+        column_add_str(pinfo, WSColumn::Info, info_str);
+    } else {
+        column_set_str(pinfo, WSColumn::Info, &protocol_strings.invalid_packet);
+    }
 
         //// make tree, etc.! See example 9.4+ from https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
         // Add "Conwayste Protocol" tree (initially with nothing under it), under "User Datagram
@@ -225,9 +239,9 @@ extern "C" fn proto_register_conwayste() {
     println!("called proto_register_conwayste()");
     unsafe {
         proto_conwayste = ws::proto_register_protocol(
-            reg_proto_name.as_ptr(),    // Full name, used in various places in Wireshark GUI
-            reg_short_name.as_ptr(),    // Short name, used in various places in Wireshark GUI
-            reg_abbrev.as_ptr(),        // Abbreviation, for filter
+            protocol_strings.proto_full_name.as_ptr(),  // Full name, used in various places in Wireshark GUI
+            protocol_strings.proto_short_name.as_ptr(), // Short name, used in various places in Wireshark GUI
+            protocol_strings.proto_abbrev.as_ptr(),     // Abbreviation, for filter
         );
 
         ws::proto_register_field_array(
