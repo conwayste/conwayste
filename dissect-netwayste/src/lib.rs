@@ -64,6 +64,25 @@ pub struct sync_hf_register_info {
 
 unsafe impl Sync for sync_hf_register_info {}
 
+impl Default for ws::header_field_info {
+    fn default() -> Self {
+        ws::header_field_info {
+            name:   ptr::null(), // < [FIELDNAME] full name of this field
+            abbrev: ptr::null(), // < [FIELDABBREV] abbreviated name of this field
+            type_: FieldType::NoType as u32, // < [FIELDTYPE] field type
+            display: FieldDisplay::NoDisplay as i32, // < [FIELDDISPLAY] Base representation on display
+            strings: ptr::null(),
+            bitmask: 0, // < [BITMASK] bitmask of interesting bits
+            blurb: ptr::null(),   // < [FIELDDESCR] Brief description of field
+            id: -1,   // < Field ID
+            parent: -1,   // < parent protocol tree
+            ref_type: 0,    // < is this field referenced by a filter
+            same_name_prev_id: -1,   // < ID of previous hfinfo with same abbrev
+            same_name_next: ptr::null_mut(), // < Link to next hfinfo with same abbrev
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Clone)]
 struct sync_named_packet_types {
@@ -91,13 +110,39 @@ impl ConwaysteProtocolStrings {
     }
 }
 
+#[repr(u32)]
+enum FieldDisplay {
+    NoDisplay = ws::field_display_e_BASE_NONE,
+    Decimal = ws::field_display_e_BASE_DEC,
+    Hexadecimal = ws::field_display_e_BASE_HEX,
+    Oct = ws::field_display_e_BASE_OCT,
+    DecHex = ws::field_display_e_BASE_DEC_HEX,
+    HexDec = ws::field_display_e_BASE_HEX_DEC,
+}
+
+#[repr(u32)]
+enum FieldType {
+    NoType = ws::ftenum_FT_NONE,
+    Char = ws::ftenum_FT_CHAR,
+    U8 = ws::ftenum_FT_UINT8,
+    U16 = ws::ftenum_FT_UINT16,
+    U32 = ws::ftenum_FT_UINT32,
+    U64 = ws::ftenum_FT_UINT64,
+    I8 = ws::ftenum_FT_INT8,
+    I16 = ws::ftenum_FT_INT16,
+    I32 = ws::ftenum_FT_INT32,
+    I64 = ws::ftenum_FT_INT64,
+    Str = ws::ftenum_FT_STRING,
+    Str_z = ws::ftenum_FT_STRINGZ,
+}
+
 lazy_static! {
     static ref protocol_strings: ConwaysteProtocolStrings = ConwaysteProtocolStrings::new();
     // our UDP codec expects a SocketAddr argument but we don't care
     static ref dummy_addr: SocketAddr = { SocketAddr::new([127,0,0,1].into(), 54321) };
 
-    static ref enum_tag_field_name: CString = { CString::new("CW Enum Tag Field").unwrap() };
-    static ref enum_tag_field_abbrev: CString = { CString::new("cw.enumtag").unwrap() };
+    static ref enum_tag_field_name: CString = { CString::new("CWTE Enum Tag Field").unwrap() };
+    static ref enum_tag_field_abbrev: CString = { CString::new("cwte.enumtag").unwrap() };
 
     static ref enum_names: Vec<CString> = vec![
         CString::new("Request").unwrap(),
@@ -134,24 +179,12 @@ lazy_static! {
         let enum_tag_field = sync_hf_register_info {
             p_id: unsafe { &mut hf_conwayste_enum_tag_field as *mut c_int },
             hfinfo: ws::header_field_info {
-                name:              enum_tag_field_name.as_ptr(),   // < [FIELDNAME] full name of this field
-                abbrev:            enum_tag_field_abbrev.as_ptr(), // < [FIELDABBREV] abbreviated name of this field
-                type_:             ws::ftenum_FT_UINT32,     // < [FIELDTYPE] field type, one of FT_ (from ftypes.h)
-                // < [FIELDDISPLAY] one of BASE_, or field bit-width if FT_BOOLEAN and non-zero bitmask
-                display:           ws::field_display_e_BASE_DEC as i32,
-                // < [FIELDCONVERT] value_string, val64_string, range_string or true_false_string,
-                // typically converted by VALS(), RVALS() or TFS().
-                // If this is an FT_PROTOCOL or BASE_PROTOCOL_INFO then it points to the
-                // associated protocol_t structure
+                name:              enum_tag_field_name.as_ptr(),
+                abbrev:            enum_tag_field_abbrev.as_ptr(),
+                type_:             FieldType::U32 as u32,
+                display:           FieldDisplay::Decimal as i32,
                 strings:           enum_strings.as_ptr() as *const c_void,
-                // < [BITMASK] bitmask of interesting bits
-                bitmask:           0,
-                blurb:             ptr::null(),   // < [FIELDDESCR] Brief description of field
-                id:                -1,   // < Field ID
-                parent:            -1,   // < parent protocol tree
-                ref_type:          0,    // < is this field referenced by a filter
-                same_name_prev_id: -1,   // < ID of previous hfinfo with same abbrev
-                same_name_next:    ptr::null_mut(), // < Link to next hfinfo with same abbrev
+                ..Default::default()
             },
         };
 
@@ -192,13 +225,13 @@ struct ConwaysteTree {
 
 impl ConwaysteTree {
     pub fn new(tvb: *mut ws::tvbuff_t, tree: *mut ws::proto_tree) -> Self {
+        //// make tree, etc.! See example 9.4+ from https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
+        // Add "Conwayste Protocol" tree (initially with nothing under it), under "User Datagram
+        // Protocol" in middle pane.
+        const tvb_data_start: c_int = 0;    // start of the tvb
+        const tvb_data_length: c_int = -1;  // until the end
+        const no_encoding: u32 = ws::ENC_NA;
         unsafe {
-            //// make tree, etc.! See example 9.4+ from https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
-            // Add "Conwayste Protocol" tree (initially with nothing under it), under "User Datagram
-            // Protocol" in middle pane.
-            const tvb_data_start: c_int = 0;    // start of the tvb
-            const tvb_data_length: c_int = -1;  // until the end
-            const no_encoding: u32 = ws::ENC_NA;
             let ti = ws::proto_tree_add_item(tree, proto_conwayste, tvb, tvb_data_start,
                 tvb_data_length, no_encoding);
             let tree = ws::proto_item_add_subtree(ti, ett_conwayste);
