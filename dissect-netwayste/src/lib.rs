@@ -31,12 +31,16 @@ extern crate tokio_core;
 use netwayste::net::{LineCodec, Packet as NetwaystePacket};
 use tokio_core::net::UdpCodec;
 
+use std::collections::HashMap;
 use std::mem;
 use std::net::SocketAddr;
 use std::ptr;
 use std::io::{Error, ErrorKind};
 use std::ffi::CString;
 use std::os::raw::{c_int, c_void};
+
+mod netwaysteparser;
+use netwaysteparser::{parse_netwayste_format, Sizing, MemberDescriptor, Members, NetwaysteDataFormat};
 
 /// Wireshark C bindings
 mod ws {
@@ -448,6 +452,7 @@ extern "C" fn proto_reg_handoff_conwayste() {
             conwayste_handle,
         );
     }
+    let parsed_netwayste: HashMap<String, NetwaysteDataFormat> = parse_netwayste_format();
 }
 
 /// Call during Wireshark plugin initialization to register the conwayste client.
