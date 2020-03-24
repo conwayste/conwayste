@@ -1,3 +1,22 @@
+/*
+ * Herein lies a Wireshark dissector for the multiplayer game, Conwayste.
+ *
+ * Copyright (C) 2019-2020 The Conwayste Developers
+ *
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of  MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along with
+ * this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
@@ -120,6 +139,7 @@ enum FieldDisplay {
     HexDec = ws::field_display_e_BASE_HEX_DEC,
 }
 
+#[derive(Debug)]
 #[repr(u32)]
 enum FieldType {
     NoType = ws::ftenum_FT_NONE,
@@ -132,8 +152,37 @@ enum FieldType {
     I16 = ws::ftenum_FT_INT16,
     I32 = ws::ftenum_FT_INT32,
     I64 = ws::ftenum_FT_INT64,
+    F32 = ws::ftenum_FT_FLOAT,
+    F64 = ws::ftenum_FT_DOUBLE,
     Str = ws::ftenum_FT_STRING,
     Str_z = ws::ftenum_FT_STRINGZ,
+}
+
+impl From<String> for FieldType {
+    fn from(input: String) -> Self {
+        input.as_str().into()
+    }
+}
+
+impl From<&str> for FieldType {
+    fn from(input: &str) -> Self {
+        use FieldType::*;
+        match input {
+            "u64" => U64,
+            "i64" => I64,
+            "u32" => U32,
+            "i32" => I32,
+            "u16" => U16,
+            "i16" => I16,
+            "u8" => U8,
+            "i8" => I8,
+            "f64" => F64,
+            "f32" => F32,
+            "char" => Char,
+            "String" => Str,
+            _ => NoType,
+        }
+    }
 }
 
 lazy_static! {
@@ -144,7 +193,7 @@ lazy_static! {
     static ref enum_tag_field_name: CString = { CString::new("CWTE Enum Tag Field").unwrap() };
     static ref enum_tag_field_abbrev: CString = { CString::new("cwte.enumtag").unwrap() };
 
-    static ref enum_names: Vec<CString> = vec![
+    static ref packet_variants: Vec<CString> = vec![
         CString::new("Request").unwrap(),
         CString::new("Response").unwrap(),
         CString::new("Update").unwrap(),
@@ -152,7 +201,7 @@ lazy_static! {
     ];
     static ref enum_strings: Vec<sync_named_packet_types> = {
         let mut _enum_strings = vec![];
-        for (i, enum_name) in enum_names.iter().enumerate() {
+        for (i, enum_name) in packet_variants.iter().enumerate() {
             _enum_strings.push(sync_named_packet_types {
                 index: i as c_int,
                 name: enum_name.as_ptr(),
