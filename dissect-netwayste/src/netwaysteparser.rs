@@ -37,22 +37,19 @@ pub enum Sizing {
 
 #[derive(Debug)]
 /// Describes one item belonging to a container data type
-pub struct MemberDescriptor {
+pub struct FieldDescriptor {
     name: Option<String>,   // If None, then the member is unnamed. Like `MyEnum(u8)`
     format: Vec<Sizing>,    // Size of associated member type. List is used when type nests
-}
-
-#[derive(Debug)]
-pub enum Members {
-    Enumerator(HashMap<String, Vec<MemberDescriptor>>), // maps enum name to it's variants
-    Structure(Vec<MemberDescriptor>),   // holds descriptions of the member variables in the struct
 }
 
 /// Describes all containers (either an enum or a struct) for the Netwayste library into a format
 /// that the dissect-netwayste Wireshark plugin will use.
 #[derive(Debug)]
-pub struct NetwaysteDataFormat {
-    members: Members,
+pub enum NetwaysteDataFormat {
+    // First parameter is the ordered-by-value variants as strings.
+    // Second parameter maps the variant to its named/unnamed fields.
+    Enumerator(Vec<String>, HashMap<String, Vec<FieldDescriptor>>),
+    Structure(Vec<FieldDescriptor>),   // Contains descriptions of the struct member variables
 }
 
 /// Determines the size of the specified string representation of a data type. A list of `Sizings`
@@ -169,7 +166,7 @@ fn extract_type(ty: &syn::Type) -> String {
     "".to_owned()
 }
 
-fn convert_field_to_member(f: &syn::Field) -> MemberDescriptor {
+fn convert_field_to_member(f: &syn::Field) -> FieldDescriptor {
     let ty = extract_type(&f.ty);
     let ident = if let Some(ref fi) = f.ident {
         Some(fi.to_string())
@@ -178,40 +175,45 @@ fn convert_field_to_member(f: &syn::Field) -> MemberDescriptor {
     };
 
     let descriptions = parse_size_from_type(ty.clone());
-    MemberDescriptor {
+    FieldDescriptor {
         name: ident,
         format: descriptions,
     }
 }
 
-/// Parses all variants and their fields/members of an enum, returning a description of name
-/// (where applicable) and the correspnding type size.
-fn parse_enum(e: &syn::ItemEnum) -> HashMap<String, Vec<MemberDescriptor>> {
+/// Parses all variants and their fields of an enum.
+///
+/// Returns a list of variants -- ordered by definition -- and a description of field name
+/// (where applicable) and the corresponding type's size.
+fn parse_enum(e: &syn::ItemEnum) -> (Vec<String>, HashMap<String, Vec<FieldDescriptor>>) {
     let mut variants = HashMap::new();
+    let mut ordered_variants = vec![];
+
     e.variants.iter().for_each(|v| {
-        let mut members = vec![];
+        let mut field = vec![];
         let variant = v.ident.to_string();
         v.fields.iter().for_each(|f| {
             let md = convert_field_to_member(f);
-            members.push(md);
+            field.push(md);
         });
 
-        variants.insert(variant, members);
+        ordered_variants.push(variant.clone());
+        variants.insert(variant, field);
     });
 
-    variants
+    (ordered_variants, variants)
 }
 
 /// Parses all members of a struct, returning a description of field name and it's correspnding
 /// type size.
-fn parse_struct(s: &syn::ItemStruct) -> Vec<MemberDescriptor> {
-    let mut members = vec![];
+fn parse_struct(s: &syn::ItemStruct) -> Vec<FieldDescriptor> {
+    let mut fields = vec![];
     s.fields.iter().for_each(|f| {
             let md = convert_field_to_member(f);
-            members.push(md);
+            fields.push(md);
     });
 
-    members
+    fields
 }
 
 /// Creates a mapping of structure/enum names to a parsed representation of their innards.
@@ -228,18 +230,13 @@ pub fn parse_netwayste_format() -> HashMap<String, NetwaysteDataFormat>{
     for item in syntax.items {
         match item {
             Enum(ref e) => {
-
-                        let members = parse_enum(&e);
-                        map.insert(e.ident.to_string(), NetwaysteDataFormat {
-                            members: Members::Enumerator(members),
-                        });
+                let (variants, fields) = parse_enum(&e);
+                map.insert(e.ident.to_string(), NetwaysteDataFormat::Enumerator(variants, fields));
             },
             Struct(ref s) => {
-                let members = parse_struct(&s);
+                let structure = parse_struct(&s);
                 let name = s.ident.to_string();
-                map.insert(name.clone(), NetwaysteDataFormat {
-                    members: Members::Structure(members),
-                });
+                map.insert(name.clone(), NetwaysteDataFormat::Structure(structure));
             },
             _ => {}
         }

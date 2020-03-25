@@ -40,7 +40,7 @@ use std::ffi::CString;
 use std::os::raw::{c_int, c_void};
 
 mod netwaysteparser;
-use netwaysteparser::{parse_netwayste_format, Sizing, MemberDescriptor, Members, NetwaysteDataFormat};
+use netwaysteparser::{parse_netwayste_format, Sizing, FieldDescriptor, NetwaysteDataFormat};
 
 /// Wireshark C bindings
 mod ws {
@@ -197,6 +197,7 @@ lazy_static! {
     static ref enum_tag_field_name: CString = { CString::new("CWTE Enum Tag Field").unwrap() };
     static ref enum_tag_field_abbrev: CString = { CString::new("cwte.enumtag").unwrap() };
 
+    static ref netwayste_data: HashMap<String, NetwaysteDataFormat> = parse_netwayste_format();
     static ref packet_variants: Vec<CString> = vec![
         CString::new("Request").unwrap(),
         CString::new("Response").unwrap(),
