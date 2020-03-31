@@ -32,15 +32,16 @@ use netwayste::net::{LineCodec, Packet as NetwaystePacket};
 use tokio_core::net::UdpCodec;
 
 use std::collections::HashMap;
+use std::ffi::CString;
+use std::io::{Error, ErrorKind};
 use std::mem;
 use std::net::SocketAddr;
-use std::ptr;
-use std::io::{Error, ErrorKind};
-use std::ffi::CString;
 use std::os::raw::{c_int, c_void};
+use std::ptr;
+use std::sync::Mutex;
 
 mod netwaysteparser;
-use netwaysteparser::{parse_netwayste_format, Sizing, FieldDescriptor, NetwaysteDataFormat};
+use netwaysteparser::{parse_netwayste_format, FieldDescriptor, NetwaysteDataFormat::{self, Enumerator, Structure}};
 
 /// Wireshark C bindings
 mod ws {
@@ -73,8 +74,55 @@ static mut plug_conwayste: ws::proto_plugin = ws::proto_plugin {
 
 static mut proto_conwayste: c_int = -1;
 
-static mut hf_conwayste_enum_tag_field: c_int = -1;
 static mut ett_conwayste: c_int = -1;
+
+/// HFFieldAllocator keeps track of which header fields have been used during header field registration.
+///
+/// # Notes
+/// Internally it uses a run-time populated vector sized to the number of Netwayste enums/structures
+/// and their member fields. Assignment involves tracking which fields each slot has been assigned to.
+///
+/// # Panics
+/// When all header fields have been used up. This may occur if the number of registrations exceed
+/// the number of enum/struct members found during parsing.
+///
+#[derive(Debug)]
+struct HFFieldAllocator<> {
+    hf_fields: Vec<c_int>,
+    allocated: HashMap<String, usize>,
+}
+
+impl HFFieldAllocator {
+    fn new() -> HFFieldAllocator {
+        HFFieldAllocator {
+            hf_fields: Vec::new(),
+            allocated: HashMap::new(),
+        }
+    }
+
+    /// Retrieves a pointer to the (mutable) allocated header field for the provided string.
+    ///
+    /// # Panics
+    /// Will panic if the provided String is not registered. This is intentional as a means to catch
+    /// bugs.
+    fn get(&mut self, name: String) -> &mut c_int {
+        if let Some(index) =  self.allocated.get(&name) {
+            assert!(*index < self.hf_fields.len());
+            // Unwrap safe b/c of assert
+            let item = self.hf_fields.get_mut(*index).unwrap();
+            return item;
+        }
+        unreachable!();
+    }
+
+    /// Registers the provided string with the allocator. This must be called prior to any `get()`
+    /// calls!
+    fn register(&mut self, name: String) {
+        //println!("Registering..... {}", name);
+        self.hf_fields.push(-1);
+        self.allocated.insert(name, self.hf_fields.len() - 1);
+    }
+}
 
 // same as hf_register_info from bindings.rs except the pointer is *const instead of *mut
 // UGLY HACK
@@ -86,6 +134,7 @@ pub struct sync_hf_register_info {
 }
 
 unsafe impl Sync for sync_hf_register_info {}
+unsafe impl Send for sync_hf_register_info {}
 
 impl Default for ws::header_field_info {
     fn default() -> Self {
@@ -194,23 +243,30 @@ lazy_static! {
     // our UDP codec expects a SocketAddr argument but we don't care
     static ref dummy_addr: SocketAddr = { SocketAddr::new([127,0,0,1].into(), 54321) };
 
+    // All header fields (decoded or ignored) will be tracked via the `HFFieldAllocator`
+    static ref hf_fields: Mutex<HFFieldAllocator> = Mutex::new(HFFieldAllocator::new());
+
     static ref enum_tag_field_name: CString = { CString::new("CWTE Enum Tag Field").unwrap() };
     static ref enum_tag_field_abbrev: CString = { CString::new("cwte.enumtag").unwrap() };
 
-    static ref netwayste_data: HashMap<String, NetwaysteDataFormat> = parse_netwayste_format();
-    static ref packet_variants: Vec<CString> = vec![
-        CString::new("Request").unwrap(),
-        CString::new("Response").unwrap(),
-        CString::new("Update").unwrap(),
-        CString::new("UpdateReply").unwrap(),
-    ];
-    static ref enum_strings: Vec<sync_named_packet_types> = {
+    // The result of parsing the AST of `netwayste/src/net.rs`. AST is piped through the parser to
+    // give us a simplified description of the net.rs data layout.
+    static ref netwayste_data: HashMap<String, NetwaysteDataFormat> = {
+        let _nw_data: HashMap<String, NetwaysteDataFormat> = parse_netwayste_format();
+        _nw_data
+    };
+
+    // The `Packet` enum variants will be decoded in the tree. Requires a list of [(index, string),]
+    static ref packet_enum_strings: Vec<sync_named_packet_types> = {
         let mut _enum_strings = vec![];
-        for (i, enum_name) in packet_variants.iter().enumerate() {
-            _enum_strings.push(sync_named_packet_types {
-                index: i as c_int,
-                name: enum_name.as_ptr(),
-            });
+        let p = "Packet".to_owned();
+        if let Some(Enumerator(enums, _)) = netwayste_data.get(&p) {
+            for (i, enum_name) in enums.iter().enumerate() {
+                _enum_strings.push(sync_named_packet_types {
+                    index: i as c_int,
+                    name: enum_name.as_ptr() as *const i8,
+                });
+            }
         }
         _enum_strings
     };
@@ -225,26 +281,33 @@ lazy_static! {
     };
 
     // setup protocol field array
-    static ref hf: Vec<sync_hf_register_info> = {
-        let mut _hf = vec![];
+    static ref hf: Mutex<Vec<sync_hf_register_info>> = Mutex::new(Vec::new());
+}
 
-        // enum tag field of the Packet
-        // TODO: auto-generate this by reading the AST of netwayste/src/net.rs
-        let enum_tag_field = sync_hf_register_info {
-            p_id: unsafe { &mut hf_conwayste_enum_tag_field as *mut c_int },
-            hfinfo: ws::header_field_info {
-                name:              enum_tag_field_name.as_ptr(),
-                abbrev:            enum_tag_field_abbrev.as_ptr(),
-                type_:             FieldType::U32 as u32,
-                display:           FieldDisplay::Decimal as i32,
-                strings:           enum_strings.as_ptr() as *const c_void,
-                ..Default::default()
-            },
-        };
+// *************************************************************************************************
+// The following private functions are intended to be the only means to work with `hf_fields` and `hf`
+// static variables. Due to the non-definable order of `lazy-static` instantiation, both fields are
+// initialized when Wireshark registers the dissector, but before any dissection occurs. These
+// static variables use a `Mutex` and the usage of these functions ensure the locks are dropped cleanly.
+// We aren't multithreading here but it's still good practice and helps with readability.
+// (Suggested by https://users.rust-lang.org/t/how-can-i-use-mutable-lazy-static/3751/5)
 
-        _hf.push(enum_tag_field);
-        _hf
-    };
+fn hf_register(name: String) {
+    hf_fields.lock().unwrap().register(name);
+}
+
+fn hf_get(name: String) -> *mut c_int {
+    hf_fields.lock().unwrap().get(name) as *mut c_int
+}
+
+fn hf_as_ptr() -> *const sync_hf_register_info {
+    let ptr = hf.lock().unwrap().as_ptr();
+    ptr
+}
+
+fn hf_len() -> usize {
+    let len = hf.lock().unwrap().len();
+    len
 }
 
 // Just a sad little utility function to print hex in a u8 slice
@@ -301,7 +364,7 @@ impl ConwaysteTree {
 
         match field {
             ConwaysteField::EnumTag => {
-                unsafe {hf_field = hf_conwayste_enum_tag_field};
+                unsafe {hf_field = *hf_get("Packet".to_owned())};
                 length = ENUM_SIZE;
                 encoding = WSEncoding::LittleEndian;
             }
@@ -412,11 +475,16 @@ extern "C" fn dissect_conwayste(
 
 /// Registers the protocol with Wireshark. This is called once during protocol registration.
 ///
-/// #Unsafe
+/// # Unsafe
 /// Usage of unsafe encapsulates `proto_conwayste` which is initialized once via this function.
 #[no_mangle]
 extern "C" fn proto_register_conwayste() {
     println!("called proto_register_conwayste()");
+
+    // PR_GATE: See if it makes sense to combine these two routines into one
+    register_header_fields();
+    build_header_field_array();
+
     unsafe {
         proto_conwayste = ws::proto_register_protocol(
             protocol_strings.proto_full_name.as_ptr(),  // Full name, used in various places in Wireshark GUI
@@ -426,11 +494,79 @@ extern "C" fn proto_register_conwayste() {
 
         ws::proto_register_field_array(
             proto_conwayste,
-            hf.as_ptr() as *mut ws::hf_register_info,
-            hf.len() as i32,
+            hf_as_ptr() as *mut ws::hf_register_info,
+            hf_len() as i32,
         );
         ws::proto_register_subtree_array(ett.as_ptr() as *const *mut i32, ett.len() as i32);
     }
+}
+
+/// For every enum/structure found by parsing `netwayste/src/net.rs` must have a header field identifier
+/// that Wireshark uses to refer to it. This routine will walk through the parsed-and-gutted
+/// `net.rs` and assign a header field ID to each one. It does this via registration with the header
+/// field allocator.
+fn register_header_fields() {
+    let all_mappings: Vec<(String, NetwaysteDataFormat)> = netwayste_data.clone().into_iter().collect();
+    for (name, datastruct) in all_mappings {
+        match datastruct {
+            Enumerator(_enums, fields) => {
+                // Reserve a header field for the variant, and its fields
+                hf_register(name);
+
+                // Reserve a header field for its fields.
+                let variants_and_fields: Vec<(String, Vec<FieldDescriptor>)> = fields.into_iter().collect();
+                for (variant, vfield) in variants_and_fields {
+                    let mut unnamed_count = 0;  // Append an integer for each unnamed field
+                    for vf in vfield.iter() {
+                        if let Some(vf_name) = vf.name.clone() {
+                            hf_register(format!("{}::{}", variant, vf_name));
+                        } else {
+                            // Unnamed fields are given an anonymous name which concatenates the
+                            // variant name, "Unnamed", and its nth order.
+                            hf_register(format!("{}::Unnamed{}", variant, unnamed_count));
+                            unnamed_count += 1;
+                        }
+                    }
+                }
+            }
+            Structure(fields) => {
+                // Reserve a header field for structure's fields
+                for f in fields {
+                    // Stuctures are *always* named so unwrap is safe.
+                    let field_name = f.name.unwrap();
+                    hf_register(format!("{}::{}", name, field_name));
+                }
+            }
+        }
+    }
+}
+
+// Walks the parsed `net.rs` AST and creates the corresponding header field data structure. Each
+// header field is associated to ID, and a name, abbreviation, data type, and display format.
+fn build_header_field_array() {
+    let mut _hf = {
+        let mut _hf = vec![];
+
+        // enum tag field of the Packet
+        // TODO: auto-generate this by reading the AST of netwayste/src/net.rs
+        let p = "Packet".to_owned();
+        let f = hf_get(p);
+        let enum_tag_field = sync_hf_register_info {
+            p_id: f,
+            hfinfo: ws::header_field_info {
+                name:              enum_tag_field_name.as_ptr(),
+                abbrev:            enum_tag_field_abbrev.as_ptr(),
+                type_:             FieldType::U32 as u32,
+                display:           FieldDisplay::Decimal as i32,
+                strings:           packet_enum_strings.as_ptr() as *const c_void,
+                ..Default::default()
+            },
+        };
+
+        _hf.push(enum_tag_field);
+        _hf
+    };
+    hf.lock().unwrap().append(&mut _hf);
 }
 
 lazy_static! {
@@ -439,7 +575,7 @@ lazy_static! {
 
 /// Notifies Wireshark to call the dissector when finding UDP traffic on `ws::CONWAYSTE_PORT`.
 ///
-/// #Unsafe
+/// # Unsafe
 /// Usage of unsafe encapsulates dissector registration, calling `dissect_conwayste` on Conwayste traffic
 #[no_mangle]
 extern "C" fn proto_reg_handoff_conwayste() {
@@ -453,12 +589,11 @@ extern "C" fn proto_reg_handoff_conwayste() {
             conwayste_handle,
         );
     }
-    let parsed_netwayste: HashMap<String, NetwaysteDataFormat> = parse_netwayste_format();
 }
 
 /// Call during Wireshark plugin initialization to register the conwayste client.
 ///
-/// #Unsafe
+/// # Unsafe
 /// Usage of unsafe encapsulates `plug_conwayste` which is initialized once via this function.
 #[no_mangle]
 pub extern "C" fn plugin_register() {

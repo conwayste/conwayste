@@ -242,8 +242,5 @@ pub fn parse_netwayste_format() -> HashMap<String, NetwaysteDataFormat>{
         }
     }
 
-    // PR_GATE: Remove me
-    println!("{:#?}", map);
-
     map
 }
