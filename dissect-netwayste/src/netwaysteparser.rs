@@ -17,6 +17,7 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
 use std::collections::HashMap;
@@ -28,27 +29,27 @@ use syn::{self, Item::{Enum, Struct}, PathArguments::AngleBracketed};
 /// `Fixed` indicates the size is known at compile-time.
 /// `Variable` indicates the size is specified as part of the network packet.
 /// `Structure` indicates a complex data-type.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Sizing {
     Fixed(usize),
     Variable,        // Size is specified at some byte offset for number things to consume
     Structure(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Describes one item belonging to a container data type
 pub struct FieldDescriptor {
-    name: Option<String>,   // If None, then the member is unnamed. Like `MyEnum(u8)`
-    format: Vec<Sizing>,    // Size of associated member type. List is used when type nests
+    pub name: Option<String>,   // If None, then the member is unnamed. Like `MyEnum(u8)`
+    pub format: Vec<Sizing>,    // Size of associated member type. List is used when type nests
 }
 
 /// Describes all containers (either an enum or a struct) for the Netwayste library into a format
 /// that the dissect-netwayste Wireshark plugin will use.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum NetwaysteDataFormat {
-    // First parameter is the ordered-by-value variants as strings.
+    // First parameter is the ordered-by-value variants as C-strings.
     // Second parameter maps the variant to its named/unnamed fields.
-    Enumerator(Vec<String>, HashMap<String, Vec<FieldDescriptor>>),
+    Enumerator(Vec<CString>, HashMap<String, Vec<FieldDescriptor>>),
     Structure(Vec<FieldDescriptor>),   // Contains descriptions of the struct member variables
 }
 
@@ -184,8 +185,9 @@ fn convert_field_to_member(f: &syn::Field) -> FieldDescriptor {
 /// Parses all variants and their fields of an enum.
 ///
 /// Returns a list of variants -- ordered by definition -- and a description of field name
-/// (where applicable) and the corresponding type's size.
-fn parse_enum(e: &syn::ItemEnum) -> (Vec<String>, HashMap<String, Vec<FieldDescriptor>>) {
+/// (where applicable) and the corresponding type's size. The variant's list is a `std::ffi::CString`
+/// and not a `String` because it is used for enum->literal conversion in Wireshark.
+fn parse_enum(e: &syn::ItemEnum) -> (Vec<CString>, HashMap<String, Vec<FieldDescriptor>>) {
     let mut variants = HashMap::new();
     let mut ordered_variants = vec![];
 
@@ -197,7 +199,7 @@ fn parse_enum(e: &syn::ItemEnum) -> (Vec<String>, HashMap<String, Vec<FieldDescr
             field.push(md);
         });
 
-        ordered_variants.push(variant.clone());
+        ordered_variants.push(CString::new(variant.clone()).unwrap());
         variants.insert(variant, field);
     });
 
