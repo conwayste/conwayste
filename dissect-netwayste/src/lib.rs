@@ -418,7 +418,10 @@ fn tvb_reported_length(tvb: *mut ws::tvbuff_t) -> usize {
 /// Decode packet bytes from the tv buffer into a netwayste packet
 fn get_cwte_packet(tvb: *mut ws::tvbuff_t) -> Result<NetwaystePacket, std::io::Error> {
     let tvblen = tvb_reported_length(tvb) as usize;
-    assert!(tvblen <= UDP_MTU_SIZE); // Panic if the length exceeds the UDP max transmission unit
+
+    if tvblen <= UDP_MTU_SIZE {
+        println!("Packet exceeds UDP MTU size!");
+    }
 
     let mut packet_vec = Vec::<u8>::with_capacity(tvblen);
     for i in 0..tvblen {
