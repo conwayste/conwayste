@@ -419,7 +419,7 @@ fn tvb_reported_length(tvb: *mut ws::tvbuff_t) -> usize {
 fn get_cwte_packet(tvb: *mut ws::tvbuff_t) -> Result<NetwaystePacket, std::io::Error> {
     let tvblen = tvb_reported_length(tvb) as usize;
 
-    if tvblen <= UDP_MTU_SIZE {
+    if tvblen > UDP_MTU_SIZE {
         println!("Packet exceeds UDP MTU size!");
     }
 
