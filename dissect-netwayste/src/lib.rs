@@ -41,7 +41,7 @@ use std::ptr;
 use std::sync::Mutex;
 
 mod netwaysteparser;
-use netwaysteparser::{parse_netwayste_format, FieldDescriptor, NetwaysteDataFormat::{self, Enumerator, Structure}};
+use netwaysteparser::{parse_netwayste_format, FieldDescriptor, Sizing, NetwaysteDataFormat::{self, Enumerator, Structure}};
 
 /// Wireshark C bindings
 mod ws {
@@ -89,7 +89,7 @@ static mut ett_conwayste: c_int = -1;
 #[derive(Debug)]
 struct HFFieldAllocator<> {
     hf_fields: Vec<c_int>,
-    allocated: HashMap<String, usize>,
+    allocated: HashMap<CString, usize>,
 }
 
 impl HFFieldAllocator {
@@ -105,8 +105,8 @@ impl HFFieldAllocator {
     /// # Panics
     /// Will panic if the provided String is not registered. This is intentional as a means to catch
     /// bugs.
-    fn get(&mut self, name: String) -> &mut c_int {
-        if let Some(index) =  self.allocated.get(&name) {
+    fn get(&mut self, name: &CString) -> &mut c_int {
+        if let Some(index) =  self.allocated.get(name) {
             assert!(*index < self.hf_fields.len());
             // Unwrap safe b/c of assert
             let item = self.hf_fields.get_mut(*index).unwrap();
@@ -117,7 +117,7 @@ impl HFFieldAllocator {
 
     /// Registers the provided string with the allocator. This must be called prior to any `get()`
     /// calls!
-    fn register(&mut self, name: String) {
+    fn register(&mut self, name: CString) {
         //println!("Registering..... {}", name);
         self.hf_fields.push(-1);
         self.allocated.insert(name, self.hf_fields.len() - 1);
@@ -190,6 +190,7 @@ enum FieldDisplay {
     Oct = ws::field_display_e_BASE_OCT,
     DecHex = ws::field_display_e_BASE_DEC_HEX,
     HexDec = ws::field_display_e_BASE_HEX_DEC,
+    Str = ws::field_display_e_STR_UNICODE,
 }
 
 #[derive(Debug)]
@@ -251,15 +252,15 @@ lazy_static! {
 
     // The result of parsing the AST of `netwayste/src/net.rs`. AST is piped through the parser to
     // give us a simplified description of the net.rs data layout.
-    static ref netwayste_data: HashMap<String, NetwaysteDataFormat> = {
-        let _nw_data: HashMap<String, NetwaysteDataFormat> = parse_netwayste_format();
+    static ref netwayste_data: HashMap<CString, NetwaysteDataFormat> = {
+        let _nw_data: HashMap<CString, NetwaysteDataFormat> = parse_netwayste_format();
         _nw_data
     };
 
     // The `Packet` enum variants will be decoded in the tree. Requires a list of [(index, string),]
     static ref packet_enum_strings: Vec<sync_named_packet_types> = {
         let mut _enum_strings = vec![];
-        let p = "Packet".to_owned();
+        let p = CString::new("Packet").unwrap();
         if let Some(Enumerator(enums, _)) = netwayste_data.get(&p) {
             for (i, enum_name) in enums.iter().enumerate() {
                 _enum_strings.push(sync_named_packet_types {
@@ -292,11 +293,11 @@ lazy_static! {
 // We aren't multithreading here but it's still good practice and helps with readability.
 // (Suggested by https://users.rust-lang.org/t/how-can-i-use-mutable-lazy-static/3751/5)
 
-fn hf_register(name: String) {
+fn hf_register(name: CString) {
     hf_fields.lock().unwrap().register(name);
 }
 
-fn hf_get(name: String) -> *mut c_int {
+fn hf_get(name: &CString) -> *mut c_int {
     hf_fields.lock().unwrap().get(name) as *mut c_int
 }
 
@@ -364,7 +365,7 @@ impl ConwaysteTree {
 
         match field {
             ConwaysteField::EnumTag => {
-                unsafe {hf_field = *hf_get("Packet".to_owned())};
+                unsafe { hf_field = *hf_get(&CString::new("Packet").unwrap()) };
                 length = ENUM_SIZE;
                 encoding = WSEncoding::LittleEndian;
             }
@@ -509,26 +510,19 @@ extern "C" fn proto_register_conwayste() {
 /// `net.rs` and assign a header field ID to each one. It does this via registration with the header
 /// field allocator.
 fn register_header_fields() {
-    let all_mappings: Vec<(String, NetwaysteDataFormat)> = netwayste_data.clone().into_iter().collect();
-    for (name, datastruct) in all_mappings {
+    // Reserve a header field for the variant
+    for key in netwayste_data.keys() {
+        hf_register(key.clone());
+    }
+
+    for datastruct in netwayste_data.values() {
+        // Reserve a header field for each variant's fields
         match datastruct {
             Enumerator(_enums, fields) => {
-                // Reserve a header field for the variant, and its fields
-                hf_register(name);
-
                 // Reserve a header field for its fields.
-                let variants_and_fields: Vec<(String, Vec<FieldDescriptor>)> = fields.into_iter().collect();
-                for (variant, vfield) in variants_and_fields {
-                    let mut unnamed_count = 0;  // Append an integer for each unnamed field
+                for vfield in fields.values() {
                     for vf in vfield.iter() {
-                        if let Some(vf_name) = vf.name.clone() {
-                            hf_register(format!("{}::{}", variant, vf_name));
-                        } else {
-                            // Unnamed fields are given an anonymous name which concatenates the
-                            // variant name, "Unnamed", and its nth order.
-                            hf_register(format!("{}::Unnamed{}", variant, unnamed_count));
-                            unnamed_count += 1;
-                        }
+                        hf_register(vf.name.clone());
                     }
                 }
             }
@@ -536,8 +530,7 @@ fn register_header_fields() {
                 // Reserve a header field for structure's fields
                 for f in fields {
                     // Stuctures are *always* named so unwrap is safe.
-                    let field_name = f.name.unwrap();
-                    hf_register(format!("{}::{}", name, field_name));
+                    hf_register(f.name.clone());
                 }
             }
         }
@@ -550,23 +543,75 @@ fn build_header_field_array() {
     let mut _hf = {
         let mut _hf = vec![];
 
-        // enum tag field of the Packet
-        // TODO: auto-generate this by reading the AST of netwayste/src/net.rs
-        let p = "Packet".to_owned();
-        let f = hf_get(p);
-        let enum_tag_field = sync_hf_register_info {
-            p_id: f,
-            hfinfo: ws::header_field_info {
-                name:              enum_tag_field_name.as_ptr(),
-                abbrev:            enum_tag_field_abbrev.as_ptr(),
-                type_:             FieldType::U32 as u32,
-                display:           FieldDisplay::Decimal as i32,
-                strings:           packet_enum_strings.as_ptr() as *const c_void,
-                ..Default::default()
-            },
-        };
+        for enum_name in netwayste_data.keys() {
+            // Add the enumerator name
+            let f = hf_get(enum_name);
+            let enum_hf = sync_hf_register_info {
+                p_id: f,
+                hfinfo: ws::header_field_info {
+                    name:       enum_name.as_ptr() as *const i8,
+                    abbrev:     enum_name.as_ptr() as *const i8,
+                    type_:      FieldType::U32 as u32,
+                    display:    FieldDisplay::Decimal as i32,
+                    //strings:    packet_enum_strings.as_ptr() as *const c_void,
+                    ..Default::default()
+                },
+            };
+            _hf.push(enum_hf);
+        }
 
-        _hf.push(enum_tag_field);
+        for datastruct in netwayste_data.values() {
+            match datastruct {
+                Enumerator(_enums, fields) => {
+                    for vfield in fields.values() {
+                        for vf in vfield.iter() {
+                            let mut field_data_type = FieldType::Str_z;
+                            let mut field_display: FieldDisplay = FieldDisplay::Str;
+                            for fmt in vf.format.iter() {
+                                match fmt {
+                                    Sizing::Structure(s) => {
+                                        // TODO:
+                                    },
+                                    Sizing::Variable => {
+                                        // nothing to do, will default to null-term string
+                                    }
+                                    Sizing::Fixed(bytes) => {
+                                        field_display = FieldDisplay::Decimal;
+                                        match bytes {
+                                            8 => field_data_type = FieldType::U64,
+                                            4 => field_data_type = FieldType::U32,
+                                            2 => field_data_type = FieldType::U16,
+                                            1 => field_data_type = FieldType::U8,
+                                            _ => field_data_type = FieldType::U64, // maybe a better way
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+
+                            let f = hf_get(&vf.name);
+                            let variant_hf = sync_hf_register_info {
+                                p_id: f,
+                                hfinfo: ws::header_field_info {
+                                    name:       vf.name.as_ptr() as *const i8,
+                                    abbrev:     vf.name.as_ptr() as *const i8,
+                                    type_:      field_data_type as u32,
+                                    display:    field_display as i32,
+                                    ..Default::default()
+                                },
+                            };
+                            _hf.push(variant_hf);
+                        }
+                    }
+                }
+                Structure(fields) => {
+                    for f in fields {
+                        // TODO:
+                    }
+                }
+            }
+        }
+
         _hf
     };
     hf.lock().unwrap().append(&mut _hf);

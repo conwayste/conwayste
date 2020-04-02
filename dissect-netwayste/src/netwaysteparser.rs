@@ -39,7 +39,7 @@ pub enum Sizing {
 #[derive(Debug, Clone)]
 /// Describes one item belonging to a container data type
 pub struct FieldDescriptor {
-    pub name: Option<String>,   // If None, then the member is unnamed. Like `MyEnum(u8)`
+    pub name: CString,   // If None, then the member is unnamed. Like `MyEnum(u8)`
     pub format: Vec<Sizing>,    // Size of associated member type. List is used when type nests
 }
 
@@ -167,17 +167,17 @@ fn extract_type(ty: &syn::Type) -> String {
     "".to_owned()
 }
 
-fn convert_field_to_member(f: &syn::Field) -> FieldDescriptor {
+fn create_field_descriptor(f: &syn::Field, variant_name: String, count: usize) -> FieldDescriptor {
     let ty = extract_type(&f.ty);
     let ident = if let Some(ref fi) = f.ident {
-        Some(fi.to_string())
+        format!("{}.{}", variant_name, fi.to_string())
     } else {
-        None
+        format!("{}.Unnamed{}", variant_name, count)
     };
 
     let descriptions = parse_size_from_type(ty.clone());
     FieldDescriptor {
-        name: ident,
+        name: CString::new(ident).unwrap(),
         format: descriptions,
     }
 }
@@ -194,8 +194,10 @@ fn parse_enum(e: &syn::ItemEnum) -> (Vec<CString>, HashMap<String, Vec<FieldDesc
     e.variants.iter().for_each(|v| {
         let mut field = vec![];
         let variant = v.ident.to_string();
-        v.fields.iter().for_each(|f| {
-            let md = convert_field_to_member(f);
+        v.fields.iter().enumerate().for_each(|(i, f)| {
+            let mut md = create_field_descriptor(f, variant.clone(), i);
+            // Ugly ugly conversion & unboxing in format!() because CString doesn't impl the Display trait
+            md.name = CString::new(format!("{}.{}", e.ident.to_string(), md.name.into_string().unwrap())).unwrap();
             field.push(md);
         });
 
@@ -211,15 +213,17 @@ fn parse_enum(e: &syn::ItemEnum) -> (Vec<CString>, HashMap<String, Vec<FieldDesc
 fn parse_struct(s: &syn::ItemStruct) -> Vec<FieldDescriptor> {
     let mut fields = vec![];
     s.fields.iter().for_each(|f| {
-            let md = convert_field_to_member(f);
-            fields.push(md);
+        let struct_name = s.ident.to_string();
+        // Count is always zero because very field in a struct must be named
+        let md = create_field_descriptor(f, struct_name, 0);
+        fields.push(md);
     });
 
     fields
 }
 
 /// Creates a mapping of structure/enum names to a parsed representation of their innards.
-pub fn parse_netwayste_format() -> HashMap<String, NetwaysteDataFormat>{
+pub fn parse_netwayste_format() -> HashMap<CString, NetwaysteDataFormat>{
     let filename = concat!(env!("CARGO_MANIFEST_DIR"), "/../netwayste/src/net.rs");
     let mut file = File::open(&filename).expect("Unable to open file");
 
@@ -227,22 +231,26 @@ pub fn parse_netwayste_format() -> HashMap<String, NetwaysteDataFormat>{
     file.read_to_string(&mut src).expect("Unable to read file");
     let syntax = syn::parse_file(&src).expect("Unable to parse file");
 
-    let mut map: HashMap<String, NetwaysteDataFormat> = HashMap::new();
+    let mut map: HashMap<CString, NetwaysteDataFormat> = HashMap::new();
 
     for item in syntax.items {
         match item {
             Enum(ref e) => {
                 let (variants, fields) = parse_enum(&e);
-                map.insert(e.ident.to_string(), NetwaysteDataFormat::Enumerator(variants, fields));
+                map.insert(CString::new(e.ident.to_string()).unwrap(),
+                    NetwaysteDataFormat::Enumerator(variants, fields));
             },
             Struct(ref s) => {
                 let structure = parse_struct(&s);
                 let name = s.ident.to_string();
-                map.insert(name.clone(), NetwaysteDataFormat::Structure(structure));
+                map.insert(CString::new(name).unwrap(),
+                NetwaysteDataFormat::Structure(structure));
             },
             _ => {}
         }
     }
+
+ //   println!("{:#?}", map);
 
     map
 }
