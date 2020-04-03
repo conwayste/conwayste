@@ -247,9 +247,6 @@ lazy_static! {
     // All header fields (decoded or ignored) will be tracked via the `HFFieldAllocator`
     static ref hf_fields: Mutex<HFFieldAllocator> = Mutex::new(HFFieldAllocator::new());
 
-    static ref enum_tag_field_name: CString = { CString::new("CWTE Enum Tag Field").unwrap() };
-    static ref enum_tag_field_abbrev: CString = { CString::new("cwte.enumtag").unwrap() };
-
     // The result of parsing the AST of `netwayste/src/net.rs`. AST is piped through the parser to
     // give us a simplified description of the net.rs data layout.
     static ref netwayste_data: HashMap<CString, NetwaysteDataFormat> = {
@@ -257,16 +254,20 @@ lazy_static! {
         _nw_data
     };
 
-    // The `Packet` enum variants will be decoded in the tree. Requires a list of [(index, string),]
-    static ref packet_enum_strings: Vec<sync_named_packet_types> = {
-        let mut _enum_strings = vec![];
-        let p = CString::new("Packet").unwrap();
-        if let Some(Enumerator(enums, _)) = netwayste_data.get(&p) {
-            for (i, enum_name) in enums.iter().enumerate() {
-                _enum_strings.push(sync_named_packet_types {
-                    index: i as c_int,
-                    name: enum_name.as_ptr() as *const i8,
-                });
+    // The enum variants will be decoded in the tree. Requires a list of [(variant_index, variant_name),]
+    static ref enum_strings: HashMap<CString, Vec<sync_named_packet_types>> = {
+        let mut _enum_strings = HashMap::new();
+
+        for enum_name in netwayste_data.keys() {
+            if let Some(Enumerator(variants, _fields)) = netwayste_data.get(enum_name) {
+                let mut indexed_names = Vec::new();
+                for (i, v) in variants.iter().enumerate() {
+                    indexed_names.push(sync_named_packet_types {
+                        index: i as c_int,
+                        name: v.as_ptr() as *const i8,
+                    });
+                }
+                _enum_strings.insert(enum_name.clone().into(), indexed_names);
             }
         }
         _enum_strings
@@ -542,10 +543,10 @@ fn register_header_fields() {
 fn build_header_field_array() {
     let mut _hf = {
         let mut _hf = vec![];
-
         for enum_name in netwayste_data.keys() {
             // Add the enumerator name
             let f = hf_get(enum_name);
+
             let enum_hf = sync_hf_register_info {
                 p_id: f,
                 hfinfo: ws::header_field_info {
@@ -553,7 +554,11 @@ fn build_header_field_array() {
                     abbrev:     enum_name.as_ptr() as *const i8,
                     type_:      FieldType::U32 as u32,
                     display:    FieldDisplay::Decimal as i32,
-                    //strings:    packet_enum_strings.as_ptr() as *const c_void,
+                    strings:    if let Some(strings) = enum_strings.get(enum_name) {
+                                    strings.as_ptr() as *const c_void
+                                } else {
+                                    ptr::null()
+                                },
                     ..Default::default()
                 },
             };
