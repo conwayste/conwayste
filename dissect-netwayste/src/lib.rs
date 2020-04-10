@@ -68,7 +68,7 @@ unsafe impl Sync for StaticCString {}
 
 #[no_mangle]
 pub static plugin_version: StaticCString = StaticCString(b"0.0.2\0" as *const u8);
-
+pub static NONE_STRING: StaticCString = StaticCString(b"None\0" as *const u8);
 /// Wireshark major & minor version
 #[no_mangle]
 pub static plugin_want_major: c_int = 3;
@@ -95,9 +95,10 @@ static mut ett_conwayste: c_int = -1;
 /// the number of enum/struct members found during parsing.
 ///
 #[derive(Debug)]
-struct HFFieldAllocator<> {
+struct HFFieldAllocator {
     hf_fields: Vec<c_int>,
     allocated: HashMap<CString, usize>,
+    options_map: HashMap<CString, CString>,
 }
 
 impl HFFieldAllocator {
@@ -105,6 +106,7 @@ impl HFFieldAllocator {
         HFFieldAllocator {
             hf_fields: Vec::new(),
             allocated: HashMap::new(),
+            options_map: HashMap::new(),
         }
     }
 
@@ -126,9 +128,33 @@ impl HFFieldAllocator {
     /// Registers the provided string with the allocator. This must be called prior to any `get()`
     /// calls!
     fn register(&mut self, name: CString) {
-        //println!("Registering..... {}", name);
+        // Add in a value of -1. Wireshark will overwrite this later.
         self.hf_fields.push(-1);
+        // Map the index into the `hf_fields` vector to the field name
         self.allocated.insert(name, self.hf_fields.len() - 1);
+    }
+
+    /// Creates a new optional entry for fields that are `Option<T>`. This entry is used to indicate
+    /// the field is None in the Netwayste decomposition tree.
+    fn new_option(&mut self, name: &CString) {
+        let new_name = format!("{}.option", name.to_str().unwrap());
+        let new_name_cstr = CString::new(new_name).unwrap();
+        self.options_map.insert(name.clone(), new_name_cstr.clone());
+
+        // register the header field for this "blahblah.option" to create the ID
+        self.register(new_name_cstr);
+    }
+
+    /// Retrieves the `CString` used when the provided field name is a `None` variant of `Option`
+    fn get_option_name(&self, name: &CString) -> &CString {
+        self.options_map.get(name).unwrap()
+    }
+
+    /// Retrieves the header field ID linked the provided field name when it is a `None` variant of
+    /// `Option`.
+    fn get_option_id(&mut self, name: &CString) -> &mut c_int {
+        let optioned_name = self.options_map.get(name).unwrap().clone();
+        self.get(&optioned_name)
     }
 }
 
@@ -310,6 +336,21 @@ fn hf_get(name: &CString) -> *mut c_int {
     hf_fields.lock().unwrap().get(name) as *mut c_int
 }
 
+fn hf_new_option(name: &CString) {
+    let mut lock = hf_fields.lock().unwrap();
+    lock.new_option(name);
+}
+
+fn hf_get_option(name: &CString) -> *const i8 {
+    let lock = hf_fields.lock().unwrap();
+    lock.get_option_name(name).as_ptr()
+}
+
+fn hf_get_option_id(name: &CString) -> *mut c_int {
+    let mut lock = hf_fields.lock().unwrap();
+    lock.get_option_id(name) as *mut c_int
+}
+
 fn hf_as_ptr() -> *const sync_hf_register_info {
     let ptr = hf.lock().unwrap().as_ptr();
     ptr
@@ -338,7 +379,7 @@ enum WSColumn {
 
 
 #[repr(u32)]
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 enum WSEncoding {
     BigEndian = ws::ENC_BIG_ENDIAN,
     LittleEndian = ws::ENC_LITTLE_ENDIAN,
@@ -368,7 +409,7 @@ impl ConwaysteTree {
     }
 
     pub fn decode(&self, tvb: *mut ws::tvbuff_t) {
-        let mut length = 4;    // First byte is enumerator definition
+        let mut field_length = 4;    // First byte is enumerator definition
         let mut bytes_examined = 0;
 
         let tvblen = tvb_reported_length(tvb) as usize;
@@ -378,75 +419,103 @@ impl ConwaysteTree {
             packet_vec.push(byte);
         }
 
-        let discr_vec: Vec<u8> = packet_vec.drain(0..length).collect();
+        let discr_vec: Vec<u8> = packet_vec.drain(0..field_length).collect();
         let discriminant = LittleEndian::read_u32(&discr_vec.as_slice());
 
-        bytes_examined += length;
+        bytes_examined += field_length;
 
         let packet_nw_data = netwayste_data.get(&CString::new("Packet").unwrap()).unwrap();
 
         if let Enumerator(variants, fields) = packet_nw_data {
             let variant: &CString = variants.get(discriminant as usize).unwrap();
             let variant = variant.clone().into_string().unwrap();
-            for fd in fields.get(&variant).unwrap() {
+            'field_loop: for fd in fields.get(&variant).unwrap() {
                 let mut encoding: WSEncoding = WSEncoding::LittleEndian;
                 let field_name = &fd.name;
                 let hf_field = hf_get(&field_name);
 
-                let mut len_of_var_data = 1;
+                // Bincode encodes the length of a vector prior to the items in the list. We need to
+                // keep track of how many 'things' to add.
+                let mut item_count = 1;
 
                 println!("Field Name: {:?}", field_name);
                 for s in &fd.format {
                     match s {
                         Sizing::Fixed(bytes) => {
-                            length = len_of_var_data * bytes;
+                            field_length = item_count * bytes;
                             encoding = WSEncoding::LittleEndian;
                         },
                         Sizing::Variable(container) => {
-                            let (consume, data) = if let VariableContainer::Vector = container {
-                                let len = std::mem::size_of::<u64>();
-                                (len, unsafe { ws::tvb_get_guint64(tvb, bytes_examined as i32, WSEncoding::LittleEndian as u32) })
-                            } else {
-                                const len: usize = 1;
-                                (len, unsafe { ws::tvb_get_guint8(tvb, bytes_examined as i32) } as u64)
+                            // Peek into the buffer to see what/how much we are working with
+                            let consume = match container {
+                                VariableContainer::Vector => {
+                                    // Bincode encodes length of list as 8 bytes
+                                    let len = std::mem::size_of::<u64>();
+                                    let data = unsafe { ws::tvb_get_guint64(tvb, bytes_examined as i32, WSEncoding::LittleEndian as u32) };
+
+                                    // List turned out to be empty. Skip it for now.. TODO: Reeval skipping
+                                    if data == 0 {
+                                        break 'field_loop;
+                                    }
+
+                                    // We have a non empty list!
+                                    println!("\tis non-empty vector");
+                                    // Bytes we peek at tell us how many items are in the list.
+                                    // The cast shouldn't truncate due to quantities we're dealing with.
+                                    item_count = data as usize;
+
+                                    // We may be dealing with a String so set up the encoding and
+                                    // length. If we are are dealing with something else we'll catch
+                                    // it on the next loop.
+                                    encoding = WSEncoding::UTF8String;
+                                    field_length = item_count;
+                                    len
+                                },
+                                VariableContainer::Optional => {
+                                    // Bincode uses 1 byte for an Option enum
+                                    const len: usize = 1;
+                                    let data = unsafe { ws::tvb_get_guint8(tvb, bytes_examined as i32) };
+
+                                    // Option turned out to be None. Add a none description for this
+                                    // field in the tree and move onto the next field
+                                    if data == 0 {
+                                        let optioned_hf_field = hf_get_option_id(&field_name);
+                                        unsafe {
+                                            // Move onto the next field descriptor
+                                            ws::proto_tree_add_string(self.tree,
+                                                *optioned_hf_field,
+                                                tvb,
+                                                bytes_examined as i32,
+                                                len as i32,
+                                                NONE_STRING.0 as *const i8);
+                                        }
+                                        bytes_examined += len;
+                                        continue 'field_loop;
+                                    }
+
+                                    println!("\tis Some(..)");
+                                    item_count = 1;
+                                    // We have Some(..)thing
+                                    len
+                                }
                             };
 
-
-                            // Skip the byte we looked at
                             bytes_examined += consume;
-
-                            // how many bytes we'll need to consume for the next field
-                            println!("\tLength: {} Value: {}", consume, data);
-                            len_of_var_data = data as usize;
-                            length = len_of_var_data;
-
-                            if len_of_var_data == 0 {
-                                // byte == 0 ? None, or empty Vector, nor empty String
-                                break;
-                            }
-
-                            // We may be dealing with a string
-                            encoding = WSEncoding::UTF8String;
                         },
                         Sizing::Structure(name) => {
-                            // FIXME: need to figure out how to get size of structure
-                            len_of_var_data = 0;
-                            length = 0;
+                            // PR_GATE: need to figure out how to get size of structure
+                            item_count = 0;
+                            field_length = 0;
                         }
                     };
                 }
 
-                if len_of_var_data == 0 {
-                    // Move onto the next field descriptor
-                    continue;
-                }
-
                 unsafe {
                     // Attach stuff under "Conwayste Protocol" tree
-                    println!("Added from {} to {}, Enc {:?}", bytes_examined, bytes_examined + length, encoding);
-                    ws::proto_tree_add_item(self.tree, *hf_field, tvb, bytes_examined as i32, length as i32, encoding as u32);
+                    println!("Added from {} to {}, Enc {:?}", bytes_examined, bytes_examined + field_length, encoding);
+                    ws::proto_tree_add_item(self.tree, *hf_field, tvb, bytes_examined as i32, field_length as i32, encoding as u32);
                 }
-                bytes_examined += length;
+                bytes_examined += field_length;
             }
         }
 
@@ -598,6 +667,18 @@ fn register_header_fields() {
                 for vfield in fields.values() {
                     for vf in vfield.iter() {
                         hf_register(vf.name.clone());
+
+                        // Check if there's an Option, and register an additional HF for it
+                        for format in &vf.format {
+                            match format {
+                                Sizing::Variable(VariableContainer::Optional) => {
+                                    hf_new_option(&vf.name);
+                                }
+                                _ => {
+                                    // Not of any concern, keep looking
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -653,6 +734,21 @@ fn build_header_field_array() {
                                     },
                                     Sizing::Variable(VariableContainer::Optional) => {
                                         // nothing to do, will use nested type
+                                        field_display = FieldDisplay::Str;
+
+                                        let f = hf_get_option_id(&vf.name);
+                                        let optioned_name = hf_get_option(&vf.name);
+                                        let variant_hf = sync_hf_register_info {
+                                            p_id: f,
+                                            hfinfo: ws::header_field_info {
+                                                name:       optioned_name,
+                                                abbrev:     optioned_name,
+                                                type_:      FieldType::Str as u32,
+                                                display:    FieldDisplay::Str as i32,
+                                                ..Default::default()
+                                            },
+                                        };
+                                        _hf.push(variant_hf);
                                     }
                                     Sizing::Variable(VariableContainer::Vector) => {
                                         // nothing to do, will default to string if no further nesting

@@ -295,18 +295,21 @@ impl fmt::Debug for Packet {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Packet::Request{ sequence, response_ack, cookie, action } => {
-                write!(f, "[Request] cookie: {:?} sequence: {} resp_ack: {:?} event: {:?}", cookie, sequence, response_ack, action)
+                write!(f, "[Request] cookie: {:?} sequence: {} resp_ack: {:?} event: {:?}",
+                    cookie, sequence, response_ack, action)
             }
             Packet::Response{ sequence, request_ack, code } => {
-                write!(f, "[Response] sequence: {} req_ack: {:?} event: {:?}", sequence, request_ack, code)
+                write!(f, "[Response] sequence: {} req_ack: {:?} event: {:?}",
+                    sequence, request_ack, code)
             }
             Packet::Update{ chats: _, game_updates, universe_update } => {
-                write!(f, "[Update] game_updates: {:?} universe_update: {:?}", game_updates, universe_update)
+                write!(f, "[Update] game_updates: {:?} universe_update: {:?}",
+                    game_updates, universe_update)
             }
-            #[cfg(not(test))]
-            _ => {unimplemented!()}
-            #[cfg(test)]
-            _ => {Result::Ok(())}
+            Packet::UpdateReply{ cookie, last_chat_seq, last_game_update_seq, last_gen} => {
+                write!(f, "[UpdateReply] cookie: {:?} last_chat_seq: {:?} last_game_update_seq: {:?} last_game: {:?}",
+                    cookie, last_chat_seq, last_game_update_seq, last_gen)
+            }
         }
     }
 }
