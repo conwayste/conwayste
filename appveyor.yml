@@ -45,8 +45,15 @@ install:
 test_script:
   # we don't run the "test phase" when doing deploys
   - if [%APPVEYOR_REPO_TAG%]==[false] (
-      cargo build --target %TARGET% --release &&
-      cargo test --target %TARGET% --release
+      # we don't build `dissect-netwayste` for windows
+      if [%TARGET%]==[x86_64-pc-windows-msvc] (
+        cargo build --target %TARGET% --release --workspace --exclude dissect-netwayste &&
+        cargo test --target %TARGET% --release --workspace --exclude dissect-netwayste
+        )
+      else (
+        cargo build --target %TARGET% --release &&
+        cargo test --target %TARGET% --release
+      )
     )
 
 before_deploy:
