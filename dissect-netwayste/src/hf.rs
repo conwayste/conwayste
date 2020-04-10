@@ -22,7 +22,7 @@ use std::ffi::CString;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 
-use crate::{Sizing, VariableContainer, Enumerator, Structure};
+use crate::netwaysteparser::{FieldDescriptor, Sizing, VariableContainer, NetwaysteDataFormat::*};
 use crate::wrapperdefs::*;
 use crate::{ws, hf_fields, netwayste_data, enum_strings, hf_info};
 
@@ -155,31 +155,36 @@ pub fn register_header_fields() {
     for datastruct in netwayste_data.values() {
         // Reserve a header field for each variant's fields
         match datastruct {
-            Enumerator(_enums, fields) => {
+            Enumerator(_enums, fields_map) => {
                 // Reserve a header field for its fields.
-                for vfield in fields.values() {
-                    for vf in vfield.iter() {
-                        hf_register(vf.name.clone());
-
-                        // Check if there's an Option, and register an additional HF for it
-                        for format in &vf.format {
-                            match format {
-                                Sizing::Variable(VariableContainer::Optional) => {
-                                    hf_new_option(&vf.name);
-                                }
-                                _ => {
-                                    // Not of any concern, keep looking
-                                }
-                            }
-                        }
+                for fields in fields_map.values() {
+                    for field in fields.iter() {
+                        hf_register(field.name.clone());
+                        option_check(&field);
                     }
                 }
             }
             Structure(fields) => {
                 // Reserve a header field for structure's fields
-                for f in fields {
+                for field in fields {
                     // Stuctures are *always* named so unwrap is safe.
-                    hf_register(f.name.clone());
+                    hf_register(field.name.clone());
+                    option_check(&field);
+                }
+            }
+        }
+    }
+
+    /// Inspect the FieldDescriptor's format list to see if there's an Option, and register an HF
+    /// for each additional occurence.
+    fn option_check(f: &FieldDescriptor) {
+        for format in &f.format {
+            match format {
+                Sizing::Variable(VariableContainer::Optional) => {
+                    hf_new_option(&f.name);
+                }
+                _ => {
+                    // Not of any concern, keep looking
                 }
             }
         }
@@ -192,17 +197,19 @@ pub fn register_header_fields() {
 pub fn build_header_field_array() {
     let mut _hf = {
         let mut _hf = vec![];
-        for enum_name in netwayste_data.keys() {
-            let f = hf_get(enum_name);
+
+        // Add a header field for all keys (aka defined Enums and Structs)
+        for key in netwayste_data.keys() {
+            let f = hf_get(key);
 
             let enum_hf = sync_hf_register_info {
                 p_id: f,
                 hfinfo: ws::header_field_info {
-                    name:       enum_name.as_ptr() as *const i8,
-                    abbrev:     enum_name.as_ptr() as *const i8,
+                    name:       key.as_ptr() as *const i8,
+                    abbrev:     key.as_ptr() as *const i8,
                     type_:      FieldType::U32 as u32,
                     display:    FieldDisplay::Decimal as i32,
-                    strings:    if let Some(strings) = enum_strings.get(enum_name) {
+                    strings:    if let Some(strings) = enum_strings.get(key) {
                                     strings.as_ptr() as *const c_void
                                 } else {
                                     ptr::null()
@@ -213,77 +220,16 @@ pub fn build_header_field_array() {
             _hf.push(enum_hf);
         }
 
+        // Add a header field for all values (aka Enum and Struct members/fields)
         for datastruct in netwayste_data.values() {
             match datastruct {
-                Enumerator(_enums, fields) => {
-                    for vfield in fields.values() {
-                        for vf in vfield.iter() {
-                            let mut field_data_type = FieldType::Str;
-                            let mut field_display: FieldDisplay = FieldDisplay::Str;
-                            for fmt in vf.format.iter() {
-                                match fmt {
-                                    Sizing::Structure(s) => {
-                                        // TODO:
-                                    },
-                                    Sizing::Variable(VariableContainer::Optional) => {
-                                        // nothing to do, will use nested type
-                                        field_display = FieldDisplay::Str;
-
-                                        let f = hf_get_option_id(&vf.name);
-                                        let optioned_name = hf_get_option(&vf.name);
-                                        let variant_hf = sync_hf_register_info {
-                                            p_id: f,
-                                            hfinfo: ws::header_field_info {
-                                                name:       optioned_name,
-                                                abbrev:     optioned_name,
-                                                type_:      FieldType::Str as u32,
-                                                display:    FieldDisplay::Str as i32,
-                                                ..Default::default()
-                                            },
-                                        };
-                                        _hf.push(variant_hf);
-                                    }
-                                    Sizing::Variable(VariableContainer::Vector) => {
-                                        // nothing to do, will default to string if no further nesting
-                                    }
-                                    Sizing::Fixed(bytes) => {
-                                        field_display = FieldDisplay::Decimal;
-                                        match bytes {
-                                            8 => field_data_type = FieldType::U64,
-                                            4 => field_data_type = FieldType::U32,
-                                            2 => field_data_type = FieldType::U16,
-                                            1 => field_data_type = FieldType::U8,
-                                            // We shouldn't get other values here
-                                            unknown_byte_count @ _ => {
-                                                println!("Unknown byte count observed during header
-                                                    field construction: {}", unknown_byte_count);
-                                                field_data_type = FieldType::U64;
-                                            },
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
-
-                            let f = hf_get(&vf.name);
-                            let variant_hf = sync_hf_register_info {
-                                p_id: f,
-                                hfinfo: ws::header_field_info {
-                                    name:       vf.name.as_ptr() as *const i8,
-                                    abbrev:     vf.name.as_ptr() as *const i8,
-                                    type_:      field_data_type as u32,
-                                    display:    field_display as i32,
-                                    ..Default::default()
-                                },
-                            };
-                            _hf.push(variant_hf);
-                        }
+                Enumerator(_enums, fields_map) => {
+                    for fields in fields_map.values() {
+                        create_header_fields(fields, &mut _hf);
                     }
                 }
                 Structure(fields) => {
-                    for f in fields {
-                        // TODO:
-                    }
+                    create_header_fields(fields, &mut _hf);
                 }
             }
         }
@@ -293,4 +239,68 @@ pub fn build_header_field_array() {
 
     // Append is only performed once so I am not wrapping it into its own function like the others
     hf_info.lock().unwrap().append(&mut _hf);
+
+    // Private helper function to perform the iteration and creation over all fields
+    fn create_header_fields(fields: &Vec<FieldDescriptor>, _hf: &mut Vec<sync_hf_register_info>) {
+        for field in fields.iter() {
+            let mut field_data_type = FieldType::Str;
+            let mut field_display: FieldDisplay = FieldDisplay::Str;
+            for fmt in field.format.iter() {
+                match fmt {
+                    Sizing::Structure(_s) => {
+                        // nothing to do, will be handled as NetwaysteDataFormat is iterated
+                    },
+                    Sizing::Variable(VariableContainer::Optional) => {
+                        field_display = FieldDisplay::Str;
+
+                        let hf_id = hf_get_option_id(&field.name);
+                        let optioned_name = hf_get_option(&field.name);
+                        let variant_hf = sync_hf_register_info {
+                            p_id: hf_id,
+                            hfinfo: ws::header_field_info {
+                                name:       optioned_name,
+                                abbrev:     optioned_name,
+                                type_:      FieldType::Str as u32,
+                                display:    FieldDisplay::Str as i32,
+                                ..Default::default()
+                            },
+                        };
+                        _hf.push(variant_hf);
+                    }
+                    Sizing::Variable(VariableContainer::Vector) => {
+                        // nothing to do, will default to string if no further nesting
+                    }
+                    Sizing::Fixed(bytes) => {
+                        field_display = FieldDisplay::Decimal;
+                        match bytes {
+                            8 => field_data_type = FieldType::U64,
+                            4 => field_data_type = FieldType::U32,
+                            2 => field_data_type = FieldType::U16,
+                            1 => field_data_type = FieldType::U8,
+                            // We shouldn't get other values here
+                            unknown_byte_count @ _ => {
+                                println!("Unknown byte count observed during header
+                                    field construction: {}", unknown_byte_count);
+                                field_data_type = FieldType::U64;
+                            },
+                        }
+                        break;
+                    }
+                }
+            }
+
+            let hf_id = hf_get(&field.name);
+            let variant_hf = sync_hf_register_info {
+                p_id: hf_id,
+                hfinfo: ws::header_field_info {
+                    name:       field.name.as_ptr() as *const i8,
+                    abbrev:     field.name.as_ptr() as *const i8,
+                    type_:      field_data_type as u32,
+                    display:    field_display as i32,
+                    ..Default::default()
+                },
+            };
+            _hf.push(variant_hf);
+        }
+    }
 }
