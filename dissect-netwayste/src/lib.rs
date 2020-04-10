@@ -17,6 +17,12 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+// WIRESHARK NOMENCLATURE:
+//  hf - Header Field
+//  ett - Ethereal Tree Type
+//  epan - Ethereal Packet ANalyzer
+//  proto - Protocol
+
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
@@ -27,9 +33,11 @@ extern crate netwayste;
 #[macro_use]
 extern crate lazy_static;
 extern crate tokio_core;
+extern crate byteorder;
 
 use netwayste::net::{LineCodec, Packet as NetwaystePacket};
 use tokio_core::net::UdpCodec;
+use byteorder::{ByteOrder, LittleEndian};
 
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -41,7 +49,7 @@ use std::ptr;
 use std::sync::Mutex;
 
 mod netwaysteparser;
-use netwaysteparser::{parse_netwayste_format, FieldDescriptor, Sizing, NetwaysteDataFormat::{self, Enumerator, Structure}};
+use netwaysteparser::{parse_netwayste_format, Sizing, VariableContainer, NetwaysteDataFormat::{self, Enumerator, Structure}};
 
 /// Wireshark C bindings
 mod ws {
@@ -328,14 +336,15 @@ enum WSColumn {
     Info = ws::COL_INFO,
 }
 
+
 #[repr(u32)]
+#[derive(Debug)]
 enum WSEncoding {
     BigEndian = ws::ENC_BIG_ENDIAN,
     LittleEndian = ws::ENC_LITTLE_ENDIAN,
-}
-
-enum ConwaysteField {
-    EnumTag,
+    UTF8 = ws::ENC_UTF_8,
+    UTF16 = ws::ENC_UTF_16,
+    UTF8String = ws::ENC_LITTLE_ENDIAN + ws::ENC_UTF_8,
 }
 
 struct ConwaysteTree {
@@ -358,24 +367,89 @@ impl ConwaysteTree {
         }
     }
 
-    pub fn add_item(&self, tvb: *mut ws::tvbuff_t, field: ConwaysteField) {
-        const start: i32 = 0;
-        let hf_field: c_int;
-        let length: i32;
-        let encoding: WSEncoding;
+    pub fn decode(&self, tvb: *mut ws::tvbuff_t) {
+        let mut length = 4;    // First byte is enumerator definition
+        let mut bytes_examined = 0;
 
-        match field {
-            ConwaysteField::EnumTag => {
-                unsafe { hf_field = *hf_get(&CString::new("Packet").unwrap()) };
-                length = ENUM_SIZE;
-                encoding = WSEncoding::LittleEndian;
+        let tvblen = tvb_reported_length(tvb) as usize;
+        let mut packet_vec = Vec::<u8>::with_capacity(tvblen);
+        for i in 0..tvblen {
+            let byte = unsafe { ws::tvb_get_guint8(tvb, i as i32) };
+            packet_vec.push(byte);
+        }
+
+        let discr_vec: Vec<u8> = packet_vec.drain(0..length).collect();
+        let discriminant = LittleEndian::read_u32(&discr_vec.as_slice());
+
+        bytes_examined += length;
+
+        let packet_nw_data = netwayste_data.get(&CString::new("Packet").unwrap()).unwrap();
+
+        if let Enumerator(variants, fields) = packet_nw_data {
+            let variant: &CString = variants.get(discriminant as usize).unwrap();
+            let variant = variant.clone().into_string().unwrap();
+            for fd in fields.get(&variant).unwrap() {
+                let mut encoding: WSEncoding = WSEncoding::LittleEndian;
+                let field_name = &fd.name;
+                let hf_field = hf_get(&field_name);
+
+                let mut len_of_var_data = 1;
+
+                println!("Field Name: {:?}", field_name);
+                for s in &fd.format {
+                    match s {
+                        Sizing::Fixed(bytes) => {
+                            length = len_of_var_data * bytes;
+                            encoding = WSEncoding::LittleEndian;
+                        },
+                        Sizing::Variable(container) => {
+                            let (consume, data) = if let VariableContainer::Vector = container {
+                                let len = std::mem::size_of::<u64>();
+                                (len, unsafe { ws::tvb_get_guint64(tvb, bytes_examined as i32, WSEncoding::LittleEndian as u32) })
+                            } else {
+                                const len: usize = 1;
+                                (len, unsafe { ws::tvb_get_guint8(tvb, bytes_examined as i32) } as u64)
+                            };
+
+
+                            // Skip the byte we looked at
+                            bytes_examined += consume;
+
+                            // how many bytes we'll need to consume for the next field
+                            println!("\tLength: {} Value: {}", consume, data);
+                            len_of_var_data = data as usize;
+                            length = len_of_var_data;
+
+                            if len_of_var_data == 0 {
+                                // byte == 0 ? None, or empty Vector, nor empty String
+                                break;
+                            }
+
+                            // We may be dealing with a string
+                            encoding = WSEncoding::UTF8String;
+                        },
+                        Sizing::Structure(name) => {
+                            // FIXME: need to figure out how to get size of structure
+                            len_of_var_data = 0;
+                            length = 0;
+                        }
+                    };
+                }
+
+                if len_of_var_data == 0 {
+                    // Move onto the next field descriptor
+                    continue;
+                }
+
+                unsafe {
+                    // Attach stuff under "Conwayste Protocol" tree
+                    println!("Added from {} to {}, Enc {:?}", bytes_examined, bytes_examined + length, encoding);
+                    ws::proto_tree_add_item(self.tree, *hf_field, tvb, bytes_examined as i32, length as i32, encoding as u32);
+                }
+                bytes_examined += length;
             }
         }
 
-        unsafe {
-            // Attach stuff under "Conwayste Protocol" tree
-            ws::proto_tree_add_item(self.tree, hf_field, tvb, start, length, encoding as u32);
-        }
     }
 }
 
@@ -443,7 +517,7 @@ fn get_cwte_packet(tvb: *mut ws::tvbuff_t) -> Result<NetwaystePacket, std::io::E
 }
 
 // THE MEAT
-// called multiple times
+// Called once per Conwayste packet found in traffic
 extern "C" fn dissect_conwayste(
     tvb: *mut ws::tvbuff_t,         // Buffer the packet resides in
     pinfo: *mut ws::packet_info,    // general data about protocol
@@ -465,7 +539,7 @@ extern "C" fn dissect_conwayste(
     }
 
     let conwayste_tree = ConwaysteTree::new(tvb, tree);
-    conwayste_tree.add_item(tvb, ConwaysteField::EnumTag);
+    conwayste_tree.decode(tvb);
         // TODO: auto-generate more trees and items from inspecting AST of Packet
 
     // return the entire packet lenth.
@@ -538,13 +612,13 @@ fn register_header_fields() {
     }
 }
 
-// Walks the parsed `net.rs` AST and creates the corresponding header field data structure. Each
-// header field is associated to ID, and a name, abbreviation, data type, and display format.
+// Walks the parsed `net.rs` AST and builds a header field entry for each enum, variants with data,
+// and structures. The header field entry is provided to Wireshark so that it knows how to interpret
+// each data field when it's added to the ett during packet dissection.
 fn build_header_field_array() {
     let mut _hf = {
         let mut _hf = vec![];
         for enum_name in netwayste_data.keys() {
-            // Add the enumerator name
             let f = hf_get(enum_name);
 
             let enum_hf = sync_hf_register_info {
@@ -570,15 +644,18 @@ fn build_header_field_array() {
                 Enumerator(_enums, fields) => {
                     for vfield in fields.values() {
                         for vf in vfield.iter() {
-                            let mut field_data_type = FieldType::Str_z;
+                            let mut field_data_type = FieldType::Str;
                             let mut field_display: FieldDisplay = FieldDisplay::Str;
                             for fmt in vf.format.iter() {
                                 match fmt {
                                     Sizing::Structure(s) => {
                                         // TODO:
                                     },
-                                    Sizing::Variable => {
-                                        // nothing to do, will default to null-term string
+                                    Sizing::Variable(VariableContainer::Optional) => {
+                                        // nothing to do, will use nested type
+                                    }
+                                    Sizing::Variable(VariableContainer::Vector) => {
+                                        // nothing to do, will default to string if no further nesting
                                     }
                                     Sizing::Fixed(bytes) => {
                                         field_display = FieldDisplay::Decimal;
@@ -587,7 +664,12 @@ fn build_header_field_array() {
                                             4 => field_data_type = FieldType::U32,
                                             2 => field_data_type = FieldType::U16,
                                             1 => field_data_type = FieldType::U8,
-                                            _ => field_data_type = FieldType::U64, // maybe a better way
+                                            // We shouldn't get other values here
+                                            unknown_byte_count @ _ => {
+                                                println!("Unknown byte count observed during header
+                                                    field construction: {}", unknown_byte_count);
+                                                field_data_type = FieldType::U64;
+                                            },
                                         }
                                         break;
                                     }
@@ -619,6 +701,8 @@ fn build_header_field_array() {
 
         _hf
     };
+
+    // Append is only performed once so I am not wrapping it into its own function like the others
     hf.lock().unwrap().append(&mut _hf);
 }
 

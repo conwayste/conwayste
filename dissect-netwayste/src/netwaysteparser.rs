@@ -24,6 +24,13 @@ use std::collections::HashMap;
 
 use syn::{self, Item::{Enum, Struct}, PathArguments::AngleBracketed};
 
+
+//
+#[derive(Debug, Clone)]
+pub enum VariableContainer {
+    Optional,   // Bincode uses one byte to determine if Some() or None
+    Vector,     // Bincode uses 8 bytes to specify length of container
+}
 /// Specifies the size of a data type in Rust
 ///
 /// `Fixed` indicates the size is known at compile-time.
@@ -32,7 +39,7 @@ use syn::{self, Item::{Enum, Struct}, PathArguments::AngleBracketed};
 #[derive(Debug, Clone)]
 pub enum Sizing {
     Fixed(usize),
-    Variable,        // Size is specified at some byte offset for number things to consume
+    Variable(VariableContainer),        // Size is specified at some byte offset for number things to consume
     Structure(String),
 }
 
@@ -84,8 +91,15 @@ fn parse_size_from_type(type_arg: String) -> Vec<Sizing> {
     let param = type_arg;
     let mut list = vec![];
 
-    if param.starts_with("Option<") || param.starts_with("Vec<") {
-        list.push(Sizing::Variable);
+    let opt = param.starts_with("Option<");
+    let vec = param.starts_with("Vec<");
+
+    if opt || vec {
+        if opt {
+            list.push(Sizing::Variable(VariableContainer::Optional));
+        } else {
+            list.push(Sizing::Variable(VariableContainer::Vector));
+        }
 
         // Consume characters until we reach the inner type
         let mut characters = param.chars();
@@ -109,7 +123,7 @@ fn parse_size_from_type(type_arg: String) -> Vec<Sizing> {
         let param: Vec<&str> = param.split(',').collect();
         for p in param {
             list.push(match p {
-                    "String" => Sizing::Variable,
+                    "String" => Sizing::Variable(VariableContainer::Vector),
                     "u64" | "f64" | "i64" => Sizing::Fixed(8),
                     "u32" | "f32" | "i32" => Sizing::Fixed(4),
                     "u16" | "i16" => Sizing::Fixed(2),
