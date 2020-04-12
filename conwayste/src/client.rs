@@ -523,7 +523,7 @@ impl EventHandler for MainState {
                 self.update_main_menu_selection(ctx)?;
             }
             Screen::Run => {
-                // TODO Disable FSP limit until we decide if we need it
+                // TODO Disable FPS limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
                 let mut textfield_under_focus = false;
                 let id = self.ui_layout.chatbox_tf_id.clone();
