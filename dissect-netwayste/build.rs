@@ -8,18 +8,19 @@ fn main() {
     pkg_config::Config::new().atleast_version("2.0").probe("glib-2.0").unwrap();
     pkg_config::Config::new().probe("wireshark").unwrap();
 
-    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
-    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
-    let target = format!("-I/usr/lib/{}-{}-{}/glib-2.0/include", target_arch, target_os, target_env);
+    let mut bindings_builder = bindgen::Builder::default()
+        .header("wrapper.h");
 
-    let bindings = bindgen::Builder::default()
-        .header("wrapper.h")
-        .clang_arg("-I/usr/include/wireshark")
-        .clang_arg("-I/usr/include/glib-2.0")
-        .clang_arg(target)
-        .generate()
-        .expect("Unable to generate bindings");
+    for lib_name in &["glib-2.0", "wireshark"] {
+        for include_path in pkg_config::probe_library(lib_name).unwrap().include_paths {
+            let linker_arg = format!("-I{}", include_path.to_str().unwrap());
+            bindings_builder = bindings_builder.clang_arg(linker_arg);
+            // NOTE: unwrap only fails on non-UTF-8 paths
+        }
+    }
+
+    let bindings = bindings_builder.generate().expect("Unable to generate bindings");
+
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
         .write_to_file(out_path.join("bindings.rs"))
