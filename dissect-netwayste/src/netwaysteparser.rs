@@ -35,12 +35,15 @@ pub enum VariableContainer {
 ///
 /// `Fixed` indicates the size is known at compile-time.
 /// `Variable` indicates the size is specified as part of the network packet.
-/// `Structure` indicates a complex data-type.
+/// `DataType` indicates a complex data-type.
 #[derive(Debug, Clone)]
 pub enum Sizing {
+    /// Field size is that of a primitive
     Fixed(usize),
-    Variable(VariableContainer),        // Size is specified at some byte offset for number things to consume
-    Structure(String),
+    /// Field size is determined by data buffer content to drive how many "things" there are
+    Variable(VariableContainer),
+    /// Field size is complex. Refer to the data type (enum, struct, etc.)
+    DataType(String),
 }
 
 #[derive(Debug, Clone)]
@@ -128,7 +131,7 @@ fn parse_size_from_type(type_arg: String) -> Vec<Sizing> {
                     "u32" | "f32" | "i32" => Sizing::Fixed(4),
                     "u16" | "i16" => Sizing::Fixed(2),
                     "u8" | "i8" | "bool" => Sizing::Fixed(1),
-                    name @ _ => Sizing::Structure(name.to_string()),
+                    name @ _ => Sizing::DataType(name.to_string()),
                 });
         }
     }

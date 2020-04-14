@@ -158,13 +158,26 @@ fn print_hex(buf: &[u8]) {
     println!("[{}]", s);
 }
 
+// A happy little utility function to read 4-bytes from the TVB
+fn tvb_peek_four_bytes(tvb: *mut ws::tvbuff_t, offset: i32) -> u32 {
+    let tvblen = tvb_reported_length(tvb) as usize;
+    let mut packet_vec = Vec::<u8>::with_capacity(tvblen);
+    for i in 0..tvblen {
+        let byte = unsafe { ws::tvb_get_guint8(tvb, i as i32) };
+        packet_vec.push(byte);
+    }
+
+    let discr_vec: Vec<u8> = packet_vec.drain((offset as usize)..(offset as usize + 4)).collect();
+    LittleEndian::read_u32(&discr_vec.as_slice())
+}
+
 struct ConwaysteTree {
     tree: *mut ws::proto_tree,
 }
 
 impl ConwaysteTree {
     pub fn new(tvb: *mut ws::tvbuff_t, tree: *mut ws::proto_tree) -> Self {
-        //// make tree, etc.! See example 9.4+ from https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
+        // make tree, etc.! See example 9.4+ from https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
         // Add "Conwayste Protocol" tree (initially with nothing under it), under "User Datagram
         // Protocol" in middle pane.
         const tvb_data_start: c_int = 0;    // start of the tvb
@@ -178,117 +191,136 @@ impl ConwaysteTree {
         }
     }
 
-    pub fn decode(&self, tvb: *mut ws::tvbuff_t) {
-        let mut field_length = 4;    // First byte is enumerator definition
-        let mut bytes_examined = 0;
+    /// Starting point for the TVB decoding process
+    fn decode(&self, tvb: *mut ws::tvbuff_t) {
+        let mut bytes_examined: i32 = 0;
 
-        let tvblen = tvb_reported_length(tvb) as usize;
-        let mut packet_vec = Vec::<u8>::with_capacity(tvblen);
-        for i in 0..tvblen {
-            let byte = unsafe { ws::tvb_get_guint8(tvb, i as i32) };
-            packet_vec.push(byte);
-        }
+        self.decode_nw_data_format(tvb, &mut bytes_examined, CString::new("Packet").unwrap());
+    }
 
-        let discr_vec: Vec<u8> = packet_vec.drain(0..field_length).collect();
-        let discriminant = LittleEndian::read_u32(&discr_vec.as_slice());
+    /// Decodes a `NetwaysteDataFormat` as specified by the name; all of its sub fields are added
+    /// to the decoded tree in order of appearance by inspecting the TVB contents.
+    fn decode_nw_data_format(&self, tvb: *mut ws::tvbuff_t, bytes_examined: &mut i32, name: CString) {
+        let packet_nw_data = netwayste_data.get(&name).unwrap();
 
-        bytes_examined += field_length;
+        match packet_nw_data {
+            Enumerator(variants, fields) => {
+                const enum_length: i32 = 4;    // Enum size discriminant size
+                let discriminant = tvb_peek_four_bytes(tvb, *bytes_examined);
 
-        let packet_nw_data = netwayste_data.get(&CString::new("Packet").unwrap()).unwrap();
+                let variant: &CString = variants.get(discriminant as usize).unwrap();
 
-        if let Enumerator(variants, fields) = packet_nw_data {
-            let variant: &CString = variants.get(discriminant as usize).unwrap();
-            let variant = variant.clone().into_string().unwrap();
-            'field_loop: for fd in fields.get(&variant).unwrap() {
-                let mut encoding: WSEncoding = WSEncoding::LittleEndian;
-                let field_name = &fd.name;
-                let hf_field = hf_get(&field_name);
-
-                // Bincode encodes the length of a vector prior to the items in the list. We need to
-                // keep track of how many 'things' to add.
-                let mut item_count = 1;
-
-                println!("Field Name: {:?}", field_name);
-                for s in &fd.format {
-                    match s {
-                        Sizing::Fixed(bytes) => {
-                            field_length = item_count * bytes;
-                            encoding = WSEncoding::LittleEndian;
-                        },
-                        Sizing::Variable(container) => {
-                            // Peek into the buffer to see what/how much we are working with
-                            let consume = match container {
-                                VariableContainer::Vector => {
-                                    // Bincode encodes length of list as 8 bytes
-                                    let len = std::mem::size_of::<u64>();
-                                    let data = unsafe { ws::tvb_get_guint64(tvb, bytes_examined as i32, WSEncoding::LittleEndian as u32) };
-
-                                    // List turned out to be empty. Skip it for now.. TODO: Reeval skipping
-                                    if data == 0 {
-                                        break 'field_loop;
-                                    }
-
-                                    // We have a non empty list!
-                                    println!("\tis non-empty vector");
-                                    // Bytes we peek at tell us how many items are in the list.
-                                    // The cast shouldn't truncate due to quantities we're dealing with.
-                                    item_count = data as usize;
-
-                                    // We may be dealing with a String so set up the encoding and
-                                    // length. If we are are dealing with something else we'll catch
-                                    // it on the next loop.
-                                    encoding = WSEncoding::UTF8String;
-                                    field_length = item_count;
-                                    len
-                                },
-                                VariableContainer::Optional => {
-                                    // Bincode uses 1 byte for an Option enum
-                                    const len: usize = 1;
-                                    let data = unsafe { ws::tvb_get_guint8(tvb, bytes_examined as i32) };
-
-                                    // Option turned out to be None. Add a none description for this
-                                    // field in the tree and move onto the next field
-                                    if data == 0 {
-                                        let optioned_hf_field = hf_get_option_id(&field_name);
-                                        unsafe {
-                                            // Move onto the next field descriptor
-                                            ws::proto_tree_add_string(self.tree,
-                                                *optioned_hf_field,
-                                                tvb,
-                                                bytes_examined as i32,
-                                                len as i32,
-                                                NONE_STRING.0 as *const i8);
-                                        }
-                                        bytes_examined += len;
-                                        continue 'field_loop;
-                                    }
-
-                                    println!("\tis Some(..)");
-                                    item_count = 1;
-                                    // We have Some(..)thing
-                                    len
-                                }
-                            };
-
-                            bytes_examined += consume;
-                        },
-                        Sizing::Structure(name) => {
-                            // PR_GATE: need to figure out how to get size of structure
-                            item_count = 0;
-                            field_length = 0;
-                        }
-                    };
-                }
-
+                // Add the enum variant to the tree so we get a string representation of the variant
+                let hf_field = hf_get(&name);
                 unsafe {
-                    // Attach stuff under "Conwayste Protocol" tree
-                    println!("Added from {} to {}, Enc {:?}", bytes_examined, bytes_examined + field_length, encoding);
-                    ws::proto_tree_add_item(self.tree, *hf_field, tvb, bytes_examined as i32, field_length as i32, encoding as u32);
+                    ws::proto_tree_add_item(self.tree, *hf_field, tvb, *bytes_examined, enum_length, WSEncoding::LittleEndian as u32);
                 }
-                bytes_examined += field_length;
+                *bytes_examined += enum_length;
+
+                let variant = variant.clone().into_string().unwrap();
+                for fd in fields.get(&variant).unwrap() {
+                    self.add_field_to_tree(tvb, fd, bytes_examined);
+                }
+            }
+            Structure(fields) => {
+                for fd in fields.iter() {
+                    self.add_field_to_tree(tvb, fd, bytes_examined);
+                }
             }
         }
+    }
 
+    /// Determines the data type and size of a field and adds the data segment to the tree
+    fn add_field_to_tree(&self, tvb: *mut ws::tvbuff_t, fd: &netwaysteparser::FieldDescriptor, bytes_examined: &mut i32) {
+        let mut field_length: i32 = 4;    // First byte is enumerator definition
+        let mut encoding: WSEncoding = WSEncoding::LittleEndian;
+        let field_name = &fd.name;
+        let hf_field = hf_get(&field_name);
+        let mut add_field = true;
+
+        // Bincode encodes the length of a vector prior to the items in the list. We need to
+        // keep track of how many 'things' to add.
+        let mut item_count: i32 = 1;
+
+        for s in &fd.format {
+            println!("\t..Format: {:?}", s);
+            match s {
+                Sizing::Fixed(bytes) => {
+                    println!("\t....Fixed");
+                    field_length = item_count * (*bytes as i32);
+                    encoding = WSEncoding::LittleEndian;
+                },
+                Sizing::Variable(container) => {
+                    // Peek into the buffer to see what/how much we are working with
+                    let consume = match container {
+                        VariableContainer::Vector => {
+                            // Bincode encodes length of list as 8 bytes
+                            let len = std::mem::size_of::<u64>();
+                            let data = unsafe { ws::tvb_get_guint64(tvb, *bytes_examined, WSEncoding::LittleEndian as u32) };
+
+                            // List turned out to be empty. Skip it and continue to next FD
+                            if data == 0 {
+                                return;
+                            }
+
+                            // Bytes we peek at tell us how many items are in the list.
+                            // The cast shouldn't truncate due to quantities we're dealing with.
+                            item_count = data as i32; // PR_GATE check cast sign safeness
+
+                            // We may be dealing with a String so set up the encoding and
+                            // length. If we are are dealing with something else we'll catch
+                            // it on the next loop.
+                            encoding = WSEncoding::UTF8String;
+                            field_length = item_count;
+                            len
+                        },
+                        VariableContainer::Optional => {
+                            // Bincode uses 1 byte for an Option enum
+                            const len: usize = 1;
+                            let data = unsafe { ws::tvb_get_guint8(tvb, *bytes_examined) };
+
+                            // Option turned out to be None. Add a none description for this
+                            // field in the tree and move onto the next field
+                            if data == 0 {
+                                let optioned_hf_field = hf_get_option_id(&field_name);
+                                unsafe {
+                                    // Move onto the next field descriptor
+                                    ws::proto_tree_add_string(self.tree,
+                                        *optioned_hf_field,
+                                        tvb,
+                                        *bytes_examined,
+                                        len as i32,
+                                        NONE_STRING.0 as *const i8);
+                                }
+                                *bytes_examined += len as i32;
+                                return; // Continue on to the next FD
+                            }
+
+                            // We have Some(..)thing
+                            item_count = 1;
+                            len
+                        }
+                    };
+
+                    *bytes_examined += consume as i32;
+                },
+                Sizing::DataType(name) => {
+                    self.decode_nw_data_format(tvb, bytes_examined, CString::new(name.clone()).unwrap());
+
+                    // No need to add to the tree again; all struct fields have been added
+                    add_field = false ;
+                }
+            };
+        }
+
+        if add_field {
+            println!("Added from {} to {}, Enc {:?}", bytes_examined, *bytes_examined + field_length, encoding);
+            unsafe {
+                // Attach stuff under "Conwayste Protocol" tree
+                ws::proto_tree_add_item(self.tree, *hf_field, tvb, *bytes_examined, field_length, encoding as u32);
+            }
+            *bytes_examined += field_length;
+        }
     }
 }
 

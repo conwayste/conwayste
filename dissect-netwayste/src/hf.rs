@@ -247,7 +247,7 @@ pub fn build_header_field_array() {
             let mut field_display: FieldDisplay = FieldDisplay::Str;
             for fmt in field.format.iter() {
                 match fmt {
-                    Sizing::Structure(_s) => {
+                    Sizing::DataType(_s) => {
                         // nothing to do, will be handled as NetwaysteDataFormat is iterated
                     },
                     Sizing::Variable(VariableContainer::Optional) => {
