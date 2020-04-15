@@ -258,7 +258,7 @@ impl ConwaysteTree {
                             let len = std::mem::size_of::<u64>();
                             let data = unsafe { ws::tvb_get_guint64(tvb, *bytes_examined, WSEncoding::LittleEndian as u32) };
 
-                            // List turned out to be empty. Skip it and continue to next FD
+                            // List turned out to be empty. Skip it and continue to next field descriptor
                             if data == 0 {
                                 return;
                             }
@@ -293,7 +293,7 @@ impl ConwaysteTree {
                                         NONE_STRING.0 as *const i8);
                                 }
                                 *bytes_examined += len as i32;
-                                return; // Continue on to the next FD
+                                return; // Continue on to the next field descriptor
                             }
 
                             // We have Some(..)thing
