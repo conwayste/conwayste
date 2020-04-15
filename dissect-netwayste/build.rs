@@ -9,7 +9,10 @@ fn main() {
     pkg_config::Config::new().probe("wireshark").unwrap();
 
     let mut bindings_builder = bindgen::Builder::default()
-        .header("wrapper.h");
+        .header("wrapper.h")
+        // Some systems need this. It was needed in manghi's case when the wireshark package was
+        // compiled from source locally in Ubuntu 18.04
+        .clang_arg("-I/usr/include/wireshark");
 
     for lib_name in &["glib-2.0", "wireshark"] {
         for include_path in pkg_config::probe_library(lib_name).unwrap().include_paths {
