@@ -5,7 +5,7 @@ set -ex
 # TODO This is the "test phase", tweak it as you see fit
 main() {
     # XXX run in docker: sudo apt-get -yq --no-install-suggests --no-install-recommends install libudev-dev libasound2-dev
-    if [ "$TARGET" =~ .*"windows".* ]; then
+    if [[ "$TARGET" = *windows* ]]; then
         cross build --target $TARGET --workspace --exclude dissect-netwayste
         cross build --target $TARGET --release --workspace --exclude dissect-netwayste
     else
@@ -17,7 +17,7 @@ main() {
         return
     fi
 
-    if [ "$TARGET" =~ .*"windows".* ]; then
+    if [[ "$TARGET" = *windows* ]]; then
         cross test --target $TARGET --workspace --exclude dissect-netwayste
         cross test --target $TARGET --release --workspace --exclude dissect-netwayste
     else
