@@ -18,10 +18,16 @@ main() {
     test -f Cargo.lock || cargo generate-lockfile
 
     # Update this to build the artifacts that matter to you
-    cross rustc --bin client --target $TARGET --release -- -C lto
+    cross rustc --bin client --target $TARGET --package conwayste --release -- -C lto
 
-    # TODO Update this to package the right artifacts
-    cp target/$TARGET/release/client $stage/
+    # Update this to package the right artifacts
+    if echo $TARGET | grep -q pc-windows; then
+      EXT=.exe
+    else
+      EXT=
+    fi
+    cp target/$TARGET/release/client$EXT $stage/
+    cp -pr conwayste/resources $stage/
 
     cd $stage
     tar czf $src/$CRATE_NAME-$TRAVIS_TAG-$TARGET.tar.gz *
