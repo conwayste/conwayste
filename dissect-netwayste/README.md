@@ -1,5 +1,5 @@
 # Prerequisites
-In order to compile the dissector to be used with Wireshark, you'll need to install glib-2.0 and Bindgen.
+In order to compile the dissector to be used with Wireshark, you'll need to install glib-2.0 and bindgen.
 
 ## glib-2.0
 `glib-2.0` is required so please refer to your distribution's package manager for installation instructions.
