@@ -192,6 +192,9 @@ pub type HandlerMap = HashMap<EventType, Vec<Handler>>;
 /// Trait for widgets that can handle various events. Use `.on` to register a handler and `.emit`
 /// to emit an event which will cause all handlers for the event's type to be called.
 ///
+/// Generally, this should be implemented on widgets using impl_emit_event!(...), rather than
+/// handwriting implementations for the two required methods.
+///
 /// # Errors
 ///
 /// * It is an error to call `.emit` or `.on` from within a handler.

@@ -295,7 +295,6 @@ impl Layering {
             warn!("NodeId {:?} found in removed-hashset during widget insertion. Possible reusage!", inserted_node_id);
         }
 
-
         Ok(inserted_node_id)
     }
 
