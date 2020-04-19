@@ -305,7 +305,9 @@ impl ConwaysteTree {
                     *bytes_examined += consume as i32;
                 },
                 Sizing::DataType(name) => {
-                    self.decode_nw_data_format(tvb, bytes_examined, CString::new(name.clone()).unwrap());
+                    for _ in 0..item_count {
+                        self.decode_nw_data_format(tvb, bytes_examined, CString::new(name.clone()).unwrap());
+                    }
 
                     // No need to add to the tree again; all struct fields have been added
                     add_field = false ;
