@@ -485,21 +485,60 @@ impl Layering {
         })?;
 
         if key == KeyCode::Tab {
-            // TODO: if this is a pane, do not change focus until the right time
-            if event.shift_pressed {
-                focus_cycle.focus_previous();
-            } else {
-                focus_cycle.focus_next();
-            }
-            return Ok(()); // do not pass this on to the currently focused widget
-        }
+            // special key press logic to handle focus changes
 
-        let focused_id = focus_cycle.focused_widget_id();
-        if let Some(id) = focused_id {
-            Layering::emit_keyboard_event(event, uictx, id)
-        } else {
-            // nothing focused; ignore
+            let opt_child_id = focus_cycle.focused_widget_id().map(|child_id_ref| child_id_ref.clone());
+            let opt_widget = opt_child_id.as_ref().map(|child_id| uictx.widget_view.get(child_id).unwrap().data());
+            if opt_child_id.is_some() && opt_widget.unwrap().downcast_ref::<Pane>().is_some() {
+                let child_id = opt_child_id.unwrap();
+                Layering::emit_keyboard_event(event, uictx, &child_id)?;  // TODO: ok to ret if Pane returns error here?
+
+                // check if the Pane's focus dropped of the end of its open-ended focus "cycle"
+                let pane_events = uictx.collect_child_events();
+                for pane_event in pane_events {
+                    // ignore all event types except this one for now
+                    if pane_event.what == context::EventType::ChildReleasedFocus {
+                        if event.shift_pressed {
+                            focus_cycle.focus_previous();
+                        } else {
+                            focus_cycle.focus_next();
+                        }
+                        // send a GainFocus event to the newly focused widget (if any)
+                        if let Some(newly_focused_id) = focus_cycle.focused_widget_id() {
+                            Layering::emit_focus_change(context::EventType::GainFocus, uictx, newly_focused_id)?;
+                        }
+                        break;
+                    }
+                }
+            } else {
+                if event.shift_pressed {
+                    focus_cycle.focus_previous();
+                } else {
+                    focus_cycle.focus_next();
+                }
+
+                // send a GainFocus event to the newly focused widget (if any)
+                if let Some(newly_focused_id) = focus_cycle.focused_widget_id() {
+                    Layering::emit_focus_change(context::EventType::GainFocus, uictx, newly_focused_id)?;
+                }
+
+                // send a LoseFocus event to the previously focused widget (if any)
+                if let Some(newly_focused_id) = opt_child_id {
+                    Layering::emit_focus_change(context::EventType::LoseFocus, uictx, &newly_focused_id)?;
+                }
+            }
+
             Ok(())
+
+        } else {
+            // regular key press logic (no focus changes)
+            let focused_id = focus_cycle.focused_widget_id();
+            if let Some(id) = focused_id {
+                Layering::emit_keyboard_event(event, uictx, id)
+            } else {
+                // nothing focused; ignore
+                Ok(())
+            }
         }
     }
 
@@ -507,6 +546,26 @@ impl Layering {
         let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
         if let Some(emittable) = widget_ref.as_emit_event() {
             return emittable.emit(event, &mut subuictx);
+        } else {
+            // We probably won't ever get here due to the FocusCycle only holding widgets that can
+            // receive keyboard events.
+            debug!("nothing to emit on; widget is not an EmitEvent");
+        }
+        Ok(())
+    }
+
+    fn emit_focus_change(what: context::EventType, uictx: &mut context::UIContext, focused_id: &NodeId) -> Result<(), Box<dyn Error>> {
+        let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
+        if let Some(emittable) = widget_ref.as_emit_event() {
+            let event = context::Event {
+                what,
+                point: None,
+                prev_point: None,
+                button: None,
+                key: None,
+                shift_pressed: false,
+            };
+            return emittable.emit(&event, &mut subuictx);
         } else {
             // We probably won't ever get here due to the FocusCycle only holding widgets that can
             // receive keyboard events.

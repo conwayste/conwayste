@@ -24,8 +24,8 @@ use downcast_rs::Downcast;
 use enum_iterator::IntoEnumIterator;
 use ggez;
 use ggez::event::MouseButton;
-use ggez::nalgebra::Point2;
 use ggez::input::keyboard::KeyCode;
+use ggez::nalgebra::Point2;
 use id_tree::NodeId;
 
 use super::treeview::TreeView;
@@ -130,9 +130,9 @@ pub enum EventType {
     Resize,
     ParentTranslate,
     ParentResize,
-    // TODO: not sure about Child* because we'd need a widget ID to say which child
-    //ChildTranslate,
-    //ChildResize,
+    GainFocus,
+    LoseFocus,
+    ChildReleasedFocus, // this goes toward the root of the tree! Emitted by Pane onto its parent via child_event()
 }
 
 // TODO: move this elsewhere; it's in here to keep separate from other code (avoid merge conflicts)
@@ -147,7 +147,12 @@ pub struct Event {
 }
 
 /// A slice containing all EventTypes related to the keyboard.
-pub const KEY_EVENTS: &[EventType] = &[EventType::KeyPress];
+pub const KEY_EVENTS: &[EventType] = &[
+    EventType::KeyPress,
+    EventType::ChildReleasedFocus,
+    EventType::GainFocus,
+    EventType::LoseFocus,
+];
 
 /// A slice containing all EventTypes related to the mouse.
 pub const MOUSE_EVENTS: &[EventType] = &[EventType::Click, EventType::MouseMove, EventType::Drag];

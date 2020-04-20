@@ -39,7 +39,9 @@ use super::{
     UIResult,
 };
 
-use context::{EmitEvent, EventType, Handled};
+use ggez::input::keyboard::KeyCode;
+
+use context::{UIContext, Event, EmitEvent, EventType, Handled};
 
 use crate::constants::colors::*;
 
@@ -116,13 +118,121 @@ impl Pane {
                 };
                 pane.on(event_type, Box::new(handler)).unwrap(); // unwrap OK because we aren't calling from within a handler
             } else if event_type.is_key_event() {
-                continue; // XXX TODO keyboard events
+                // unwrap OK because we aren't calling from within a handler
+                pane.on(event_type, Box::new(Pane::key_press_handler)).unwrap();
             } else {
                 // nothing to do if this is not a key or a mouse event
             }
         }
 
         pane
+    }
+
+    fn key_press_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+        let key = event.key.ok_or_else(|| -> Box<dyn Error> {
+            format!("event of type {:?} has no key", event.what).into()
+        })?;
+
+        let pane = obj.downcast_mut::<Pane>().unwrap();
+
+        if key == KeyCode::Tab {
+            // special key press logic to handle focus changes
+            let opt_child_id = pane.focus_cycle.focused_widget_id().map(|child_id_ref| child_id_ref.clone());
+            let opt_widget = opt_child_id.as_ref().map(|child_id| uictx.widget_view.get(child_id).unwrap().data());
+            if opt_child_id.is_some() && opt_widget.unwrap().downcast_ref::<Pane>().is_some() {
+                let child_id = opt_child_id.unwrap();
+                Pane::emit_keyboard_event(event, uictx, &child_id)?;  // TODO: ok to ret if Pane returns error here?
+
+                // check if the Pane's focus dropped of the end of its open-ended focus "cycle"
+                let pane_events = uictx.collect_child_events();
+                for pane_event in pane_events {
+                    // ignore all event types except this one for now
+                    if pane_event.what == context::EventType::ChildReleasedFocus {
+                        if event.shift_pressed {
+                            pane.focus_cycle.focus_previous();
+                        } else {
+                            pane.focus_cycle.focus_next();
+                        }
+                        // send a GainFocus event to the newly focused widget (if any)
+                        if let Some(newly_focused_id) = pane.focus_cycle.focused_widget_id() {
+                            Pane::emit_focus_change(EventType::GainFocus, uictx, newly_focused_id)?;
+                        }
+                        info!("AFTER"); //XXX XXX XXX
+                        break;
+                    }
+                }
+            } else {
+                if event.shift_pressed {
+                    pane.focus_cycle.focus_previous();
+                } else {
+                    pane.focus_cycle.focus_next();
+                }
+
+                // send a GainFocus event to the newly focused widget (if any)
+                if let Some(newly_focused_id) = pane.focus_cycle.focused_widget_id() {
+                    Pane::emit_focus_change(EventType::GainFocus, uictx, newly_focused_id)?;
+                }
+
+                // send a LoseFocus event to the previously focused widget (if any)
+                if let Some(newly_focused_id) = opt_child_id {
+                    Pane::emit_focus_change(EventType::LoseFocus, uictx, &newly_focused_id)?;
+                }
+            }
+
+            if pane.focus_cycle.focused_widget_id().is_none() {
+                // we lost focus; send ChildReleasedFocus event to parent
+                let event = Event {
+                    what: EventType::ChildReleasedFocus,
+                    point: None,
+                    prev_point: None,
+                    button: None,
+                    key: None,
+                    shift_pressed: false,
+                };
+                uictx.child_event(event);
+            }
+        } else {
+            // regular key press logic (no focus changes)
+            let focused_id = pane.focus_cycle.focused_widget_id();
+            if let Some(id) = focused_id {
+                Pane::emit_keyboard_event(event, uictx, id)?;
+            }
+        }
+        Ok(Handled::Handled)
+    }
+
+    fn emit_keyboard_event(event: &context::Event, uictx: &mut UIContext, focused_id: &NodeId) -> Result<(), Box<dyn Error>> {
+        info!("BEFOREKBD"); //XXX XXX XXX
+        let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
+        if let Some(emittable) = widget_ref.as_emit_event() {
+            return emittable.emit(event, &mut subuictx);
+        } else {
+            // We probably won't ever get here due to the FocusCycle only holding widgets that can
+            // receive keyboard events.
+            debug!("nothing to emit on; widget is not an EmitEvent");
+        }
+        Ok(())
+    }
+
+    fn emit_focus_change(what: EventType, uictx: &mut UIContext, focused_id: &NodeId) -> Result<(), Box<dyn Error>> {
+        info!("BEFORE"); //XXX XXX XXX
+        let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
+        if let Some(emittable) = widget_ref.as_emit_event() {
+            let event = Event {
+                what,
+                point: None,
+                prev_point: None,
+                button: None,
+                key: None,
+                shift_pressed: false,
+            };
+            return emittable.emit(&event, &mut subuictx);
+        } else {
+            // We probably won't ever get here due to the FocusCycle only holding widgets that can
+            // receive keyboard events.
+            debug!("nothing to emit on; widget is not an EmitEvent");
+        }
+        Ok(())
     }
 
     /*
