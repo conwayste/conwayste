@@ -146,16 +146,20 @@ pub struct Event {
     pub shift_pressed: bool,
 }
 
-/// A slice containing all EventTypes related to the keyboard.
+/// A slice containing all EventTypes related to the keyboard. Must have a key set.
 pub const KEY_EVENTS: &[EventType] = &[
     EventType::KeyPress,
-    EventType::ChildReleasedFocus,
-    EventType::GainFocus,
-    EventType::LoseFocus,
 ];
 
 /// A slice containing all EventTypes related to the mouse.
 pub const MOUSE_EVENTS: &[EventType] = &[EventType::Click, EventType::MouseMove, EventType::Drag];
+
+/// A slice containing all EventTypes related to keyboard focus changes.
+pub const FOCUS_EVENTS: &[EventType] = &[
+    EventType::GainFocus,
+    EventType::LoseFocus,
+    EventType::ChildReleasedFocus,
+];
 
 impl EventType {
     /// Returns true if and only if this is a keyboard event type.
@@ -166,6 +170,11 @@ impl EventType {
     /// Returns true if and only if this is a mouse event type. This implies that point is valid.
     pub fn is_mouse_event(self) -> bool {
         MOUSE_EVENTS.contains(&self)
+    }
+
+    /// Returns true if and only if this is a keyboard focus event type.
+    pub fn is_focus_event(self) -> bool {
+        FOCUS_EVENTS.contains(&self)
     }
 }
 
@@ -178,6 +187,11 @@ impl Event {
     /// Returns true if and only if this is a mouse event. This implies that point is valid.
     pub fn is_mouse_event(&self) -> bool {
         self.what.is_mouse_event()
+    }
+
+    /// Returns true if and only if this is a keyboard focus event.
+    pub fn is_focus_event(self) -> bool {
+        self.what.is_focus_event()
     }
 }
 

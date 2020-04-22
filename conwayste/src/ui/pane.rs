@@ -130,7 +130,7 @@ impl Pane {
 
     fn key_press_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
         let key = event.key.ok_or_else(|| -> Box<dyn Error> {
-            format!("event of type {:?} has no key", event.what).into()
+            format!("pane event of type {:?} has no key", event.what).into()
         })?;
 
         let pane = obj.downcast_mut::<Pane>().unwrap();

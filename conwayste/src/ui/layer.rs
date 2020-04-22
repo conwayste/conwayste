@@ -481,7 +481,7 @@ impl Layering {
 
     fn handle_keyboard_event(event: &context::Event, uictx: &mut context::UIContext, focus_cycle: &mut FocusCycle) -> Result<(), Box<dyn Error>> {
         let key = event.key.ok_or_else(|| -> Box<dyn Error> {
-            format!("event of type {:?} has no key", event.what).into()
+            format!("layering event of type {:?} has no key", event.what).into()
         })?;
 
         if key == KeyCode::Tab {
