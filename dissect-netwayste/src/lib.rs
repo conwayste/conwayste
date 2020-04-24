@@ -45,6 +45,7 @@ use std::io::{Error, ErrorKind};
 use std::mem;
 use std::net::SocketAddr;
 use std::os::raw::{c_int, c_void};
+use std::ptr;
 use std::sync::Mutex;
 
 mod netwaysteparser;
@@ -79,6 +80,24 @@ static mut plug_conwayste: ws::proto_plugin = ws::proto_plugin {
 
 static mut proto_conwayste: c_int = -1;
 static mut ett_conwayste: c_int = -1;
+static mut ett1: c_int = -1;
+static mut ett2: c_int = -1;
+static mut ett3: c_int = -1;
+static mut ett4: c_int = -1;
+static mut ett5: c_int = -1;
+static mut ett6: c_int = -1;
+static mut ett7: c_int = -1;
+static mut ett8: c_int = -1;
+static mut ett9: c_int = -1;
+static mut ett10: c_int = -1;
+static mut ett11: c_int = -1;
+static mut ett12: c_int = -1;
+static mut ett13: c_int = -1;
+static mut ett14: c_int = -1;
+static mut ett15: c_int = -1;
+static mut ett16: c_int = -1;
+static mut ett17: c_int = -1;
+static mut ett18: c_int = -1;
 
 struct ConwaysteProtocolStrings {
     proto_full_name: CString,
@@ -98,6 +117,130 @@ impl ConwaysteProtocolStrings {
     }
 }
 
+struct EttInfo {
+    ett_items: Vec<c_int>,
+    pub addresses: Vec<usize>,
+    map: HashMap<String, usize>,
+}
+
+impl EttInfo {
+    pub fn new() -> EttInfo {
+        EttInfo {
+            ett_items: Vec::new(),
+            addresses: Vec::new(),
+            map: HashMap::new(),
+        }
+    }
+
+    /// Retrieves a pointer to the (mutable) allocated header field for the provided string.
+    ///
+    /// # Panics
+    /// Will panic if the provided String is not registered. This is intentional as a means to catch
+    /// bugs.
+    fn get_ett_addr(&mut self, name: &String) -> c_int {
+        if let Some(index) =  self.map.get(name) {
+            assert!(*index < self.ett_items.len());
+            // Unwrap safe b/c of assert
+            //let item = self.ett_items.get_mut(*index).unwrap();
+            let item = match index {
+                1 => unsafe { ett1 },
+                2 => unsafe { ett2 },
+                3 => unsafe { ett3 },
+                4 => unsafe { ett4 },
+                5 => unsafe { ett5 },
+                6 => unsafe { ett6 },
+                7 => unsafe { ett7 },
+                8 => unsafe { ett8 },
+                9 => unsafe { ett9 },
+                10 => unsafe { ett10 },
+                11 => unsafe { ett11 },
+                12 => unsafe { ett12 },
+                13 => unsafe { ett13 },
+                14 => unsafe { ett14 },
+                15 => unsafe { ett15 },
+                16 => unsafe { ett16 },
+                17 => unsafe { ett17 },
+                18 => unsafe { ett18 },
+                _ => panic!("NOT ENOUGH ITEMS IN ETT")
+            };
+            return item;
+        }
+        unreachable!();
+    }
+
+    /// Registers the provided string with the allocator. This must be called prior to any `get()`
+    /// calls!
+    fn register_ett(&mut self, name: &String) {
+        //_ett.push(unsafe { mem::transmute::<*const c_int, usize>(&ett_conwayste as *const c_int) } );
+        // Add in a value of -1. Wireshark will overwrite this later.
+        self.ett_items.push(-1);
+        // this is actually a Vec<*mut c_int> containing a pointer to ett_conwayste and is an ugly
+        // hack because *const c_int is not Sync and cannot be shared. Transmute so that the we can
+        // still get the address.
+        // unwrap safe because we know the list is non-empty.
+
+        let base_addr = self.ett_items.as_mut_ptr();
+        let offset = self.ett_items.len() - 1;
+        self.addresses.push(unsafe {
+            //mem::transmute::<*const c_int, usize>(base_addr.add(offset) as *const c_int)
+            mem::transmute::<*mut c_int, usize>(self.ett_items.get_mut(offset).unwrap() as *mut c_int)
+        });
+        unsafe {
+            println!("Registered address {:x?} with value {:?}", base_addr.add(offset), *base_addr.add(offset));
+            println!("Addresses[i] = 0x{:x}", self.addresses.last().unwrap());
+        }
+        // Map the index into the `ett` vector to the name
+        self.map.insert(name.clone(), self.ett_items.len() - 1);
+    }
+
+    fn register_ett2(&mut self, name: &String) {
+        self.ett_items.push(-1);
+        unsafe {
+        match self.ett_items.len() {
+            1 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett1 as *const c_int)),
+            2 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett2 as *const c_int)),
+            3 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett3 as *const c_int)),
+            4 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett4 as *const c_int)),
+            5 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett5 as *const c_int)),
+            6 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett6 as *const c_int)),
+            7 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett7 as *const c_int)),
+            8 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett8 as *const c_int)),
+            9 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett9 as *const c_int)),
+           10 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett10 as *const c_int)),
+           11 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett11 as *const c_int)),
+           12 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett12 as *const c_int)),
+           13 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett13 as *const c_int)),
+           14 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett14 as *const c_int)),
+           15 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett15 as *const c_int)),
+           16 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett16 as *const c_int)),
+           17 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett17 as *const c_int)),
+           18 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett18 as *const c_int)),
+           _ => panic!("NOT ENOUGH ITEMS IN ETT")
+        }}
+            println!("Addresses[i] = 0x{:x}", self.addresses.last().unwrap());
+        self.map.insert(name.clone(), self.ett_items.len() - 1);
+    }
+}
+
+pub fn ett_register(name: &String) {
+    ett.lock().unwrap().register_ett(name);
+}
+
+pub fn ett_get_addresses() -> *const usize {
+    let lock = ett.lock().unwrap();
+    println!("{:x?}", lock.addresses);
+    let ptr = lock.addresses.as_ptr() as *const usize;
+    println!("PTR: {:x?}", ptr);
+    ptr
+}
+
+pub fn ett_get_address(name: &String) -> c_int {
+    ett.lock().unwrap().get_ett_addr(name)
+}
+
+pub fn ett_get_addresses_count() -> usize {
+    ett.lock().unwrap().addresses.len()
+}
 
 lazy_static! {
     static ref protocol_strings: ConwaysteProtocolStrings = ConwaysteProtocolStrings::new();
@@ -133,14 +276,23 @@ lazy_static! {
         _enum_strings
     };
 
+    static ref indexes_as_strings: Vec<CString> = vec![
+        CString::new("1").unwrap(),
+        CString::new("2").unwrap(),
+        CString::new("3").unwrap(),
+        CString::new("4").unwrap(),
+        CString::new("5").unwrap(),
+        CString::new("6").unwrap(),
+        CString::new("7").unwrap(),
+        CString::new("8").unwrap(),
+        CString::new("9").unwrap(),
+        CString::new("10").unwrap(),
+        CString::new("10").unwrap(),
+    ];
+
     // setup protocol subtree array
-    // this is actually a Vec<*mut c_int> containing a pointer to ett_conwayste
-    static ref ett: Vec<usize> = {
-        let mut _ett = vec![];
-        // UGLY HACK
-        _ett.push(unsafe { mem::transmute::<*const c_int, usize>(&ett_conwayste as *const c_int) } );
-        _ett
-    };
+    static ref ett_conwayste_name: String = String::from("ConwaysteTree");
+    static ref ett: Mutex<EttInfo> = Mutex::new(EttInfo::new());
 
     // setup protocol field array
     static ref hf_info: Mutex<Vec<sync_hf_register_info>> = Mutex::new(Vec::new());
@@ -167,6 +319,8 @@ fn tvb_peek_four_bytes(tvb: *mut ws::tvbuff_t, offset: i32) -> u32 {
         packet_vec.push(byte);
     }
 
+    print_hex(&packet_vec.as_slice());
+
     let discr_vec: Vec<u8> = packet_vec.drain((offset as usize)..(offset as usize + 4)).collect();
     LittleEndian::read_u32(&discr_vec.as_slice())
 }
@@ -186,7 +340,8 @@ impl ConwaysteTree {
         unsafe {
             let ti = ws::proto_tree_add_item(tree, proto_conwayste, tvb, tvb_data_start,
                 tvb_data_length, no_encoding);
-            let tree = ws::proto_item_add_subtree(ti, ett_conwayste);
+            let tree = ws::proto_item_add_subtree(ti, ett1);
+            //let tree = ws::proto_item_add_subtree(ti, ett_get_address(&*ett_conwayste_name));
             ConwaysteTree { tree }
         }
     }
@@ -195,43 +350,46 @@ impl ConwaysteTree {
     fn decode(&self, tvb: *mut ws::tvbuff_t) {
         let mut bytes_examined: i32 = 0;
 
-        self.decode_nw_data_format(tvb, &mut bytes_examined, CString::new("Packet").unwrap());
+        println!("NEW DECODING STARTED");
+        self.decode_nw_data_format(self.tree, tvb, &mut bytes_examined, CString::new("Packet").unwrap());
     }
 
     /// Decodes a `NetwaysteDataFormat` as specified by the name; all of its sub fields are added
     /// to the decoded tree in order of appearance by inspecting the TVB contents.
-    fn decode_nw_data_format(&self, tvb: *mut ws::tvbuff_t, bytes_examined: &mut i32, name: CString) {
+    fn decode_nw_data_format(&self, tree: *mut ws::proto_tree, tvb: *mut ws::tvbuff_t, bytes_examined: &mut i32, name: CString) {
         let packet_nw_data = netwayste_data.get(&name).unwrap();
 
         match packet_nw_data {
             Enumerator(variants, fields) => {
                 const enum_length: i32 = 4;    // Enum size discriminant size
                 let discriminant = tvb_peek_four_bytes(tvb, *bytes_examined);
+                println!("0x{:x}\n", discriminant);
 
                 let variant: &CString = variants.get(discriminant as usize).unwrap();
 
                 // Add the enum variant to the tree so we get a string representation of the variant
                 let hf_field = hf_get(&name);
                 unsafe {
-                    ws::proto_tree_add_item(self.tree, *hf_field, tvb, *bytes_examined, enum_length, WSEncoding::LittleEndian as u32);
+                    ws::proto_tree_add_item(tree, *hf_field, tvb, *bytes_examined, enum_length, WSEncoding::LittleEndian as u32);
                 }
+                println!("......be({})=be({})+e({})", *bytes_examined + enum_length, *bytes_examined, enum_length);
                 *bytes_examined += enum_length;
 
                 let variant = variant.clone().into_string().unwrap();
                 for fd in fields.get(&variant).unwrap() {
-                    self.add_field_to_tree(tvb, fd, bytes_examined);
+                    self.add_field_to_tree(tree, tvb, fd, bytes_examined);
                 }
             }
             Structure(fields) => {
                 for fd in fields.iter() {
-                    self.add_field_to_tree(tvb, fd, bytes_examined);
+                    self.add_field_to_tree(tree, tvb, fd, bytes_examined);
                 }
             }
         }
     }
 
     /// Determines the data type and size of a field and adds the data segment to the tree
-    fn add_field_to_tree(&self, tvb: *mut ws::tvbuff_t, fd: &netwaysteparser::FieldDescriptor, bytes_examined: &mut i32) {
+    fn add_field_to_tree(&self, tree: *mut ws::proto_tree, tvb: *mut ws::tvbuff_t, fd: &netwaysteparser::FieldDescriptor, bytes_examined: &mut i32) {
         let mut field_length: i32 = 4;    // First byte is enumerator definition
         let mut encoding: WSEncoding = WSEncoding::LittleEndian;
         let field_name = &fd.name;
@@ -292,6 +450,7 @@ impl ConwaysteTree {
                                         len as i32,
                                         NONE_STRING.0 as *const i8);
                                 }
+                                println!("......be({})=be({})+l({})", *bytes_examined + len as i32, *bytes_examined, len);
                                 *bytes_examined += len as i32;
                                 return; // Continue on to the next field descriptor
                             }
@@ -302,11 +461,35 @@ impl ConwaysteTree {
                         }
                     };
 
+                    println!("......be({})=be({})+c({})", *bytes_examined + consume as i32, *bytes_examined, consume);
                     *bytes_examined += consume as i32;
                 },
                 Sizing::DataType(name) => {
-                    for _ in 0..item_count {
-                        self.decode_nw_data_format(tvb, bytes_examined, CString::new(name.clone()).unwrap());
+                    let subtree = unsafe {
+                    ws::proto_tree_add_subtree(tree,
+                        tvb,
+                        *bytes_examined,
+                        1, /*Can we get the size of inner struct?*/
+                        ett_get_address(name), /* Index in ett corresponding to this item */
+                        ptr::null_mut(), /* Tree item returned after creating this.. we aren't using it here */
+                        name.as_ptr() as *const i8)
+                    };
+
+                    for i in 0..item_count {
+                        if item_count > 1 {
+                            let subtree2 = unsafe {
+                                ws::proto_tree_add_subtree(subtree,
+                                    tvb,
+                                    *bytes_examined,
+                                    1, /*Can we get the size of inner struct?*/
+                                    ett_get_address(name), /* Index in ett corresponding to this item */
+                                    ptr::null_mut(), /* Tree item returned after creating this.. we aren't using it here */
+                                    indexes_as_strings[i as usize].as_ptr())
+                            };
+                            self.decode_nw_data_format(subtree2, tvb, bytes_examined, CString::new(name.clone()).unwrap());
+                        } else {
+                            self.decode_nw_data_format(subtree, tvb, bytes_examined, CString::new(name.clone()).unwrap());
+                        }
                     }
 
                     // No need to add to the tree again; all struct fields have been added
@@ -319,7 +502,7 @@ impl ConwaysteTree {
             println!("Added from {} to {}, Enc {:?}", bytes_examined, *bytes_examined + field_length, encoding);
             unsafe {
                 // Attach stuff under "Conwayste Protocol" tree
-                ws::proto_tree_add_item(self.tree, *hf_field, tvb, *bytes_examined, field_length, encoding as u32);
+                ws::proto_tree_add_item(tree, *hf_field, tvb, *bytes_examined, field_length, encoding as u32);
             }
             *bytes_examined += field_length;
         }
@@ -398,6 +581,14 @@ extern "C" fn proto_register_conwayste() {
     hf::register_header_fields();
     hf::build_header_field_array();
 
+
+    ett_register(&*ett_conwayste_name);
+    for structure in netwayste_data.keys() {
+        let structure_string = structure.clone().into_string().unwrap();
+        ett_register(&structure_string);
+    };
+
+
     unsafe {
         proto_conwayste = ws::proto_register_protocol(
             protocol_strings.proto_full_name.as_ptr(),  // Full name, used in various places in Wireshark GUI
@@ -410,7 +601,11 @@ extern "C" fn proto_register_conwayste() {
             hf_info_as_ptr() as *mut ws::hf_register_info,
             hf_info_len() as i32,
         );
-        ws::proto_register_subtree_array(ett.as_ptr() as *const *mut i32, ett.len() as i32);
+
+        let ptr = {ett.lock().unwrap().addresses.as_ptr()};
+        let len = {ett.lock().unwrap().addresses.len()};
+        println!("len={}", len);
+        ws::proto_register_subtree_array(ptr as *const *mut i32, len as i32);
     }
 }
 
