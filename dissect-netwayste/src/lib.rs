@@ -79,25 +79,6 @@ static mut plug_conwayste: ws::proto_plugin = ws::proto_plugin {
 };
 
 static mut proto_conwayste: c_int = -1;
-static mut ett_conwayste: c_int = -1;
-static mut ett1: c_int = -1;
-static mut ett2: c_int = -1;
-static mut ett3: c_int = -1;
-static mut ett4: c_int = -1;
-static mut ett5: c_int = -1;
-static mut ett6: c_int = -1;
-static mut ett7: c_int = -1;
-static mut ett8: c_int = -1;
-static mut ett9: c_int = -1;
-static mut ett10: c_int = -1;
-static mut ett11: c_int = -1;
-static mut ett12: c_int = -1;
-static mut ett13: c_int = -1;
-static mut ett14: c_int = -1;
-static mut ett15: c_int = -1;
-static mut ett16: c_int = -1;
-static mut ett17: c_int = -1;
-static mut ett18: c_int = -1;
 
 struct ConwaysteProtocolStrings {
     proto_full_name: CString,
@@ -132,7 +113,7 @@ impl EttInfo {
         }
     }
 
-    /// Retrieves a pointer to the (mutable) allocated header field for the provided string.
+    /// Retrieves the value of `ett_item`, which wireshark updates after the dissector has been registered
     ///
     /// # Panics
     /// Will panic if the provided String is not registered. This is intentional as a means to catch
@@ -141,84 +122,35 @@ impl EttInfo {
         if let Some(index) =  self.map.get(name) {
             assert!(*index < self.ett_items.len());
             // Unwrap safe b/c of assert
-            //let item = self.ett_items.get_mut(*index).unwrap();
-            let item = match index {
-                1 => unsafe { ett1 },
-                2 => unsafe { ett2 },
-                3 => unsafe { ett3 },
-                4 => unsafe { ett4 },
-                5 => unsafe { ett5 },
-                6 => unsafe { ett6 },
-                7 => unsafe { ett7 },
-                8 => unsafe { ett8 },
-                9 => unsafe { ett9 },
-                10 => unsafe { ett10 },
-                11 => unsafe { ett11 },
-                12 => unsafe { ett12 },
-                13 => unsafe { ett13 },
-                14 => unsafe { ett14 },
-                15 => unsafe { ett15 },
-                16 => unsafe { ett16 },
-                17 => unsafe { ett17 },
-                18 => unsafe { ett18 },
-                _ => panic!("NOT ENOUGH ITEMS IN ETT")
-            };
-            return item;
+            let item = self.ett_items.get_mut(*index).unwrap();
+            return *item;
         }
         unreachable!();
     }
 
-    /// Registers the provided string with the allocator. This must be called prior to any `get()`
-    /// calls!
+    /// Registers a spot in the `ett_items` list for tree/sub-tree usage by the dissector. It links
+    /// the provided string to the index of the spot that was registere.
     fn register_ett(&mut self, name: &String) {
-        //_ett.push(unsafe { mem::transmute::<*const c_int, usize>(&ett_conwayste as *const c_int) } );
-        // Add in a value of -1. Wireshark will overwrite this later.
+        // Wireshark will overwrite this later.
         self.ett_items.push(-1);
-        // this is actually a Vec<*mut c_int> containing a pointer to ett_conwayste and is an ugly
-        // hack because *const c_int is not Sync and cannot be shared. Transmute so that the we can
-        // still get the address.
-        // unwrap safe because we know the list is non-empty.
 
-        let base_addr = self.ett_items.as_mut_ptr();
-        let offset = self.ett_items.len() - 1;
-        self.addresses.push(unsafe {
-            //mem::transmute::<*const c_int, usize>(base_addr.add(offset) as *const c_int)
-            mem::transmute::<*mut c_int, usize>(self.ett_items.get_mut(offset).unwrap() as *mut c_int)
-        });
-        unsafe {
-            println!("Registered address {:x?} with value {:?}", base_addr.add(offset), *base_addr.add(offset));
-            println!("Addresses[i] = 0x{:x}", self.addresses.last().unwrap());
-        }
         // Map the index into the `ett` vector to the name
         self.map.insert(name.clone(), self.ett_items.len() - 1);
     }
 
-    fn register_ett2(&mut self, name: &String) {
-        self.ett_items.push(-1);
-        unsafe {
-        match self.ett_items.len() {
-            1 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett1 as *const c_int)),
-            2 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett2 as *const c_int)),
-            3 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett3 as *const c_int)),
-            4 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett4 as *const c_int)),
-            5 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett5 as *const c_int)),
-            6 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett6 as *const c_int)),
-            7 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett7 as *const c_int)),
-            8 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett8 as *const c_int)),
-            9 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett9 as *const c_int)),
-           10 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett10 as *const c_int)),
-           11 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett11 as *const c_int)),
-           12 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett12 as *const c_int)),
-           13 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett13 as *const c_int)),
-           14 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett14 as *const c_int)),
-           15 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett15 as *const c_int)),
-           16 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett16 as *const c_int)),
-           17 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett17 as *const c_int)),
-           18 => self.addresses.push(mem::transmute::<*const c_int, usize>(&ett18 as *const c_int)),
-           _ => panic!("NOT ENOUGH ITEMS IN ETT")
-        }}
-            println!("Addresses[i] = 0x{:x}", self.addresses.last().unwrap());
-        self.map.insert(name.clone(), self.ett_items.len() - 1);
+    /// Creates a parallel vector to `self.ett_items` containing the addresses of each list item.
+    /// The address list is provided to wireshark during proto registration.
+    fn set_all_item_addresses(&mut self) {
+        for offset in 0..self.ett_items.len() {
+            // this is actually a Vec<*mut c_int> containing a pointer to ett_conwayste and is an ugly
+            // hack because *const c_int is not Sync and cannot be shared. Transmute so that the we can
+            // still get the address.
+
+            let base_addr = self.ett_items.as_ptr();
+            self.addresses.push(unsafe {
+                mem::transmute::<*const c_int, usize>(base_addr.add(offset) as *const c_int)
+            });
+        }
     }
 }
 
@@ -226,12 +158,12 @@ pub fn ett_register(name: &String) {
     ett.lock().unwrap().register_ett(name);
 }
 
+pub fn ett_set_all_item_addresses() {
+    ett.lock().unwrap().set_all_item_addresses();
+}
+
 pub fn ett_get_addresses() -> *const usize {
-    let lock = ett.lock().unwrap();
-    println!("{:x?}", lock.addresses);
-    let ptr = lock.addresses.as_ptr() as *const usize;
-    println!("PTR: {:x?}", ptr);
-    ptr
+    ett.lock().unwrap().addresses.as_ptr() as *const usize
 }
 
 pub fn ett_get_address(name: &String) -> c_int {
@@ -276,19 +208,16 @@ lazy_static! {
         _enum_strings
     };
 
-    static ref indexes_as_strings: Vec<CString> = vec![
-        CString::new("1").unwrap(),
-        CString::new("2").unwrap(),
-        CString::new("3").unwrap(),
-        CString::new("4").unwrap(),
-        CString::new("5").unwrap(),
-        CString::new("6").unwrap(),
-        CString::new("7").unwrap(),
-        CString::new("8").unwrap(),
-        CString::new("9").unwrap(),
-        CString::new("10").unwrap(),
-        CString::new("10").unwrap(),
-    ];
+    static ref indexes_as_strings: Vec<CString> = {
+        let mut _vec = vec![];
+        // PR_GATE decide on a good max based on expected list size.
+        const MAX_NUMBER_OF_ITEMS: i32 = 100;
+
+        for i in 0..MAX_NUMBER_OF_ITEMS {
+            _vec.push(CString::new(format!("{}", i)).unwrap());
+        }
+        _vec
+    };
 
     // setup protocol subtree array
     static ref ett_conwayste_name: String = String::from("ConwaysteTree");
@@ -340,8 +269,7 @@ impl ConwaysteTree {
         unsafe {
             let ti = ws::proto_tree_add_item(tree, proto_conwayste, tvb, tvb_data_start,
                 tvb_data_length, no_encoding);
-            let tree = ws::proto_item_add_subtree(ti, ett1);
-            //let tree = ws::proto_item_add_subtree(ti, ett_get_address(&*ett_conwayste_name));
+            let tree = ws::proto_item_add_subtree(ti, ett_get_address(&*ett_conwayste_name));
             ConwaysteTree { tree }
         }
     }
@@ -471,7 +399,7 @@ impl ConwaysteTree {
                         *bytes_examined,
                         1, /*Can we get the size of inner struct?*/
                         ett_get_address(name), /* Index in ett corresponding to this item */
-                        ptr::null_mut(), /* Tree item returned after creating this.. we aren't using it here */
+                        ptr::null_mut(),
                         name.as_ptr() as *const i8)
                     };
 
@@ -483,7 +411,7 @@ impl ConwaysteTree {
                                     *bytes_examined,
                                     1, /*Can we get the size of inner struct?*/
                                     ett_get_address(name), /* Index in ett corresponding to this item */
-                                    ptr::null_mut(), /* Tree item returned after creating this.. we aren't using it here */
+                                    ptr::null_mut(),
                                     indexes_as_strings[i as usize].as_ptr())
                             };
                             self.decode_nw_data_format(subtree2, tvb, bytes_examined, CString::new(name.clone()).unwrap());
@@ -588,6 +516,7 @@ extern "C" fn proto_register_conwayste() {
         ett_register(&structure_string);
     };
 
+    ett_set_all_item_addresses();
 
     unsafe {
         proto_conwayste = ws::proto_register_protocol(
@@ -602,10 +531,9 @@ extern "C" fn proto_register_conwayste() {
             hf_info_len() as i32,
         );
 
-        let ptr = {ett.lock().unwrap().addresses.as_ptr()};
-        let len = {ett.lock().unwrap().addresses.len()};
-        println!("len={}", len);
-        ws::proto_register_subtree_array(ptr as *const *mut i32, len as i32);
+        let ptr_to_ett_addrs = ett_get_addresses();
+        let ett_addrs_count = ett_get_addresses_count();
+        ws::proto_register_subtree_array(ptr_to_ett_addrs as *const *mut i32, ett_addrs_count as i32);
     }
 }
 
