@@ -157,7 +157,6 @@ impl Pane {
                         if let Some(newly_focused_id) = pane.focus_cycle.focused_widget_id() {
                             Pane::emit_focus_change(EventType::GainFocus, uictx, newly_focused_id)?;
                         }
-                        info!("AFTER"); //XXX XXX XXX
                         break;
                     }
                 }
@@ -201,8 +200,8 @@ impl Pane {
         Ok(Handled::Handled)
     }
 
+    /// Forward this keyboard event to the specified child widget.
     fn emit_keyboard_event(event: &context::Event, uictx: &mut UIContext, focused_id: &NodeId) -> Result<(), Box<dyn Error>> {
-        info!("BEFOREKBD"); //XXX XXX XXX
         let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
         if let Some(emittable) = widget_ref.as_emit_event() {
             return emittable.emit(event, &mut subuictx);
@@ -214,8 +213,8 @@ impl Pane {
         Ok(())
     }
 
+    /// Emit a GainFocus or LoseFocus event on the specified child widget.
     fn emit_focus_change(what: EventType, uictx: &mut UIContext, focused_id: &NodeId) -> Result<(), Box<dyn Error>> {
-        info!("BEFORE"); //XXX XXX XXX
         let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
         if let Some(emittable) = widget_ref.as_emit_event() {
             let event = Event {
