@@ -37,6 +37,7 @@ pub struct UIContext<'a> {
     pub config: &'a mut config::Config,
     pub widget_view: TreeView<'a, BoxedWidget>,
     child_events: Vec<Event>,
+    forwarded_events: Vec<Event>,
 }
 
 impl<'a> UIContext<'a> {
@@ -50,6 +51,7 @@ impl<'a> UIContext<'a> {
             config,
             widget_view: view,
             child_events: vec![],
+            forwarded_events: vec![],
         }
     }
 
@@ -78,6 +80,7 @@ impl<'a> UIContext<'a> {
                 config: self.config,
                 widget_view: subtree,
                 child_events: vec![],
+                forwarded_events: vec![],
             },
         ))
     }
@@ -105,6 +108,20 @@ impl<'a> UIContext<'a> {
         mem::swap(&mut self.child_events, &mut events);
         events
     }
+
+    /// Widgets that support forwarded events can use this to emit events on themselves. This is
+    /// called by all .emit except the outermost one.
+    pub fn forward_event(&mut self, event: Event) {
+        self.forwarded_events.push(event);
+    }
+
+    /// Widgets that support forwarded events can use this to emit events on themselves. This is
+    /// called by the outermost .emit.
+    pub fn collect_forwarded_events(&mut self) -> Vec<Event> {
+        let mut events = vec![];
+        mem::swap(&mut self.forwarded_events, &mut events);
+        events
+    }
 }
 
 impl<'a> Drop for UIContext<'a> {
@@ -113,6 +130,12 @@ impl<'a> Drop for UIContext<'a> {
             warn!(
                 "UIContext dropped but collect_child_events() not called. {} events to collect.",
                 self.child_events.len(),
+            );
+        }
+        if self.forwarded_events.len() > 0 {
+            warn!(
+                "UIContext dropped but collect_forwarded_events() not called. {} events to collect.",
+                self.forwarded_events.len(),
             );
         }
     }
@@ -241,7 +264,8 @@ pub trait EmitEvent: Downcast {
     ///
     /// # Errors
     ///
-    /// * It is an error to call this from within a handler.
+    /// * It is an error for a widget's handler to call .emit on itself, unless it supports event
+    ///   forwarding.
     /// * The first error to be returned by a handler will be returned here, and no other handlers
     ///   will run.
     fn emit(&mut self, event: &Event, uictx: &mut UIContext) -> Result<(), Box<dyn Error>>;
@@ -298,15 +322,17 @@ macro_rules! impl_emit_event {
             /// Emit an event -- call all handlers for this event's type (as long as they return NotHandled)
             fn emit(&mut self, event: &crate::ui::context::Event, uictx: &mut crate::ui::context::UIContext) -> Result<(), Box<dyn std::error::Error>> {
                 use crate::ui::context::Handled::*;
-                // HACK: prevent a borrow error when calling handlers
-                let mut handlers = self.$handler_field
-                    .take()
-                    .ok_or_else(|| -> Box<dyn std::error::Error> {
-                        format!(".emit({:?}, ...) was called while another .emit call was in progress for {} widget",
-                                event.what,
-                                stringify!($widget_name)).into()
-                    })?;
+                if self.$handler_field.is_none() {
+                    // save event on the UI context for later forwarding
+                    uictx.forward_event(event.clone());
+                    return Ok(());
+                }
 
+                // take the handlers, so we are not mutably borrowing them more than once during
+                // the call to each handler, below.
+                let mut handlers = self.$handler_field.take().unwrap(); // unwrap OK because .is_none() checked above
+
+                // handle regular (non-forwarded) events
                 if let Some(handler_vec) = handlers.get_mut(&event.what) {
                     // call each handler for this event type, until a Handled is returned
                     for hdlr in handler_vec {
@@ -316,6 +342,27 @@ macro_rules! impl_emit_event {
                         }
                     }
                 }
+
+                // handle forwarded events
+                loop {
+                    let events = uictx.collect_forwarded_events();
+                    if events.len() == 0 {
+                        break;
+                    }
+
+                    for event in events {
+                        if let Some(handler_vec) = handlers.get_mut(&event.what) {
+                            // call each handler for this event type, until a Handled is returned
+                            for hdlr in handler_vec {
+                                let handled = hdlr(self, uictx, &event)?;
+                                if handled == Handled {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 self.$handler_field = Some(handlers); // put it back
                 Ok(())
             }

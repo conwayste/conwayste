@@ -27,7 +27,6 @@ use enum_iterator::IntoEnumIterator;
 use id_tree::NodeId;
 
 use super::{
-    BoxedWidget,
     common::within_widget,
     context,
     focus::{
@@ -105,6 +104,11 @@ impl Pane {
                         if within_widget(&point, &widget_ref.rect()) {
                             if let Some(emittable_ref) = widget_ref.as_emit_event() {
                                 emittable_ref.emit(evt, &mut subuictx)?;
+                                let pane_events = subuictx.collect_child_events();
+                                if pane_events.len() != 0 {
+                                    warn!("expected no mouse child events to be collected from Pane; got {:?}",
+                                        pane_events);
+                                }
                                 return Ok(Handled::Handled);
                             } else {
                                 warn!(
@@ -137,14 +141,19 @@ impl Pane {
 
         if key == KeyCode::Tab {
             // special key press logic to handle focus changes
+
             let opt_child_id = pane.focus_cycle.focused_widget_id().map(|child_id_ref| child_id_ref.clone());
+
+            // If a widget is focused, this is Some(<referenced to boxed focused widget>).
             let opt_widget = opt_child_id.as_ref().map(|child_id| uictx.widget_view.get(child_id).unwrap().data());
+            info!("in key_press_handler of pane {:?}: opt_widget is {:?}", pane.id(), opt_widget); //XXX
             if opt_child_id.is_some() && opt_widget.unwrap().downcast_ref::<Pane>().is_some() {
+                // there is a focused child pane
+
                 let child_id = opt_child_id.unwrap();
-                Pane::emit_keyboard_event(event, uictx, &child_id)?;  // TODO: ok to ret if Pane returns error here?
+                let pane_events = Pane::emit_keyboard_event(event, uictx, &child_id)?;  // TODO: ok to ret if Pane returns error here?
 
                 // check if the Pane's focus dropped of the end of its open-ended focus "cycle"
-                let pane_events = uictx.collect_child_events();
                 for pane_event in pane_events {
                     // ignore all event types except this one for now
                     if pane_event.what == context::EventType::ChildReleasedFocus {
@@ -161,24 +170,29 @@ impl Pane {
                     }
                 }
             } else {
+                // either no focused child widget, or there is but it's not a Pane
                 if event.shift_pressed {
                     pane.focus_cycle.focus_previous();
                 } else {
+                    info!("DEBUG: focus next"); //XXX XXX XXX
                     pane.focus_cycle.focus_next();
                 }
 
                 // send a GainFocus event to the newly focused widget (if any)
                 if let Some(newly_focused_id) = pane.focus_cycle.focused_widget_id() {
+                    info!("DEBUG: pane {:?}: GainFocus sent to {:?}", pane.id(), newly_focused_id); //XXX
                     Pane::emit_focus_change(EventType::GainFocus, uictx, newly_focused_id)?;
                 }
 
                 // send a LoseFocus event to the previously focused widget (if any)
                 if let Some(newly_focused_id) = opt_child_id {
+                    info!("DEBUG: pane {:?}: LoseFocus sent to {:?}", pane.id(), newly_focused_id); //XXX
                     Pane::emit_focus_change(EventType::LoseFocus, uictx, &newly_focused_id)?;
                 }
             }
 
             if pane.focus_cycle.focused_widget_id().is_none() {
+                info!("DEBUG: pane {:?} lost focus", pane.id()); //XXX
                 // we lost focus; send ChildReleasedFocus event to parent
                 let event = Event {
                     what: EventType::ChildReleasedFocus,
@@ -194,23 +208,27 @@ impl Pane {
             // regular key press logic (no focus changes)
             let focused_id = pane.focus_cycle.focused_widget_id();
             if let Some(id) = focused_id {
-                Pane::emit_keyboard_event(event, uictx, id)?;
+                let pane_events = Pane::emit_keyboard_event(event, uictx, id)?;
+                if pane_events.len() != 0 {
+                    warn!("expected no child events to be collected from Pane; got {:?}", pane_events);
+                }
             }
         }
         Ok(Handled::Handled)
     }
 
     /// Forward this keyboard event to the specified child widget.
-    fn emit_keyboard_event(event: &context::Event, uictx: &mut UIContext, focused_id: &NodeId) -> Result<(), Box<dyn Error>> {
+    fn emit_keyboard_event(event: &context::Event, uictx: &mut UIContext, focused_id: &NodeId) -> Result<Vec<Event>, Box<dyn Error>> {
         let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
         if let Some(emittable) = widget_ref.as_emit_event() {
-            return emittable.emit(event, &mut subuictx);
+            return emittable.emit(event, &mut subuictx)
+                    .map(|_| subuictx.collect_child_events());
         } else {
             // We probably won't ever get here due to the FocusCycle only holding widgets that can
             // receive keyboard events.
             debug!("nothing to emit on; widget is not an EmitEvent");
         }
-        Ok(())
+        Ok(vec![])
     }
 
     /// Emit a GainFocus or LoseFocus event on the specified child widget.
@@ -225,7 +243,13 @@ impl Pane {
                 key: None,
                 shift_pressed: false,
             };
-            return emittable.emit(&event, &mut subuictx);
+            emittable.emit(&event, &mut subuictx)?;
+            let pane_events = subuictx.collect_child_events();
+            if pane_events.len() != 0 {
+                warn!("[Pane] emit focus chg: expected no child events to be collected from Pane; got {:?}",
+                    pane_events);
+            }
+            return Ok(());
         } else {
             // We probably won't ever get here due to the FocusCycle only holding widgets that can
             // receive keyboard events.
@@ -247,7 +271,8 @@ impl Pane {
     /// Add a widget ID to Pane's focus cycle. Must only be called if the widget accepts keyboard
     /// events.
     pub fn add_widget(&mut self, widget_id: NodeId) {
-            self.focus_cycle.push(widget_id);
+        self.focus_cycle.push(widget_id);
+        info!("DEBUG: pane {:?}: FOCUS CYCLE NOW HAS {:?}", self.id(), self.focus_cycle.as_slice()); //XXX
     }
 
     pub fn remove_widget(&mut self, widget_id: &NodeId) {

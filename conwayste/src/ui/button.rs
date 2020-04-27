@@ -16,6 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 use std::fmt;
+use std::error::Error;
 
 use chromatica::css;
 
@@ -32,6 +33,13 @@ use super::{
     common::{within_widget, color_with_alpha, center, FontInfo},
     UIAction,
     UIError, UIResult,
+    context::{
+        EmitEvent,
+        UIContext,
+        EventType,
+        Event,
+        Handled,
+    },
 };
 
 pub struct Button {
@@ -41,7 +49,8 @@ pub struct Button {
     pub button_color: Color,
     pub draw_mode: DrawMode,
     pub dimensions: Rect,
-    pub hover: bool,
+    pub hover: bool, // is mouse hovering over this?
+    pub focused: bool, // has keyboard focus?
     pub borderless: bool,
     pub action: UIAction,
     pub handlers: Option<context::HandlerMap>, // required for impl_emit_event!
@@ -115,16 +124,31 @@ impl Button {
         let mut b = Button {
             id: None,
             z_index: std::usize::MAX,
-            label: label,
+            label,
             button_color: color_with_alpha(css::DARKCYAN, 0.8),
             draw_mode: DrawMode::fill(),
-            dimensions: dimensions,
+            dimensions,
             hover: false,
+            focused: false,
             borderless: false,
-            action: action,
+            action,
             handlers: Some(context::HandlerMap::new()),
         };
         b.center_label_text();
+
+        // setup handler to toggle keyboard focus
+        let focus_chg = |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, event: &Event| -> Result<Handled, Box<dyn Error>> {
+            let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
+            match event.what {
+                EventType::GainFocus => button.focused = true,
+                EventType::LoseFocus => button.focused = false,
+                _ => unimplemented!("this handler is only for gaining/losing focus"),
+            };
+            Ok(Handled::Handled)
+        };
+        b.on(EventType::GainFocus, Box::new(focus_chg.clone())).unwrap(); // unwrap OK b/c not being called within handler
+        b.on(EventType::LoseFocus, Box::new(focus_chg)).unwrap(); // unwrap OK b/c not being called within handler
+
         b
     }
 
@@ -169,7 +193,7 @@ impl Widget for Button {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        let draw_mode = if self.hover {
+        let draw_mode = if self.hover || self.focused {
             DrawMode::fill()
         } else {
             DrawMode::stroke(2.0)

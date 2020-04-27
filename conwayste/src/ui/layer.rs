@@ -491,10 +491,9 @@ impl Layering {
             let opt_widget = opt_child_id.as_ref().map(|child_id| uictx.widget_view.get(child_id).unwrap().data());
             if opt_child_id.is_some() && opt_widget.unwrap().downcast_ref::<Pane>().is_some() {
                 let child_id = opt_child_id.unwrap();
-                Layering::emit_keyboard_event(event, uictx, &child_id)?;  // TODO: ok to ret if Pane returns error here?
+                let pane_events = Layering::emit_keyboard_event(event, uictx, &child_id)?;  // TODO: ok to ret if Pane returns error here?
 
                 // check if the Pane's focus dropped of the end of its open-ended focus "cycle"
-                let pane_events = uictx.collect_child_events();
                 for pane_event in pane_events {
                     // ignore all event types except this one for now
                     if pane_event.what == context::EventType::ChildReleasedFocus {
@@ -534,24 +533,26 @@ impl Layering {
             // regular key press logic (no focus changes)
             let focused_id = focus_cycle.focused_widget_id();
             if let Some(id) = focused_id {
-                Layering::emit_keyboard_event(event, uictx, id)
-            } else {
-                // nothing focused; ignore
-                Ok(())
+                let pane_events = Layering::emit_keyboard_event(event, uictx, id)?;
+                if pane_events.len() != 0 {
+                    warn!("expected no child events to be collected from Pane; got {:?}", pane_events);
+                }
             }
+            Ok(())
         }
     }
 
-    fn emit_keyboard_event(event: &context::Event, uictx: &mut context::UIContext, focused_id: &NodeId) -> Result<(), Box<dyn Error>> {
+    fn emit_keyboard_event(event: &context::Event, uictx: &mut context::UIContext, focused_id: &NodeId) -> Result<Vec<context::Event>, Box<dyn Error>> {
         let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
         if let Some(emittable) = widget_ref.as_emit_event() {
-            return emittable.emit(event, &mut subuictx);
+            return emittable.emit(event, &mut subuictx)
+                    .map(|_| subuictx.collect_child_events());
         } else {
             // We probably won't ever get here due to the FocusCycle only holding widgets that can
             // receive keyboard events.
             debug!("nothing to emit on; widget is not an EmitEvent");
         }
-        Ok(())
+        Ok(vec![])
     }
 
     fn emit_focus_change(what: context::EventType, uictx: &mut context::UIContext, focused_id: &NodeId) -> Result<(), Box<dyn Error>> {
@@ -565,7 +566,13 @@ impl Layering {
                 key: None,
                 shift_pressed: false,
             };
-            return emittable.emit(&event, &mut subuictx);
+            emittable.emit(&event, &mut subuictx)?;
+            let pane_events = subuictx.collect_child_events();
+            if pane_events.len() != 0 {
+                warn!("[Layering] emit focus chg: expected no child events to be collected from Pane; got {:?}",
+                    pane_events);
+            }
+            return Ok(());
         } else {
             // We probably won't ever get here due to the FocusCycle only holding widgets that can
             // receive keyboard events.
@@ -585,7 +592,13 @@ impl Layering {
 
             if within_widget(point, &widget_ref.rect()) {
                 if let Some(emittable) = widget_ref.as_emit_event() {
-                    return emittable.emit(event, &mut subuictx);
+                    emittable.emit(event, &mut subuictx)?;
+                    let pane_events = subuictx.collect_child_events();
+                    if pane_events.len() != 0 {
+                        warn!("[Layering] expected no mouse child events to be collected from Pane; got {:?}",
+                            pane_events);
+                    }
+                    return Ok(());
                 } else {
                     debug!("nothing to emit on; widget is not an EmitEvent");
                 }
