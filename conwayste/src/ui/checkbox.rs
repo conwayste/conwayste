@@ -38,7 +38,7 @@ use super::context::{
     Event,
     EventType,
     Handled,
-    HandlerMap,
+    HandlerData,
     UIContext,
 };
 
@@ -51,7 +51,7 @@ pub struct Checkbox {
     pub enabled: bool,
     pub dimensions: Rect,
     pub draw_hover: bool,
-    pub handlers: Option<HandlerMap>, // required for impl_emit_event!
+    pub handler_data: HandlerData, // required for impl_emit_event!
 }
 
 impl fmt::Debug for Checkbox {
@@ -112,7 +112,7 @@ impl Checkbox {
             enabled,
             dimensions,
             draw_hover: false,
-            handlers: Some(HandlerMap::new()),
+            handler_data: HandlerData::new(),
         };
         cb.on(EventType::Click, Box::new(Checkbox::click_handler)).unwrap();
         cb
@@ -251,5 +251,5 @@ impl Widget for Checkbox {
     }
 }
 
-impl_emit_event!(Checkbox, self.handlers);
+impl_emit_event!(Checkbox, self.handler_data);
 widget_from_id!(Checkbox);

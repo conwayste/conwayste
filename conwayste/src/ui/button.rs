@@ -53,7 +53,7 @@ pub struct Button {
     pub focused: bool, // has keyboard focus?
     pub borderless: bool,
     pub action: UIAction,
-    pub handlers: Option<context::HandlerMap>, // required for impl_emit_event!
+    pub handler_data: context::HandlerData, // required for impl_emit_event!
     // option solely so that we can not mut borrow self twice at once
 }
 
@@ -132,7 +132,7 @@ impl Button {
             focused: false,
             borderless: false,
             action,
-            handlers: Some(context::HandlerMap::new()),
+            handler_data: context::HandlerData::new(),
         };
         b.center_label_text();
 
@@ -279,5 +279,5 @@ impl Widget for Button {
     }
 }
 
-impl_emit_event!(Button, self.handlers);
+impl_emit_event!(Button, self.handler_data);
 widget_from_id!(Button);

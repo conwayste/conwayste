@@ -37,7 +37,6 @@ pub struct UIContext<'a> {
     pub config: &'a mut config::Config,
     pub widget_view: TreeView<'a, BoxedWidget>,
     child_events: Vec<Event>,
-    forwarded_events: Vec<Event>,
 }
 
 impl<'a> UIContext<'a> {
@@ -51,7 +50,6 @@ impl<'a> UIContext<'a> {
             config,
             widget_view: view,
             child_events: vec![],
-            forwarded_events: vec![],
         }
     }
 
@@ -80,7 +78,6 @@ impl<'a> UIContext<'a> {
                 config: self.config,
                 widget_view: subtree,
                 child_events: vec![],
-                forwarded_events: vec![],
             },
         ))
     }
@@ -108,20 +105,6 @@ impl<'a> UIContext<'a> {
         mem::swap(&mut self.child_events, &mut events);
         events
     }
-
-    /// Widgets that support forwarded events can use this to emit events on themselves. This is
-    /// called by all .emit except the outermost one.
-    pub fn forward_event(&mut self, event: Event) {
-        self.forwarded_events.push(event);
-    }
-
-    /// Widgets that support forwarded events can use this to emit events on themselves. This is
-    /// called by the outermost .emit.
-    pub fn collect_forwarded_events(&mut self) -> Vec<Event> {
-        let mut events = vec![];
-        mem::swap(&mut self.forwarded_events, &mut events);
-        events
-    }
 }
 
 impl<'a> Drop for UIContext<'a> {
@@ -130,12 +113,6 @@ impl<'a> Drop for UIContext<'a> {
             warn!(
                 "UIContext dropped but collect_child_events() not called. {} events to collect.",
                 self.child_events.len(),
-            );
-        }
-        if self.forwarded_events.len() > 0 {
-            warn!(
-                "UIContext dropped but collect_forwarded_events() not called. {} events to collect.",
-                self.forwarded_events.len(),
             );
         }
     }
@@ -170,9 +147,7 @@ pub struct Event {
 }
 
 /// A slice containing all EventTypes related to the keyboard. Must have a key set.
-pub const KEY_EVENTS: &[EventType] = &[
-    EventType::KeyPress,
-];
+pub const KEY_EVENTS: &[EventType] = &[EventType::KeyPress];
 
 /// A slice containing all EventTypes related to the mouse.
 pub const MOUSE_EVENTS: &[EventType] = &[EventType::Click, EventType::MouseMove, EventType::Drag];
@@ -231,6 +206,20 @@ pub type Handler = Box<
 
 pub type HandlerMap = HashMap<EventType, Vec<Handler>>;
 
+pub struct HandlerData {
+    pub handlers: Option<HandlerMap>,
+    pub forwarded_events: Vec<Event>,
+}
+
+impl HandlerData {
+    pub fn new() -> Self {
+        HandlerData {
+            handlers: Some(HandlerMap::new()),
+            forwarded_events: vec![],
+        }
+    }
+}
+
 /// Trait for widgets that can handle various events. Use `.on` to register a handler and `.emit`
 /// to emit an event which will cause all handlers for the event's type to be called.
 ///
@@ -279,14 +268,14 @@ impl_downcast!(EmitEvent);
 ///
 /// ```
 /// struct MyWidget {
-///     handlers: Option<HandlerMap>,
+///     handler_data: context::HandlerData,
 ///     ...
 /// }
 ///
 /// impl MyWidget {
 ///     fn new() -> Self {
 ///         MyWidget {
-///             handlers: Some(context::HandlerMap::new()),
+///             handlers: context::HandlerData::new(),
 ///             ...
 ///         }
 ///     }
@@ -296,11 +285,11 @@ impl_downcast!(EmitEvent);
 /// ```
 #[macro_export]
 macro_rules! impl_emit_event {
-    ($widget_name:ty, self.$handler_field:ident) => {
+    ($widget_name:ty, self.$handler_data_field:ident) => {
         impl crate::ui::context::EmitEvent for $widget_name {
             /// Setup a handler for an event type
             fn on(&mut self, what: crate::ui::context::EventType, hdlr: crate::ui::context::Handler) -> Result<(), Box<dyn std::error::Error>> {
-                let handlers = self.$handler_field
+                let handlers = self.$handler_data_field.handlers
                     .as_mut()
                     .ok_or_else(|| -> Box<dyn std::error::Error> {
                         format!(".on({:?}, ...) was called while .emit call was in progress for {} widget",
@@ -322,15 +311,15 @@ macro_rules! impl_emit_event {
             /// Emit an event -- call all handlers for this event's type (as long as they return NotHandled)
             fn emit(&mut self, event: &crate::ui::context::Event, uictx: &mut crate::ui::context::UIContext) -> Result<(), Box<dyn std::error::Error>> {
                 use crate::ui::context::Handled::*;
-                if self.$handler_field.is_none() {
-                    // save event on the UI context for later forwarding
-                    uictx.forward_event(event.clone());
+                if self.$handler_data_field.handlers.is_none() {
+                    // save event into forwarded_events for later forwarding
+                    self.$handler_data_field.forwarded_events.push(event.clone());
                     return Ok(());
                 }
 
                 // take the handlers, so we are not mutably borrowing them more than once during
                 // the call to each handler, below.
-                let mut handlers = self.$handler_field.take().unwrap(); // unwrap OK because .is_none() checked above
+                let mut handlers = self.$handler_data_field.handlers.take().unwrap(); // unwrap OK b/c .is_none() checked above
 
                 // handle regular (non-forwarded) events
                 if let Some(handler_vec) = handlers.get_mut(&event.what) {
@@ -345,7 +334,8 @@ macro_rules! impl_emit_event {
 
                 // handle forwarded events
                 loop {
-                    let events = uictx.collect_forwarded_events();
+                    let mut events = vec![];
+                    std::mem::swap(&mut events, &mut self.$handler_data_field.forwarded_events);
                     if events.len() == 0 {
                         break;
                     }
@@ -363,7 +353,7 @@ macro_rules! impl_emit_event {
                     }
                 }
 
-                self.$handler_field = Some(handlers); // put it back
+                self.$handler_data_field.handlers = Some(handlers); // put it back
                 Ok(())
             }
         }

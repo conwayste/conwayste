@@ -516,14 +516,18 @@ impl Layering {
                     focus_cycle.focus_next();
                 }
 
-                // send a GainFocus event to the newly focused widget (if any)
-                if let Some(newly_focused_id) = focus_cycle.focused_widget_id() {
-                    Layering::emit_focus_change(context::EventType::GainFocus, uictx, newly_focused_id)?;
-                }
+                // Only send gain/lose events if the newly focused widget is different from the
+                // previously focused widget.
+                if focus_cycle.focused_widget_id() != opt_child_id.as_ref() {
+                    // send a GainFocus event to the newly focused widget (if any)
+                    if let Some(newly_focused_id) = focus_cycle.focused_widget_id() {
+                        Layering::emit_focus_change(context::EventType::GainFocus, uictx, newly_focused_id)?;
+                    }
 
-                // send a LoseFocus event to the previously focused widget (if any)
-                if let Some(newly_focused_id) = opt_child_id {
-                    Layering::emit_focus_change(context::EventType::LoseFocus, uictx, &newly_focused_id)?;
+                    // send a LoseFocus event to the previously focused widget (if any)
+                    if let Some(newly_focused_id) = opt_child_id {
+                        Layering::emit_focus_change(context::EventType::LoseFocus, uictx, &newly_focused_id)?;
+                    }
                 }
             }
 
