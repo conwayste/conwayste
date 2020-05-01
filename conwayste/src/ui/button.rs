@@ -277,6 +277,11 @@ impl Widget for Button {
     fn as_emit_event(&mut self) -> Option<&mut dyn context::EmitEvent> {
         Some(self)
     }
+
+    /// Whether this widget accepts keyboard events
+    fn accepts_keyboard_events(&self) -> bool {
+        true
+    }
 }
 
 impl_emit_event!(Button, self.handler_data);

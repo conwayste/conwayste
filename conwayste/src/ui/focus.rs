@@ -81,7 +81,7 @@ impl FocusCycle {
                 CycleType::OpenEnded => {
                     // non-top level -- no looping
                     let next_idx = idx + 1;
-                    if idx == self.ids.len() {
+                    if next_idx == self.ids.len() {
                         self.index = None;
                         return true;
                     }
