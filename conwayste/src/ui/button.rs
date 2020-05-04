@@ -23,6 +23,8 @@ use chromatica::css;
 use ggez::graphics::{self, Rect, Color, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
+use ggez::input::keyboard::KeyCode;
+use ggez::event::MouseButton;
 
 use id_tree::NodeId;
 
@@ -136,7 +138,7 @@ impl Button {
         };
         b.center_label_text();
 
-        // setup handler to toggle keyboard focus
+        // setup handler to allow changing appearance when it has keyboard focus
         let focus_chg = |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, event: &Event| -> Result<Handled, Box<dyn Error>> {
             let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
             match event.what {
@@ -144,10 +146,31 @@ impl Button {
                 EventType::LoseFocus => button.focused = false,
                 _ => unimplemented!("this handler is only for gaining/losing focus"),
             };
-            Ok(Handled::Handled)
+            Ok(Handled::NotHandled) // allow other handlers for this event type to be activated
         };
         b.on(EventType::GainFocus, Box::new(focus_chg.clone())).unwrap(); // unwrap OK b/c not being called within handler
         b.on(EventType::LoseFocus, Box::new(focus_chg)).unwrap(); // unwrap OK b/c not being called within handler
+
+        // setup handler to forward a space keyboard event to the click handler
+        let keypress = |obj: &mut dyn EmitEvent, uictx: &mut UIContext, event: &Event| -> Result<Handled, Box<dyn Error>> {
+            let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
+            if Some(KeyCode::Space) != event.key {
+                return Ok(Handled::NotHandled);
+            }
+            // create a synthetic click event
+            let mouse_point = button.position();
+            let click_event = Event {
+                what: EventType::Click,
+                point: Some(mouse_point),
+                prev_point: None,
+                button: Some(MouseButton::Left),
+                key: None,
+                shift_pressed: false,
+            };
+            button.emit(&click_event, uictx)?;
+            Ok(Handled::NotHandled) // allow other handlers for this event type to be activated
+        };
+        b.on(EventType::KeyPress, Box::new(keypress)).unwrap(); // unwrap OK b/c not being called within handler
 
         b
     }

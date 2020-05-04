@@ -116,6 +116,7 @@ impl UILayout {
             )
         );
         serverlist_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0))?;
+        register_test_click_handler(&mut serverlist_button, "Server List!".to_owned()).unwrap(); // XXX
 
         let mut inroom_button = Box::new(
             Button::new(
@@ -126,6 +127,7 @@ impl UILayout {
             )
         );
         inroom_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0))?;
+        register_test_click_handler(&mut inroom_button, "In Room!".to_owned()).unwrap(); // XXX
 
         let mut startgame_button = Box::new(
             Button::new(
@@ -136,6 +138,7 @@ impl UILayout {
             )
         );
         startgame_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0))?;
+        register_test_click_handler(&mut startgame_button, "Start Game!".to_owned()).unwrap(); // XXX
 
         let mut fullscreen_checkbox = Box::new(
             Checkbox::new(
@@ -221,4 +224,17 @@ fn test_handler(obj: &mut dyn EmitEvent, uictx: &mut context::UIContext, evt: &c
     info!("EVENT: what={:?} @ {}", evt.what, evt.point.unwrap());
 
     Ok(Handled)
+}
+
+fn register_test_click_handler(button: &mut Button, text: String) -> Result<(), Box<dyn Error>> {
+    let handler = move |obj: &mut dyn EmitEvent, _uictx: &mut context::UIContext, evt: &context::Event|  -> Result<context::Handled, Box<dyn Error>> {
+        use context::Handled::*;
+        let btn = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this is only registered on a button
+        info!("test click handler: button {:?}: {}", btn.id(), text);
+        info!("test click handler: button {:?}: ^^^ click at {:?}", btn.id(), evt.point);
+        Ok(Handled)
+    };
+    button.on(EventType::Click, Box::new(handler))?;
+
+    Ok(())
 }

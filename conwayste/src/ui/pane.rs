@@ -152,11 +152,6 @@ impl Pane {
             let opt_widget = opt_child_id
                 .as_ref()
                 .map(|child_id| uictx.widget_view.get(child_id).unwrap().data());
-            info!(
-                "in key_press_handler of pane {:?}: opt_widget is {:?}",
-                pane.id(),
-                opt_widget
-            ); //XXX
             if opt_child_id.is_some() && opt_widget.unwrap().downcast_ref::<Pane>().is_some() {
                 // there is a focused child pane
 
@@ -184,7 +179,6 @@ impl Pane {
                 if event.shift_pressed {
                     pane.focus_cycle.focus_previous();
                 } else {
-                    info!("DEBUG: focus next"); //XXX XXX XXX
                     pane.focus_cycle.focus_next();
                 }
 
@@ -193,29 +187,18 @@ impl Pane {
                 if pane.focus_cycle.focused_widget_id() != opt_child_id.as_ref() {
                     // send a GainFocus event to the newly focused widget (if any)
                     if let Some(newly_focused_id) = pane.focus_cycle.focused_widget_id() {
-                        info!(
-                            "DEBUG: pane {:?}: GainFocus sent to {:?}",
-                            pane.id(),
-                            newly_focused_id
-                        ); //XXX
                         Pane::emit_focus_change(EventType::GainFocus, uictx, newly_focused_id)?;
                     }
 
                     // send a LoseFocus event to the previously focused widget (if any)
                     if let Some(newly_focused_id) = opt_child_id {
-                        info!(
-                            "DEBUG: pane {:?}: LoseFocus sent to {:?}",
-                            pane.id(),
-                            newly_focused_id
-                        ); //XXX
                         Pane::emit_focus_change(EventType::LoseFocus, uictx, &newly_focused_id)?;
                     }
                 }
             }
 
             if pane.focus_cycle.focused_widget_id().is_none() {
-                info!("DEBUG: pane {:?} lost focus", pane.id()); //XXX
-                                                                 // we lost focus; send ChildReleasedFocus event to parent
+                // we lost focus; send ChildReleasedFocus event to parent
                 let event = Event {
                     what: EventType::ChildReleasedFocus,
                     point: None,
@@ -306,11 +289,6 @@ impl Pane {
     /// events.
     pub fn add_widget(&mut self, widget_id: NodeId) {
         self.focus_cycle.push(widget_id);
-        info!(
-            "DEBUG: pane {:?}: FOCUS CYCLE NOW HAS {:?}",
-            self.id(),
-            self.focus_cycle.as_slice()
-        ); //XXX
     }
 
     pub fn remove_widget(&mut self, widget_id: &NodeId) {
