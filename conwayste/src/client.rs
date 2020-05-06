@@ -1475,22 +1475,6 @@ impl MainState {
         }
     }
 
-    // TODO: remove this once the interesting bits are moved to handlers
-    fn handle_ui_action(&mut self, _ctx: &mut Context, action: UIAction) -> UIResult<()> {
-        match action {
-            UIAction::ScreenTransition(s) => {
-                self.screen_stack.push(s);
-            }
-            _ => {
-                return Err(Box::new(UIError::InvalidAction{
-                    reason: format!("Action: {:?}", action)
-                }));
-            }
-        }
-
-        Ok(())
-    }
-
     fn handle_user_chat_complete(&mut self, _ctx: &mut Context) {
         let username = self.config.get().user.name.clone();
         let mut msg = String::new();

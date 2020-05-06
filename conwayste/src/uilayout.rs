@@ -51,6 +51,7 @@ use context::{
 pub struct UILayout {
     pub layers: HashMap<Screen, Layering>,
 
+    // XXX HACK
     // The fields below correspond to static ui elements that the client may need to interact with
     // regardless of what is displayed on screen. For example, new chat messages should always be
     // forwarded to the UI widget.
