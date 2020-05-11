@@ -100,7 +100,7 @@ impl TextField {
             cursor_index: 0,
             cursor_blink_timestamp: None,
             draw_cursor: false,
-            dimensions: dimensions,
+            dimensions,
             action: UIAction::EnterText,
             hover: false,
             visible_start_index: 0,
@@ -284,14 +284,17 @@ impl Widget for TextField {
     }
 
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        if Some(TextInputState::EnteringText) == self.input_state {
-            if let Some(prev_blink_ms) = self.cursor_blink_timestamp {
-                if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
-                    self.draw_cursor ^= true;
-                    self.cursor_blink_timestamp = Some(Instant::now());
-                }
+        if self.input_state != Some(TextInputState::EnteringText) {
+            return Ok(());
+        }
+
+        if let Some(prev_blink_ms) = self.cursor_blink_timestamp {
+            if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
+                self.draw_cursor ^= true;
+                self.cursor_blink_timestamp = Some(Instant::now());
             }
         }
+
         Ok(())
     }
 

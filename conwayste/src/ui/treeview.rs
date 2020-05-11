@@ -39,6 +39,7 @@ use std::ptr::NonNull;
 
 use id_tree::{self, InsertBehavior, Node, NodeId, NodeIdError, RemoveBehavior, Tree};
 
+#[allow(unused)]
 #[derive(PartialEq, Debug)]
 enum Restriction {
     None,                     // TreeView has full access to the Tree
@@ -57,6 +58,7 @@ impl Restriction {
         }
     }
 
+    #[allow(unused)]
     pub fn is_none(&self) -> bool {
         match self {
             Restriction::None => true,
@@ -163,6 +165,7 @@ impl<'a, T> TreeView<'a, T> {
 
     /// If this tree has any Nodes at all, this will return (as Some) an iterator over the root
     /// node's children.
+    #[allow(unused)]
     pub fn children(&self) -> Option<id_tree::Children<T>> {
         let tree = unsafe { self.tree.as_ref() };
         if let Some(root_id) = self.restriction.root() {
@@ -188,7 +191,7 @@ impl<'a, T> TreeView<'a, T> {
                     .collect()
             })
             .or_else(|| Some(vec![])) // empty tree
-            .unwrap()  // unwrap OK because it will always be Some() due to the .or_else above
+            .unwrap() // unwrap OK because it will always be Some() due to the .or_else above
     }
 
     /// Get an immutable reference to a Node. The specified Node must be accessible.

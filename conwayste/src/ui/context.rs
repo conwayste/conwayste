@@ -188,6 +188,7 @@ impl Event {
     }
 
     /// Returns true if and only if this is a keyboard focus event.
+    #[allow(unused)]
     pub fn is_focus_event(self) -> bool {
         self.what.is_focus_event()
     }

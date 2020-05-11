@@ -155,6 +155,7 @@ impl FocusCycle {
     }
 
     /// Return an immutable slice of all NodeIds in the focus cycle.
+    #[allow(unused)]
     pub fn as_slice(&self) -> &[NodeId] {
         self.ids.as_slice()
     }
