@@ -51,7 +51,7 @@ pub use common::{
 pub use label::Label;
 pub use layer::{Layering, InsertLocation};
 pub use pane::Pane;
-pub use textfield::{TextField, TextInputState};
+pub use textfield::TextField;
 pub use ui_errors::{UIResult, UIError};
 pub use widget::Widget;
 pub use context::{

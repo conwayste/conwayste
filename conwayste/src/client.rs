@@ -85,7 +85,6 @@ use input::{MouseAction, ScrollEvent};
 use ui::{
     Chatbox,
     TextField,
-    TextInputState,
     UIError,
     Widget,
     Event,
@@ -530,6 +529,7 @@ impl EventHandler for MainState {
                         match tf.input_state {
                             Some(TextInputState::TextInputComplete) =>  {
                                 textfield_under_focus = false;
+                                //XXX call the following only when the user is done typing
                                 self.handle_user_chat_complete(ctx);
                             }
                             Some(TextInputState::EnteringText) => {
@@ -841,6 +841,7 @@ impl EventHandler for MainState {
 
         let screen = self.get_current_screen();
         match LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
+            //XXX below
             Ok(tf) => tf.on_char(character),
             Err(e) => error!(concat!("Could not get layer's focused ",
                 "textfield for {:?} during text input event: {:?}"), screen, e)
@@ -1478,6 +1479,7 @@ impl MainState {
         let mut msg = String::new();
         let id = self.ui_layout.chatbox_tf_id.clone();
 
+        // Get input text and clear it in the widget.
         match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
             Ok(tf) => {
                 if let Some(m) = tf.text() {

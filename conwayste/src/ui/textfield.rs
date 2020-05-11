@@ -38,17 +38,19 @@ use crate::constants::{colors::*, CHATBOX_BORDER_PIXELS};
 
 pub const BLINK_RATE_MS: u64 = 500;
 
+/* XXX delete
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TextInputState {
     EnteringText,
     TextInputComplete,
 }
+*/
 
 pub struct TextField {
     id: Option<NodeId>,
     z_index: usize,
     action: UIAction,
-    pub input_state: Option<TextInputState>,
+    focused: bool,
     text: String,
     cursor_index: usize, // Position of the cursor in the text fields' string
     cursor_blink_timestamp: Option<Instant>, // last time the cursor blinked on/off
@@ -62,8 +64,8 @@ pub struct TextField {
 
 impl fmt::Debug for TextField {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TextField {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}, Input_State: {:?} }}",
-            self.id, self.z_index, self.dimensions, self.action, self.input_state)
+        write!(f, "TextField {{ id: {:?}, z_index: {}, dimensions: {:?}, action: {:?}, focused: {:?} }}",
+            self.id, self.z_index, self.dimensions, self.action, self.focused)
     }
 }
 
@@ -95,7 +97,7 @@ impl TextField {
         TextField {
             id: None,
             z_index: std::usize::MAX,
-            input_state: None,
+            focused: false,
             text: String::new(),
             cursor_index: 0,
             cursor_blink_timestamp: None,
@@ -131,29 +133,31 @@ impl TextField {
     }
 
     /// Handle a text character being typed by the user.
+    //XXX delete (move to handler) (called text_input_event in client.rs (method of EventHandler trait))
     pub fn on_char(&mut self, character: char) {
-        if self.input_state.is_some() {
+        if self.focused {
             self.add_char_at_cursor(character);
         }
     }
 
+
     /// Handle a typed keycode that is not a textual key. For example, arrow keys.
+    //XXX delete (move to handler)
     pub fn on_keycode(&mut self, keycode: KeyCode) {
         if keycode == KeyCode::Return {
-            self.input_state = Some(TextInputState::TextInputComplete);
+            //XXX May need to take other actions here.
+            self.focused = false;
             return;
         }
-        if let Some(TextInputState::EnteringText) = self.input_state {
-            match keycode {
-                KeyCode::Back => self.remove_left_of_cursor(),
-                KeyCode::Delete => self.remove_right_of_cursor(),
-                KeyCode::Left => self.move_cursor_left(),
-                KeyCode::Right => self.move_cursor_right(),
-                KeyCode::Home => self.cursor_home(),
-                KeyCode::End => self.cursor_end(),
-                KeyCode::Escape => self.exit_focus(),
-                _ => ()
-            }
+        match keycode {
+            KeyCode::Back => self.remove_left_of_cursor(),
+            KeyCode::Delete => self.remove_right_of_cursor(),
+            KeyCode::Left => self.move_cursor_left(),
+            KeyCode::Right => self.move_cursor_right(),
+            KeyCode::Home => self.cursor_home(),
+            KeyCode::End => self.cursor_end(),
+            KeyCode::Escape => self.exit_focus(),
+            _ => ()
         }
     }
 
@@ -284,7 +288,7 @@ impl Widget for TextField {
     }
 
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        if self.input_state != Some(TextInputState::EnteringText) {
+        if !self.focused {
             return Ok(());
         }
 
@@ -299,7 +303,7 @@ impl Widget for TextField {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        if self.input_state.is_none() && self.text.is_empty() {
+        if !self.focused && self.text.is_empty() {
             // textfield is hidden
             return Ok(());
         }
@@ -311,7 +315,7 @@ impl Widget for TextField {
         }
 
         let colored_rect;
-        if !self.text.is_empty() && self.input_state.is_none() {
+        if !self.text.is_empty() && !self.focused {
             colored_rect = graphics::Mesh::new_rectangle(
                 ctx,
                 DrawMode::stroke(CHATBOX_BORDER_PIXELS),
@@ -428,15 +432,16 @@ impl Widget for TextField {
     }
 
     /// Textfield gains focus and begins accepting user input
+    //XXX move to handler
     fn enter_focus(&mut self) {
-        self.input_state = Some(TextInputState::EnteringText);
+        self.focused = true;
         self.draw_cursor = true;
         self.cursor_blink_timestamp = Some(Instant::now());
     }
 
     /// Textfield loses focus and does not accept user input
     fn exit_focus(&mut self) {
-        self.input_state = None;
+        self.focused = false;
         self.draw_cursor = false;
     }
 
