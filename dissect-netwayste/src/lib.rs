@@ -32,12 +32,12 @@
 extern crate netwayste;
 #[macro_use]
 extern crate lazy_static;
-extern crate tokio_core;
 extern crate byteorder;
+extern crate tokio_core;
 
+use byteorder::{ByteOrder, LittleEndian};
 use netwayste::net::{LineCodec, Packet as NetwaystePacket};
 use tokio_core::net::UdpCodec;
-use byteorder::{ByteOrder, LittleEndian};
 
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -48,12 +48,16 @@ use std::os::raw::{c_int, c_void};
 use std::ptr;
 use std::sync::Mutex;
 
-mod netwaysteparser;
 mod hf;
+mod netwaysteparser;
 mod wrapperdefs;
 
-use netwaysteparser::{parse_netwayste_format, Sizing, VariableContainer, NetwaysteDataFormat::{self, Enumerator, Structure}};
 use hf::*;
+use netwaysteparser::{
+    parse_netwayste_format,
+    NetwaysteDataFormat::{self, Enumerator, Structure},
+    Sizing, VariableContainer,
+};
 use wrapperdefs::*;
 
 /// Wireshark C bindings
@@ -119,7 +123,7 @@ impl EttInfo {
     /// Will panic if the provided String is not registered. This is intentional as a means to catch
     /// bugs.
     fn get_ett_addr(&mut self, name: &String) -> c_int {
-        if let Some(index) =  self.map.get(name) {
+        if let Some(index) = self.map.get(name) {
             assert!(*index < self.ett_items.len());
             // Unwrap safe b/c of assert
             let item = self.ett_items.get_mut(*index).unwrap();
@@ -177,7 +181,7 @@ pub fn ett_get_addresses_count() -> usize {
 lazy_static! {
     static ref protocol_strings: ConwaysteProtocolStrings = ConwaysteProtocolStrings::new();
     // our UDP codec expects a SocketAddr argument but we don't care
-    static ref dummy_addr: SocketAddr = { SocketAddr::new([127,0,0,1].into(), 54321) };
+    static ref dummy_addr: SocketAddr = SocketAddr::new([127,0,0,1].into(), 54321);
 
     // All header fields (decoded or ignored) will be tracked via the `HFFieldAllocator`
     static ref hf_fields: Mutex<HFFieldAllocator> = Mutex::new(HFFieldAllocator::new());
@@ -250,7 +254,9 @@ fn tvb_peek_four_bytes(tvb: *mut ws::tvbuff_t, offset: i32) -> u32 {
 
     print_hex(&packet_vec.as_slice());
 
-    let discr_vec: Vec<u8> = packet_vec.drain((offset as usize)..(offset as usize + 4)).collect();
+    let discr_vec: Vec<u8> = packet_vec
+        .drain((offset as usize)..(offset as usize + 4))
+        .collect();
     LittleEndian::read_u32(&discr_vec.as_slice())
 }
 
@@ -263,12 +269,18 @@ impl ConwaysteTree {
         // make tree, etc.! See example 9.4+ from https://www.wireshark.org/docs/wsdg_html_chunked/ChDissectAdd.html
         // Add "Conwayste Protocol" tree (initially with nothing under it), under "User Datagram
         // Protocol" in middle pane.
-        const tvb_data_start: c_int = 0;    // start of the tvb
-        const tvb_data_length: c_int = -1;  // until the end
+        const tvb_data_start: c_int = 0; // start of the tvb
+        const tvb_data_length: c_int = -1; // until the end
         const no_encoding: u32 = ws::ENC_NA;
         unsafe {
-            let ti = ws::proto_tree_add_item(tree, proto_conwayste, tvb, tvb_data_start,
-                tvb_data_length, no_encoding);
+            let ti = ws::proto_tree_add_item(
+                tree,
+                proto_conwayste,
+                tvb,
+                tvb_data_start,
+                tvb_data_length,
+                no_encoding,
+            );
             let tree = ws::proto_item_add_subtree(ti, ett_get_address(&*ett_conwayste_name));
             ConwaysteTree { tree }
         }
@@ -279,17 +291,28 @@ impl ConwaysteTree {
         let mut bytes_examined: i32 = 0;
 
         println!("NEW DECODING STARTED");
-        self.decode_nw_data_format(self.tree, tvb, &mut bytes_examined, CString::new("Packet").unwrap());
+        self.decode_nw_data_format(
+            self.tree,
+            tvb,
+            &mut bytes_examined,
+            CString::new("Packet").unwrap(),
+        );
     }
 
     /// Decodes a `NetwaysteDataFormat` as specified by the name; all of its sub fields are added
     /// to the decoded tree in order of appearance by inspecting the TVB contents.
-    fn decode_nw_data_format(&self, tree: *mut ws::proto_tree, tvb: *mut ws::tvbuff_t, bytes_examined: &mut i32, name: CString) {
+    fn decode_nw_data_format(
+        &self,
+        tree: *mut ws::proto_tree,
+        tvb: *mut ws::tvbuff_t,
+        bytes_examined: &mut i32,
+        name: CString,
+    ) {
         let packet_nw_data = netwayste_data.get(&name).unwrap();
 
         match packet_nw_data {
             Enumerator(variants, fields) => {
-                const enum_length: i32 = 4;    // Enum size discriminant size
+                const enum_length: i32 = 4; // Enum size discriminant size
                 let discriminant = tvb_peek_four_bytes(tvb, *bytes_examined);
                 println!("0x{:x}\n", discriminant);
 
@@ -298,9 +321,21 @@ impl ConwaysteTree {
                 // Add the enum variant to the tree so we get a string representation of the variant
                 let hf_field = hf_get(&name);
                 unsafe {
-                    ws::proto_tree_add_item(tree, *hf_field, tvb, *bytes_examined, enum_length, WSEncoding::LittleEndian as u32);
+                    ws::proto_tree_add_item(
+                        tree,
+                        *hf_field,
+                        tvb,
+                        *bytes_examined,
+                        enum_length,
+                        WSEncoding::LittleEndian as u32,
+                    );
                 }
-                println!("......be({})=be({})+e({})", *bytes_examined + enum_length, *bytes_examined, enum_length);
+                println!(
+                    "......be({})=be({})+e({})",
+                    *bytes_examined + enum_length,
+                    *bytes_examined,
+                    enum_length
+                );
                 *bytes_examined += enum_length;
 
                 let variant = variant.clone().into_string().unwrap();
@@ -317,8 +352,14 @@ impl ConwaysteTree {
     }
 
     /// Determines the data type and size of a field and adds the data segment to the tree
-    fn add_field_to_tree(&self, tree: *mut ws::proto_tree, tvb: *mut ws::tvbuff_t, fd: &netwaysteparser::FieldDescriptor, bytes_examined: &mut i32) {
-        let mut field_length: i32 = 4;    // First byte is enumerator definition
+    fn add_field_to_tree(
+        &self,
+        tree: *mut ws::proto_tree,
+        tvb: *mut ws::tvbuff_t,
+        fd: &netwaysteparser::FieldDescriptor,
+        bytes_examined: &mut i32,
+    ) {
+        let mut field_length: i32 = 4; // First byte is enumerator definition
         let mut encoding: WSEncoding = WSEncoding::LittleEndian;
         let field_name = &fd.name;
         let hf_field = hf_get(&field_name);
@@ -335,14 +376,20 @@ impl ConwaysteTree {
                     println!("\t....Fixed");
                     field_length = item_count * (*bytes as i32);
                     encoding = WSEncoding::LittleEndian;
-                },
+                }
                 Sizing::Variable(container) => {
                     // Peek into the buffer to see what/how much we are working with
                     let consume = match container {
                         VariableContainer::Vector => {
                             // Bincode encodes length of list as 8 bytes
                             let len = std::mem::size_of::<u64>();
-                            let data = unsafe { ws::tvb_get_guint64(tvb, *bytes_examined, WSEncoding::LittleEndian as u32) };
+                            let data = unsafe {
+                                ws::tvb_get_guint64(
+                                    tvb,
+                                    *bytes_examined,
+                                    WSEncoding::LittleEndian as u32,
+                                )
+                            };
 
                             // List turned out to be empty. Skip it and continue to next field descriptor
                             if data == 0 {
@@ -359,7 +406,7 @@ impl ConwaysteTree {
                             encoding = WSEncoding::UTF8String;
                             field_length = item_count;
                             len
-                        },
+                        }
                         VariableContainer::Optional => {
                             // Bincode uses 1 byte for an Option enum
                             const len: usize = 1;
@@ -371,14 +418,21 @@ impl ConwaysteTree {
                                 let optioned_hf_field = hf_get_option_id(&field_name);
                                 unsafe {
                                     // Move onto the next field descriptor
-                                    ws::proto_tree_add_string(self.tree,
+                                    ws::proto_tree_add_string(
+                                        self.tree,
                                         *optioned_hf_field,
                                         tvb,
                                         *bytes_examined,
                                         len as i32,
-                                        NONE_STRING.0 as *const i8);
+                                        NONE_STRING.0 as *const i8,
+                                    );
                                 }
-                                println!("......be({})=be({})+l({})", *bytes_examined + len as i32, *bytes_examined, len);
+                                println!(
+                                    "......be({})=be({})+l({})",
+                                    *bytes_examined + len as i32,
+                                    *bytes_examined,
+                                    len
+                                );
                                 *bytes_examined += len as i32;
                                 return; // Continue on to the next field descriptor
                             }
@@ -389,48 +443,79 @@ impl ConwaysteTree {
                         }
                     };
 
-                    println!("......be({})=be({})+c({})", *bytes_examined + consume as i32, *bytes_examined, consume);
+                    println!(
+                        "......be({})=be({})+c({})",
+                        *bytes_examined + consume as i32,
+                        *bytes_examined,
+                        consume
+                    );
                     *bytes_examined += consume as i32;
-                },
+                }
                 Sizing::DataType(name) => {
                     let subtree = unsafe {
-                    ws::proto_tree_add_subtree(tree,
-                        tvb,
-                        *bytes_examined,
-                        1, /*Can we get the size of inner struct?*/
-                        ett_get_address(name), /* Index in ett corresponding to this item */
-                        ptr::null_mut(),
-                        name.as_ptr() as *const i8)
+                        ws::proto_tree_add_subtree(
+                            tree,
+                            tvb,
+                            *bytes_examined,
+                            1,                     /*Can we get the size of inner struct?*/
+                            ett_get_address(name), /* Index in ett corresponding to this item */
+                            ptr::null_mut(),
+                            name.as_ptr() as *const i8,
+                        )
                     };
 
                     for i in 0..item_count {
                         if item_count > 1 {
                             let subtree2 = unsafe {
-                                ws::proto_tree_add_subtree(subtree,
+                                ws::proto_tree_add_subtree(
+                                    subtree,
                                     tvb,
                                     *bytes_examined,
-                                    1, /*Can we get the size of inner struct?*/
+                                    1,                     /*Can we get the size of inner struct?*/
                                     ett_get_address(name), /* Index in ett corresponding to this item */
                                     ptr::null_mut(),
-                                    indexes_as_strings[i as usize].as_ptr())
+                                    indexes_as_strings[i as usize].as_ptr(),
+                                )
                             };
-                            self.decode_nw_data_format(subtree2, tvb, bytes_examined, CString::new(name.clone()).unwrap());
+                            self.decode_nw_data_format(
+                                subtree2,
+                                tvb,
+                                bytes_examined,
+                                CString::new(name.clone()).unwrap(),
+                            );
                         } else {
-                            self.decode_nw_data_format(subtree, tvb, bytes_examined, CString::new(name.clone()).unwrap());
+                            self.decode_nw_data_format(
+                                subtree,
+                                tvb,
+                                bytes_examined,
+                                CString::new(name.clone()).unwrap(),
+                            );
                         }
                     }
 
                     // No need to add to the tree again; all struct fields have been added
-                    add_field = false ;
+                    add_field = false;
                 }
             };
         }
 
         if add_field {
-            println!("Added from {} to {}, Enc {:?}", bytes_examined, *bytes_examined + field_length, encoding);
+            println!(
+                "Added from {} to {}, Enc {:?}",
+                bytes_examined,
+                *bytes_examined + field_length,
+                encoding
+            );
             unsafe {
                 // Attach stuff under "Conwayste Protocol" tree
-                ws::proto_tree_add_item(tree, *hf_field, tvb, *bytes_examined, field_length, encoding as u32);
+                ws::proto_tree_add_item(
+                    tree,
+                    *hf_field,
+                    tvb,
+                    *bytes_examined,
+                    field_length,
+                    encoding as u32,
+                );
             }
             *bytes_examined += field_length;
         }
@@ -452,7 +537,8 @@ fn get_cwte_packet(tvb: *mut ws::tvbuff_t) -> Result<NetwaystePacket, std::io::E
     }
 
     // set the info column
-    LineCodec.decode(&dummy_addr, &packet_vec)
+    LineCodec
+        .decode(&dummy_addr, &packet_vec)
         .and_then(|(_socketaddr, opt_packet)| {
             if let Some(packet) = opt_packet {
                 return Ok(packet);
@@ -465,13 +551,17 @@ fn get_cwte_packet(tvb: *mut ws::tvbuff_t) -> Result<NetwaystePacket, std::io::E
 // THE MEAT
 // Called once per Conwayste packet found in traffic
 extern "C" fn dissect_conwayste(
-    tvb: *mut ws::tvbuff_t,         // Buffer the packet resides in
-    pinfo: *mut ws::packet_info,    // general data about protocol
-    tree: *mut ws::proto_tree,      // detail dissection mapped to this tree
+    tvb: *mut ws::tvbuff_t,      // Buffer the packet resides in
+    pinfo: *mut ws::packet_info, // general data about protocol
+    tree: *mut ws::proto_tree,   // detail dissection mapped to this tree
     _data: *mut c_void,
 ) -> c_int {
     /* Identify these packets as CWTE */
-    column_set_str(pinfo, WSColumn::Protocol, &protocol_strings.proto_short_name);
+    column_set_str(
+        pinfo,
+        WSColumn::Protocol,
+        &protocol_strings.proto_short_name,
+    );
 
     /* Clear out stuff in the info column */
     column_clear(pinfo, WSColumn::Info);
@@ -491,8 +581,10 @@ extern "C" fn dissect_conwayste(
     let captured_len = tvb_captured_length(tvb);
     let reported_len = tvb_reported_length(tvb) as i32;
     if captured_len != reported_len {
-        println!("CWTE Dissection Warning: Captured length ({}) differs from reported length ({}).",
-            captured_len, reported_len);
+        println!(
+            "CWTE Dissection Warning: Captured length ({}) differs from reported length ({}).",
+            captured_len, reported_len
+        );
     }
     reported_len
 }
@@ -509,18 +601,17 @@ extern "C" fn proto_register_conwayste() {
     hf::register_header_fields();
     hf::build_header_field_array();
 
-
     ett_register(&*ett_conwayste_name);
     for structure in netwayste_data.keys() {
         let structure_string = structure.clone().into_string().unwrap();
         ett_register(&structure_string);
-    };
+    }
 
     ett_set_all_item_addresses();
 
     unsafe {
         proto_conwayste = ws::proto_register_protocol(
-            protocol_strings.proto_full_name.as_ptr(),  // Full name, used in various places in Wireshark GUI
+            protocol_strings.proto_full_name.as_ptr(), // Full name, used in various places in Wireshark GUI
             protocol_strings.proto_short_name.as_ptr(), // Short name, used in various places in Wireshark GUI
             protocol_strings.proto_abbrev.as_ptr(),     // Abbreviation, for filter
         );
@@ -533,7 +624,10 @@ extern "C" fn proto_register_conwayste() {
 
         let ptr_to_ett_addrs = ett_get_addresses();
         let ett_addrs_count = ett_get_addresses_count();
-        ws::proto_register_subtree_array(ptr_to_ett_addrs as *const *mut i32, ett_addrs_count as i32);
+        ws::proto_register_subtree_array(
+            ptr_to_ett_addrs as *const *mut i32,
+            ett_addrs_count as i32,
+        );
     }
 }
 

@@ -5,7 +5,10 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    pkg_config::Config::new().atleast_version("2.0").probe("glib-2.0").unwrap();
+    pkg_config::Config::new()
+        .atleast_version("2.0")
+        .probe("glib-2.0")
+        .unwrap();
     pkg_config::Config::new().probe("wireshark").unwrap();
 
     let mut bindings_builder = bindgen::Builder::default()
@@ -22,7 +25,9 @@ fn main() {
         }
     }
 
-    let bindings = bindings_builder.generate().expect("Unable to generate bindings");
+    let bindings = bindings_builder
+        .generate()
+        .expect("Unable to generate bindings");
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings

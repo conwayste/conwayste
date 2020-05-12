@@ -18,7 +18,7 @@
  */
 
 use std::ffi::CString;
-use std::os::raw::{c_int};
+use std::os::raw::c_int;
 use std::ptr;
 
 use crate::ws;
@@ -100,17 +100,17 @@ unsafe impl Send for sync_hf_register_info {}
 impl Default for ws::header_field_info {
     fn default() -> Self {
         ws::header_field_info {
-            name:   ptr::null(), // < [FIELDNAME] full name of this field
+            name: ptr::null(),                       // < [FIELDNAME] full name of this field
             abbrev: ptr::null(), // < [FIELDABBREV] abbreviated name of this field
             type_: FieldType::NoType as u32, // < [FIELDTYPE] field type
             display: FieldDisplay::NoDisplay as i32, // < [FIELDDISPLAY] Base representation on display
             strings: ptr::null(),
-            bitmask: 0, // < [BITMASK] bitmask of interesting bits
-            blurb: ptr::null(),   // < [FIELDDESCR] Brief description of field
-            id: -1,   // < Field ID
-            parent: -1,   // < parent protocol tree
-            ref_type: 0,    // < is this field referenced by a filter
-            same_name_prev_id: -1,   // < ID of previous hfinfo with same abbrev
+            bitmask: 0,                      // < [BITMASK] bitmask of interesting bits
+            blurb: ptr::null(),              // < [FIELDDESCR] Brief description of field
+            id: -1,                          // < Field ID
+            parent: -1,                      // < parent protocol tree
+            ref_type: 0,                     // < is this field referenced by a filter
+            same_name_prev_id: -1,           // < ID of previous hfinfo with same abbrev
             same_name_next: ptr::null_mut(), // < Link to next hfinfo with same abbrev
         }
     }
@@ -143,18 +143,24 @@ pub enum WSEncoding {
 
 /// A safe wrapper for `col_add_str`, which copies the provided string to the target column.
 pub fn column_add_str(pinfo: *mut ws::packet_info, column: WSColumn, name: CString) {
-    unsafe { ws::col_add_str((*pinfo).cinfo, column as i32, name.as_ptr()); }
+    unsafe {
+        ws::col_add_str((*pinfo).cinfo, column as i32, name.as_ptr());
+    }
 }
 
 /// A safe wrapper for `col_set_str`, which takes a pointer to the provided string and therefore
 /// must live for the duration of usage!
 pub fn column_set_str(pinfo: *mut ws::packet_info, column: WSColumn, name: &CString) {
-    unsafe { ws::col_set_str((*pinfo).cinfo, column as i32, name.as_ptr()); }
+    unsafe {
+        ws::col_set_str((*pinfo).cinfo, column as i32, name.as_ptr());
+    }
 }
 
 /// A safe wrapper for `col_clear`, which clears the specified column.
 pub fn column_clear(pinfo: *mut ws::packet_info, column: WSColumn) {
-    unsafe { ws::col_clear((*pinfo).cinfo, column as i32); }
+    unsafe {
+        ws::col_clear((*pinfo).cinfo, column as i32);
+    }
 }
 
 // For an explanation of the difference of captured vs reported tvb lengths,

@@ -22,9 +22,9 @@ use std::ffi::CString;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 
-use crate::netwaysteparser::{FieldDescriptor, Sizing, VariableContainer, NetwaysteDataFormat::*};
+use crate::netwaysteparser::{FieldDescriptor, NetwaysteDataFormat::*, Sizing, VariableContainer};
 use crate::wrapperdefs::*;
-use crate::{ws, hf_fields, netwayste_data, enum_strings, hf_info};
+use crate::{enum_strings, hf_fields, hf_info, netwayste_data, ws};
 
 /// HFFieldAllocator keeps track of which header fields have been used during header field registration.
 ///
@@ -58,7 +58,7 @@ impl HFFieldAllocator {
     /// Will panic if the provided String is not registered. This is intentional as a means to catch
     /// bugs.
     fn get(&mut self, name: &CString) -> &mut c_int {
-        if let Some(index) =  self.allocated.get(name) {
+        if let Some(index) = self.allocated.get(name) {
             assert!(*index < self.hf_fields.len());
             // Unwrap safe b/c of assert
             let item = self.hf_fields.get_mut(*index).unwrap();
@@ -141,7 +141,6 @@ pub fn hf_info_len() -> usize {
     len
 }
 
-
 /// For every enum/structure found by parsing `netwayste/src/net.rs` must have a header field identifier
 /// that Wireshark uses to refer to it. This routine will walk through the parsed-and-gutted
 /// `net.rs` and assign a header field ID to each one. It does this via registration with the header
@@ -205,15 +204,15 @@ pub fn build_header_field_array() {
             let enum_hf = sync_hf_register_info {
                 p_id: f,
                 hfinfo: ws::header_field_info {
-                    name:       key.as_ptr() as *const i8,
-                    abbrev:     key.as_ptr() as *const i8,
-                    type_:      FieldType::U32 as u32,
-                    display:    FieldDisplay::Decimal as i32,
-                    strings:    if let Some(strings) = enum_strings.get(key) {
-                                    strings.as_ptr() as *const c_void
-                                } else {
-                                    ptr::null()
-                                },
+                    name: key.as_ptr() as *const i8,
+                    abbrev: key.as_ptr() as *const i8,
+                    type_: FieldType::U32 as u32,
+                    display: FieldDisplay::Decimal as i32,
+                    strings: if let Some(strings) = enum_strings.get(key) {
+                        strings.as_ptr() as *const c_void
+                    } else {
+                        ptr::null()
+                    },
                     ..Default::default()
                 },
             };
@@ -249,7 +248,7 @@ pub fn build_header_field_array() {
                 match fmt {
                     Sizing::DataType(_s) => {
                         // nothing to do, will be handled as NetwaysteDataFormat is iterated
-                    },
+                    }
                     Sizing::Variable(VariableContainer::Optional) => {
                         field_display = FieldDisplay::Str;
 
@@ -258,10 +257,10 @@ pub fn build_header_field_array() {
                         let variant_hf = sync_hf_register_info {
                             p_id: hf_id,
                             hfinfo: ws::header_field_info {
-                                name:       optioned_name,
-                                abbrev:     optioned_name,
-                                type_:      FieldType::Str as u32,
-                                display:    FieldDisplay::Str as i32,
+                                name: optioned_name,
+                                abbrev: optioned_name,
+                                type_: FieldType::Str as u32,
+                                display: FieldDisplay::Str as i32,
                                 ..Default::default()
                             },
                         };
@@ -279,10 +278,13 @@ pub fn build_header_field_array() {
                             1 => field_data_type = FieldType::U8,
                             // We shouldn't get other values here
                             unknown_byte_count @ _ => {
-                                println!("Unknown byte count observed during header
-                                    field construction: {}", unknown_byte_count);
+                                println!(
+                                    "Unknown byte count observed during header
+                                    field construction: {}",
+                                    unknown_byte_count
+                                );
                                 field_data_type = FieldType::U64;
-                            },
+                            }
                         }
                         break;
                     }
@@ -293,10 +295,10 @@ pub fn build_header_field_array() {
             let variant_hf = sync_hf_register_info {
                 p_id: hf_id,
                 hfinfo: ws::header_field_info {
-                    name:       field.name.as_ptr() as *const i8,
-                    abbrev:     field.name.as_ptr() as *const i8,
-                    type_:      field_data_type as u32,
-                    display:    field_display as i32,
+                    name: field.name.as_ptr() as *const i8,
+                    abbrev: field.name.as_ptr() as *const i8,
+                    type_: field_data_type as u32,
+                    display: field_display as i32,
                     ..Default::default()
                 },
             };

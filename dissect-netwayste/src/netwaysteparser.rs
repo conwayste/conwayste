@@ -17,19 +17,22 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
-use std::collections::HashMap;
 
-use syn::{self, Item::{Enum, Struct}, PathArguments::AngleBracketed};
-
+use syn::{
+    self,
+    Item::{Enum, Struct},
+    PathArguments::AngleBracketed,
+};
 
 //
 #[derive(Debug, Clone)]
 pub enum VariableContainer {
-    Optional,   // Bincode uses one byte to determine if Some() or None
-    Vector,     // Bincode uses 8 bytes to specify length of container
+    Optional, // Bincode uses one byte to determine if Some() or None
+    Vector,   // Bincode uses 8 bytes to specify length of container
 }
 /// Specifies the size of a data type in Rust
 ///
@@ -49,8 +52,8 @@ pub enum Sizing {
 #[derive(Debug, Clone)]
 /// Describes one item belonging to a container data type
 pub struct FieldDescriptor {
-    pub name: CString,   // If None, then the member is unnamed. Like `MyEnum(u8)`
-    pub format: Vec<Sizing>,    // Size of associated member type. List is used when type nests
+    pub name: CString,       // If None, then the member is unnamed. Like `MyEnum(u8)`
+    pub format: Vec<Sizing>, // Size of associated member type. List is used when type nests
 }
 
 /// Describes all containers (either an enum or a struct) for the Netwayste library into a format
@@ -60,7 +63,7 @@ pub enum NetwaysteDataFormat {
     // First parameter is the ordered-by-value variants as C-strings.
     // Second parameter maps the variant to its named/unnamed fields.
     Enumerator(Vec<CString>, HashMap<String, Vec<FieldDescriptor>>),
-    Structure(Vec<FieldDescriptor>),   // Contains descriptions of the struct member variables
+    Structure(Vec<FieldDescriptor>), // Contains descriptions of the struct member variables
 }
 
 /// Determines the size of the specified string representation of a data type. A list of `Sizings`
@@ -126,13 +129,13 @@ fn parse_size_from_type(type_arg: String) -> Vec<Sizing> {
         let param: Vec<&str> = param.split(',').collect();
         for p in param {
             list.push(match p {
-                    "String" => Sizing::Variable(VariableContainer::Vector),
-                    "u64" | "f64" | "i64" => Sizing::Fixed(8),
-                    "u32" | "f32" | "i32" => Sizing::Fixed(4),
-                    "u16" | "i16" => Sizing::Fixed(2),
-                    "u8" | "i8" | "bool" => Sizing::Fixed(1),
-                    name @ _ => Sizing::DataType(name.to_string()),
-                });
+                "String" => Sizing::Variable(VariableContainer::Vector),
+                "u64" | "f64" | "i64" => Sizing::Fixed(8),
+                "u32" | "f32" | "i32" => Sizing::Fixed(4),
+                "u16" | "i16" => Sizing::Fixed(2),
+                "u8" | "i8" | "bool" => Sizing::Fixed(1),
+                name @ _ => Sizing::DataType(name.to_string()),
+            });
         }
     }
 
@@ -152,7 +155,7 @@ fn extract_type(ty: &syn::Type) -> String {
             // Rust lint requires initialization, but this should always be overwritten
             let mut base_type = "UNDEFINED".to_owned();
             // Path may be segmented like "a::<b::c>"
-            for s in 0..tp.path.segments.len(){
+            for s in 0..tp.path.segments.len() {
                 base_type = tp.path.segments[s].ident.to_string();
 
                 // Does the type we found nest?
@@ -161,19 +164,18 @@ fn extract_type(ty: &syn::Type) -> String {
                     for a in 0..abga.args.len() {
                         if let syn::GenericArgument::Type(tp2) = &abga.args[a] {
                             let nested_type = extract_type(&tp2);
-                            base_type = format!("{}{}{}{}",base_type, "<",nested_type, ">");
+                            base_type = format!("{}{}{}{}", base_type, "<", nested_type, ">");
                         }
                     }
                 }
             }
             return base_type;
-
         }
         syn::Type::Tuple(tt) => {
             let mut csv = String::new();
             for arg in 0..tt.elems.len() {
                 let arg_type = extract_type(&tt.elems[arg]);
-                let caboose = if arg + 1 == tt.elems.len() {""} else {","};
+                let caboose = if arg + 1 == tt.elems.len() { "" } else { "," };
                 csv = format!("{}{}{}", csv, arg_type, caboose);
             }
             return csv;
@@ -214,7 +216,12 @@ fn parse_enum(e: &syn::ItemEnum) -> (Vec<CString>, HashMap<String, Vec<FieldDesc
         v.fields.iter().enumerate().for_each(|(i, f)| {
             let mut md = create_field_descriptor(f, variant.clone(), i);
             // Ugly ugly conversion & unboxing in format!() because CString doesn't impl the Display trait
-            md.name = CString::new(format!("{}.{}", e.ident.to_string(), md.name.into_string().unwrap())).unwrap();
+            md.name = CString::new(format!(
+                "{}.{}",
+                e.ident.to_string(),
+                md.name.into_string().unwrap()
+            ))
+            .unwrap();
             field.push(md);
         });
 
@@ -240,7 +247,7 @@ fn parse_struct(s: &syn::ItemStruct) -> Vec<FieldDescriptor> {
 }
 
 /// Creates a mapping of structure/enum names to a parsed representation of their innards.
-pub fn parse_netwayste_format() -> HashMap<CString, NetwaysteDataFormat>{
+pub fn parse_netwayste_format() -> HashMap<CString, NetwaysteDataFormat> {
     let filename = concat!(env!("CARGO_MANIFEST_DIR"), "/../netwayste/src/net.rs");
     let mut file = File::open(&filename).expect("Unable to open file");
 
@@ -254,20 +261,24 @@ pub fn parse_netwayste_format() -> HashMap<CString, NetwaysteDataFormat>{
         match item {
             Enum(ref e) => {
                 let (variants, fields) = parse_enum(&e);
-                map.insert(CString::new(e.ident.to_string()).unwrap(),
-                    NetwaysteDataFormat::Enumerator(variants, fields));
-            },
+                map.insert(
+                    CString::new(e.ident.to_string()).unwrap(),
+                    NetwaysteDataFormat::Enumerator(variants, fields),
+                );
+            }
             Struct(ref s) => {
                 let structure = parse_struct(&s);
                 let name = s.ident.to_string();
-                map.insert(CString::new(name).unwrap(),
-                NetwaysteDataFormat::Structure(structure));
-            },
+                map.insert(
+                    CString::new(name).unwrap(),
+                    NetwaysteDataFormat::Structure(structure),
+                );
+            }
             _ => {}
         }
     }
 
- //   println!("{:#?}", map);
+    //   println!("{:#?}", map);
 
     map
 }
