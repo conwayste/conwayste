@@ -31,7 +31,7 @@ use regex::Regex;
 use tokio_core::reactor::{Core, Timeout};
 
 use crate::net::{
-    RequestAction, ResponseCode, Packet,
+    RequestAction, ResponseCode, Packet, RoomList,
     BroadcastChatMessage, NetworkManager, NetworkQueue,
     VERSION, has_connection_timed_out, bind, DEFAULT_PORT,
     LineCodec, NetwaysteEvent
@@ -160,24 +160,24 @@ impl ClientNetState {
                     Err(e) => error!("{:?}", e)
                 }
             }
-            ResponseCode::LoggedIn(ref cookie, ref server_version) => {
+            ResponseCode::LoggedIn{ref cookie, ref server_version} => {
                 self.handle_logged_in(cookie.to_string(), server_version.to_string());
             }
             ResponseCode::LeaveRoom => {
                 self.handle_left_room();
             }
-            ResponseCode::JoinedRoom(ref room_name) => {
+            ResponseCode::JoinedRoom{ref room_name} => {
                 self.handle_joined_room(room_name);
             }
-            ResponseCode::PlayerList(ref player_names) => {
-                self.handle_player_list(player_names.to_vec());
+            ResponseCode::PlayerList{ref players} => {
+                self.handle_player_list(players.to_vec());
             }
-            ResponseCode::RoomList(ref rooms) => {
+            ResponseCode::RoomList{ref rooms} => {
                 self.handle_room_list(rooms.to_vec());
             }
             ResponseCode::KeepAlive => {},
             // errors
-            ResponseCode::Unauthorized(opt_error) => {
+            ResponseCode::Unauthorized{error_msg: opt_error} => {
                 info!("Unauthorized action attempted by client: {:?}", opt_error);
             }
             _ => {
@@ -267,7 +267,7 @@ impl ClientNetState {
                 cookie: self.cookie.clone(),
                 sequence: self.sequence,
                 response_ack: None,
-                action: RequestAction::KeepAlive(self.response_sequence),
+                action: RequestAction::KeepAlive{latest_response_ack: self.response_sequence},
             };
             let timed_out = has_connection_timed_out(self.last_received.unwrap());
 
@@ -325,13 +325,13 @@ impl ClientNetState {
         info!("---END PLAYER LIST---");
     }
 
-    pub fn handle_room_list(&mut self, rooms: Vec<(String, u64, bool)>) {
+    pub fn handle_room_list(&mut self, rooms: Vec<RoomList>) {
         info!("---BEGIN GAME ROOM LIST---");
-        for (game_name, num_players, game_running) in rooms {
-            info!("#players: {},\trunning? {:?},\tname: {:?}",
-                        num_players,
-                        game_running,
-                        game_name);
+        for room in rooms {
+            info!("#name: {},\trunning? {:?},\tplayers: {:?}",
+                        room.room_name,
+                        room.in_progress,
+                        room.player_count);
         }
         info!("---END GAME ROOM LIST---");
     }
