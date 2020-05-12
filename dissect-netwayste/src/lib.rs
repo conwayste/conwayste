@@ -230,7 +230,7 @@ lazy_static! {
     // setup protocol field array
     static ref hf_info: Mutex<Vec<sync_hf_register_info>> = Mutex::new(Vec::new());
 
-    static ref handoff_match_name: CString = { CString::new("udp.port").unwrap() };
+    static ref handoff_match_name: CString = CString::new("udp.port").unwrap();
 }
 
 // Just a sad little utility function to print hex in a u8 slice
@@ -314,7 +314,7 @@ impl ConwaysteTree {
             Enumerator(variants, fields) => {
                 const enum_length: i32 = 4; // Enum size discriminant size
                 let discriminant = tvb_peek_four_bytes(tvb, *bytes_examined);
-                println!("0x{:x}\n", discriminant);
+                println!("0x{:x}", discriminant);
 
                 let variant: &CString = variants.get(discriminant as usize).unwrap();
 
@@ -330,12 +330,7 @@ impl ConwaysteTree {
                         WSEncoding::LittleEndian as u32,
                     );
                 }
-                println!(
-                    "......be({})=be({})+e({})",
-                    *bytes_examined + enum_length,
-                    *bytes_examined,
-                    enum_length
-                );
+
                 *bytes_examined += enum_length;
 
                 let variant = variant.clone().into_string().unwrap();
@@ -427,12 +422,7 @@ impl ConwaysteTree {
                                         NONE_STRING.0 as *const i8,
                                     );
                                 }
-                                println!(
-                                    "......be({})=be({})+l({})",
-                                    *bytes_examined + len as i32,
-                                    *bytes_examined,
-                                    len
-                                );
+
                                 *bytes_examined += len as i32;
                                 return; // Continue on to the next field descriptor
                             }
@@ -443,12 +433,6 @@ impl ConwaysteTree {
                         }
                     };
 
-                    println!(
-                        "......be({})=be({})+c({})",
-                        *bytes_examined + consume as i32,
-                        *bytes_examined,
-                        consume
-                    );
                     *bytes_examined += consume as i32;
                 }
                 Sizing::DataType(name) => {
