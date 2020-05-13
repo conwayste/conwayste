@@ -113,11 +113,11 @@ pub enum ResponseCode {
     RoomList{rooms: Vec<RoomList>},   // list of rooms and their statuses
 
     // errors
-    BadRequest{error_msg: Option<String>},      // 400 unspecified error that is client's fault
-    Unauthorized{error_msg: Option<String>},    // 401 not logged in
-    TooManyRequests{error_msg: Option<String>}, // 429
-    ServerError{error_msg: Option<String>},     // 500
-    NotConnected{error_msg: Option<String>},    // no equivalent in HTTP due to handling at lower (TCP) level
+    BadRequest{error_msg: String},      // 400 unspecified error that is client's fault
+    Unauthorized{error_msg: String},    // 401 not logged in
+    TooManyRequests{error_msg: String}, // 429
+    ServerError{error_msg: String},     // 500
+    NotConnected{error_msg: String},    // no equivalent in HTTP due to handling at lower (TCP) level
     KeepAlive,                       // Server's heart is beating
 }
 
@@ -239,8 +239,8 @@ pub enum Packet {
     },
     Update {
         // in-game: sent by server
-        chats:           Option<Vec<BroadcastChatMessage>>, // All non-acknowledged chats are sent each update
-        game_updates:    Option<Vec<GameUpdate>>,           //
+        chats:           Vec<BroadcastChatMessage>, // All non-acknowledged chats are sent each update
+        game_updates:    Vec<GameUpdate>,           // Information pertaining to a game tick update
         universe_update: UniUpdateType,                     //
     },
     UpdateReply {
@@ -969,8 +969,8 @@ pub enum NetwaysteEvent {
     PlayerList(Vec<String>),     // list of players in room or lobby with ping (ms)
     RoomList(Vec<RoomList>), // (room name, # players, game has started?)
     LeftRoom,
-    BadRequest(Option<String>),
-    ServerError(Option<String>),
+    BadRequest(String),
+    ServerError(String),
 
     // Updates
     ChatMessages(Vec<(String, String)>), // (player name, message)
