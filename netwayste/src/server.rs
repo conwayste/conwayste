@@ -25,7 +25,7 @@
 extern crate proptest;
 
 use netwayste::net::{
-    RequestAction, ResponseCode, Packet, LineCodec, bind,
+    RequestAction, ResponseCode, Packet, LineCodec, bind, RoomList,
     UniUpdateType, BroadcastChatMessage, NetworkManager,
     NetworkQueue, get_version, VERSION, has_connection_timed_out,
     DEFAULT_HOST, DEFAULT_PORT,
@@ -369,7 +369,7 @@ impl ServerState {
     pub fn list_players(&self, player_id: PlayerID) -> ResponseCode {
         let opt_room = self.get_room(player_id);
         if opt_room.is_none() {
-            return ResponseCode::BadRequest(Some("cannot list players because in lobby.".to_owned()));
+            return ResponseCode::BadRequest{error_msg: Some("cannot list players because in lobby.".to_owned())};
         }
         let room = opt_room.unwrap();
 
@@ -380,14 +380,14 @@ impl ServerState {
             }
         });
 
-        return ResponseCode::PlayerList(players);
+        return ResponseCode::PlayerList{players};
     }
 
     pub fn handle_chat_message(&mut self, player_id: PlayerID, msg: String) -> ResponseCode {
         let player_in_game = self.is_player_in_game(player_id);
 
         if !player_in_game {
-            return ResponseCode::BadRequest(Some(format!("Player {} has not joined a game.", player_id)));
+            return ResponseCode::BadRequest{error_msg: Some(format!("Player {} has not joined a game.", player_id))};
         }
 
         // We're borrowing self mutably below, so let's grab this now
@@ -400,7 +400,7 @@ impl ServerState {
         let opt_room = self.get_room_mut(player_id);
 
         if opt_room.is_none() {
-            return ResponseCode::BadRequest(Some( format!("Player \"{}\" should be in a room! None found.", player_id )));
+            return ResponseCode::BadRequest{error_msg: Some( format!("Player \"{}\" should be in a room! None found.", player_id ))};
         }
 
         let room = opt_room.unwrap();
@@ -415,9 +415,14 @@ impl ServerState {
     pub fn list_rooms(&mut self) -> ResponseCode {
         let mut rooms = vec![];
         self.rooms.values().for_each(|gs| {
-            rooms.push((gs.name.clone(), gs.player_ids.len() as u64, gs.game_running));
+            let room_details = RoomList {
+                room_name: gs.name.clone(),
+                player_count: gs.player_ids.len() as u8,
+                in_progress: gs.game_running
+            };
+            rooms.push(room_details);
         });
-        ResponseCode::RoomList(rooms)
+        ResponseCode::RoomList{rooms}
     }
 
     pub fn new_room(&mut self, name: String) {
@@ -430,13 +435,13 @@ impl ServerState {
     pub fn create_new_room(&mut self, opt_player_id: Option<PlayerID>, room_name: String) -> ResponseCode {
         // validate length
         if room_name.len() > MAX_ROOM_NAME {
-            return ResponseCode::BadRequest(Some(format!("room name too long; max {} characters",
-                                                            MAX_ROOM_NAME)));
+            return ResponseCode::BadRequest{error_msg: Some(format!("room name too long; max {} characters",
+                                                            MAX_ROOM_NAME))};
         }
 
         if let Some(player_id) = opt_player_id {
             if self.is_player_in_game(player_id) {
-                return ResponseCode::BadRequest(Some("cannot create room because in-game".to_owned()));
+                return ResponseCode::BadRequest{error_msg: Some("cannot create room because in-game".to_owned())};
             }
         }
 
@@ -446,14 +451,14 @@ impl ServerState {
 
             return ResponseCode::OK;
         } else {
-            return ResponseCode::BadRequest(Some(format!("room name already in use")));
+            return ResponseCode::BadRequest{error_msg: Some(format!("room name already in use"))};
         }
     }
 
     pub fn join_room(&mut self, player_id: PlayerID, room_name: String) -> ResponseCode {
         let already_playing = self.is_player_in_game(player_id);
         if already_playing {
-            return ResponseCode::BadRequest(Some("cannot join game because in-game".to_owned()));
+            return ResponseCode::BadRequest{error_msg: Some("cannot join game because in-game".to_owned())};
         }
 
         let player: &mut Player = self.players.get_mut(&player_id).unwrap();
@@ -466,16 +471,16 @@ impl ServerState {
                     room_id: gs.room_id.clone(),
                     chat_msg_seq_num: None
                 });
-                return ResponseCode::JoinedRoom(room_name);
+                return ResponseCode::JoinedRoom{room_name};
             }
         }
-        return ResponseCode::BadRequest(Some(format!("no room named {:?}", room_name)));
+        return ResponseCode::BadRequest{error_msg: Some(format!("no room named {:?}", room_name))};
     }
 
     pub fn leave_room(&mut self, player_id: PlayerID) -> ResponseCode {
         let already_playing = self.is_player_in_game(player_id);
         if !already_playing {
-            return ResponseCode::BadRequest(Some("cannot leave game because in lobby".to_owned()));
+            return ResponseCode::BadRequest{error_msg: Some("cannot leave game because in lobby".to_owned())};
         }
 
         let player: &mut Player = self.players.get_mut(&player_id).unwrap();
@@ -517,35 +522,35 @@ impl ServerState {
     // not used for connect
     pub fn process_request_action(&mut self, player_id: PlayerID, action: RequestAction) -> ResponseCode {
         match action {
-            RequestAction::Disconnect      => {
+            RequestAction::Disconnect => {
                 return self.handle_disconnect(player_id);
             },
-            RequestAction:: KeepAlive(_) => {
+            RequestAction:: KeepAlive{latest_response_ack: _} => {
                 return ResponseCode::OK;
             },
-            RequestAction::ListPlayers     => {
+            RequestAction::ListPlayers => {
                 return self.list_players(player_id);
             },
-            RequestAction::ChatMessage(msg)  => {
-                return self.handle_chat_message(player_id, msg);
+            RequestAction::ChatMessage{message} => {
+                return self.handle_chat_message(player_id, message);
             },
-            RequestAction::ListRooms   => {
+            RequestAction::ListRooms => {
                 return self.list_rooms();
             }
-            RequestAction::NewRoom(name)  => {
-                return self.create_new_room(Some(player_id), name);
+            RequestAction::NewRoom{room_name}  => {
+                return self.create_new_room(Some(player_id), room_name);
             }
-            RequestAction::JoinRoom(room_name) => {
+            RequestAction::JoinRoom{room_name} => {
                 return self.join_room(player_id, room_name);
             }
             RequestAction::LeaveRoom   => {
                 return self.leave_room(player_id);
             }
             RequestAction::Connect{..}     => {
-                return ResponseCode::BadRequest( Some("already connected".to_owned()) );
+                return ResponseCode::BadRequest{error_msg:  Some("already connected".to_owned())};
             },
             RequestAction::None => {
-                return ResponseCode::BadRequest( Some("Invalid request".to_owned()) );
+                return ResponseCode::BadRequest{error_msg:  Some("Invalid request".to_owned())};
             },
         }
     }
@@ -813,7 +818,7 @@ impl ServerState {
 
                 match action {
                     RequestAction::Connect{..} => (),
-                    RequestAction::KeepAlive(_) => (),
+                    RequestAction::KeepAlive{latest_response_ack: _} => (),
                     _ => {
                         if cookie == None {
                             return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "no cookie")));
@@ -849,11 +854,11 @@ impl ServerState {
                     let mut player: &mut Player = self.get_player_mut(player_id);
                     player.last_received = time::Instant::now();   // reset time of last received packet from player
                     match action.clone() {
-                        RequestAction::KeepAlive(resp_ack) => {
+                        RequestAction::KeepAlive{latest_response_ack} => {
                             // If the client does not send new requests, the Server will never get a reply for
                             // the set of responses it may have sent. This will result in the transmission queue contents
                             // flooding the Client on retranmission.
-                            self.clear_transmission_queue_on_ack(player_id, Some(resp_ack));
+                            self.clear_transmission_queue_on_ack(player_id, Some(latest_response_ack));
                             return Ok(None);
                         }
                         _ => (),
@@ -914,10 +919,12 @@ impl ServerState {
     pub fn prepare_response(&mut self, player_id: PlayerID, action: RequestAction) -> Option<Packet> {
         let response_code = self.process_request_action(player_id, action.clone());
 
-        let (sequence, request_ack);//= (0, None);
+        let (sequence, request_ack);
 
         match action {
-            RequestAction::KeepAlive(_) => unreachable!(), // Filtered away at the decoding packet layer
+            // Filtered away at the decoding packet layer
+            RequestAction::KeepAlive{latest_response_ack: _} => unreachable!(),
+            // Prepare a response for all other requests
             _ => {
                 let opt_player: Option<&mut Player> = self.players.get_mut(&player_id);
 
@@ -956,7 +963,7 @@ impl ServerState {
             let response = Packet::Response{
                 sequence:    0,
                 request_ack: Some(0), // Should start at seq_num 0 unless client's network state was not properly reset
-                code:        ResponseCode::LoggedIn(cookie, VERSION.to_owned()),
+                code:        ResponseCode::LoggedIn{cookie, server_version: VERSION.to_owned()},
             };
             return response;
         } else {
@@ -964,7 +971,7 @@ impl ServerState {
             let response = Packet::Response{
                 sequence:    0,
                 request_ack: None,
-                code:        ResponseCode::Unauthorized(Some("not a unique name".to_owned())),
+                code:        ResponseCode::Unauthorized{error_msg: Some("not a unique name".to_owned())},
             };
             return response;
         }
@@ -1345,7 +1352,7 @@ mod netwayste_server_tests {
         }
         let resp_code: ResponseCode = server.list_players(player_id);
         match resp_code {
-            ResponseCode::PlayerList(players) => {
+            ResponseCode::PlayerList{players} => {
                 assert_eq!(players.len(), 1);
                 assert_eq!(*players.first().unwrap(), player_name);
             }
@@ -1662,7 +1669,7 @@ mod netwayste_server_tests {
         };
 
         let response = server.handle_chat_message(player_id, "test msg".to_owned());
-        assert_eq!(response, ResponseCode::BadRequest(Some(format!("Player {} has not joined a game.", player_id))));
+        assert_eq!(response, ResponseCode::BadRequest{error_msg: Some(format!("Player {} has not joined a game.", player_id))});
     }
 
     #[test]
@@ -1743,7 +1750,7 @@ mod netwayste_server_tests {
         let mut server = ServerState::new();
         let room_name = "0123456789ABCDEF_#".to_owned();
 
-        assert_eq!(server.create_new_room(None, room_name), ResponseCode::BadRequest(Some("room name too long; max 16 characters".to_owned())));
+        assert_eq!(server.create_new_room(None, room_name), ResponseCode::BadRequest{error_msg: Some("room name too long; max 16 characters".to_owned())});
     }
 
     #[test]
@@ -1752,7 +1759,7 @@ mod netwayste_server_tests {
         let mut server = ServerState::new();
         let room_name = "some room".to_owned();
         assert_eq!(server.create_new_room(None, room_name.clone()), ResponseCode::OK);
-        assert_eq!(server.create_new_room(None, room_name), ResponseCode::BadRequest(Some("room name already in use".to_owned())));
+        assert_eq!(server.create_new_room(None, room_name), ResponseCode::BadRequest{error_msg: Some("room name already in use".to_owned())});
     }
 
     #[test]
@@ -1772,7 +1779,7 @@ mod netwayste_server_tests {
             server.join_room(player_id, room_name.to_owned());
         }
 
-        assert_eq!( server.create_new_room(Some(player_id), other_room_name), ResponseCode::BadRequest(Some("cannot create room because in-game".to_owned())) );
+        assert_eq!( server.create_new_room(Some(player_id), other_room_name), ResponseCode::BadRequest{error_msg: Some("cannot create room because in-game".to_owned())} );
     }
 
     #[test]
@@ -1788,7 +1795,7 @@ mod netwayste_server_tests {
 
             p.player_id
         };
-        assert_eq!(server.join_room(player_id, room_name.to_owned()), ResponseCode::JoinedRoom("some room".to_owned()));
+        assert_eq!(server.join_room(player_id, room_name.to_owned()), ResponseCode::JoinedRoom{room_name: "some room".to_owned()});
     }
 
     #[test]
@@ -1804,8 +1811,8 @@ mod netwayste_server_tests {
 
             p.player_id
         };
-        assert_eq!(server.join_room(player_id, room_name.clone()), ResponseCode::JoinedRoom("some room".to_owned()));
-        assert_eq!( server.join_room(player_id, room_name), ResponseCode::BadRequest(Some("cannot join game because in-game".to_owned())) );
+        assert_eq!(server.join_room(player_id, room_name.clone()), ResponseCode::JoinedRoom{room_name: "some room".to_owned()});
+        assert_eq!( server.join_room(player_id, room_name), ResponseCode::BadRequest{error_msg: Some("cannot join game because in-game".to_owned())} );
     }
 
     #[test]
@@ -1819,7 +1826,7 @@ mod netwayste_server_tests {
 
             p.player_id
         };
-        assert_eq!(server.join_room(player_id, "some room".to_owned()), ResponseCode::BadRequest(Some("no room named \"some room\"".to_owned())) );
+        assert_eq!(server.join_room(player_id, "some room".to_owned()), ResponseCode::BadRequest{error_msg: Some("no room named \"some room\"".to_owned())} );
     }
 
     #[test]
@@ -1856,7 +1863,7 @@ mod netwayste_server_tests {
             p.player_id
         };
 
-        assert_eq!( server.leave_room(player_id), ResponseCode::BadRequest(Some("cannot leave game because in lobby".to_owned())) );
+        assert_eq!( server.leave_room(player_id), ResponseCode::BadRequest{error_msg: Some("cannot leave game because in lobby".to_owned())} );
     }
 
     #[test]
@@ -1867,7 +1874,7 @@ mod netwayste_server_tests {
         let rand_player_id = PlayerID(0x2457); //RUST
         assert_eq!(server.create_new_room(None, room_name.clone()), ResponseCode::OK);
 
-        assert_eq!( server.leave_room(rand_player_id), ResponseCode::BadRequest(Some("cannot leave game because in lobby".to_owned())) );
+        assert_eq!( server.leave_room(rand_player_id), ResponseCode::BadRequest{error_msg: Some("cannot leave game because in lobby".to_owned())} );
     }
 
     #[test]
@@ -2085,7 +2092,7 @@ mod netwayste_server_tests {
         match pkt {
             Packet::Response{sequence: _, request_ack: _, code} => {
                 match code {
-                    ResponseCode::LoggedIn(_,_) => {}
+                    ResponseCode::LoggedIn{cookie: _, server_version: _} => {}
                     _ => panic!("Unexpected ResponseCode: {:?}", code)
                 }
             }
@@ -2102,7 +2109,9 @@ mod netwayste_server_tests {
         match pkt {
             Packet::Response{sequence: _, request_ack: _, code} => {
                 match code {
-                    ResponseCode::LoggedIn(_,version) => {assert_eq!(version, VERSION.to_owned() )}
+                    ResponseCode::LoggedIn{cookie: _, server_version} => {
+                        assert_eq!(server_version, VERSION.to_owned() )
+                    }
                     _ => panic!("Unexpected ResponseCode: {:?}", code)
                 }
             }
@@ -2113,7 +2122,9 @@ mod netwayste_server_tests {
         match pkt {
             Packet::Response{sequence: _, request_ack: _, code} => {
                 match code {
-                    ResponseCode::Unauthorized(msg) => { assert_eq!(msg, Some("not a unique name".to_owned())); }
+                    ResponseCode::Unauthorized{error_msg} => {
+                        assert_eq!(error_msg, Some("not a unique name".to_owned()));
+                    }
                     _ => panic!("Unexpected ResponseCode: {:?}", code)
                 }
             }
@@ -2134,9 +2145,9 @@ mod netwayste_server_tests {
 
     fn a_request_action_complex_strat() -> BoxedStrategy<RequestAction> {
         prop_oneof![
-            ("([A-Z]{1,4} [0-9]{1,2}){3}").prop_map(|a| RequestAction::ChatMessage(a)),
-            ("([A-Z]{1,4} [0-9]{1,2}){3}").prop_map(|a| RequestAction::NewRoom(a)),
-            ("([A-Z]{1,4} [0-9]{1,2}){3}").prop_map(|a| RequestAction::JoinRoom(a)),
+            ("([A-Z]{1,4} [0-9]{1,2}){3}").prop_map(|a| RequestAction::ChatMessage{message: a}),
+            ("([A-Z]{1,4} [0-9]{1,2}){3}").prop_map(|a| RequestAction::NewRoom{room_name: a}),
+            ("([A-Z]{1,4} [0-9]{1,2}){3}").prop_map(|a| RequestAction::JoinRoom{room_name: a}),
             ("([A-Z]{1,4} [0-9]{1,2}){3}", "[0-9].[0-9].[0-9]").prop_map(|(a, b)| RequestAction::Connect{name: a, client_version: b})
         ].boxed()
     }
@@ -2175,7 +2186,7 @@ mod netwayste_server_tests {
             player.player_id
         };
         let result = server.process_request_action(player_id, RequestAction::Connect{name: "some player".to_owned(), client_version: "0.1.0".to_owned()});
-        assert_eq!(result, ResponseCode::BadRequest(Some("already connected".to_owned())));
+        assert_eq!(result, ResponseCode::BadRequest{error_msg: Some("already connected".to_owned())});
     }
 
     #[test]
@@ -2187,7 +2198,7 @@ mod netwayste_server_tests {
             player.player_id
         };
         let result = server.process_request_action(player_id, RequestAction::None);
-        assert_eq!(result, ResponseCode::BadRequest(Some("Invalid request".to_owned())));
+        assert_eq!(result, ResponseCode::BadRequest{error_msg: Some("Invalid request".to_owned())});
     }
 
     #[test]
@@ -2201,7 +2212,7 @@ mod netwayste_server_tests {
         let pkt: Packet = server.prepare_response(player_id, RequestAction::ListRooms).unwrap();
         match pkt {
             Packet::Response{code, sequence, request_ack} => {
-                assert_eq!(code, ResponseCode::RoomList(vec![]));
+                assert_eq!(code, ResponseCode::RoomList{rooms: vec![]});
                 assert_eq!(sequence, 1);
                 assert_eq!(request_ack, Some(2));
             }
