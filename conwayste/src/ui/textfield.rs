@@ -59,7 +59,7 @@ pub struct TextField {
     hover: bool,
     visible_start_index: usize, // The index of the first character in `self.text` that is visible.
     font_info: FontInfo,
-    pub bg_color: Option<Color>,
+    pub bg_color: Option<Color>, //XXX should not be public
 }
 
 impl fmt::Debug for TextField {

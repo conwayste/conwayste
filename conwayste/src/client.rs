@@ -530,7 +530,10 @@ impl EventHandler for MainState {
                             Some(TextInputState::TextInputComplete) =>  {
                                 textfield_under_focus = false;
                                 //XXX call the following only when the user is done typing
-                                self.handle_user_chat_complete(ctx);
+
+                                // take the text from the textfield, and if non-empty,
+                                // 1) add to chatbox, 2) send to netwayste
+                                self.handle_user_chat_complete(ctx); //XXX handle err
                             }
                             Some(TextInputState::EnteringText) => {
                                 textfield_under_focus = true;
@@ -1474,40 +1477,32 @@ impl MainState {
         }
     }
 
-    fn handle_user_chat_complete(&mut self, _ctx: &mut Context) {
+    fn handle_user_chat_complete(&mut self, _ctx: &mut Context) -> Result<(), Box<dyn Error>> {
         let username = self.config.get().user.name.clone();
         let mut msg = String::new();
         let id = self.ui_layout.chatbox_tf_id.clone();
 
         // Get input text and clear it in the widget.
-        match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
-            Ok(tf) => {
-                if let Some(m) = tf.text() {
-                    msg = format!("{}: {}", username, m);
-                }
-                tf.input_state = None;
-                tf.clear();
-            }
-            Err(e) => {
-                error!("Could not access Chatbox's text entry field on user input complete: {:?}", e);
-            }
+        let tf = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id).map_err(|e| -> Box<dyn Error> {
+            format!("Could not access chatbox's text entry field on user input complete: {:?}", e).into()
+        })?;
+        if let Some(m) = tf.text() {
+            msg = format!("{}: {}", username, m);
         }
+        tf.clear();
 
         if !msg.is_empty() {
             let id = self.ui_layout.chatbox_id.clone();
-            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
-                Ok(cb) => {
-                    cb.add_message(msg.clone());
+            let cb = Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id).map_err(|e| -> Box<dyn Error> {
+                format!("Could not add message to chatbox on user input complete: {:?}", e).into()
+            })?;
+            cb.add_message(msg.clone());
 
-                    if let Some(ref mut netwayste) = self.net_worker {
-                        netwayste.try_send(NetwaysteEvent::ChatMessage(msg));
-                    }
-                }
-                Err(e) => {
-                    error!("Could not add message to Chatbox on user input complete: {:?}", e);
-                }
+            if let Some(ref mut netwayste) = self.net_worker {
+                netwayste.try_send(NetwaysteEvent::ChatMessage(msg));
             }
         }
+        Ok(())
     }
 
     fn get_current_screen(&self) -> Screen {
