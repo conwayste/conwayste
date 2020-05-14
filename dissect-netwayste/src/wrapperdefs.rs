@@ -23,7 +23,9 @@ use std::ptr;
 
 use crate::ws;
 
-// :( https://stackoverflow.com/questions/33850189/how-to-publish-a-constant-string-in-the-rust-ffi
+// Definition is needed so we can publish things like plugin version for wireshark
+// https://stackoverflow.com/questions/33850189/how-to-publish-a-constant-string-in-the-rust-ffi
+// https://doc.rust-lang.org/stable/nomicon/send-and-sync.html
 #[repr(C)]
 pub struct StaticCString(pub *const u8);
 unsafe impl Sync for StaticCString {}
@@ -90,10 +92,14 @@ impl From<&str> for FieldType {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct sync_hf_register_info {
-    pub p_id: *mut c_int,
-    pub hfinfo: ws::header_field_info,
+    pub p_id: *mut c_int,   // Pointer to an identifier that is updated by wireshark on plugin init
+    pub hfinfo: ws::header_field_info,  // Header field information structure
 }
 
+// These are used in the lazy-static macro and are wrapped in a Mutex, but the compiler does not know
+// that by doing that they become safe to Sync and Send. Therefore we need to mark them Sync and Send
+// here. They are natively !Sync and !Send due to containing a raw pointer.
+// https://doc.rust-lang.org/stable/nomicon/send-and-sync.html
 unsafe impl Sync for sync_hf_register_info {}
 unsafe impl Send for sync_hf_register_info {}
 

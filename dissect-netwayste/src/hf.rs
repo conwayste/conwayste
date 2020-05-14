@@ -19,12 +19,13 @@
 
 use std::collections::HashMap;
 use std::ffi::CString;
+use std::sync::Mutex;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 
 use crate::netwaysteparser::{FieldDescriptor, NetwaysteDataFormat::*, Sizing, VariableContainer};
 use crate::wrapperdefs::*;
-use crate::{enum_strings, hf_fields, hf_info, netwayste_data, ws};
+use crate::{enum_strings, netwayste_data, ws};
 
 /// HFFieldAllocator keeps track of which header fields have been used during header field registration.
 ///
@@ -52,12 +53,12 @@ impl HFFieldAllocator {
         }
     }
 
-    /// Retrieves a pointer to the (mutable) allocated header field for the provided string.
+    /// Retrieves a mutable reference to the mutable allocated header field for the provided string.
     ///
     /// # Panics
     /// Will panic if the provided String is not registered. This is intentional as a means to catch
     /// bugs.
-    fn get(&mut self, name: &CString) -> &mut c_int {
+    fn get_mut_header_field(&mut self, name: &CString) -> &mut c_int {
         if let Some(index) = self.allocated.get(name) {
             assert!(*index < self.hf_fields.len());
             // Unwrap safe b/c of assert
@@ -94,9 +95,9 @@ impl HFFieldAllocator {
 
     /// Retrieves the header field ID linked the provided field name when it is a `None` variant of
     /// `Option`.
-    fn get_option_id(&mut self, name: &CString) -> &mut c_int {
+    fn get_mut_option_id(&mut self, name: &CString) -> &mut c_int {
         let optioned_name = self.options_map.get(name).unwrap().clone();
-        self.get(&optioned_name)
+        self.get_mut_header_field(&optioned_name)
     }
 }
 
@@ -108,47 +109,51 @@ impl HFFieldAllocator {
 // We aren't multithreading here but it's still good practice and helps with readability.
 // (Suggested by https://users.rust-lang.org/t/how-can-i-use-mutable-lazy-static/3751/5)
 
-pub fn hf_register(name: CString) {
+pub fn hf_register(hf_fields: &Mutex<HFFieldAllocator>, name: CString) {
     hf_fields.lock().unwrap().register(name);
 }
 
-pub fn hf_get(name: &CString) -> *mut c_int {
-    hf_fields.lock().unwrap().get(name) as *mut c_int
+pub fn hf_get_mut_ptr(hf_fields: &Mutex<HFFieldAllocator>, name: &CString) -> *mut c_int {
+    hf_fields.lock().unwrap().get_mut_header_field(name) as *mut c_int
 }
 
-pub fn hf_new_option(name: &CString) {
+pub fn hf_new_option(hf_fields: &Mutex<HFFieldAllocator>, name: &CString) {
     let mut lock = hf_fields.lock().unwrap();
     lock.new_option(name);
 }
 
-pub fn hf_get_option(name: &CString) -> *const i8 {
+pub fn hf_get_option(hf_fields: &Mutex<HFFieldAllocator>, name: &CString) -> *const i8 {
     let lock = hf_fields.lock().unwrap();
     lock.get_option_name(name).as_ptr()
 }
 
-pub fn hf_get_option_id(name: &CString) -> *mut c_int {
+pub fn hf_get_option_id(hf_fields: &Mutex<HFFieldAllocator>, name: &CString) -> *mut c_int {
     let mut lock = hf_fields.lock().unwrap();
-    lock.get_option_id(name) as *mut c_int
+    lock.get_mut_option_id(name) as *mut c_int
 }
 
-pub fn hf_info_as_ptr() -> *const sync_hf_register_info {
+pub fn hf_info_as_ptr(hf_info: &Mutex<Vec<sync_hf_register_info>>) -> *const sync_hf_register_info {
     let ptr = hf_info.lock().unwrap().as_ptr();
     ptr
 }
 
-pub fn hf_info_len() -> usize {
+pub fn hf_info_len(hf_info: &Mutex<Vec<sync_hf_register_info>>) -> usize {
     let len = hf_info.lock().unwrap().len();
     len
 }
 
+pub fn hf_append(hf_info: &Mutex<Vec<sync_hf_register_info>>, hf_list: &mut Vec<sync_hf_register_info>) {
+    hf_info.lock().unwrap().append(hf_list);
+}
+
 /// For every enum/structure found by parsing `netwayste/src/net.rs` must have a header field identifier
 /// that Wireshark uses to refer to it. This routine will walk through the parsed-and-gutted
-/// `net.rs` and assign a header field ID to each one. It does this via registration with the header
-/// field allocator.
-pub fn register_header_fields() {
+/// `net.rs` and assign a header field ID to each one mapped to the field name. Registers with the
+/// header field allocator.
+pub fn register_header_fields(hf_fields: &Mutex<HFFieldAllocator>) {
     // Reserve a header field for the variant
     for key in netwayste_data.keys() {
-        hf_register(key.clone());
+        hf_register(hf_fields, key.clone());
     }
 
     for datastruct in netwayste_data.values() {
@@ -158,8 +163,8 @@ pub fn register_header_fields() {
                 // Reserve a header field for its fields.
                 for fields in fields_map.values() {
                     for field in fields.iter() {
-                        hf_register(field.name.clone());
-                        option_check(&field);
+                        hf_register(hf_fields, field.name.clone());
+                        option_check(hf_fields, &field);
                     }
                 }
             }
@@ -167,23 +172,24 @@ pub fn register_header_fields() {
                 // Reserve a header field for structure's fields
                 for field in fields {
                     // Stuctures are *always* named so unwrap is safe.
-                    hf_register(field.name.clone());
-                    option_check(&field);
+                    hf_register(hf_fields, field.name.clone());
+                    option_check(hf_fields, &field);
                 }
             }
         }
     }
 
     /// Inspect the FieldDescriptor's format list to see if there's an Option, and register an HF
-    /// for each additional occurence.
-    fn option_check(f: &FieldDescriptor) {
+    /// for each additional occurence. Option-ed members map to two possible header fields:
+    /// A header field when `Some(T)`, and a header field when `None` (as there is no data type T).
+    fn option_check(hf_fields: &Mutex<HFFieldAllocator>, f: &FieldDescriptor) {
         for format in &f.format {
             match format {
                 Sizing::Variable(VariableContainer::Optional) => {
-                    hf_new_option(&f.name);
+                    hf_new_option(hf_fields, &f.name);
                 }
                 _ => {
-                    // Not of any concern, keep looking
+                    // Not an Option
                 }
             }
         }
@@ -193,13 +199,13 @@ pub fn register_header_fields() {
 // Walks the parsed `net.rs` AST and builds a header field entry for each enum, variants with data,
 // and structures. The header field entry is provided to Wireshark so that it knows how to interpret
 // each data field when it's added to the ett during packet dissection.
-pub fn build_header_field_array() {
+pub fn build_header_field_array(hf_fields: &Mutex<HFFieldAllocator>, hf_info: &Mutex<Vec<sync_hf_register_info>>) {
     let mut _hf = {
         let mut _hf = vec![];
 
         // Add a header field for all keys (aka defined Enums and Structs)
         for key in netwayste_data.keys() {
-            let f = hf_get(key);
+            let f = hf_get_mut_ptr(hf_fields, key);
 
             let enum_hf = sync_hf_register_info {
                 p_id: f,
@@ -224,11 +230,11 @@ pub fn build_header_field_array() {
             match datastruct {
                 Enumerator(_enums, fields_map) => {
                     for fields in fields_map.values() {
-                        create_header_fields(fields, &mut _hf);
+                        create_header_fields(hf_fields, fields, &mut _hf);
                     }
                 }
                 Structure(fields) => {
-                    create_header_fields(fields, &mut _hf);
+                    create_header_fields(hf_fields, fields, &mut _hf);
                 }
             }
         }
@@ -236,11 +242,10 @@ pub fn build_header_field_array() {
         _hf
     };
 
-    // Append is only performed once so I am not wrapping it into its own function like the others
-    hf_info.lock().unwrap().append(&mut _hf);
+    hf_append(hf_info, &mut _hf);
 
     // Private helper function to perform the iteration and creation over all fields
-    fn create_header_fields(fields: &Vec<FieldDescriptor>, _hf: &mut Vec<sync_hf_register_info>) {
+    fn create_header_fields(hf_fields: &Mutex<HFFieldAllocator>, fields: &Vec<FieldDescriptor>, _hf: &mut Vec<sync_hf_register_info>) {
         for field in fields.iter() {
             let mut field_data_type = FieldType::Str;
             let mut field_display: FieldDisplay = FieldDisplay::Str;
@@ -252,8 +257,8 @@ pub fn build_header_field_array() {
                     Sizing::Variable(VariableContainer::Optional) => {
                         field_display = FieldDisplay::Str;
 
-                        let hf_id = hf_get_option_id(&field.name);
-                        let optioned_name = hf_get_option(&field.name);
+                        let hf_id = hf_get_option_id(hf_fields, &field.name);
+                        let optioned_name = hf_get_option(hf_fields, &field.name);
                         let variant_hf = sync_hf_register_info {
                             p_id: hf_id,
                             hfinfo: ws::header_field_info {
@@ -279,7 +284,7 @@ pub fn build_header_field_array() {
                             // We shouldn't get other values here
                             unknown_byte_count @ _ => {
                                 println!(
-                                    "Unknown byte count observed during header
+                                    "Unknown byte count observed during header \
                                     field construction: {}",
                                     unknown_byte_count
                                 );
@@ -291,7 +296,7 @@ pub fn build_header_field_array() {
                 }
             }
 
-            let hf_id = hf_get(&field.name);
+            let hf_id = hf_get_mut_ptr(hf_fields, &field.name);
             let variant_hf = sync_hf_register_info {
                 p_id: hf_id,
                 hfinfo: ws::header_field_info {

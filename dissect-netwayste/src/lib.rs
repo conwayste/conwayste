@@ -27,7 +27,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(improper_ctypes)] // ignore u128 warnings
-#![allow(dead_code)]
+#![allow(dead_code)] // hide warnings for wireshark register functions
 
 extern crate netwayste;
 #[macro_use]
@@ -42,16 +42,17 @@ use tokio_core::net::UdpCodec;
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::io::{Error, ErrorKind};
-use std::mem;
 use std::net::SocketAddr;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 use std::sync::Mutex;
 
+mod ett;
 mod hf;
 mod netwaysteparser;
 mod wrapperdefs;
 
+use ett::*;
 use hf::*;
 use netwaysteparser::{
     parse_netwayste_format,
@@ -71,6 +72,7 @@ const UDP_MTU_SIZE: usize = 1460;
 #[no_mangle]
 pub static plugin_version: StaticCString = StaticCString(b"0.0.3\0" as *const u8);
 pub static NONE_STRING: StaticCString = StaticCString(b"None\0" as *const u8);
+
 /// Wireshark major & minor version
 #[no_mangle]
 pub static plugin_want_major: c_int = 3;
@@ -102,84 +104,9 @@ impl ConwaysteProtocolStrings {
     }
 }
 
-struct EttInfo {
-    ett_items: Vec<c_int>,
-    pub addresses: Vec<usize>,
-    map: HashMap<String, usize>,
-}
-
-impl EttInfo {
-    pub fn new() -> EttInfo {
-        EttInfo {
-            ett_items: Vec::new(),
-            addresses: Vec::new(),
-            map: HashMap::new(),
-        }
-    }
-
-    /// Retrieves the value of `ett_item`, which wireshark updates after the dissector has been registered
-    ///
-    /// # Panics
-    /// Will panic if the provided String is not registered. This is intentional as a means to catch
-    /// bugs.
-    fn get_ett_addr(&mut self, name: &String) -> c_int {
-        if let Some(index) = self.map.get(name) {
-            assert!(*index < self.ett_items.len());
-            // Unwrap safe b/c of assert
-            let item = self.ett_items.get_mut(*index).unwrap();
-            return *item;
-        }
-        unreachable!();
-    }
-
-    /// Registers a spot in the `ett_items` list for tree/sub-tree usage by the dissector. It links
-    /// the provided string to the index of the spot that was registere.
-    fn register_ett(&mut self, name: &String) {
-        // Wireshark will overwrite this later.
-        self.ett_items.push(-1);
-
-        // Map the index into the `ett` vector to the name
-        self.map.insert(name.clone(), self.ett_items.len() - 1);
-    }
-
-    /// Creates a parallel vector to `self.ett_items` containing the addresses of each list item.
-    /// The address list is provided to wireshark during proto registration.
-    fn set_all_item_addresses(&mut self) {
-        for offset in 0..self.ett_items.len() {
-            // this is actually a Vec<*mut c_int> containing a pointer to ett_conwayste and is an ugly
-            // hack because *const c_int is not Sync and cannot be shared. Transmute so that the we can
-            // still get the address.
-
-            let base_addr = self.ett_items.as_ptr();
-            self.addresses.push(unsafe {
-                mem::transmute::<*const c_int, usize>(base_addr.add(offset) as *const c_int)
-            });
-        }
-    }
-}
-
-pub fn ett_register(name: &String) {
-    ett.lock().unwrap().register_ett(name);
-}
-
-pub fn ett_set_all_item_addresses() {
-    ett.lock().unwrap().set_all_item_addresses();
-}
-
-pub fn ett_get_addresses() -> *const usize {
-    ett.lock().unwrap().addresses.as_ptr() as *const usize
-}
-
-pub fn ett_get_address(name: &String) -> c_int {
-    ett.lock().unwrap().get_ett_addr(name)
-}
-
-pub fn ett_get_addresses_count() -> usize {
-    ett.lock().unwrap().addresses.len()
-}
-
 lazy_static! {
     static ref protocol_strings: ConwaysteProtocolStrings = ConwaysteProtocolStrings::new();
+
     // our UDP codec expects a SocketAddr argument but we don't care
     static ref dummy_addr: SocketAddr = SocketAddr::new([127,0,0,1].into(), 54321);
 
@@ -187,7 +114,7 @@ lazy_static! {
     static ref hf_fields: Mutex<HFFieldAllocator> = Mutex::new(HFFieldAllocator::new());
 
     // The result of parsing the AST of `netwayste/src/net.rs`. AST is piped through the parser to
-    // give us a simplified description of the net.rs data layout.
+    // give us a simplified description of the `net.rs` data layout.
     static ref netwayste_data: HashMap<CString, NetwaysteDataFormat> = {
         let _nw_data: HashMap<CString, NetwaysteDataFormat> = parse_netwayste_format();
         _nw_data
@@ -225,7 +152,7 @@ lazy_static! {
 
     // setup protocol subtree array
     static ref ett_conwayste_name: String = String::from("ConwaysteTree");
-    static ref ett: Mutex<EttInfo> = Mutex::new(EttInfo::new());
+    static ref ett_info: Mutex<EttInfo> = Mutex::new(EttInfo::new());
 
     // setup protocol field array
     static ref hf_info: Mutex<Vec<sync_hf_register_info>> = Mutex::new(Vec::new());
@@ -244,6 +171,9 @@ fn print_hex(buf: &[u8]) {
 }
 
 // A happy little utility function to read 4-bytes from the TVB
+///
+/// # Unsafe
+/// Usage of unsafe interacts with the tv buffer directly by peeking at bytes.
 fn tvb_peek_four_bytes(tvb: *mut ws::tvbuff_t, offset: i32) -> u32 {
     let tvblen = tvb_reported_length(tvb) as usize;
     let mut packet_vec = Vec::<u8>::with_capacity(tvblen);
@@ -252,7 +182,7 @@ fn tvb_peek_four_bytes(tvb: *mut ws::tvbuff_t, offset: i32) -> u32 {
         packet_vec.push(byte);
     }
 
-    print_hex(&packet_vec.as_slice());
+    //print_hex(&packet_vec.as_slice());
 
     let discr_vec: Vec<u8> = packet_vec
         .drain((offset as usize)..(offset as usize + 4))
@@ -281,7 +211,7 @@ impl ConwaysteTree {
                 tvb_data_length,
                 no_encoding,
             );
-            let tree = ws::proto_item_add_subtree(ti, ett_get_address(&*ett_conwayste_name));
+            let tree = ws::proto_item_add_subtree(ti, ett_get_address(&*ett_info, &*ett_conwayste_name));
             ConwaysteTree { tree }
         }
     }
@@ -301,6 +231,10 @@ impl ConwaysteTree {
 
     /// Decodes a `NetwaysteDataFormat` as specified by the name; all of its sub fields are added
     /// to the decoded tree in order of appearance by inspecting the TVB contents.
+    ///
+    /// # Unsafe
+    /// Usage of unsafe interacts with the conwayste tree by decoding bytes from tv buffer and adding
+    /// them to it.
     fn decode_nw_data_format(
         &self,
         tree: *mut ws::proto_tree,
@@ -314,12 +248,11 @@ impl ConwaysteTree {
             Enumerator(variants, fields) => {
                 const enum_length: i32 = 4; // Enum size discriminant size
                 let discriminant = tvb_peek_four_bytes(tvb, *bytes_examined);
-                println!("0x{:x}", discriminant);
 
                 let variant: &CString = variants.get(discriminant as usize).unwrap();
 
                 // Add the enum variant to the tree so we get a string representation of the variant
-                let hf_field = hf_get(&name);
+                let hf_field = hf_get_mut_ptr(&*hf_fields, &name);
                 unsafe {
                     ws::proto_tree_add_item(
                         tree,
@@ -347,6 +280,10 @@ impl ConwaysteTree {
     }
 
     /// Determines the data type and size of a field and adds the data segment to the tree
+    ///
+    /// # Unsafe
+    /// Usage of unsafe interacts with the conwayste protocol tree when adding data or additional
+    /// subtrees to it. TV buffer is peeked into as well.
     fn add_field_to_tree(
         &self,
         tree: *mut ws::proto_tree,
@@ -357,7 +294,7 @@ impl ConwaysteTree {
         let mut field_length: i32 = 4; // First byte is enumerator definition
         let mut encoding: WSEncoding = WSEncoding::LittleEndian;
         let field_name = &fd.name;
-        let hf_field = hf_get(&field_name);
+        let hf_field = hf_get_mut_ptr(&*hf_fields, &field_name);
         let mut add_field = true;
 
         // Bincode encodes the length of a vector prior to the items in the list. We need to
@@ -410,7 +347,7 @@ impl ConwaysteTree {
                             // Option turned out to be None. Add a none description for this
                             // field in the tree and move onto the next field
                             if data == 0 {
-                                let optioned_hf_field = hf_get_option_id(&field_name);
+                                let optioned_hf_field = hf_get_option_id(&*hf_fields, &field_name);
                                 unsafe {
                                     // Move onto the next field descriptor
                                     ws::proto_tree_add_string(
@@ -442,7 +379,7 @@ impl ConwaysteTree {
                             tvb,
                             *bytes_examined,
                             1,                     /*Can we get the size of inner struct?*/
-                            ett_get_address(name), /* Index in ett corresponding to this item */
+                            ett_get_address(&*ett_info, name), /* Index in ett corresponding to this item */
                             ptr::null_mut(),
                             name.as_ptr() as *const i8,
                         )
@@ -450,13 +387,14 @@ impl ConwaysteTree {
 
                     for i in 0..item_count {
                         if item_count > 1 {
+                            // Create a subtree if we have a multiple itemed list
                             let subtree2 = unsafe {
                                 ws::proto_tree_add_subtree(
                                     subtree,
                                     tvb,
                                     *bytes_examined,
                                     1,                     /*Can we get the size of inner struct?*/
-                                    ett_get_address(name), /* Index in ett corresponding to this item */
+                                    ett_get_address(&*ett_info, name), /* Index in ett corresponding to this item */
                                     ptr::null_mut(),
                                     indexes_as_strings[i as usize].as_ptr(),
                                 )
@@ -507,6 +445,9 @@ impl ConwaysteTree {
 }
 
 /// Decode packet bytes from the tv buffer into a netwayste packet
+///
+/// # Unsafe
+/// Usage of unsafe interacts with the tv buffer directly by peeking at bytes
 fn get_cwte_packet(tvb: *mut ws::tvbuff_t) -> Result<NetwaystePacket, std::io::Error> {
     let tvblen = tvb_reported_length(tvb) as usize;
 
@@ -532,7 +473,6 @@ fn get_cwte_packet(tvb: *mut ws::tvbuff_t) -> Result<NetwaystePacket, std::io::E
         })
 }
 
-// THE MEAT
 // Called once per Conwayste packet found in traffic
 extern "C" fn dissect_conwayste(
     tvb: *mut ws::tvbuff_t,      // Buffer the packet resides in
@@ -573,7 +513,9 @@ extern "C" fn dissect_conwayste(
     reported_len
 }
 
-/// Registers the protocol with Wireshark. This is called once during protocol registration.
+/// Registers the protocol with Wireshark. This is called once during protocol registration. Any
+/// data structure setup needed during the dissection step is also performed here. This includes
+/// registering header fields and registering tree (ett) handlers.
 ///
 /// # Unsafe
 /// Usage of unsafe encapsulates `proto_conwayste` which is initialized once via this function.
@@ -582,16 +524,16 @@ extern "C" fn proto_register_conwayste() {
     println!("called proto_register_conwayste()");
 
     // PR_GATE: See if it makes sense to combine these two routines into one
-    hf::register_header_fields();
-    hf::build_header_field_array();
+    hf::register_header_fields(&*hf_fields);
+    hf::build_header_field_array(&*hf_fields, &*hf_info);
 
-    ett_register(&*ett_conwayste_name);
+    ett_register(&*ett_info, &*ett_conwayste_name);
     for structure in netwayste_data.keys() {
         let structure_string = structure.clone().into_string().unwrap();
-        ett_register(&structure_string);
+        ett_register(&*ett_info, &structure_string);
     }
 
-    ett_set_all_item_addresses();
+    ett_set_all_item_addresses(&*ett_info);
 
     unsafe {
         proto_conwayste = ws::proto_register_protocol(
@@ -602,12 +544,12 @@ extern "C" fn proto_register_conwayste() {
 
         ws::proto_register_field_array(
             proto_conwayste,
-            hf_info_as_ptr() as *mut ws::hf_register_info,
-            hf_info_len() as i32,
+            hf_info_as_ptr(&*hf_info) as *mut ws::hf_register_info,
+            hf_info_len(&*hf_info) as i32,
         );
 
-        let ptr_to_ett_addrs = ett_get_addresses();
-        let ett_addrs_count = ett_get_addresses_count();
+        let ptr_to_ett_addrs = ett_get_addresses(&*ett_info);
+        let ett_addrs_count = ett_get_addresses_count(&*ett_info);
         ws::proto_register_subtree_array(
             ptr_to_ett_addrs as *const *mut i32,
             ett_addrs_count as i32,

@@ -108,25 +108,21 @@ fn parse_size_from_type(type_arg: String) -> Vec<Sizing> {
         }
 
         // Consume characters until we reach the inner type
-        let mut characters = param.chars();
-        loop {
-            if characters.next() == Some('<') {
-                break;
-            }
-        }
-        let inner = characters.as_str();
+        let mut characters_iter = param.chars().skip_while(|c| *c != '<');
+        characters_iter.next();  // skip the '<'
+        let inner_type_string: String = characters_iter.collect();
 
-        let mut remainder = parse_size_from_type(inner.to_string());
+        let mut remainder = parse_size_from_type(inner_type_string);
         list.append(&mut remainder);
     } else if param.contains("<") {
         // TODO: handle non-built-in types using generics, like NetQueue<T>.
         // Currently we don't have anything this complex in Packet. Save this exercise for a rainy day.
     } else {
         // Get everything up until the closing angle-bracket
-        let param: Vec<&str> = param.split('>').collect();
-        let param = param[0].to_string();
-        // In case there are unnamed lists
-        let param: Vec<&str> = param.split(',').collect();
+        let split_params: Vec<&str> = param.split('>').collect();
+        let possible_csv = split_params[0].to_string();
+        // In case there are unnamed tuples
+        let param: Vec<&str> = possible_csv.split(',').collect();
         for p in param {
             list.push(match p {
                 "String" => Sizing::Variable(VariableContainer::Vector),
@@ -155,14 +151,14 @@ fn extract_type(ty: &syn::Type) -> String {
             // Rust lint requires initialization, but this should always be overwritten
             let mut base_type = "UNDEFINED".to_owned();
             // Path may be segmented like "a::<b::c>"
-            for s in 0..tp.path.segments.len() {
-                base_type = tp.path.segments[s].ident.to_string();
+            for s in &tp.path.segments {
+                base_type = s.ident.to_string();
 
-                // Does the type we found nest?
-                if let AngleBracketed(abga) = &tp.path.segments[s].arguments {
+                // Does the type we found nest some other generic argument?
+                if let AngleBracketed(abga) = &s.arguments {
                     // arguments may be comma separated like "a<b,c>"
-                    for a in 0..abga.args.len() {
-                        if let syn::GenericArgument::Type(tp2) = &abga.args[a] {
+                    for a in &abga.args {
+                        if let syn::GenericArgument::Type(tp2) = &a {
                             let nested_type = extract_type(&tp2);
                             base_type = format!("{}{}{}{}", base_type, "<", nested_type, ">");
                         }
@@ -173,10 +169,12 @@ fn extract_type(ty: &syn::Type) -> String {
         }
         syn::Type::Tuple(tt) => {
             let mut csv = String::new();
-            for arg in 0..tt.elems.len() {
-                let arg_type = extract_type(&tt.elems[arg]);
-                let caboose = if arg + 1 == tt.elems.len() { "" } else { "," };
+            let mut count = 0;
+            for arg in &tt.elems {
+                let arg_type = extract_type(&arg);
+                let caboose = if count + 1 == tt.elems.len() { "" } else { "," };
                 csv = format!("{}{}{}", csv, arg_type, caboose);
+                count += 1;
             }
             return csv;
         }
@@ -186,6 +184,9 @@ fn extract_type(ty: &syn::Type) -> String {
     "".to_owned()
 }
 
+/// Creates a `FieldDescriptor` from the field's type and variant. In the case of unnamed/anonymous
+/// fields, a numerical count is appended to avoid field description name collisons as they must
+/// be unique for header fields.
 fn create_field_descriptor(f: &syn::Field, variant_name: String, count: usize) -> FieldDescriptor {
     let ty = extract_type(&f.ty);
     let ident = if let Some(ref fi) = f.ident {
@@ -201,11 +202,13 @@ fn create_field_descriptor(f: &syn::Field, variant_name: String, count: usize) -
     }
 }
 
-/// Parses all variants and their fields of an enum.
+/// Parses all enum variants and their fields.
 ///
-/// Returns a list of variants -- ordered by definition -- and a description of field name
-/// (where applicable) and the corresponding type's size. The variant's list is a `std::ffi::CString`
-/// and not a `String` because it is used for enum->literal conversion in Wireshark.
+/// Returns a tuple of the following:
+///     1. A list of variants -- ordered by definition --
+///     2. A description of field names (where applicable) and the corresponding type's size.
+///        The variant's list is a `CString` and not a `String` because it is used to convert
+///        numerical enum representations to their named forms in Wireshark.
 fn parse_enum(e: &syn::ItemEnum) -> (Vec<CString>, HashMap<String, Vec<FieldDescriptor>>) {
     let mut variants = HashMap::new();
     let mut ordered_variants = vec![];
@@ -214,15 +217,15 @@ fn parse_enum(e: &syn::ItemEnum) -> (Vec<CString>, HashMap<String, Vec<FieldDesc
         let mut field = vec![];
         let variant = v.ident.to_string();
         v.fields.iter().enumerate().for_each(|(i, f)| {
-            let mut md = create_field_descriptor(f, variant.clone(), i);
+            let mut descriptor = create_field_descriptor(f, variant.clone(), i);
             // Ugly ugly conversion & unboxing in format!() because CString doesn't impl the Display trait
-            md.name = CString::new(format!(
+            descriptor.name = CString::new(format!(
                 "{}.{}",
                 e.ident.to_string(),
-                md.name.into_string().unwrap()
+                descriptor.name.into_string().unwrap()
             ))
             .unwrap();
-            field.push(md);
+            field.push(descriptor);
         });
 
         ordered_variants.push(CString::new(variant.clone()).unwrap());
@@ -246,7 +249,9 @@ fn parse_struct(s: &syn::ItemStruct) -> Vec<FieldDescriptor> {
     fields
 }
 
-/// Creates a mapping of structure/enum names to a parsed representation of their innards.
+/// Scans the Netwayste `net.rs` abstract syntax tree (AST) looking for enum and structure
+/// definitions. An enum is described by its variants, and a structure ny its members. Both are
+/// parsed into a format that can easily describe the type and size of each sub-item.
 pub fn parse_netwayste_format() -> HashMap<CString, NetwaysteDataFormat> {
     let filename = concat!(env!("CARGO_MANIFEST_DIR"), "/../netwayste/src/net.rs");
     let mut file = File::open(&filename).expect("Unable to open file");
