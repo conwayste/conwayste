@@ -19,9 +19,9 @@
 
 use std::collections::HashMap;
 use std::ffi::CString;
-use std::sync::Mutex;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
+use std::sync::Mutex;
 
 use crate::netwaysteparser::{FieldDescriptor, NetwaysteDataFormat::*, Sizing, VariableContainer};
 use crate::wrapperdefs::*;
@@ -142,7 +142,10 @@ pub fn hf_info_len(hf_info: &Mutex<Vec<sync_hf_register_info>>) -> usize {
     len
 }
 
-pub fn hf_append(hf_info: &Mutex<Vec<sync_hf_register_info>>, hf_list: &mut Vec<sync_hf_register_info>) {
+pub fn hf_append(
+    hf_info: &Mutex<Vec<sync_hf_register_info>>,
+    hf_list: &mut Vec<sync_hf_register_info>,
+) {
     hf_info.lock().unwrap().append(hf_list);
 }
 
@@ -199,7 +202,10 @@ pub fn register_header_fields(hf_fields: &Mutex<HFFieldAllocator>) {
 // Walks the parsed `net.rs` AST and builds a header field entry for each enum, variants with data,
 // and structures. The header field entry is provided to Wireshark so that it knows how to interpret
 // each data field when it's added to the ett during packet dissection.
-pub fn build_header_field_array(hf_fields: &Mutex<HFFieldAllocator>, hf_info: &Mutex<Vec<sync_hf_register_info>>) {
+pub fn build_header_field_array(
+    hf_fields: &Mutex<HFFieldAllocator>,
+    hf_info: &Mutex<Vec<sync_hf_register_info>>,
+) {
     let mut _hf = {
         let mut _hf = vec![];
 
@@ -245,7 +251,11 @@ pub fn build_header_field_array(hf_fields: &Mutex<HFFieldAllocator>, hf_info: &M
     hf_append(hf_info, &mut _hf);
 
     // Private helper function to perform the iteration and creation over all fields
-    fn create_header_fields(hf_fields: &Mutex<HFFieldAllocator>, fields: &Vec<FieldDescriptor>, _hf: &mut Vec<sync_hf_register_info>) {
+    fn create_header_fields(
+        hf_fields: &Mutex<HFFieldAllocator>,
+        fields: &Vec<FieldDescriptor>,
+        _hf: &mut Vec<sync_hf_register_info>,
+    ) {
         for field in fields.iter() {
             let mut field_data_type = FieldType::Str;
             let mut field_display: FieldDisplay = FieldDisplay::Str;

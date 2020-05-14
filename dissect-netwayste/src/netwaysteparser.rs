@@ -109,7 +109,7 @@ fn parse_size_from_type(type_arg: String) -> Vec<Sizing> {
 
         // Consume characters until we reach the inner type
         let mut characters_iter = param.chars().skip_while(|c| *c != '<');
-        characters_iter.next();  // skip the '<'
+        characters_iter.next(); // skip the '<'
         let inner_type_string: String = characters_iter.collect();
 
         let mut remainder = parse_size_from_type(inner_type_string);

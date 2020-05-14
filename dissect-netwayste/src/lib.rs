@@ -211,7 +211,8 @@ impl ConwaysteTree {
                 tvb_data_length,
                 no_encoding,
             );
-            let tree = ws::proto_item_add_subtree(ti, ett_get_address(&*ett_info, &*ett_conwayste_name));
+            let tree =
+                ws::proto_item_add_subtree(ti, ett_get_address(&*ett_info, &*ett_conwayste_name));
             ConwaysteTree { tree }
         }
     }
@@ -378,7 +379,7 @@ impl ConwaysteTree {
                             tree,
                             tvb,
                             *bytes_examined,
-                            1,                     /*Can we get the size of inner struct?*/
+                            1, /*Can we get the size of inner struct?*/
                             ett_get_address(&*ett_info, name), /* Index in ett corresponding to this item */
                             ptr::null_mut(),
                             name.as_ptr() as *const i8,
@@ -393,7 +394,7 @@ impl ConwaysteTree {
                                     subtree,
                                     tvb,
                                     *bytes_examined,
-                                    1,                     /*Can we get the size of inner struct?*/
+                                    1, /*Can we get the size of inner struct?*/
                                     ett_get_address(&*ett_info, name), /* Index in ett corresponding to this item */
                                     ptr::null_mut(),
                                     indexes_as_strings[i as usize].as_ptr(),

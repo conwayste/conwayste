@@ -92,8 +92,8 @@ impl From<&str> for FieldType {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct sync_hf_register_info {
-    pub p_id: *mut c_int,   // Pointer to an identifier that is updated by wireshark on plugin init
-    pub hfinfo: ws::header_field_info,  // Header field information structure
+    pub p_id: *mut c_int, // Pointer to an identifier that is updated by wireshark on plugin init
+    pub hfinfo: ws::header_field_info, // Header field information structure
 }
 
 // These are used in the lazy-static macro and are wrapped in a Mutex, but the compiler does not know
