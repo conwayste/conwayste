@@ -18,6 +18,7 @@
 
 use std::fmt;
 use std::time::{Duration, Instant};
+use std::error::Error;
 
 use ggez::event::KeyCode;
 use ggez::graphics::{self, Color, DrawMode, DrawParam, Rect};
@@ -32,6 +33,15 @@ use super::{
     common::{within_widget, FontInfo},
     widget::Widget,
     UIAction, UIError, UIResult,
+    context::{
+        EmitEvent,
+        UIContext,
+        Event,
+        Handled,
+        HandlerData,
+        KeyCodeOrChar,
+        EventType,
+    },
 };
 
 use crate::constants::{colors::*, CHATBOX_BORDER_PIXELS};
@@ -60,6 +70,7 @@ pub struct TextField {
     visible_start_index: usize, // The index of the first character in `self.text` that is visible.
     font_info: FontInfo,
     pub bg_color: Option<Color>, //XXX should not be public
+    pub handler_data: HandlerData, // required for impl_emit_event!
 }
 
 impl fmt::Debug for TextField {
@@ -94,7 +105,7 @@ impl TextField {
     /// ```
     ///
     pub fn new(font_info: FontInfo, dimensions: Rect) -> TextField {
-        TextField {
+        let mut tf = TextField {
             id: None,
             z_index: std::usize::MAX,
             focused: false,
@@ -108,7 +119,10 @@ impl TextField {
             visible_start_index: 0,
             font_info,
             bg_color: None,
-        }
+            handler_data: HandlerData::new(),
+        };
+        tf.on(EventType::KeyPress, Box::new(TextField::key_handler)).unwrap(); // unwrap OK b/c not inside handler now
+        tf
     }
 
     /// Maximum number of characters that can be visible at once.
@@ -132,33 +146,47 @@ impl TextField {
         self.cursor_index = 0;
     }
 
-    /// Handle a text character being typed by the user.
-    //XXX delete (move to handler) (called text_input_event in client.rs (method of EventHandler trait))
-    pub fn on_char(&mut self, character: char) {
-        if self.focused {
-            self.add_char_at_cursor(character);
+    /// Handle a key.
+    fn key_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        let mut tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK because it's always a TextField
+        if evt.key.is_none() {
+            return Err("keyboard event does not have a key!".to_owned().into());
         }
-    }
-
-
-    /// Handle a typed keycode that is not a textual key. For example, arrow keys.
-    //XXX delete (move to handler)
-    pub fn on_keycode(&mut self, keycode: KeyCode) {
-        if keycode == KeyCode::Return {
-            //XXX May need to take other actions here.
-            self.focused = false;
-            return;
+        match evt.key.unwrap() {
+            KeyCodeOrChar::KeyCode(keycode) => {
+                match keycode {
+                    KeyCode::Return => {
+                        let evt = Event {
+                            what: EventType::TextEntered,
+                            point: None,
+                            prev_point: None,
+                            button: None,
+                            key: None,
+                            shift_pressed: false,
+                            text: Some(tf.text),
+                        };
+                        tf.emit(&evt, uictx).unwrap_or_else(|e| {
+                            error!("Error from TextEntered handler on textfield: {:?}", e);
+                        });
+                        tf.focused = false;
+                    },
+                    KeyCode::Back => tf.remove_left_of_cursor(),
+                    KeyCode::Delete => tf.remove_right_of_cursor(),
+                    KeyCode::Left => tf.move_cursor_left(),
+                    KeyCode::Right => tf.move_cursor_right(),
+                    KeyCode::Home => tf.cursor_home(),
+                    KeyCode::End => tf.cursor_end(),
+                    KeyCode::Escape => tf.exit_focus(),
+                    _ => ()
+                }
+            }
+            KeyCodeOrChar::Char(ch) => {
+                if tf.focused {
+                    tf.add_char_at_cursor(ch);
+                }
+            }
         }
-        match keycode {
-            KeyCode::Back => self.remove_left_of_cursor(),
-            KeyCode::Delete => self.remove_right_of_cursor(),
-            KeyCode::Left => self.move_cursor_left(),
-            KeyCode::Right => self.move_cursor_right(),
-            KeyCode::Home => self.cursor_home(),
-            KeyCode::End => self.cursor_end(),
-            KeyCode::Escape => self.exit_focus(),
-            _ => ()
-        }
+        Ok(Handled::NotHandled)
     }
 
     /// Adds a character at the current cursor position
@@ -452,6 +480,7 @@ impl Widget for TextField {
 }
 
 widget_from_id!(TextField);
+impl_emit_event!(TextField, self.handler_data);
 
 #[cfg(test)]
 mod test {

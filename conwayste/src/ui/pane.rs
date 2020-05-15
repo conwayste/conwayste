@@ -140,7 +140,7 @@ impl Pane {
 
         let pane = obj.downcast_mut::<Pane>().unwrap();
 
-        if key == KeyCode::Tab {
+        if key == context::KeyCodeOrChar::KeyCode(KeyCode::Tab) {
             // special key press logic to handle focus changes
 
             let opt_child_id = pane
@@ -206,6 +206,7 @@ impl Pane {
                     button: None,
                     key: None,
                     shift_pressed: false,
+                    text: None,
                 };
                 uictx.child_event(event);
             }
@@ -259,6 +260,7 @@ impl Pane {
                 button: None,
                 key: None,
                 shift_pressed: false,
+                text: None,
             };
             emittable.emit(&event, &mut subuictx)?;
             let pane_events = subuictx.collect_child_events();

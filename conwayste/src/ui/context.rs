@@ -133,6 +133,7 @@ pub enum EventType {
     GainFocus,
     LoseFocus,
     ChildReleasedFocus, // this goes toward the root of the tree! Emitted by Pane onto its parent via child_event()
+    TextEntered,
 }
 
 // TODO: move this elsewhere; it's in here to keep separate from other code (avoid merge conflicts)
@@ -142,8 +143,15 @@ pub struct Event {
     pub point: Option<Point2<f32>>, // Must not be None if this is a mouse event type
     pub prev_point: Option<Point2<f32>>, // MouseMove / Drag
     pub button: Option<MouseButton>, // Click
-    pub key: Option<KeyCode>,
+    pub key: Option<KeyCodeOrChar>,
     pub shift_pressed: bool,
+    pub text: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeyCodeOrChar {
+    KeyCode(KeyCode),
+    Char(char),
 }
 
 /// A slice containing all EventTypes related to the keyboard. Must have a key set.

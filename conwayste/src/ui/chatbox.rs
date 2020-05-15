@@ -18,6 +18,7 @@
 
 use std::collections::VecDeque;
 use std::fmt;
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Rect, Text};
 use ggez::nalgebra::{Point2, Vector2};
@@ -45,6 +46,8 @@ pub struct Chatbox {
     hover: bool,
     action: UIAction,
     font_info: FontInfo,
+    msg_sender: Sender<String>,
+    msg_receiver: Receiver<String>,
 }
 
 impl fmt::Debug for Chatbox {
@@ -76,6 +79,7 @@ impl Chatbox {
     pub fn new(font_info: FontInfo, history_lines: usize) -> Self {
         // TODO: affix to bottom left corner once "anchoring"/"gravity" is implemented
         let rect = *constants::DEFAULT_CHATBOX_RECT;
+        let (msg_tx, msg_rx) = channel::<String>();
         Chatbox {
             id: None,
             z_index: std::usize::MAX,
@@ -87,7 +91,13 @@ impl Chatbox {
             hover: false,
             action: UIAction::EnterText,
             font_info,
+            msg_sender: msg_tx,
+            msg_receiver: msg_rx,
         }
+    }
+
+    pub fn new_handle(&self) -> ChatboxPublishHandle {
+        ChatboxPublishHandle::new(self.msg_sender.clone())
     }
 
     /// Adds a message to the chatbox
@@ -305,6 +315,17 @@ impl Widget for Chatbox {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
+        // XXX HACK: this really belongs in update() but that isn't called so yeah...
+        loop {
+            if let Ok(msg) = self.msg_receiver.try_recv() {
+                // TODO: maybe we should batch add these? Benchmark!
+                self.add_message(msg);
+            } else {
+                break;
+            }
+        }
+
+
         // TODO: Add support to scroll through history
         if self.hover {
             // Add in a teal border while hovered. Color checkbox differently to indicate hovered state.
@@ -372,6 +393,25 @@ impl Widget for Chatbox {
 }
 
 widget_from_id!(Chatbox);
+
+
+pub struct ChatboxPublishHandle {
+    msg_sender: Sender<String>,
+}
+
+impl ChatboxPublishHandle {
+    pub fn add_message(&mut self, msg: String) {
+        self.msg_sender.send(msg).unwrap_or_else(|e| {
+            error!("Chatbox has been dropped!");
+        });
+    }
+
+    pub fn new(msg_sender: Sender<String>) -> Self {
+        ChatboxPublishHandle {
+            msg_sender,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

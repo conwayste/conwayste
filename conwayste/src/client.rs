@@ -89,6 +89,7 @@ use ui::{
     Widget,
     Event,
     EventType,
+    context::KeyCodeOrChar,
 };
 use uilayout::UILayout;
 use uimanager::LayoutManager;
@@ -496,6 +497,7 @@ impl EventHandler for MainState {
                             button: Some(self.inputs.mouse_info.mousebutton),
                             key: None,
                             shift_pressed: is_shift,
+                            text: None,
                         };
                         layer.emit(&click_event, ctx, &mut self.config).unwrap_or_else(|e| {
                             error!("Error from layer.emit on left click: {:?}", e);
@@ -508,8 +510,9 @@ impl EventHandler for MainState {
                             point: Some(mouse_point),
                             prev_point: None,
                             button: Some(self.inputs.mouse_info.mousebutton),
-                            key: Some(key),
+                            key: Some(KeyCodeOrChar::KeyCode(key)),
                             shift_pressed: is_shift,
+                            text: None,
                         };
                         layer.emit(&key_event, ctx, &mut self.config).unwrap_or_else(|e| {
                             error!("Error from layer.emit on key press: {:?}", e);
@@ -836,6 +839,7 @@ impl EventHandler for MainState {
         }
     }
 
+    /* XXX delete this
     fn text_input_event(&mut self, _ctx: &mut Context, character: char) {
         // Ignore control characters (like Esc or Del)./
         if character.is_control() {
@@ -850,6 +854,7 @@ impl EventHandler for MainState {
                 "textfield for {:?} during text input event: {:?}"), screen, e)
         }
     }
+    */
 
     fn resize_event(&mut self, ctx: &mut Context, width: f32, height: f32) {
         if !self.recvd_first_resize {

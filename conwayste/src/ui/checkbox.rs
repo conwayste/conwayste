@@ -42,6 +42,7 @@ use super::context::{
     Handled,
     HandlerData,
     UIContext,
+    KeyCodeOrChar,
 };
 
 use crate::constants::colors::*;
@@ -143,7 +144,7 @@ impl Checkbox {
 
     fn keypress_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
         let checkbox = obj.downcast_mut::<Checkbox>().unwrap(); // unwrap OK because this will always be Checkbox
-        if Some(KeyCode::Space) != event.key {
+        if Some(KeyCodeOrChar::KeyCode(KeyCode::Space)) != event.key {
             return Ok(Handled::NotHandled);
         }
         // create a synthetic click event
@@ -155,6 +156,7 @@ impl Checkbox {
             button: Some(MouseButton::Left),
             key: None,
             shift_pressed: false,
+            text: None,
         };
         checkbox.emit(&click_event, uictx)?;
         Ok(Handled::NotHandled) // allow other handlers for this event type to be activated

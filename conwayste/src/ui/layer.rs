@@ -480,11 +480,12 @@ impl Layering {
     }
 
     fn handle_keyboard_event(event: &context::Event, uictx: &mut context::UIContext, focus_cycle: &mut FocusCycle) -> Result<(), Box<dyn Error>> {
+        use context::KeyCodeOrChar;
         let key = event.key.ok_or_else(|| -> Box<dyn Error> {
             format!("layering event of type {:?} has no key", event.what).into()
         })?;
 
-        if key == KeyCode::Tab {
+        if key == KeyCodeOrChar::KeyCode(KeyCode::Tab) {
             // special key press logic to handle focus changes
 
             let opt_child_id = focus_cycle.focused_widget_id().map(|child_id_ref| child_id_ref.clone());
@@ -569,6 +570,7 @@ impl Layering {
                 button: None,
                 key: None,
                 shift_pressed: false,
+                text: None,
             };
             emittable.emit(&event, &mut subuictx)?;
             let pane_events = subuictx.collect_child_events();

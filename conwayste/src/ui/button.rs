@@ -41,6 +41,7 @@ use super::{
         EventType,
         Event,
         Handled,
+        KeyCodeOrChar,
     },
 };
 
@@ -154,7 +155,7 @@ impl Button {
         // setup handler to forward a space keyboard event to the click handler
         let keypress = |obj: &mut dyn EmitEvent, uictx: &mut UIContext, event: &Event| -> Result<Handled, Box<dyn Error>> {
             let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
-            if Some(KeyCode::Space) != event.key {
+            if Some(KeyCodeOrChar::KeyCode(KeyCode::Space)) != event.key {
                 return Ok(Handled::NotHandled);
             }
             // create a synthetic click event
@@ -166,6 +167,7 @@ impl Button {
                 button: Some(MouseButton::Left),
                 key: None,
                 shift_pressed: false,
+                text: None,
             };
             button.emit(&click_event, uictx)?;
             Ok(Handled::NotHandled) // allow other handlers for this event type to be activated
