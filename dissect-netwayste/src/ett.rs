@@ -55,11 +55,13 @@ impl EttInfo {
     /// Registers a spot in the `ett_items` list for tree/sub-tree usage by the dissector. It links
     /// the provided string to the index of the spot that was registere.
     fn register_ett(&mut self, name: &String) {
-        // Wireshark will overwrite this later.
-        self.ett_items.push(-1);
+        if !self.map.contains_key(name) {
+            // Wireshark will overwrite this later.
+            self.ett_items.push(-1);
 
-        // Map the index into the `ett` vector to the name
-        self.map.insert(name.clone(), self.ett_items.len() - 1);
+            // Map the index into the `ett` vector to the name
+            self.map.insert(name.clone(), self.ett_items.len() - 1);
+        }
     }
 
     /// Creates a parallel vector to `self.ett_items` containing the addresses of each list item.
@@ -96,4 +98,72 @@ pub fn ett_get_address(ett_info: &Mutex<EttInfo>, name: &String) -> c_int {
 
 pub fn ett_get_addresses_count(ett_info: &Mutex<EttInfo>) -> usize {
     ett_info.lock().unwrap().addresses.len()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_ettinfo_init() {
+        let ettinfo = EttInfo::new();
+
+        assert!(ettinfo.ett_items.is_empty());
+        assert!(ettinfo.map.is_empty());
+        assert!(ettinfo.addresses.is_empty());
+    }
+
+    #[test]
+    fn test_ettinfo_register_ett() {
+        let mut ettinfo = EttInfo::new();
+
+        ettinfo.register_ett(&"RequestAction".to_owned());
+
+        assert_eq!(ettinfo.ett_items.len(), 1);
+        assert_eq!(ettinfo.map.len(), 1);
+        assert!(ettinfo.addresses.is_empty());
+    }
+
+    #[test]
+    fn test_ettinfo_register_ett_duplicate_not_created() {
+        let mut ettinfo = EttInfo::new();
+
+        ettinfo.register_ett(&"RequestAction".to_owned());
+        ettinfo.register_ett(&"RequestAction".to_owned());
+
+        assert_eq!(ettinfo.ett_items.len(), 1);
+        assert_eq!(ettinfo.map.len(), 1);
+        assert!(ettinfo.addresses.is_empty());
+    }
+
+    #[test]
+    fn test_ettinfo_get_address_before_set() {
+        let mut ettinfo = EttInfo::new();
+        let ett_string = "RequestAction".to_owned();
+
+        ettinfo.register_ett(&ett_string);
+        ettinfo.get_ett_addr(&ett_string);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_ettinfo_get_address_ett_string_does_not_exist() {
+        let mut ettinfo = EttInfo::new();
+        let ett_string = "RequestAction".to_owned();
+
+        ettinfo.get_ett_addr(&ett_string);
+    }
+
+    #[test]
+    fn test_ettinfo_set_all_addresses() {
+        let mut ettinfo = EttInfo::new();
+        let ett_string1 = "RequestAction".to_owned();
+        let ett_string2 = "ResponseAction".to_owned();
+
+        assert!(ettinfo.addresses.is_empty());
+        ettinfo.register_ett(&ett_string1);
+        ettinfo.register_ett(&ett_string2);
+        ettinfo.set_all_item_addresses();
+        assert_eq!(ettinfo.addresses.len(), 2);
+    }
 }
