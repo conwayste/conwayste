@@ -71,10 +71,12 @@ impl HFFieldAllocator {
     /// Registers the provided string with the allocator. This must be called prior to any `get()`
     /// calls!
     fn register(&mut self, name: CString) {
-        // Add in a value of -1. Wireshark will overwrite this later.
-        self.hf_fields.push(-1);
-        // Map the index into the `hf_fields` vector to the field name
-        self.allocated.insert(name, self.hf_fields.len() - 1);
+        if !self.allocated.contains_key(&name) {
+            // Add in a value of -1. Wireshark will overwrite this later.
+            self.hf_fields.push(-1);
+            // Map the index into the `hf_fields` vector to the field name
+            self.allocated.insert(name, self.hf_fields.len() - 1);
+        }
     }
 
     /// Creates a new optional entry for fields that are `Option<T>`. This entry is used to indicate
@@ -82,10 +84,12 @@ impl HFFieldAllocator {
     fn new_option(&mut self, name: &CString) {
         let new_name = format!("{}.option", name.to_str().unwrap());
         let new_name_cstr = CString::new(new_name).unwrap();
-        self.options_map.insert(name.clone(), new_name_cstr.clone());
+        if !self.options_map.contains_key(&new_name_cstr) {
+            self.options_map.insert(name.clone(), new_name_cstr.clone());
 
-        // register the header field for this "blahblah.option" to create the ID
-        self.register(new_name_cstr);
+            // register the header field for this "blahblah.option" to create the ID
+            self.register(new_name_cstr);
+        }
     }
 
     /// Retrieves the `CString` used when the provided field name is a `None` variant of `Option`
@@ -320,4 +324,118 @@ pub fn build_header_field_array(
             _hf.push(variant_hf);
         }
     }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_hffieldallocator_init() {
+        let hffa = HFFieldAllocator::new();
+
+        assert!(hffa.hf_fields.is_empty());
+        assert!(hffa.allocated.is_empty());
+        assert!(hffa.options_map.is_empty());
+    }
+
+    #[test]
+    fn test_hffieldallocator_register() {
+        let mut hffa = HFFieldAllocator::new();
+        hffa.register(CString::new("TestString").unwrap());
+
+        assert_eq!(hffa.hf_fields.len(), 1);
+        assert_eq!(hffa.allocated.len(), 1);
+        assert!(hffa.options_map.is_empty());
+    }
+
+    #[test]
+    fn test_hffieldallocator_register_duplicate_not_created() {
+        let mut hffa = HFFieldAllocator::new();
+        hffa.register(CString::new("TestString").unwrap());
+        hffa.register(CString::new("TestString").unwrap());
+
+        assert_eq!(hffa.hf_fields.len(), 1);
+        assert_eq!(hffa.allocated.len(), 1);
+        assert!(hffa.options_map.is_empty());
+    }
+
+    #[test]
+    fn test_hffieldallocator_get_mut_header_field_exists() {
+        let mut hffa = HFFieldAllocator::new();
+        let test_string = CString::new("TestString").unwrap();
+        hffa.register(test_string.clone());
+
+        // should not panic
+        hffa.get_mut_header_field(&test_string);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_hffieldallocator_get_mut_header_field_does_not_exist() {
+        let mut hffa = HFFieldAllocator::new();
+        let test_string = CString::new("TestString").unwrap();
+        hffa.get_mut_header_field(&test_string);
+    }
+
+    #[test]
+    fn test_hffieldallocator_new_option() {
+        let mut hffa = HFFieldAllocator::new();
+        let test_string = CString::new("TestString").unwrap();
+        hffa.new_option(&test_string);
+
+        assert_eq!(hffa.hf_fields.len(), 1);
+        assert_eq!(hffa.allocated.len(), 1);
+        assert_eq!(hffa.options_map.len(), 1);
+    }
+
+    #[test]
+    fn test_hffieldallocator_new_option_duplicate_not_created() {
+        let mut hffa = HFFieldAllocator::new();
+        let test_string = CString::new("TestString").unwrap();
+        hffa.new_option(&test_string);
+        hffa.new_option(&test_string);
+
+        assert_eq!(hffa.hf_fields.len(), 1);
+        assert_eq!(hffa.allocated.len(), 1);
+        assert_eq!(hffa.options_map.len(), 1);
+    }
+
+    #[test]
+    fn test_hffieldallocator_get_option_name() {
+        let mut hffa = HFFieldAllocator::new();
+        let test_string = CString::new("TestString").unwrap();
+        hffa.new_option(&test_string);
+
+        assert_eq!(*hffa.get_option_name(&test_string), CString::new("TestString.option").unwrap());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_hffieldallocator_get_option_name_does_not_exist() {
+        let hffa = HFFieldAllocator::new();
+        let test_string = CString::new("TestString").unwrap();
+
+        hffa.get_option_name(&test_string);
+    }
+
+    #[test]
+    fn test_hffieldallocator_get_mut_option_id() {
+        let mut hffa = HFFieldAllocator::new();
+        let test_string = CString::new("TestString").unwrap();
+        hffa.new_option(&test_string);
+
+        // should not panic
+        hffa.get_mut_option_id(&test_string);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_hffieldallocator_get_mut_option_id_does_not_exist() {
+        let mut hffa = HFFieldAllocator::new();
+        let test_string = CString::new("TestString").unwrap();
+
+        hffa.get_mut_option_id(&test_string);
+    }
+
 }
