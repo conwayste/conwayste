@@ -29,7 +29,7 @@ use syn::{
 };
 
 //
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VariableContainer {
     Optional, // Bincode uses one byte to determine if Some() or None
     Vector,   // Bincode uses 8 bytes to specify length of container
@@ -39,7 +39,7 @@ pub enum VariableContainer {
 /// `Fixed` indicates the size is known at compile-time.
 /// `Variable` indicates the size is specified as part of the network packet.
 /// `DataType` indicates a complex data-type.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Sizing {
     /// Field size is that of a primitive
     Fixed(usize),
@@ -126,10 +126,13 @@ fn parse_size_from_type(type_arg: String) -> Vec<Sizing> {
         for p in param {
             list.push(match p {
                 "String" => Sizing::Variable(VariableContainer::Vector),
+                "i128" | "u128" => Sizing::Fixed(16),
                 "u64" | "f64" | "i64" => Sizing::Fixed(8),
                 "u32" | "f32" | "i32" => Sizing::Fixed(4),
                 "u16" | "i16" => Sizing::Fixed(2),
                 "u8" | "i8" | "bool" => Sizing::Fixed(1),
+                "usize" => Sizing::Fixed(std::mem::size_of::<usize>()),
+                "isize" => Sizing::Fixed(std::mem::size_of::<isize>()),
                 name @ _ => Sizing::DataType(name.to_string()),
             });
         }
@@ -286,4 +289,322 @@ pub fn parse_netwayste_format() -> HashMap<CString, NetwaysteDataFormat> {
     //   println!("{:#?}", map);
 
     map
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_parse_size_from_type_for_u8() {
+        let string = "u8".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(1)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_i8() {
+        let string = "i8".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(1)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_bool() {
+        let string = "bool".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(1)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_u16() {
+        let string = "u16".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(2)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_i16() {
+        let string = "i16".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(2)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_u32() {
+        let string = "u32".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(4)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_i32() {
+        let string = "i32".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(4)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_u64() {
+        let string = "u64".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(8)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_i64() {
+        let string = "i64".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(8)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_u128() {
+        let string = "u128".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(16)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_i128() {
+        let string = "i128".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(16)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_f32() {
+        let string = "f32".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(4)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_f64() {
+        let string = "f64".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(8)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_usize() {
+        let string = "usize".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(8)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_isize() {
+        let string = "isize".to_owned();
+        let expected_sizing = vec![Sizing::Fixed(8)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_string() {
+        let string = "String".to_owned();
+        let expected_sizing = vec![Sizing::Variable(VariableContainer::Vector)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_option() {
+        let string = "Option<usize>".to_owned();
+        let expected_sizing = vec![
+            Sizing::Variable(VariableContainer::Optional),
+            Sizing::Fixed(8),
+        ];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_strings() {
+        let string = "String".to_owned();
+        let expected_sizing = vec![Sizing::Variable(VariableContainer::Vector)];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_option_nested_vector() {
+        let string = "Vec<Option<usize>>".to_owned();
+        let expected_sizing = vec![
+            Sizing::Variable(VariableContainer::Vector),
+            Sizing::Variable(VariableContainer::Optional),
+            Sizing::Fixed(8),
+        ];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_data_type() {
+        let string = "Vec<CustomDataType>".to_owned();
+        let expected_sizing = vec![
+            Sizing::Variable(VariableContainer::Vector),
+            Sizing::DataType("CustomDataType".to_owned()),
+        ];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
+
+    #[test]
+    fn test_parse_size_from_type_for_complex_nesting() {
+        let string = "Vec<Vec<Option<Vec<Option<Vec<Option<CustomDataType>>>>>>>".to_owned();
+        let expected_sizing = vec![
+            Sizing::Variable(VariableContainer::Vector),
+            Sizing::Variable(VariableContainer::Vector),
+            Sizing::Variable(VariableContainer::Optional),
+            Sizing::Variable(VariableContainer::Vector),
+            Sizing::Variable(VariableContainer::Optional),
+            Sizing::Variable(VariableContainer::Vector),
+            Sizing::Variable(VariableContainer::Optional),
+            Sizing::DataType("CustomDataType".to_owned()),
+        ];
+
+        let parsed_sizing = parse_size_from_type(string);
+        let comparison = parsed_sizing
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(comparison, 0);
+    }
 }
