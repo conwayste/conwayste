@@ -34,6 +34,7 @@ mod pane;
 mod widget;
 mod textfield;
 mod treeview;
+mod gamearea;
 pub(crate) mod ui_errors;
 
 use crate::Screen;
@@ -41,6 +42,7 @@ use crate::Screen;
 pub use button::Button;
 pub use chatbox::Chatbox;
 pub use checkbox::Checkbox;
+pub use gamearea::GameArea;
 pub use common::{
     within_widget,
     center,

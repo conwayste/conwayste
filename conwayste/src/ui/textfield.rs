@@ -320,12 +320,14 @@ impl Widget for TextField {
             return Ok(());
         }
 
+        /*
         if let Some(prev_blink_ms) = self.cursor_blink_timestamp {
             if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
                 self.draw_cursor ^= true;
                 self.cursor_blink_timestamp = Some(Instant::now());
             }
         }
+        */
 
         Ok(())
     }
@@ -334,6 +336,14 @@ impl Widget for TextField {
         if !self.focused && self.text.is_empty() {
             // textfield is hidden
             return Ok(());
+        }
+
+        //XXX HACK: we are no longer calling update though we probably should
+        if let Some(prev_blink_ms) = self.cursor_blink_timestamp {
+            if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
+                self.draw_cursor ^= true;
+                self.cursor_blink_timestamp = Some(Instant::now());
+            }
         }
 
         if let Some(bg_color) = self.bg_color {

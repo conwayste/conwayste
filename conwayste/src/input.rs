@@ -101,6 +101,7 @@ impl KeyInfo {
 pub struct InputManager {
     pub mouse_info: MouseInfo,
     pub key_info: KeyInfo,
+    pub text_input: Vec<char>,
 }
 
 impl InputManager {
@@ -108,6 +109,7 @@ impl InputManager {
         InputManager {
             mouse_info: MouseInfo::new(),
             key_info: KeyInfo::new(),
+            text_input: vec![],
         }
     }
 }

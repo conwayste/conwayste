@@ -24,6 +24,7 @@ use crate::ui::{
     Button,
     Chatbox,
     Checkbox,
+    GameArea,
     Label,
     Layering,
     Pane,
@@ -82,3 +83,4 @@ add_layering_support!(Label);
 add_layering_support!(Pane);
 add_layering_support!(TextField);
 add_layering_support!(Chatbox);
+add_layering_support!(GameArea);

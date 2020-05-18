@@ -19,29 +19,19 @@
 use std::collections::HashMap;
 use std::error::Error;
 
-use ggez::graphics::{Rect, Font};
+use ggez::graphics::{Font, Rect};
 use ggez::nalgebra::Vector2;
 use ggez::Context;
 
 use id_tree::NodeId;
 
-use crate::constants::{self};
 use crate::config::Config;
-use crate::Screen;
+use crate::constants;
 use crate::ui::{
-    Widget,
-    Button,
-    Checkbox,
-    Chatbox,
-    InsertLocation,
-    Layering,
-    Pane,
-    TextField,
-    UIAction,
-    UIResult,
-    common,
-    context,
+    common, context, Button, Chatbox, Checkbox, GameArea, InsertLocation, Layering, Pane,
+    TextField, UIAction, UIResult, Widget,
 };
+use crate::Screen;
 
 use context::{
     EmitEvent, // so we can call .on(...) on widgets that implement this
@@ -64,26 +54,115 @@ impl UILayout {
     pub fn new(ctx: &mut Context, config: &Config, font: Font) -> UIResult<Self> {
         let mut ui_layers = HashMap::new();
 
+        let default_font_info = common::FontInfo::new(ctx, font, None);
+
+        // ==== Main Menu ====
+        let mut layer_mainmenu = Layering::new();
+
+        // Create a new pane, and add two test buttons to it.
+        let pane = Box::new(Pane::new(Rect::new_i32(20, 20, 410, 250)));
+        let mut serverlist_button = Box::new(Button::new(
+            ctx,
+            UIAction::ScreenTransition(Screen::ServerList),
+            default_font_info,
+            "ServerList".to_owned(),
+        ));
+        serverlist_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0))?;
+        register_test_click_handler(&mut serverlist_button, "Server List!".to_owned()).unwrap(); // XXX
+
+        let mut inroom_button = Box::new(Button::new(
+            ctx,
+            UIAction::ScreenTransition(Screen::InRoom),
+            default_font_info,
+            "InRoom".to_owned(),
+        ));
+        inroom_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0))?;
+        register_test_click_handler(&mut inroom_button, "In Room!".to_owned()).unwrap(); // XXX
+
+        let mut startgame_button = Box::new(Button::new(
+            ctx,
+            UIAction::ScreenTransition(Screen::Run),
+            default_font_info,
+            "StartGame".to_owned(),
+        ));
+        startgame_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0))?;
+        register_test_click_handler(&mut startgame_button, "Start Game!".to_owned()).unwrap(); // XXX
+
+        let mut fullscreen_checkbox = Box::new(Checkbox::new(
+            ctx,
+            config.get().video.fullscreen,
+            default_font_info,
+            "Toggle FullScreen".to_owned(),
+            Rect::new(10.0, 210.0, 20.0, 20.0),
+        ));
+        // unwrap OK here because we are not calling .on from within a handler
+        fullscreen_checkbox
+            .on(EventType::Click, Box::new(fullscreen_toggle_handler))
+            .unwrap();
+
+        // TODO: delete this once handlers are tested
+        let mut handler_test_button = Box::new(Button::new(
+            ctx,
+            UIAction::None,
+            default_font_info,
+            "Handler Test".to_owned(),
+        ));
+        // add the handler!
+        // TODO: delete this
+        // unwrap OK here because we are not calling .on from within a handler
+        handler_test_button
+            .on(EventType::Click, Box::new(test_handler))
+            .unwrap();
+
+        match handler_test_button.set_rect(Rect::new(200.0, 130.0, 180.0, 50.0)) {
+            Ok(()) => {}
+            Err(e) => {
+                error!(
+                    "Could not set size for button during initialization! {:?}",
+                    e
+                );
+            }
+        }
+
+        let menupane_id = layer_mainmenu.add_widget(pane, InsertLocation::AtCurrentLayer)?;
+        layer_mainmenu.add_widget(
+            startgame_button,
+            InsertLocation::ToNestedContainer(&menupane_id),
+        )?;
+        layer_mainmenu.add_widget(
+            inroom_button,
+            InsertLocation::ToNestedContainer(&menupane_id),
+        )?;
+        layer_mainmenu.add_widget(
+            serverlist_button,
+            InsertLocation::ToNestedContainer(&menupane_id),
+        )?;
+        layer_mainmenu.add_widget(
+            handler_test_button,
+            InsertLocation::ToNestedContainer(&menupane_id),
+        )?;
+        layer_mainmenu.add_widget(
+            fullscreen_checkbox,
+            InsertLocation::ToNestedContainer(&menupane_id),
+        )?;
+        ui_layers.insert(Screen::Menu, layer_mainmenu);
+
+        // ==== In-Game (Run screen) ====
+        let mut layer_ingame = Layering::new();
         let chat_pane_rect = *constants::DEFAULT_CHATBOX_RECT;
         let mut chatpane = Box::new(Pane::new(chat_pane_rect));
         chatpane.bg_color = Some(*constants::colors::CHAT_PANE_FILL_COLOR);
-
+        let chatpane_id = layer_ingame.add_widget(chatpane, InsertLocation::AtCurrentLayer)?;
 
         let chatbox_rect = Rect::new(
             0.0,
             0.0,
             chat_pane_rect.w,
-            chat_pane_rect.h - constants::CHAT_TEXTFIELD_HEIGHT
+            chat_pane_rect.h - constants::CHAT_TEXTFIELD_HEIGHT,
         );
-        let chatbox_font_info = common::FontInfo::new(
-            ctx,
-            font,
-            Some(*constants::DEFAULT_CHATBOX_FONT_SCALE),
-        );
-        let mut chatbox = Chatbox::new(
-            chatbox_font_info,
-            constants::CHATBOX_HISTORY
-        );
+        let chatbox_font_info =
+            common::FontInfo::new(ctx, font, Some(*constants::DEFAULT_CHATBOX_FONT_SCALE));
+        let mut chatbox = Chatbox::new(chatbox_font_info, constants::CHATBOX_HISTORY);
         chatbox.set_rect(chatbox_rect)?;
 
         let chatbox = Box::new(chatbox);
@@ -92,100 +171,18 @@ impl UILayout {
             chatbox_rect.x,
             chatbox_rect.bottom(),
             chatbox_rect.w,
-            constants::CHAT_TEXTFIELD_HEIGHT
+            constants::CHAT_TEXTFIELD_HEIGHT,
         );
-        let default_font_info = common::FontInfo::new(ctx, font, None);
-        let mut textfield = Box::new(
-            TextField::new(
-                default_font_info,
-                textfield_rect,
-            )
-        );
+        let mut textfield = Box::new(TextField::new(default_font_info, textfield_rect));
         textfield.bg_color = Some(*constants::colors::CHAT_PANE_FILL_COLOR);
+        let chatbox_id =
+            layer_ingame.add_widget(chatbox, InsertLocation::ToNestedContainer(&chatpane_id))?;
+        let chatbox_tf_id =
+            layer_ingame.add_widget(textfield, InsertLocation::ToNestedContainer(&chatpane_id))?;
 
-        let mut layer_mainmenu = Layering::new();
-        let mut layer_ingame = Layering::new();
+        let gamearea = Box::new(GameArea::new());
+        layer_ingame.add_widget(gamearea, InsertLocation::AtCurrentLayer)?;
 
-        // Create a new pane, and add two test buttons to it.
-        let pane = Box::new(Pane::new(Rect::new_i32(20, 20, 410, 250)));
-        let mut serverlist_button = Box::new(
-            Button::new(
-                ctx,
-                UIAction::ScreenTransition(Screen::ServerList),
-                default_font_info,
-                "ServerList".to_owned()
-            )
-        );
-        serverlist_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0))?;
-        register_test_click_handler(&mut serverlist_button, "Server List!".to_owned()).unwrap(); // XXX
-
-        let mut inroom_button = Box::new(
-            Button::new(
-                ctx,
-                UIAction::ScreenTransition(Screen::InRoom),
-                default_font_info,
-                "InRoom".to_owned()
-            )
-        );
-        inroom_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0))?;
-        register_test_click_handler(&mut inroom_button, "In Room!".to_owned()).unwrap(); // XXX
-
-        let mut startgame_button = Box::new(
-            Button::new(
-                ctx,
-                UIAction::ScreenTransition(Screen::Run),
-                default_font_info,
-                "StartGame".to_owned()
-            )
-        );
-        startgame_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0))?;
-        register_test_click_handler(&mut startgame_button, "Start Game!".to_owned()).unwrap(); // XXX
-
-        let mut fullscreen_checkbox = Box::new(
-            Checkbox::new(
-                ctx,
-                config.get().video.fullscreen,
-                default_font_info,
-                "Toggle FullScreen".to_owned(),
-                Rect::new(10.0, 210.0, 20.0, 20.0),
-            )
-        );
-        // unwrap OK here because we are not calling .on from within a handler
-        fullscreen_checkbox.on(EventType::Click, Box::new(fullscreen_toggle_handler)).unwrap();
-
-        // TODO: delete this once handlers are tested
-        let mut handler_test_button = Box::new(
-            Button::new(
-                ctx,
-                UIAction::None,
-                default_font_info,
-                "Handler Test".to_owned()
-            )
-        );
-        // add the handler!
-        // TODO: delete this
-        // unwrap OK here because we are not calling .on from within a handler
-        handler_test_button.on(EventType::Click, Box::new(test_handler)).unwrap();
-
-        match handler_test_button.set_rect(Rect::new(200.0, 130.0, 180.0, 50.0)) {
-            Ok(()) => { },
-            Err(e) => {
-                error!("Could not set size for button during initialization! {:?}", e);
-            }
-        }
-
-        let menupane_id = layer_mainmenu.add_widget(pane, InsertLocation::AtCurrentLayer)?;
-        layer_mainmenu.add_widget(startgame_button, InsertLocation::ToNestedContainer(&menupane_id))?;
-        layer_mainmenu.add_widget(inroom_button, InsertLocation::ToNestedContainer(&menupane_id))?;
-        layer_mainmenu.add_widget(serverlist_button, InsertLocation::ToNestedContainer(&menupane_id))?;
-        layer_mainmenu.add_widget(handler_test_button, InsertLocation::ToNestedContainer(&menupane_id))?;
-        layer_mainmenu.add_widget(fullscreen_checkbox, InsertLocation::ToNestedContainer(&menupane_id))?;
-
-        let chatpane_id = layer_ingame.add_widget(chatpane, InsertLocation::AtCurrentLayer)?;
-        let chatbox_id = layer_ingame.add_widget(chatbox, InsertLocation::ToNestedContainer(&chatpane_id))?;
-        let chatbox_tf_id = layer_ingame.add_widget(textfield, InsertLocation::ToNestedContainer(&chatpane_id))?;
-
-        ui_layers.insert(Screen::Menu, layer_mainmenu);
         ui_layers.insert(Screen::Run, layer_ingame);
 
         Ok(UILayout {
@@ -195,7 +192,11 @@ impl UILayout {
         })
     }
 }
-fn fullscreen_toggle_handler(obj: &mut dyn EmitEvent, uictx: &mut context::UIContext, _evt: &context::Event) -> Result<context::Handled, Box<dyn Error>> {
+fn fullscreen_toggle_handler(
+    obj: &mut dyn EmitEvent,
+    uictx: &mut context::UIContext,
+    _evt: &context::Event,
+) -> Result<context::Handled, Box<dyn Error>> {
     use context::Handled::*;
 
     // NOTE: the checkbox installed its own handler to toggle the `enabled` field on click
@@ -209,7 +210,11 @@ fn fullscreen_toggle_handler(obj: &mut dyn EmitEvent, uictx: &mut context::UICon
     Ok(Handled)
 }
 
-fn test_handler(obj: &mut dyn EmitEvent, uictx: &mut context::UIContext, evt: &context::Event) -> Result<context::Handled, Box<dyn Error>> {
+fn test_handler(
+    obj: &mut dyn EmitEvent,
+    uictx: &mut context::UIContext,
+    evt: &context::Event,
+) -> Result<context::Handled, Box<dyn Error>> {
     use context::Handled::*;
     let btn = obj.downcast_mut::<Button>().unwrap();
 
@@ -228,11 +233,18 @@ fn test_handler(obj: &mut dyn EmitEvent, uictx: &mut context::UIContext, evt: &c
 }
 
 fn register_test_click_handler(button: &mut Button, text: String) -> Result<(), Box<dyn Error>> {
-    let handler = move |obj: &mut dyn EmitEvent, _uictx: &mut context::UIContext, evt: &context::Event|  -> Result<context::Handled, Box<dyn Error>> {
+    let handler = move |obj: &mut dyn EmitEvent,
+                        _uictx: &mut context::UIContext,
+                        evt: &context::Event|
+          -> Result<context::Handled, Box<dyn Error>> {
         use context::Handled::*;
         let btn = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this is only registered on a button
         info!("test click handler: button {:?}: {}", btn.id(), text);
-        info!("test click handler: button {:?}: ^^^ click at {:?}", btn.id(), evt.point);
+        info!(
+            "test click handler: button {:?}: ^^^ click at {:?}",
+            btn.id(),
+            evt.point
+        );
         Ok(Handled)
     };
     button.on(EventType::Click, Box::new(handler))?;

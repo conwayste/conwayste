@@ -19,6 +19,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::mem;
+use std::fmt;
 
 use downcast_rs::Downcast;
 use enum_iterator::IntoEnumIterator;
@@ -218,6 +219,21 @@ pub type HandlerMap = HashMap<EventType, Vec<Handler>>;
 pub struct HandlerData {
     pub handlers: Option<HandlerMap>,
     pub forwarded_events: Vec<Event>,
+}
+
+impl fmt::Debug for HandlerData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let handler_str = if let Some(ref handlers) = self.handlers {
+            format!("Some(HandlerMap<{} handlers>)", handlers.len())
+        } else {
+            "None".to_owned()
+        };
+        write!(
+            f,
+            "HandlerData {{ handlers: {}, forwarded_events: {:?} }}",
+            handler_str, self.forwarded_events
+        )
+    }
 }
 
 impl HandlerData {
