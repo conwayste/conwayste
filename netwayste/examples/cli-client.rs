@@ -37,7 +37,7 @@ use futures::sync::mpsc;
 use log::LevelFilter;
 use netwayste::{
     client::{ClientNetState, CLIENT_VERSION},
-    net::{NetwaysteEvent, RequestAction, Packet, ResponseCode},
+    net::NetwaysteEvent,
 };
 
 const SLEEP: Duration = Duration::from_millis(33);  // 30 "frames" per second
