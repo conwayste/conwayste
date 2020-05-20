@@ -143,30 +143,6 @@ impl UILayout {
             .on(EventType::Click, Box::new(fullscreen_toggle_handler))
             .unwrap();
 
-        // TODO: delete this once handlers are tested
-        let mut handler_test_button = Box::new(Button::new(
-            ctx,
-            UIAction::None,
-            default_font_info,
-            "Handler Test".to_owned(),
-        ));
-        // add the handler!
-        // TODO: delete this
-        // unwrap OK here because we are not calling .on from within a handler
-        handler_test_button
-            .on(EventType::Click, Box::new(test_handler))
-            .unwrap();
-
-        match handler_test_button.set_rect(Rect::new(200.0, 130.0, 180.0, 50.0)) {
-            Ok(()) => {}
-            Err(e) => {
-                error!(
-                    "Could not set size for button during initialization! {:?}",
-                    e
-                );
-            }
-        }
-
         let menupane_id = layer_mainmenu.add_widget(pane, InsertLocation::AtCurrentLayer)?;
         layer_mainmenu.add_widget(
             startgame_button,
@@ -178,10 +154,6 @@ impl UILayout {
         )?;
         layer_mainmenu.add_widget(
             serverlist_button,
-            InsertLocation::ToNestedContainer(&menupane_id),
-        )?;
-        layer_mainmenu.add_widget(
-            handler_test_button,
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
         layer_mainmenu.add_widget(
@@ -251,28 +223,6 @@ fn fullscreen_toggle_handler(
     uictx.config.modify(|settings| {
         settings.video.fullscreen = checkbox.enabled;
     });
-    Ok(Handled)
-}
-
-fn test_handler(
-    obj: &mut dyn EmitEvent,
-    uictx: &mut context::UIContext,
-    evt: &context::Event,
-) -> Result<context::Handled, Box<dyn Error>> {
-    use context::Handled::*;
-    let btn = obj.downcast_mut::<Button>().unwrap();
-
-    info!("YAYYYY BUTTON'S HANDLER CALLED!!!");
-
-    btn.translate(Vector2::new(1.0, 1.0)); // just for fun, move it diagonally by one pixel
-
-    // get the number of ticks, also just for fun
-    let num_ticks = ggez::timer::ticks(&uictx.ggez_context);
-    info!("number of ggez ticks: {}", num_ticks);
-
-    // ok now let's print out the event
-    info!("EVENT: what={:?} @ {}", evt.what, evt.point.unwrap());
-
     Ok(Handled)
 }
 

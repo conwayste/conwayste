@@ -524,7 +524,6 @@ impl EventHandler for MainState {
                     let mut text_input = vec![];
                     std::mem::swap(&mut self.inputs.text_input, &mut text_input);
                     for character in text_input {
-                        //XXX process text_input
                         let key_event = Event {
                             what: EventType::KeyPress,
                             point: Some(mouse_point),
@@ -547,42 +546,10 @@ impl EventHandler for MainState {
 
                 // TODO Disable FPS limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
-                /* XXX
-                let mut textfield_under_focus = false;
-                let id = self.ui_layout.chatbox_tf_id.clone();
-                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
-                    Ok(tf) => {
-                        match tf.input_state {
-                            Some(TextInputState::TextInputComplete) =>  {
-                                textfield_under_focus = false;
-                                //XXX call the following only when the user is done typing
-
-                                // take the text from the textfield, and if non-empty,
-                                // 1) add to chatbox, 2) send to netwayste
-                                self.handle_user_chat_complete(ctx); //XXX handle err
-                            }
-                            Some(TextInputState::EnteringText) => {
-                                textfield_under_focus = true;
-                                tf.update(ctx)?;
-                            },
-                            None => {
-                                textfield_under_focus = false;
-                                tf.update(ctx)?;
-                            },
-                        }
-                    }
-                    Err(e) => {
-                        error!("could not update Chatbox's text input state: {:?}", e);
-                    }
-                }
-                if textfield_under_focus {
-                    self.process_text_field_inputs();
-                }
-                */
 
                 let mut game_area_has_keyboard_focus = false;
-                let game_area_id = &self.ui_layout.game_area_id;
-                match GameArea::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, game_area_id) {
+                let game_area_id = self.ui_layout.game_area_id.clone();
+                match GameArea::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &game_area_id) {
                     Ok(gamearea) => {
                         game_area_has_keyboard_focus = gamearea.has_keyboard_focus;
                     }
@@ -1134,10 +1101,8 @@ impl MainState {
                 let id = self.ui_layout.chatbox_tf_id.clone();
                 match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
                     Ok(tf) => {
-                        if tf.input_state.is_none() {
-                            if let Some(layer) = self.ui_layout.get_screen_layering(Screen::Run) {
-                                layer.enter_focus(&id)?;
-                            }
+                        if let Some(layer) = self.ui_layout.get_screen_layering(Screen::Run) {
+                            layer.enter_focus(&id)?;
                         }
                     }
                     Err(e) => {
@@ -1218,34 +1183,6 @@ impl MainState {
                 self.arrow_input = (1, 0);
             }
             _ => {}
-        }
-    }
-
-    fn process_text_field_inputs(&mut self) {
-        let keycode;
-
-        if let Some(k) = self.inputs.key_info.key {
-            keycode = k;
-        } else {
-            return;
-        }
-
-        let screen = self.get_current_screen();
-
-        match keycode {
-            KeyCode::Escape => {
-                if let Some(layer) = self.ui_layout.get_screen_layering(screen) {
-                    layer.exit_focus();
-                }
-            }
-            KeyCode::Return | KeyCode::Back | KeyCode::Delete | KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                match self.ui_layout.focused_textfield_mut(screen) {
-                    Ok(tf) => tf.on_keycode(keycode),
-                    Err(e) => error!("Could not get focused textfield for {:?}
-                                      during process text field inputs: {:?}", screen, e)
-                }
-            }
-            _ => {} // do nothing for now
         }
     }
 

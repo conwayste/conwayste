@@ -82,11 +82,13 @@ pub trait Widget: Downcast + std::fmt::Debug {
         Ok(())
     }
 
+    // TODO: delete
     /// Widget gains focus and begins accepting user input
     fn enter_focus(&mut self) {
         ()
     }
 
+    // TODO: delete
     /// Widget loses focus and does not accept user input
     fn exit_focus(&mut self) {
         ()

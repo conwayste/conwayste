@@ -396,6 +396,7 @@ impl Layering {
         Ok(())
     }
 
+    /* TODO: do we need this?
     /// Clears the focus of the layering
     pub fn exit_focus(&mut self) {
         if let Some(id) = self.focused_widget_id() {
@@ -407,6 +408,7 @@ impl Layering {
 
         self.focus_cycles[self.highest_z_order].clear_focus();
     }
+    */
 
     pub fn on_hover(&mut self, point: &Point2<f32>) {
         let node_ids = self.collect_node_ids(self.highest_z_order);
@@ -840,6 +842,7 @@ mod test {
         assert_eq!(layer_info.focused_widget_id(), None);
     }
 
+    /* TODO: do we need this?
     #[test]
     fn test_layering_exit_focus() {
         let mut layer_info = Layering::new();
@@ -854,6 +857,7 @@ mod test {
         layer_info.exit_focus();
         assert_eq!(layer_info.focused_widget_id(), None);
     }
+    */
 
     #[test]
     fn test_widget_exists_widget_found() {

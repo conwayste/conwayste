@@ -17,6 +17,7 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::fmt;
+use std::mem;
 use std::time::{Duration, Instant};
 use std::error::Error;
 
@@ -122,6 +123,24 @@ impl TextField {
             handler_data: HandlerData::new(),
         };
         tf.on(EventType::KeyPress, Box::new(TextField::key_handler)).unwrap(); // unwrap OK b/c not inside handler now
+
+        // Set handlers for toggling has_keyboard_focus
+        let gain_focus_handler = move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, evt: &Event|
+              -> Result<Handled, Box<dyn Error>> {
+            let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
+            tf.focused = true;
+            Ok(Handled::NotHandled)
+        };
+
+        let lose_focus_handler = move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, evt: &Event|
+              -> Result<Handled, Box<dyn Error>> {
+            let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
+            tf.focused = false;
+            Ok(Handled::NotHandled)
+        };
+
+        tf.on(EventType::GainFocus, Box::new(gain_focus_handler)).unwrap(); // unwrap OK
+        tf.on(EventType::LoseFocus, Box::new(lose_focus_handler)).unwrap(); // unwrap OK
         tf
     }
 
@@ -148,7 +167,7 @@ impl TextField {
 
     /// Handle a key.
     fn key_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) -> Result<Handled, Box<dyn Error>> {
-        let mut tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK because it's always a TextField
+        let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK because it's always a TextField
         if evt.key.is_none() {
             return Err("keyboard event does not have a key!".to_owned().into());
         }
@@ -156,19 +175,24 @@ impl TextField {
             KeyCodeOrChar::KeyCode(keycode) => {
                 match keycode {
                     KeyCode::Return => {
-                        let evt = Event {
-                            what: EventType::TextEntered,
-                            point: None,
-                            prev_point: None,
-                            button: None,
-                            key: None,
-                            shift_pressed: false,
-                            text: Some(tf.text),
-                        };
-                        tf.emit(&evt, uictx).unwrap_or_else(|e| {
-                            error!("Error from TextEntered handler on textfield: {:?}", e);
-                        });
-                        tf.focused = false;
+                        let text = tf.text();
+                        if text.is_some() {
+                            tf.clear();
+                            let evt = Event {
+                                what: EventType::TextEntered,
+                                point: None,
+                                prev_point: None,
+                                button: None,
+                                key: None,
+                                shift_pressed: false,
+                                text,
+                            };
+                            tf.emit(&evt, uictx).unwrap_or_else(|e| {
+                                error!("Error from TextEntered handler on textfield: {:?}", e);
+                            });
+                        }
+
+                        tf.release_focus(uictx);
                     },
                     KeyCode::Back => tf.remove_left_of_cursor(),
                     KeyCode::Delete => tf.remove_right_of_cursor(),
@@ -176,7 +200,7 @@ impl TextField {
                     KeyCode::Right => tf.move_cursor_right(),
                     KeyCode::Home => tf.cursor_home(),
                     KeyCode::End => tf.cursor_end(),
-                    KeyCode::Escape => tf.exit_focus(),
+                    KeyCode::Escape => tf.release_focus(uictx),
                     _ => ()
                 }
             }
@@ -187,6 +211,21 @@ impl TextField {
             }
         }
         Ok(Handled::NotHandled)
+    }
+
+    /// Sends a notification to the parent widget that we have released focus.
+    fn release_focus(&mut self, uictx: &mut UIContext) {
+        self.focused = false;
+        let evt = Event {
+            what: EventType::ChildReleasedFocus,
+            point: None,
+            prev_point: None,
+            button: None,
+            key: None,
+            shift_pressed: false,
+            text: None,
+        };
+        uictx.child_event(evt);
     }
 
     /// Adds a character at the current cursor position

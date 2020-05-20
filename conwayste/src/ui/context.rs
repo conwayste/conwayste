@@ -149,7 +149,7 @@ pub struct Event {
     pub text: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum KeyCodeOrChar {
     KeyCode(KeyCode),
     Char(char),

@@ -146,7 +146,7 @@ impl Widget for GameArea {
         self.dimensions.translate(dest);
     }
 
-    fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
+    fn draw(&mut self, _ctx: &mut Context) -> GameResult<()> {
         // no-op; dummy widget
         Ok(())
     }
