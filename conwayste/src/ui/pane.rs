@@ -126,6 +126,19 @@ impl Pane {
             }
         }
 
+        // Set handler for focusing first widget in focus cycle when focus is gained
+        let gain_focus_handler = move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, evt: &Event|
+              -> Result<Handled, Box<dyn Error>> {
+            let pane = obj.downcast_mut::<Pane>().unwrap(); // unwrap OK
+            pane.focus_cycle.focus_next();
+            pane.focus_cycle.focus_previous(); //XXX not sure what I'm doing here
+            if let Some(focused_widget_id) = pane.focus_cycle.focused_widget_id() {
+                //XXX emit GainFocus... somehow
+            }
+            Ok(Handled::NotHandled)
+        };
+        pane.on(EventType::GainFocus, Box::new(gain_focus_handler)).unwrap(); // unwrap OK
+
         pane
     }
 
@@ -251,6 +264,7 @@ impl Pane {
         uictx: &mut UIContext,
         focused_id: &NodeId,
     ) -> Result<(), Box<dyn Error>> {
+        debug!("Pane::emit_focus_change({:?}) to {:?}", what, focused_id); //XXX
         let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
         if let Some(emittable) = widget_ref.as_emit_event() {
             let event = Event {

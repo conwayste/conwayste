@@ -84,6 +84,7 @@ use input::{MouseAction, ScrollEvent};
 use ui::{
     Chatbox,
     GameArea,
+    Pane,
     TextField,
     UIError,
     Widget,
@@ -559,7 +560,7 @@ impl EventHandler for MainState {
                 }
 
                 if screen == Screen::Run && game_area_has_keyboard_focus {
-                    let result = self.process_running_inputs();
+                    let result = self.process_running_inputs(ctx);
                     handle_error!(result,
                         UIError => |e| {
                             error!("Received UI Error from process_running_inputs(). {:?}", e);
@@ -1072,7 +1073,7 @@ impl MainState {
     /// Handles keyboard and mouse input stored in `self.inputs` by the ggez callbacks. This is
     /// called from update() when we are in the Run screen, and the focus is not captured by, for
     /// example, a text dialog.
-    fn process_running_inputs(&mut self) -> Result<(), Box<dyn Error>> {
+    fn process_running_inputs(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
         let keycode;
 
         if let Some(k) = self.inputs.key_info.key {
@@ -1098,11 +1099,11 @@ impl MainState {
                 return Ok(());
             }
             KeyCode::Return => {
-                let id = self.ui_layout.chatbox_tf_id.clone();
-                match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
-                    Ok(tf) => {
+                let chatbox_pane_id = self.ui_layout.chatbox_pane_id.clone();
+                match Pane::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &chatbox_pane_id) {
+                    Ok(chatbox_pane) => {
                         if let Some(layer) = self.ui_layout.get_screen_layering(Screen::Run) {
-                            layer.enter_focus(&id)?;
+                            layer.enter_focus(ctx, &mut self.config, &chatbox_pane_id)?;
                         }
                     }
                     Err(e) => {

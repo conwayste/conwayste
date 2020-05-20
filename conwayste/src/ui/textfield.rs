@@ -522,6 +522,11 @@ impl Widget for TextField {
         self.draw_cursor = false;
     }
 
+    /// convert to EmitEvent
+    fn as_emit_event(&mut self) -> Option<&mut dyn EmitEvent> {
+        Some(self)
+    }
+
     /// Text fields can receive keyboard focus.
     fn accepts_keyboard_events(&self) -> bool {
         true

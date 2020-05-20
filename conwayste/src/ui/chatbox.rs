@@ -385,11 +385,6 @@ impl Widget for Chatbox {
 
         Ok(())
     }
-
-    /// Chat boxes can receive keyboard focus.
-    fn accepts_keyboard_events(&self) -> bool {
-        true
-    }
 }
 
 widget_from_id!(Chatbox);

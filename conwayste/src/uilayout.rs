@@ -67,6 +67,7 @@ pub struct UILayout {
     // regardless of what is displayed on screen. For example, new chat messages should always be
     // forwarded to the UI widget.
     pub chatbox_id: NodeId,
+    pub chatbox_pane_id: NodeId,
     pub chatbox_tf_id: NodeId,
     pub game_area_id: NodeId,
 }
@@ -160,6 +161,8 @@ impl UILayout {
             fullscreen_checkbox,
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
+        debug!("MENU WIDGET TREE");
+        layer_mainmenu.debug_display_widget_tree();
         ui_layers.insert(Screen::Menu, layer_mainmenu);
 
         // ==== In-Game (Run screen) ====
@@ -198,11 +201,14 @@ impl UILayout {
         let game_area = Box::new(GameArea::new());
         let game_area_id = layer_ingame.add_widget(game_area, InsertLocation::AtCurrentLayer)?;
 
+        debug!("RUN WIDGET TREE");
+        layer_ingame.debug_display_widget_tree();
         ui_layers.insert(Screen::Run, layer_ingame);
 
         Ok(UILayout {
             layers: ui_layers,
             chatbox_id,
+            chatbox_pane_id: chatpane_id,
             chatbox_tf_id,
             game_area_id,
         })
