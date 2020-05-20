@@ -37,7 +37,6 @@ mod menu;
 mod network;
 mod ui;
 mod uilayout;
-mod uimanager;
 mod video;
 mod viewport;
 
@@ -93,7 +92,6 @@ use ui::{
     context::KeyCodeOrChar,
 };
 use uilayout::UILayout;
-use uimanager::LayoutManager;
 
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
@@ -484,7 +482,7 @@ impl EventHandler for MainState {
 
 
                 // ==== Handle widget events ====
-                if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, screen) {
+                if let Some(layer) = self.ui_layout.get_screen_layering(screen) {
                     layer.on_hover(&mouse_point);
 
                     if let Some(action) = mouse_action {
@@ -583,8 +581,8 @@ impl EventHandler for MainState {
                 */
 
                 let mut game_area_has_keyboard_focus = false;
-                let game_area_id = (); //XXX;
-                match GameArea::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &game_area_id) {
+                let game_area_id = &self.ui_layout.game_area_id;
+                match GameArea::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, game_area_id) {
                     Ok(gamearea) => {
                         game_area_has_keyboard_focus = gamearea.has_keyboard_focus;
                     }
@@ -750,7 +748,7 @@ impl EventHandler for MainState {
             Screen::Exit => {}
         }
 
-        if let Some(layering) = LayoutManager::get_screen_layering(&mut self.ui_layout, current_screen) {
+        if let Some(layering) = self.ui_layout.get_screen_layering(current_screen) {
             layering.draw(ctx)?;
         }
 
@@ -1137,7 +1135,7 @@ impl MainState {
                 match TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
                     Ok(tf) => {
                         if tf.input_state.is_none() {
-                            if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, Screen::Run) {
+                            if let Some(layer) = self.ui_layout.get_screen_layering(Screen::Run) {
                                 layer.enter_focus(&id)?;
                             }
                         }
@@ -1236,12 +1234,12 @@ impl MainState {
 
         match keycode {
             KeyCode::Escape => {
-                if let Some(layer) = LayoutManager::get_screen_layering(&mut self.ui_layout, screen) {
+                if let Some(layer) = self.ui_layout.get_screen_layering(screen) {
                     layer.exit_focus();
                 }
             }
             KeyCode::Return | KeyCode::Back | KeyCode::Delete | KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {
-                match LayoutManager::focused_textfield_mut(&mut self.ui_layout, screen) {
+                match self.ui_layout.focused_textfield_mut(screen) {
                     Ok(tf) => tf.on_keycode(keycode),
                     Err(e) => error!("Could not get focused textfield for {:?}
                                       during process text field inputs: {:?}", screen, e)

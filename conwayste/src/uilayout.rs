@@ -28,8 +28,8 @@ use id_tree::NodeId;
 use crate::config::Config;
 use crate::constants;
 use crate::ui::{
-    common, context, Button, Chatbox, Checkbox, GameArea, InsertLocation, Layering, Pane,
-    TextField, UIAction, UIResult, Widget,
+    common, context, Button, Chatbox, Checkbox, GameArea, InsertLocation, Label, Layering, Pane,
+    TextField, UIAction, UIError, UIResult, Widget,
 };
 use crate::Screen;
 
@@ -38,19 +38,62 @@ use context::{
     EventType,
 };
 
+// When adding support for a new widget, use this macro to define a routine which allows the
+// developer to search in a `UILayout`/`Screen` pair for a widget by its ID
+macro_rules! add_layering_support {
+    ($type:ident) => {
+        impl<'a> $type {
+            pub fn widget_from_screen_and_id(
+                ui: &'a mut UILayout,
+                screen: Screen,
+                id: &'a NodeId,
+            ) -> crate::ui::UIResult<&'a mut $type> {
+                if let Some(layer) = ui.get_screen_layering(screen) {
+                    return $type::widget_from_id(layer, id);
+                }
+                Err(Box::new(crate::ui::UIError::InvalidArgument {
+                    reason: format!("{:?} not found in UI Layout", screen),
+                }))
+            }
+        }
+    };
+}
+
 pub struct UILayout {
     pub layers: HashMap<Screen, Layering>,
 
-    // XXX HACK
+    // HACK
     // The fields below correspond to static ui elements that the client may need to interact with
     // regardless of what is displayed on screen. For example, new chat messages should always be
     // forwarded to the UI widget.
     pub chatbox_id: NodeId,
     pub chatbox_tf_id: NodeId,
+    pub game_area_id: NodeId,
 }
 
 /// `UILayout` is responsible for the definition and storage of UI elements.
 impl UILayout {
+    /// Get all layers associated with the specified Screen
+    pub fn get_screen_layering(&mut self, screen: Screen) -> Option<&mut Layering> {
+        self.layers.get_mut(&screen)
+    }
+
+    /// Get the current screen's focused Textfield. This is expected to be on the top-most layer
+    pub fn focused_textfield_mut(&mut self, screen: Screen) -> UIResult<&mut TextField> {
+        if let Some(layer) = self.get_screen_layering(screen) {
+            if let Some(id) = layer.focused_widget_id() {
+                let id = id.clone();
+                return TextField::widget_from_id(layer, &id);
+            }
+        }
+        Err(Box::new(UIError::WidgetNotFound {
+            reason: format!(
+                "Layering for screen {:?} does not have a TextField in focus",
+                screen
+            ),
+        }))
+    }
+
     pub fn new(ctx: &mut Context, config: &Config, font: Font) -> UIResult<Self> {
         let mut ui_layers = HashMap::new();
 
@@ -180,8 +223,8 @@ impl UILayout {
         let chatbox_tf_id =
             layer_ingame.add_widget(textfield, InsertLocation::ToNestedContainer(&chatpane_id))?;
 
-        let gamearea = Box::new(GameArea::new());
-        layer_ingame.add_widget(gamearea, InsertLocation::AtCurrentLayer)?;
+        let game_area = Box::new(GameArea::new());
+        let game_area_id = layer_ingame.add_widget(game_area, InsertLocation::AtCurrentLayer)?;
 
         ui_layers.insert(Screen::Run, layer_ingame);
 
@@ -189,6 +232,7 @@ impl UILayout {
             layers: ui_layers,
             chatbox_id,
             chatbox_tf_id,
+            game_area_id,
         })
     }
 }
@@ -251,3 +295,11 @@ fn register_test_click_handler(button: &mut Button, text: String) -> Result<(), 
 
     Ok(())
 }
+
+add_layering_support!(Button);
+add_layering_support!(Checkbox);
+add_layering_support!(Label);
+add_layering_support!(Pane);
+add_layering_support!(TextField);
+add_layering_support!(Chatbox);
+add_layering_support!(GameArea);
