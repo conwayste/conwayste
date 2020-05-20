@@ -1063,7 +1063,7 @@ mod netwayste_client_tests {
         let mut client_state = create_client_net_state();
         assert_eq!(client_state.chat_msg_seq_num, 0);
 
-        client_state.handle_incoming_chats(None);
+        client_state.handle_incoming_chats(vec![]);
         assert_eq!(client_state.chat_msg_seq_num, 0);
     }
 
@@ -1078,7 +1078,7 @@ mod netwayste_client_tests {
             incoming_messages.push(new_msg);
         }
 
-        client_state.handle_incoming_chats(Some(incoming_messages));
+        client_state.handle_incoming_chats(incoming_messages);
         assert_eq!(client_state.chat_msg_seq_num, 10);
     }
 
@@ -1089,7 +1089,7 @@ mod netwayste_client_tests {
 
         let incoming_messages = vec![ BroadcastChatMessage::new(10u64, "a player".to_owned(), format!("message {}", 10))];
 
-        client_state.handle_incoming_chats(Some(incoming_messages));
+        client_state.handle_incoming_chats(incoming_messages);
         assert_eq!(client_state.chat_msg_seq_num, 10);
     }
 
@@ -1101,7 +1101,7 @@ mod netwayste_client_tests {
 
         let incoming_messages = vec![ BroadcastChatMessage::new(11u64, "a player".to_owned(), format!("message {}", 11))];
 
-        client_state.handle_incoming_chats(Some(incoming_messages));
+        client_state.handle_incoming_chats(incoming_messages);
     }
 
     #[test]
@@ -1117,7 +1117,7 @@ mod netwayste_client_tests {
             incoming_messages.push(new_msg);
         }
 
-        client_state.handle_incoming_chats(Some(incoming_messages));
+        client_state.handle_incoming_chats(incoming_messages);
         assert_eq!(client_state.chat_msg_seq_num, 19);
 
         let mut seq_num = starting_chat_seq_num+1;

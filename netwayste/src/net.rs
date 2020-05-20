@@ -91,12 +91,12 @@ pub enum RequestAction {
     None,   // never actually sent
     Connect{name: String, client_version: String},
     Disconnect,
-    KeepAlive(u64),     // Send latest response ack on each heartbeat
+    KeepAlive{latest_response_ack: u64},     // Send latest response ack on each heartbeat
     ListPlayers,
-    ChatMessage(String),
+    ChatMessage{message: String},
     ListRooms,
-    NewRoom(String),
-    JoinRoom(String),
+    NewRoom{room_name: String},
+    JoinRoom{room_name: String},
     LeaveRoom,
 }
 
@@ -104,19 +104,20 @@ pub enum RequestAction {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum ResponseCode {
     // success - these are all 200 in HTTP
-    OK,                              // 200 no data
-    LoggedIn(String, String),        // player is logged in -- (cookie, server version)
-    JoinedRoom(String),              // player has joined the room
-    LeaveRoom,                       // player has left the room
-    PlayerList(Vec<String>),         // list of players in room or lobby
-    RoomList(Vec<(String, u64, bool)>), // (room name, # players, game has started?
+    // TODO: Many of these should contain the sequence number being acknowledged
+    OK,                               // 200 no data
+    LoggedIn{cookie: String, server_version: String},        // player is logged in -- (cookie, server version)
+    JoinedRoom{room_name: String},    // player has joined the room
+    LeaveRoom,                        // player has left the room
+    PlayerList{players: Vec<String>}, // list of players in room or lobby
+    RoomList{rooms: Vec<RoomList>},   // list of rooms and their statuses
 
     // errors
-    BadRequest(Option<String>),      // 400 unspecified error that is client's fault
-    Unauthorized(Option<String>),    // 401 not logged in
-    TooManyRequests(Option<String>), // 429
-    ServerError(Option<String>),     // 500
-    NotConnected(Option<String>),    // no equivalent in HTTP due to handling at lower (TCP) level
+    BadRequest{error_msg: String},      // 400 unspecified error that is client's fault
+    Unauthorized{error_msg: String},    // 401 not logged in
+    TooManyRequests{error_msg: String}, // 429
+    ServerError{error_msg: String},     // 500
+    NotConnected{error_msg: String},    // no equivalent in HTTP due to handling at lower (TCP) level
     KeepAlive,                       // Server's heart is beating
 }
 
@@ -213,6 +214,13 @@ pub enum UniUpdateType {
     NoChange,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct RoomList {
+    pub room_name: String,
+    pub player_count: u8,
+    pub in_progress: bool,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Packet {
     Request {
@@ -231,8 +239,8 @@ pub enum Packet {
     },
     Update {
         // in-game: sent by server
-        chats:           Option<Vec<BroadcastChatMessage>>, // All non-acknowledged chats are sent each update
-        game_updates:    Option<Vec<GameUpdate>>,           //
+        chats:           Vec<BroadcastChatMessage>, // All non-acknowledged chats are sent each update
+        game_updates:    Vec<GameUpdate>,           // Information pertaining to a game tick update
         universe_update: UniUpdateType,                     //
     },
     UpdateReply {
@@ -959,10 +967,10 @@ pub enum NetwaysteEvent {
     LoggedIn(String),                   // player is logged in -- (version)
     JoinedRoom(String),                 // player has joined the room
     PlayerList(Vec<String>),     // list of players in room or lobby with ping (ms)
-    RoomList(Vec<(String, u64, bool)>), // (room name, # players, game has started?)
+    RoomList(Vec<RoomList>), // (room name, # players, game has started?)
     LeftRoom,
-    BadRequest(Option<String>),
-    ServerError(Option<String>),
+    BadRequest(String),
+    ServerError(String),
 
     // Updates
     ChatMessages(Vec<(String, String)>), // (player name, message)
@@ -994,11 +1002,11 @@ impl NetwaysteEvent {
                 }
             }
             NetwaysteEvent::ChatMessage(msg) => {
-                RequestAction::ChatMessage(msg)
+                RequestAction::ChatMessage{message: msg}
             }
             NetwaysteEvent::NewRoom(name) => {
                 if !is_in_game {
-                    RequestAction::NewRoom(name)
+                    RequestAction::NewRoom{room_name: name}
                 } else {
                     debug!("Command failed: You are in a game");
                     RequestAction::None
@@ -1006,7 +1014,7 @@ impl NetwaysteEvent {
             }
             NetwaysteEvent::JoinRoom(name) => {
                 if !is_in_game {
-                    RequestAction::JoinRoom(name)
+                    RequestAction::JoinRoom{room_name: name}
                 } else {
                     debug!("Command failed: You are already in a game");
                     RequestAction::None
@@ -1029,29 +1037,29 @@ impl NetwaysteEvent {
     #[allow(unused)]
     pub fn build_netwayste_event_from_response_code(code: ResponseCode) -> NetwaysteEvent {
         match code {
-            ResponseCode::LoggedIn(_cookie, server_version) => {
+            ResponseCode::LoggedIn{cookie: _, server_version} => {
                 NetwaysteEvent::LoggedIn(server_version)
             }
-            ResponseCode::JoinedRoom(name) => {
-                NetwaysteEvent::JoinedRoom(name)
+            ResponseCode::JoinedRoom{room_name} => {
+                NetwaysteEvent::JoinedRoom(room_name)
             }
-            ResponseCode::PlayerList(list) => {
-                NetwaysteEvent::PlayerList(list)
+            ResponseCode::PlayerList{players} => {
+                NetwaysteEvent::PlayerList(players)
             }
-            ResponseCode::RoomList(list) => {
-                NetwaysteEvent::RoomList(list)
+            ResponseCode::RoomList{rooms} => {
+                NetwaysteEvent::RoomList(rooms)
             }
             ResponseCode::LeaveRoom => {
                 NetwaysteEvent::LeftRoom
             }
-            ResponseCode::BadRequest(opt_error) => {
-                NetwaysteEvent::BadRequest(opt_error)
+            ResponseCode::BadRequest{error_msg} => {
+                NetwaysteEvent::BadRequest(error_msg)
             }
-            ResponseCode::ServerError( opt_error) => {
-                NetwaysteEvent::ServerError(opt_error)
+            ResponseCode::ServerError{error_msg} => {
+                NetwaysteEvent::ServerError(error_msg)
             }
-            ResponseCode::Unauthorized(opt_error) => {
-                NetwaysteEvent::BadRequest(opt_error)
+            ResponseCode::Unauthorized{error_msg} => {
+                NetwaysteEvent::BadRequest(error_msg)
             }
             _ => {
                 panic!("Unexpected response code during netwayste event construction: {:?}", code);

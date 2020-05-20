@@ -31,7 +31,7 @@ use regex::Regex;
 use tokio_core::reactor::{Core, Timeout};
 
 use crate::net::{
-    RequestAction, ResponseCode, Packet,
+    RequestAction, ResponseCode, Packet, RoomList,
     BroadcastChatMessage, NetworkManager, NetworkQueue,
     VERSION, has_connection_timed_out, bind, DEFAULT_PORT,
     LineCodec, NetwaysteEvent
@@ -160,24 +160,24 @@ impl ClientNetState {
                     Err(e) => error!("{:?}", e)
                 }
             }
-            ResponseCode::LoggedIn(ref cookie, ref server_version) => {
+            ResponseCode::LoggedIn{ref cookie, ref server_version} => {
                 self.handle_logged_in(cookie.to_string(), server_version.to_string());
             }
             ResponseCode::LeaveRoom => {
                 self.handle_left_room();
             }
-            ResponseCode::JoinedRoom(ref room_name) => {
+            ResponseCode::JoinedRoom{ref room_name} => {
                 self.handle_joined_room(room_name);
             }
-            ResponseCode::PlayerList(ref player_names) => {
-                self.handle_player_list(player_names.to_vec());
+            ResponseCode::PlayerList{ref players} => {
+                self.handle_player_list(players.to_vec());
             }
-            ResponseCode::RoomList(ref rooms) => {
+            ResponseCode::RoomList{ref rooms} => {
                 self.handle_room_list(rooms.to_vec());
             }
             ResponseCode::KeepAlive => {},
             // errors
-            ResponseCode::Unauthorized(opt_error) => {
+            ResponseCode::Unauthorized{error_msg: opt_error} => {
                 info!("Unauthorized action attempted by client: {:?}", opt_error);
             }
             _ => {
@@ -224,7 +224,10 @@ impl ClientNetState {
             }
             // TODO game_updates, universe_update
             Packet::Update{chats, game_updates: _, universe_update: _} => {
-                self.handle_incoming_chats(chats);
+
+                if chats.len() != 0 {
+                    self.handle_incoming_chats(chats);
+                }
 
                 // Reply to the update
                 let packet = Packet::UpdateReply {
@@ -267,7 +270,7 @@ impl ClientNetState {
                 cookie: self.cookie.clone(),
                 sequence: self.sequence,
                 response_ack: None,
-                action: RequestAction::KeepAlive(self.response_sequence),
+                action: RequestAction::KeepAlive{latest_response_ack: self.response_sequence},
             };
             let timed_out = has_connection_timed_out(self.last_received.unwrap());
 
@@ -325,51 +328,49 @@ impl ClientNetState {
         info!("---END PLAYER LIST---");
     }
 
-    pub fn handle_room_list(&mut self, rooms: Vec<(String, u64, bool)>) {
+    pub fn handle_room_list(&mut self, rooms: Vec<RoomList>) {
         info!("---BEGIN GAME ROOM LIST---");
-        for (game_name, num_players, game_running) in rooms {
-            info!("#players: {},\trunning? {:?},\tname: {:?}",
-                        num_players,
-                        game_running,
-                        game_name);
+        for room in rooms {
+            info!("#name: {},\trunning? {:?},\tplayers: {:?}",
+                        room.room_name,
+                        room.in_progress,
+                        room.player_count);
         }
         info!("---END GAME ROOM LIST---");
     }
 
-    pub fn handle_incoming_chats(&mut self, chats: Option<Vec<BroadcastChatMessage>> ) {
-        if let Some(mut chat_messages) = chats {
-            chat_messages.retain(|ref chat_message| {
-                self.chat_msg_seq_num < chat_message.chat_seq.unwrap()
-            });
+    pub fn handle_incoming_chats(&mut self, mut chat_messages: Vec<BroadcastChatMessage> ) {
+        chat_messages.retain(|ref chat_message| {
+            self.chat_msg_seq_num < chat_message.chat_seq.unwrap()
+        });
 
-            let mut to_conwayste_msgs = vec![];
+        let mut to_conwayste_msgs = vec![];
 
-            // This loop does three things:
-            //  1) update chat_msg_seq_num, and
-            //  2) prints messages from other players
-            //  3) Transmits chats to conwayste
-            for chat_message in chat_messages {
-                let chat_seq = chat_message.chat_seq.unwrap();
-                self.chat_msg_seq_num = std::cmp::max(chat_seq, self.chat_msg_seq_num);
+        // This loop does three things:
+        //  1) update chat_msg_seq_num, and
+        //  2) prints messages from other players
+        //  3) Transmits chats to conwayste
+        for chat_message in chat_messages {
+            let chat_seq = chat_message.chat_seq.unwrap();
+            self.chat_msg_seq_num = std::cmp::max(chat_seq, self.chat_msg_seq_num);
 
-                let queue = self.network.rx_chat_messages.as_mut().unwrap();
-                queue.buffer_item(chat_message.clone());
+            let queue = self.network.rx_chat_messages.as_mut().unwrap();
+            queue.buffer_item(chat_message.clone());
 
-                if let Some(client_name) = self.name.as_ref() {
-                    if client_name != &chat_message.player_name {
-                        info!("{}: {}", chat_message.player_name, chat_message.message);
-                        to_conwayste_msgs.push((chat_message.player_name, chat_message.message));
-                    }
-                } else {
-                   panic!("Client name not set!");
+            if let Some(client_name) = self.name.as_ref() {
+                if client_name != &chat_message.player_name {
+                    info!("{}: {}", chat_message.player_name, chat_message.message);
+                    to_conwayste_msgs.push((chat_message.player_name, chat_message.message));
                 }
+            } else {
+                panic!("Client name not set!");
             }
+        }
 
-            let nw_response = NetwaysteEvent::ChatMessages(to_conwayste_msgs);
-            match self.channel_to_conwayste.send(nw_response) {
-                Err(e) => error!("Could not send a netwayste response via channel_to_conwayste: {:?}", e),
-                Ok(_) => ()
-            }
+        let nw_response = NetwaysteEvent::ChatMessages(to_conwayste_msgs);
+        match self.channel_to_conwayste.send(nw_response) {
+            Err(e) => error!("Could not send a netwayste response via channel_to_conwayste: {:?}", e),
+            Ok(_) => ()
         }
     }
 
