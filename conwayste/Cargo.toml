@@ -11,7 +11,7 @@ netwayste    = { path = "../netwayste" }
 chromatica   = "1.0.1"
 chrono       = "0.4.6"
 color-backtrace = "0.1"
-custom_error = "1.4"
+custom_error = "1.7"
 downcast-rs  = "1.0.4"
 id_tree      = "1.7.0"
 env_logger   = "0.6.1"
