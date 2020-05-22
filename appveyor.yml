@@ -87,6 +87,9 @@ branches:
   except:
     - /dependabot.*/
 
+# Start builds on tags only (GitHub, BitBucket, GitLab, Gitea)
+skip_non_tags: true
+
 notifications:
   - provider: Email
     to:
