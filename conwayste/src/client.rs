@@ -16,6 +16,13 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+// "On Windows, with the default console subsystem, a conhost window will automatically spawn for
+// your process, if not already attached. With the windows subsystem, that won't happen."
+// -PeterRabbit on Rust Community Discord server
+// (the default subsystem is "console", apparently)
+// https://doc.rust-lang.org/nightly/reference/runtime.html?highlight=subsystem#the-windows_subsystem-attribute
+#![windows_subsystem = "windows"]
+
 extern crate conway;
 #[macro_use] extern crate custom_error;
 #[macro_use] extern crate downcast_rs;
