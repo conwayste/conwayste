@@ -8,6 +8,6 @@ edition = "2018"
 
 [dependencies]
 env_logger = "0.6"
-log        = "0.3"
+log        = "0.4"
 rand       = "0.3"
 custom_error = "1.7"

@@ -18,7 +18,7 @@ env_logger   = "0.6.2"
 futures      = "0.1.17"
 ggez         = "0.5"
 lazy_static  = "1.2"
-log          = "0.4.6"
+log          = "0.4.8"
 rand         = "0.4"
 serde        = {version="1.0.90", features=["derive"]}
 tokio-core   = "0.1.9"
