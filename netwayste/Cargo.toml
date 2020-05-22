@@ -1,6 +1,6 @@
 [package]
 name = "netwayste"
-version = "0.3.4-alpha1"
+version = "0.3.4-alpha2"
 authors = ["Aaron Miller <aaron.miller04@gmail.com>", "manghi <manghirs@gmail.com>"]
 edition = "2018"
 
