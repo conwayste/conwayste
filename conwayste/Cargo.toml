@@ -9,7 +9,7 @@ edition = "2018"
 conway       = { path = "../libconway" }
 netwayste    = { path = "../netwayste" }
 chromatica   = "1.0.1"
-chrono       = "0.4.6"
+chrono       = "0.4.11"
 color-backtrace = "0.1"
 custom_error = "1.4"
 downcast-rs  = "1.0.4"
