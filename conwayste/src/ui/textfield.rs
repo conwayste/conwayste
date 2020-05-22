@@ -17,7 +17,6 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::fmt;
-use std::mem;
 use std::time::{Duration, Instant};
 use std::error::Error;
 

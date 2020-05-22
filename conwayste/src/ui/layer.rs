@@ -409,6 +409,7 @@ impl Layering {
         if let Some(old_focused_widget) = old_focused_widget {
             if old_focused_widget != *id {
                 // old ID loses focus
+                debug!("[Layering] lose focus 1"); //XXX XXX XXX
                 Layering::emit_focus_change(context::EventType::LoseFocus, &mut uictx, &old_focused_widget)
                     .map_err(|e| {
                         UIError::InvalidAction{reason: format!("{:?}", e)}
@@ -520,11 +521,13 @@ impl Layering {
         })?;
 
         if key == KeyCodeOrChar::KeyCode(KeyCode::Tab) {
+            debug!("[Layering] handle_keyboard_event: Tab"); //XXX XXX XXX
             // special key press logic to handle focus changes
 
             let opt_child_id = focus_cycle.focused_widget_id().map(|child_id_ref| child_id_ref.clone());
             let opt_widget = opt_child_id.as_ref().map(|child_id| uictx.widget_view.get(child_id).unwrap().data());
             if opt_child_id.is_some() && opt_widget.unwrap().downcast_ref::<Pane>().is_some() {
+                debug!("[Layering] handle_keyboard_event: Tab: pane in focus"); //XXX XXX XXX
                 let child_id = opt_child_id.unwrap();
                 let pane_events = Layering::emit_keyboard_event(event, uictx, &child_id)?;  // TODO: ok to ret if Pane returns error here?
 
@@ -555,16 +558,20 @@ impl Layering {
                 // previously focused widget.
                 if focus_cycle.focused_widget_id() != opt_child_id.as_ref() {
                     // send a GainFocus event to the newly focused widget (if any)
+                    debug!("[Layering] handle_keyboard_event: Tab: non-pane was in focus; just did focus prev/next"); //XXX XXX XXX
                     if let Some(newly_focused_id) = focus_cycle.focused_widget_id() {
+                        debug!("[Layering] handle_keyboard_event: Tab: non-pane was in focus; new widget gained: {:?}", newly_focused_id); //XXX XXX XXX
                         Layering::emit_focus_change(context::EventType::GainFocus, uictx, newly_focused_id)?;
                     }
 
                     // send a LoseFocus event to the previously focused widget (if any)
                     if let Some(newly_focused_id) = opt_child_id {
+                        debug!("[Layering] lose focus 2"); //XXX XXX XXX
                         Layering::emit_focus_change(context::EventType::LoseFocus, uictx, &newly_focused_id)?;
                     }
                 }
             }
+            debug!("[Layering] handle_keyboard_event: Tab: DONE"); //XXX
 
             Ok(())
 
@@ -572,13 +579,39 @@ impl Layering {
             // regular key press logic (no focus changes)
             let focused_id = focus_cycle.focused_widget_id();
             if let Some(id) = focused_id {
-                let pane_events = Layering::emit_keyboard_event(event, uictx, id)?;
-                if pane_events.len() != 0 {
-                    warn!("expected no child events to be collected from Pane; got {:?}", pane_events);
-                }
+                let id = id.clone();
+                let pane_events = Layering::emit_keyboard_event(event, uictx, &id)?;
+                Layering::handle_events_from_child(focus_cycle, uictx, &id, &pane_events[..], false)?;
             }
             Ok(())
         }
+    }
+
+    fn handle_events_from_child(
+        focus_cycle: &mut FocusCycle,
+        uictx: &mut context::UIContext,
+        child_id: &NodeId,
+        child_events: &[context::Event],
+        shift_pressed: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        for child_event in child_events {
+            // ignore all event types except this one for now
+            if child_event.what == context::EventType::ChildReleasedFocus {
+                debug!( "[Layering] handle_events_from_child: previously focused child released focus: {:?}", child_id); //XXX
+                if shift_pressed {
+                    focus_cycle.focus_previous();
+                } else {
+                    focus_cycle.focus_next();
+                }
+                // send a GainFocus event to the newly focused widget (if any)
+                if let Some(newly_focused_id) = focus_cycle.focused_widget_id() {
+                    let newly_focused_id = newly_focused_id.clone();
+                    Layering::emit_focus_change(context::EventType::GainFocus, uictx, &newly_focused_id)?;
+                }
+                break;
+            }
+        }
+        Ok(())
     }
 
     fn emit_keyboard_event(event: &context::Event, uictx: &mut context::UIContext, focused_id: &NodeId) -> Result<Vec<context::Event>, Box<dyn Error>> {
@@ -589,7 +622,7 @@ impl Layering {
         } else {
             // We probably won't ever get here due to the FocusCycle only holding widgets that can
             // receive keyboard events.
-            debug!("nothing to emit on; widget is not an EmitEvent");
+            warn!("nothing to emit on; widget is not an EmitEvent");
         }
         Ok(vec![])
     }

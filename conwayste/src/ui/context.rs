@@ -133,7 +133,9 @@ pub enum EventType {
     ParentResize,
     GainFocus,
     LoseFocus,
-    ChildReleasedFocus, // this goes toward the root of the tree! Emitted by Pane onto its parent via child_event()
+    ChildReleasedFocus,
+    // ChildReleasedFocus goes toward the root of the tree! Emitted by Pane onto its parent via
+    // child_event(). Note that a LoseFocus event will not be received after this is sent.
     TextEntered,
 }
 

@@ -488,8 +488,19 @@ impl EventHandler for MainState {
 
                 let screen = self.get_current_screen();
 
+                let mut game_area_has_keyboard_focus = false;
+                let game_area_id = self.ui_layout.game_area_id.clone();
+                match GameArea::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &game_area_id) {
+                    Ok(gamearea) => {
+                        game_area_has_keyboard_focus = gamearea.has_keyboard_focus;
+                    }
+                    Err(e) => {
+                        error!("failed to look up GameArea widget: {:?}", e);
+                    }
+                }
 
                 // ==== Handle widget events ====
+                let mut game_area_should_ignore_input = false;
                 if let Some(layer) = self.ui_layout.get_screen_layering(screen) {
                     layer.on_hover(&mouse_point);
 
@@ -514,19 +525,22 @@ impl EventHandler for MainState {
                         });
                     }
 
-                    if let Some(key) = key {
-                        let key_event = Event {
-                            what: EventType::KeyPress,
-                            point: Some(mouse_point),
-                            prev_point: None,
-                            button: None,
-                            key: Some(KeyCodeOrChar::KeyCode(key)),
-                            shift_pressed: is_shift,
-                            text: None,
-                        };
-                        layer.emit(&key_event, ctx, &mut self.config).unwrap_or_else(|e| {
-                            error!("Error from layer.emit on key press: {:?}", e);
-                        });
+                    if !game_area_has_keyboard_focus {
+                        if let Some(key) = key {
+                            let key_event = Event {
+                                what: EventType::KeyPress,
+                                point: Some(mouse_point),
+                                prev_point: None,
+                                button: None,
+                                key: Some(KeyCodeOrChar::KeyCode(key)),
+                                shift_pressed: is_shift,
+                                text: None,
+                            };
+                            layer.emit(&key_event, ctx, &mut self.config).unwrap_or_else(|e| {
+                                error!("Error from layer.emit on key press: {:?}", e);
+                            });
+                            game_area_should_ignore_input = true;
+                        }
                     }
 
                     let mut text_input = vec![];
@@ -555,18 +569,7 @@ impl EventHandler for MainState {
                 // TODO Disable FPS limit until we decide if we need it
                 // while timer::check_update_time(ctx, FPS) {
 
-                let mut game_area_has_keyboard_focus = false;
-                let game_area_id = self.ui_layout.game_area_id.clone();
-                match GameArea::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &game_area_id) {
-                    Ok(gamearea) => {
-                        game_area_has_keyboard_focus = gamearea.has_keyboard_focus;
-                    }
-                    Err(e) => {
-                        error!("failed to look up GameArea widget: {:?}", e);
-                    }
-                }
-
-                if screen == Screen::Run && game_area_has_keyboard_focus {
+                if screen == Screen::Run && game_area_has_keyboard_focus && !game_area_should_ignore_input {
                     let result = self.process_running_inputs(ctx);
                     handle_error!(result,
                         UIError => |e| {
