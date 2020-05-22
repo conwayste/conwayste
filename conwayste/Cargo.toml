@@ -1,6 +1,6 @@
 [package]
 name = "conwayste"
-version = "0.3.3"
+version = "0.3.4-alpha2"
 authors = [ "Ameen Manghi <manghirs@gmail.com>", "Aaron Miller <aaron.miller04@gmail.com>" ]
 license = "GPL-3.0+"
 edition = "2018"
@@ -9,16 +9,16 @@ edition = "2018"
 conway       = { path = "../libconway" }
 netwayste    = { path = "../netwayste" }
 chromatica   = "1.0.1"
-chrono       = "0.4.6"
+chrono       = "0.4.11"
 color-backtrace = "0.1"
-custom_error = "1.4"
+custom_error = "1.7"
 downcast-rs  = "1.0.4"
 id_tree      = "1.7.0"
-env_logger   = "0.6.1"
+env_logger   = "0.6.2"
 futures      = "0.1.17"
 ggez         = "0.5"
 lazy_static  = "1.2"
-log          = "0.4.6"
+log          = "0.4.8"
 rand         = "0.4"
 serde        = {version="1.0.90", features=["derive"]}
 tokio-core   = "0.1.9"
