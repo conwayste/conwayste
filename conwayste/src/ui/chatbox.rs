@@ -31,6 +31,7 @@ use super::{
     widget::Widget,
     UIAction,
     UIError, UIResult,
+    context::{HandlerData, EmitEvent},
 };
 
 use crate::constants::{self, colors::*};
@@ -48,6 +49,7 @@ pub struct Chatbox {
     font_info: FontInfo,
     msg_sender: Sender<String>,
     msg_receiver: Receiver<String>,
+    handler_data: HandlerData,
 }
 
 impl fmt::Debug for Chatbox {
@@ -93,6 +95,7 @@ impl Chatbox {
             font_info,
             msg_sender: msg_tx,
             msg_receiver: msg_rx,
+            handler_data: HandlerData::new(),
         }
     }
 
@@ -385,9 +388,14 @@ impl Widget for Chatbox {
 
         Ok(())
     }
+
+    fn as_emit_event(&mut self) -> Option<&mut dyn EmitEvent> {
+        Some(self)
+    }
 }
 
 widget_from_id!(Chatbox);
+impl_emit_event!(Chatbox, self.handler_data);
 
 
 pub struct ChatboxPublishHandle {

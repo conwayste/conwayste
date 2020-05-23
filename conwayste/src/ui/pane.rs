@@ -108,8 +108,8 @@ impl Pane {
                                 return Ok(Handled::Handled);
                             } else {
                                 warn!(
-                                    "Widget at point of click ({:?}) does not implement EmitEvent",
-                                    evt.point
+                                    "Widget at point of click ({:?}) does not implement EmitEvent: {:?}",
+                                    evt.point, widget_ref.id(),
                                 );
                             }
                         }

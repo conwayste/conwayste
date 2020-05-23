@@ -490,12 +490,14 @@ impl EventHandler for MainState {
 
                 let mut game_area_has_keyboard_focus = false;
                 let game_area_id = self.ui_layout.game_area_id.clone();
-                match GameArea::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &game_area_id) {
+                match GameArea::widget_from_screen_and_id(&mut self.ui_layout, screen, &game_area_id) {
                     Ok(gamearea) => {
                         game_area_has_keyboard_focus = gamearea.has_keyboard_focus;
                     }
                     Err(e) => {
-                        error!("failed to look up GameArea widget: {:?}", e);
+                        if screen == Screen::Run {
+                            error!("failed to look up GameArea widget: {:?}", e);
+                        }
                     }
                 }
 
