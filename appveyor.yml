@@ -88,9 +88,13 @@ cache:
 
 branches:
   only:
-    # Release tags
-    - /^v\d+\.\d+\.\d+.*$/
+    - /v\d+\.\d+\.\d+.*/
     - master
+  except:
+    - /dependabot.*/
+
+# Start builds on tags only (GitHub, BitBucket, GitLab, Gitea)
+skip_non_tags: true
 
 notifications:
   - provider: Email
