@@ -318,6 +318,13 @@ impl Pane {
             let pane_events = subuictx.collect_child_events();
             debug!("[Pane] emit_focus_change: calling handle_events_from_child w/ subuictx"); //XXX
             self.handle_events_from_child(&mut subuictx, focused_id, &pane_events[..], false)?;
+            let sub_child_events = subuictx.collect_child_events();
+            drop(subuictx);
+
+            // Pass on any child events from subuictx to uictx
+            for sub_event in sub_child_events {
+                uictx.child_event(sub_event);
+            }
             return Ok(());
         } else {
             // We probably won't ever get here due to the FocusCycle only holding widgets that can

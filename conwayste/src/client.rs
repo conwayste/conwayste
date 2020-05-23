@@ -656,7 +656,7 @@ impl EventHandler for MainState {
                     }
 
                     if self.toggle_paused_game {
-                        self.pause_or_resume_game();
+                        self.pause_or_resume_game(ctx);
                     }
 
                     if !is_shift {
@@ -882,7 +882,7 @@ impl EventHandler for MainState {
         self.video_settings.set_resolution(ctx, video::Resolution{w: width, h: height}, false).unwrap();
     }
 
-    fn quit_event(&mut self, _ctx: &mut Context) -> bool {
+    fn quit_event(&mut self, ctx: &mut Context) -> bool {
         println!("Got quit event!");
         let mut quit = false;
         let current_screen = match self.screen_stack.last() {
@@ -892,7 +892,7 @@ impl EventHandler for MainState {
 
         match current_screen {
             Screen::Run => {
-                self.pause_or_resume_game();
+                self.pause_or_resume_game(ctx);
             }
             Screen::Menu | Screen::InRoom | Screen::ServerList => {
                 // This is currently handled in the menu processing state path as well
@@ -1055,7 +1055,7 @@ impl MainState {
         self.draw_game_of_life(ctx, &self.uni)
     }
 
-    fn pause_or_resume_game(&mut self) {
+    fn pause_or_resume_game(&mut self, ggez_ctx: &mut Context) {
         let cur_menu_state = self.menu_sys.menu_state;
         let current_screen = match self.screen_stack.last() {
             Some(screen) => screen,
@@ -1066,6 +1066,12 @@ impl MainState {
             Screen::Menu => {
                 if cur_menu_state == menu::MenuState::MainMenu {
                     self.screen_stack.push(Screen::Run);
+                    // TODO: make the Start Game button do this as well
+                    let id = self.ui_layout.game_area_id.clone();
+                    if let Some(layering) = self.ui_layout.get_screen_layering(Screen::Run) {
+                        layering.enter_focus(ggez_ctx, &mut self.config, &id).unwrap(); //XXX unwrap OK?
+                    }
+
                     self.running = true;
                 }
             }
@@ -1253,7 +1259,7 @@ impl MainState {
 
                                 }
                                 menu::MenuItemIdentifier::StartGame => {
-                                    self.pause_or_resume_game();
+                                    self.pause_or_resume_game(ctx);
                                 }
                                 menu::MenuItemIdentifier::ExitGame => {
                                     self.screen_stack.push(Screen::Exit);
