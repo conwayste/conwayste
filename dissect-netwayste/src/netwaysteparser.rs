@@ -94,11 +94,10 @@ pub enum NetwaysteDataFormat {
 ///
 ///
 fn parse_size_from_type(type_arg: String) -> Vec<Sizing> {
-    let param = type_arg;
     let mut list = vec![];
 
-    let opt = param.starts_with("Option<");
-    let vec = param.starts_with("Vec<");
+    let opt = type_arg.starts_with("Option<");
+    let vec = type_arg.starts_with("Vec<");
 
     if opt || vec {
         if opt {
@@ -108,18 +107,18 @@ fn parse_size_from_type(type_arg: String) -> Vec<Sizing> {
         }
 
         // Consume characters until we reach the inner type
-        let mut characters_iter = param.chars().skip_while(|c| *c != '<');
+        let mut characters_iter = type_arg.chars().skip_while(|c| *c != '<');
         characters_iter.next(); // skip the '<'
         let inner_type_string: String = characters_iter.collect();
 
         let mut remainder = parse_size_from_type(inner_type_string);
         list.append(&mut remainder);
-    } else if param.contains("<") {
+    } else if type_arg.contains("<") {
         // TODO: handle non-built-in types using generics, like NetQueue<T>.
         // Currently we don't have anything this complex in Packet. Save this exercise for a rainy day.
     } else {
         // Get everything up until the closing angle-bracket
-        let split_params: Vec<&str> = param.split('>').collect();
+        let split_params: Vec<&str> = type_arg.split('>').collect();
         let possible_csv = split_params[0].to_string();
         // In case there are unnamed tuples
         let param: Vec<&str> = possible_csv.split(',').collect();
