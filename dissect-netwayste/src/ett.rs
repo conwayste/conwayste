@@ -22,10 +22,17 @@ use std::mem;
 use std::os::raw::c_int;
 use std::sync::Mutex;
 
+/// When defining a tree with sub-headings in the decoded data view, Wireshark requires that the
+/// plugin reserve memory for every possible sub-heading in the tree. This is needed whether or not
+/// a sub-heading is displayed for a packet type.
+///
+/// EttInfo dynamically allocates the appropriate number of words based on the parsed netwayste code
+/// during plugin-registration. Every sub-heading word is unique. Wireshark will update the word
+/// (4-bytes) after plugin registration.
 pub struct EttInfo {
-    ett_items: Vec<c_int>,
-    pub addresses: Vec<usize>,
-    map: HashMap<String, usize>,
+    ett_items: Vec<c_int>,      // 4-byte word list where values are managed by Wireshark
+    pub addresses: Vec<usize>,  // Parallel vector to ett_items containing the address of each element
+    map: HashMap<String, usize>,    // Maps a field name (ex: cookie) it's index into `ett_items`
 }
 
 impl EttInfo {

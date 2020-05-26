@@ -27,16 +27,14 @@ use crate::netwaysteparser::{FieldDescriptor, NetwaysteDataFormat::*, Sizing, Va
 use crate::wrapperdefs::*;
 use crate::{enum_strings, netwayste_data, ws};
 
-/// HFFieldAllocator keeps track of which header fields have been used during header field registration.
+/// HFFieldAllocator allocates new a 4-byte word, as required by Wireshark, for each item displayed
+/// in the tree view. The HFFieldAllocator is sized based on items (or fields) found when parsing
+/// the netwayste code. All fields must be registered even if they are not displayed for specific
+/// packet type during the decoding process.
 ///
-/// # Notes
-/// Internally it uses a run-time populated vector sized to the number of Netwayste enums/structures
-/// and their member fields. Assignment involves tracking which fields each slot has been assigned to.
-///
-/// # Panics
-/// When all header fields have been used up. This may occur if the number of registrations exceed
-/// the number of enum/struct members found during parsing.
-///
+/// Internally it uses a run-time populated list sized to the number of Netwayste enums/structures
+/// and their member fields. Registration involves associating the field name to an index in the
+/// list used during the decoding process.
 #[derive(Debug)]
 pub struct HFFieldAllocator {
     hf_fields: Vec<c_int>,
@@ -47,9 +45,12 @@ pub struct HFFieldAllocator {
 impl HFFieldAllocator {
     pub fn new() -> HFFieldAllocator {
         HFFieldAllocator {
-            hf_fields: Vec::new(),
-            allocated: HashMap::new(),
-            options_map: HashMap::new(),
+            hf_fields: Vec::new(),  // 4-byte word list where values are managed by Wireshark
+            allocated: HashMap::new(), // Maps a field name (ex: cookie) it's index into hf_fields
+
+            options_map: HashMap::new(), // Maps a field name, which is of Option<T> type, to an "_opt"
+                                         // appended version used only when the value is None.
+                                         // If the value is Some, then the normal field name is used.
         }
     }
 
