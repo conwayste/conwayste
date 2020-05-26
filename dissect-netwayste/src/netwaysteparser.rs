@@ -294,18 +294,22 @@ pub fn parse_netwayste_format() -> HashMap<CString, NetwaysteDataFormat> {
 mod test {
     use super::*;
 
+    // Count the differences between the two Sizing sets
+    fn compare_sizing(expected_sizing: Vec<Sizing>, parsed_sizing: Vec<Sizing>) -> usize {
+        parsed_sizing
+                    .iter()
+                    .zip(expected_sizing.iter())
+                    .filter(|&(a, b)| a != b)
+                    .count()
+    }
+
     #[test]
     fn test_parse_size_from_type_for_u8() {
         let string = "u8".to_owned();
         let expected_sizing = vec![Sizing::Fixed(1)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -314,12 +318,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(1)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -328,12 +327,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(1)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -342,12 +336,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(2)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -356,12 +345,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(2)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -370,12 +354,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(4)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -384,12 +363,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(4)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -398,12 +372,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(8)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -412,12 +381,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(8)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -426,12 +390,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(16)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -440,12 +399,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(16)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -454,12 +408,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(4)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -468,12 +417,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(8)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -482,12 +426,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(8)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -496,12 +435,7 @@ mod test {
         let expected_sizing = vec![Sizing::Fixed(8)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -510,12 +444,7 @@ mod test {
         let expected_sizing = vec![Sizing::Variable(VariableContainer::Vector)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -527,12 +456,7 @@ mod test {
         ];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -541,12 +465,7 @@ mod test {
         let expected_sizing = vec![Sizing::Variable(VariableContainer::Vector)];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -559,12 +478,7 @@ mod test {
         ];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -576,12 +490,7 @@ mod test {
         ];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 
     #[test]
@@ -599,11 +508,6 @@ mod test {
         ];
 
         let parsed_sizing = parse_size_from_type(string);
-        let comparison = parsed_sizing
-            .iter()
-            .zip(expected_sizing.iter())
-            .filter(|&(a, b)| a != b)
-            .count();
-        assert_eq!(comparison, 0);
+        assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);
     }
 }
