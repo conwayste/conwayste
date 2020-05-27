@@ -32,7 +32,7 @@ use std::sync::Mutex;
 pub struct EttInfo {
     ett_items: Vec<c_int>,      // 4-byte word list where values are managed by Wireshark
     pub addresses: Vec<usize>,  // Parallel vector to ett_items containing the address of each element
-    map: HashMap<String, usize>,    // Maps a field name (ex: cookie) it's index into `ett_items`
+    map: HashMap<String, usize>,    // Maps a field name (ex: "cookie") to its index into `ett_items`
 }
 
 impl EttInfo {
