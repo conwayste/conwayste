@@ -304,23 +304,21 @@ fn get_text_entered_handler(
 ) -> Handler {
 
     Box::new(move |
-        obj: &mut dyn EmitEvent,
+        _obj: &mut dyn EmitEvent,
         uictx: &mut UIContext,
         evt: &Event,
     | -> Result<Handled, Box<dyn Error>> {
         let username = uictx.config.get().user.name.clone();
-        let mut msg = String::new();
-
         let text = evt.text.as_ref().unwrap(); // unwrap OK because the generator will always set to Some(..)
-        let msg = format!("{}: {}", username, text);
-
-        if msg.is_empty() {
+        if text.is_empty() {
             return Ok(Handled::NotHandled);
         }
-        chatbox_pub_handle.add_message(msg.clone());
+        let msg = format!("{}: {}", username, text);
+
+        chatbox_pub_handle.add_message(msg);
 
         if let Some(ref mut netwayste) = *(net_worker.lock().unwrap()) {
-            netwayste.try_send(NetwaysteEvent::ChatMessage(msg));
+            netwayste.try_send(NetwaysteEvent::ChatMessage(text.clone()));
         }
         Ok(Handled::NotHandled)
     })
@@ -447,14 +445,18 @@ impl MainState {
         let net_worker = Arc::new(Mutex::new(None));
         let chatbox_pub_handle = {
             let chatbox_id = ui_layout.chatbox_id.clone();
-            let w = ui_layout.get_screen_layering(Screen::Run).unwrap().get_widget_mut(&chatbox_id).unwrap();
+            let w = ui_layout
+                .get_screen_layering(Screen::Run).unwrap()
+                .get_widget_mut(&chatbox_id).unwrap();
             let chatbox = w.downcast_ref::<Chatbox>().unwrap(); // unwrap OK because we know this ID is for a Chatbox
             chatbox.new_handle()
         };
         let text_entered_handler = get_text_entered_handler(chatbox_pub_handle, net_worker.clone());
         {
             let textfield_id = ui_layout.chatbox_tf_id.clone();
-            let w = ui_layout.get_screen_layering(Screen::Run).unwrap().get_widget_mut(&textfield_id).unwrap();
+            let w = ui_layout
+                .get_screen_layering(Screen::Run).unwrap()
+                .get_widget_mut(&textfield_id).unwrap();
             let tf = w.downcast_mut::<TextField>().unwrap();
             tf.on(EventType::TextEntered, text_entered_handler).unwrap(); // unwrap OK because not in handler
         }
@@ -1466,11 +1468,11 @@ impl MainState {
             }
         }
 
-        let id = self.ui_layout.chatbox_tf_id.clone();
+        let id = self.ui_layout.chatbox_id.clone();
         for msg in incoming_messages {
             match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
                 Ok(cb) => cb.add_message(msg),
-                Err(e) => error!("Could not add message to Chatbox on network message receive: {:?}", e) //XXX
+                Err(e) => error!("Could not add message to Chatbox on network message receive: {:?}", e)
             }
         }
 
