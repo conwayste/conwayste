@@ -40,7 +40,7 @@ pub(crate) mod ui_errors;
 use crate::Screen;
 
 pub use button::Button;
-pub use chatbox::Chatbox;
+pub use chatbox::{Chatbox, ChatboxPublishHandle};
 pub use checkbox::Checkbox;
 pub use gamearea::GameArea;
 pub use common::{

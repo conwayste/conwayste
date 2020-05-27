@@ -79,22 +79,6 @@ impl UILayout {
         self.layers.get_mut(&screen)
     }
 
-    /// Get the current screen's focused Textfield. This is expected to be on the top-most layer
-    pub fn focused_textfield_mut(&mut self, screen: Screen) -> UIResult<&mut TextField> {
-        if let Some(layer) = self.get_screen_layering(screen) {
-            if let Some(id) = layer.focused_widget_id() {
-                let id = id.clone();
-                return TextField::widget_from_id(layer, &id);
-            }
-        }
-        Err(Box::new(UIError::WidgetNotFound {
-            reason: format!(
-                "Layering for screen {:?} does not have a TextField in focus",
-                screen
-            ),
-        }))
-    }
-
     pub fn new(ctx: &mut Context, config: &Config, font: Font) -> UIResult<Self> {
         let mut ui_layers = HashMap::new();
 

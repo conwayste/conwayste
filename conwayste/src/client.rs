@@ -71,6 +71,7 @@ use std::error::Error;
 use std::io::Write; // For env logger
 use std::path;
 use std::collections::{BTreeMap};
+use std::sync::{Arc, Mutex};
 
 use std::time::Instant;
 
@@ -90,14 +91,21 @@ use constants::{
 use input::{MouseAction, ScrollEvent};
 use ui::{
     Chatbox,
+    ChatboxPublishHandle,
     GameArea,
     Pane,
     TextField,
     UIError,
     Widget,
-    Event,
     EventType,
-    context::KeyCodeOrChar,
+    context::{
+        EmitEvent,
+        Event,
+        Handled,
+        Handler,
+        KeyCodeOrChar,
+        UIContext,
+    }
 };
 use uilayout::UILayout;
 
@@ -128,7 +136,7 @@ struct MainState {
     viewport:            viewport::GridView,
     intro_viewport:      viewport::GridView,
     inputs:              input::InputManager,
-    net_worker:          Option<network::ConwaysteNetWorker>,
+    net_worker:          Arc<Mutex<Option<network::ConwaysteNetWorker>>>,
     recvd_first_resize:  bool,       // work around an apparent ggez bug where the first resize event is bogus
 
     // Input state
@@ -290,6 +298,35 @@ fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
     Ok(())
 }
 
+fn get_text_entered_handler(
+    mut chatbox_pub_handle: ChatboxPublishHandle,
+    net_worker: Arc<Mutex<Option<network::ConwaysteNetWorker>>>,
+) -> Handler {
+
+    Box::new(move |
+        obj: &mut dyn EmitEvent,
+        uictx: &mut UIContext,
+        evt: &Event,
+    | -> Result<Handled, Box<dyn Error>> {
+        let username = uictx.config.get().user.name.clone();
+        let mut msg = String::new();
+
+        let text = evt.text.as_ref().unwrap(); // unwrap OK because the generator will always set to Some(..)
+        let msg = format!("{}: {}", username, text);
+
+        if msg.is_empty() {
+            return Ok(Handled::NotHandled);
+        }
+        chatbox_pub_handle.add_message(msg.clone());
+
+        if let Some(ref mut netwayste) = *(net_worker.lock().unwrap()) {
+            netwayste.try_send(NetwaysteEvent::ChatMessage(msg));
+        }
+        Ok(Handled::NotHandled)
+    })
+}
+
+
 
 // Then we implement the `ggez::game::GameState` trait on it, which
 // requires callbacks for creating the game state, updating it each
@@ -396,7 +433,7 @@ impl MainState {
             GameError::ConfigError(msg)
         })?;
 
-        let ui_layout = UILayout::new(ctx, &config, font.clone())?;
+        let mut ui_layout = UILayout::new(ctx, &config, font.clone())?;
 
         // Update universe draw parameters for intro
         let intro_uni_draw_params = UniDrawParams {
@@ -405,6 +442,22 @@ impl MainState {
             player_id: -1,
             draw_counter: true,
         };
+
+        // Add textfield handler
+        let net_worker = Arc::new(Mutex::new(None));
+        let chatbox_pub_handle = {
+            let chatbox_id = ui_layout.chatbox_id.clone();
+            let w = ui_layout.get_screen_layering(Screen::Run).unwrap().get_widget_mut(&chatbox_id).unwrap();
+            let chatbox = w.downcast_ref::<Chatbox>().unwrap(); // unwrap OK because we know this ID is for a Chatbox
+            chatbox.new_handle()
+        };
+        let text_entered_handler = get_text_entered_handler(chatbox_pub_handle, net_worker.clone());
+        {
+            let textfield_id = ui_layout.chatbox_tf_id.clone();
+            let w = ui_layout.get_screen_layering(Screen::Run).unwrap().get_widget_mut(&textfield_id).unwrap();
+            let tf = w.downcast_mut::<TextField>().unwrap();
+            tf.on(EventType::TextEntered, text_entered_handler).unwrap(); // unwrap OK because not in handler
+        }
 
         let mut s = MainState {
             screen_stack:        vec![Screen::Intro],
@@ -421,7 +474,7 @@ impl MainState {
             viewport:            viewport,
             intro_viewport:      intro_viewport,
             inputs:              input::InputManager::new(),
-            net_worker:          None,
+            net_worker,
             recvd_first_resize:  false,
             single_step:         false,
             arrow_input:         (0, 0),
@@ -1251,13 +1304,14 @@ impl MainState {
                         if !escape_key_pressed {
                             match id {
                                 menu::MenuItemIdentifier::Connect => {
-                                    if self.net_worker.is_some() {
+                                    let mut net_worker_guard = self.net_worker.lock().unwrap();
+                                    if net_worker_guard.is_some() {
                                         info!("already connected! Reconnecting...");
                                     }
                                     let mut net_worker = network::ConwaysteNetWorker::new();
                                     net_worker.connect(self.config.get().user.name.clone());
                                     info!("Connecting...");
-                                    self.net_worker = Some(net_worker);
+                                    *net_worker_guard = Some(net_worker);
 
                                 }
                                 menu::MenuItemIdentifier::StartGame => {
@@ -1359,13 +1413,14 @@ impl MainState {
 
     // update
     fn receive_net_updates(&mut self) -> GameResult<()> {
-        if self.net_worker.is_none() {
+        let mut net_worker_guard = self.net_worker.lock().unwrap();
+        if net_worker_guard.is_none() {
             return Ok(());
         }
 
         let mut incoming_messages = vec![];
 
-        let net_worker = self.net_worker.as_mut().unwrap();
+        let net_worker = net_worker_guard.as_mut().unwrap();
         for e in net_worker.try_receive().into_iter() {
             match e {
                 NetwaysteEvent::LoggedIn(server_version) => {
@@ -1415,7 +1470,7 @@ impl MainState {
         for msg in incoming_messages {
             match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
                 Ok(cb) => cb.add_message(msg),
-                Err(e) => error!("Could not add mesasge to Chatbox on network message receive: {:?}", e)
+                Err(e) => error!("Could not add message to Chatbox on network message receive: {:?}", e) //XXX
             }
         }
 
@@ -1457,34 +1512,6 @@ impl MainState {
                 error!("Failed to flush config on exit: {:?}", e);
             });
         }
-    }
-
-    fn handle_user_chat_complete(&mut self, _ctx: &mut Context) -> Result<(), Box<dyn Error>> {
-        let username = self.config.get().user.name.clone();
-        let mut msg = String::new();
-        let id = self.ui_layout.chatbox_tf_id.clone();
-
-        // Get input text and clear it in the widget.
-        let tf = TextField::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id).map_err(|e| -> Box<dyn Error> {
-            format!("Could not access chatbox's text entry field on user input complete: {:?}", e).into()
-        })?;
-        if let Some(m) = tf.text() {
-            msg = format!("{}: {}", username, m);
-        }
-        tf.clear();
-
-        if !msg.is_empty() {
-            let id = self.ui_layout.chatbox_id.clone();
-            let cb = Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id).map_err(|e| -> Box<dyn Error> {
-                format!("Could not add message to chatbox on user input complete: {:?}", e).into()
-            })?;
-            cb.add_message(msg.clone());
-
-            if let Some(ref mut netwayste) = self.net_worker {
-                netwayste.try_send(NetwaysteEvent::ChatMessage(msg));
-            }
-        }
-        Ok(())
     }
 
     fn get_current_screen(&self) -> Screen {
