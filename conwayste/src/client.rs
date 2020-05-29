@@ -623,9 +623,6 @@ impl EventHandler for MainState {
                     self.update_main_menu_selection(ctx)?;
                 }
 
-                // TODO Disable FPS limit until we decide if we need it
-                // while timer::check_update_time(ctx, FPS) {
-
                 if screen == Screen::Run && game_area_has_keyboard_focus && !game_area_should_ignore_input {
                     let result = self.process_running_inputs(ctx);
                     handle_error!(result,
@@ -637,68 +634,6 @@ impl EventHandler for MainState {
                         }
                     ).unwrap(); // OK to call unwrap here because there is an else match arm (all errors handled)
 
-                    // TODO: move this into process_running_inputs
-                    if self.inputs.mouse_info.mousebutton == MouseButton::Left {
-                        let mouse_pos = self.inputs.mouse_info.position;
-
-                        if let Some((ref grid, width, height)) = self.insert_mode {
-                            // inserting a pattern
-                            if self.inputs.mouse_info.action == Some(MouseAction::Click) {
-                                if let Some(cell) = self.viewport.get_cell(mouse_pos) {
-                                    let insert_col = cell.col as isize - (width/2) as isize;
-                                    let insert_row = cell.row as isize - (height/2) as isize;
-                                    let dst_region = Region::new(insert_col, insert_row, width, height);
-                                    self.uni.copy_from_bit_grid(grid, dst_region, Some(CURRENT_PLAYER_ID));
-                                }
-                            }
-                        } else {
-                            // not inserting a pattern, just drawing single cells
-                            match self.inputs.mouse_info.action {
-                                Some(MouseAction::Click) => {
-                                    // release
-                                    self.drag_draw = None;
-                                }
-                                Some(MouseAction::Drag) => {
-                                    // hold + motion
-                                    if let Some(cell) = self.viewport.get_cell(mouse_pos) {
-                                        // Only make dead cells alive
-                                        if let Some(cell_state) = self.drag_draw {
-                                            self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
-                                        }
-                                    }
-                                }
-                                Some(MouseAction::Held) => {
-                                    // depress, no move yet
-                                    if let Some(cell) = self.viewport.get_cell(mouse_pos) {
-                                        if self.drag_draw.is_none() {
-                                            self.drag_draw = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
-                                        }
-                                    }
-                                }
-                                Some(MouseAction::DoubleClick) | None => {} // do nothing
-                            }
-                        }
-                    } else if is_shift && self.arrow_input != (0, 0) {
-                        if let Some((ref mut grid, ref mut width, ref mut height)) = self.insert_mode {
-                            let rotation = match self.arrow_input {
-                                (-1, 0) => Some(Rotation::CCW),
-                                ( 1, 0) => Some(Rotation::CW),
-                                (0, 0) => unreachable!(),
-                                _ => None,   // do nothing in this case
-                            };
-                            if let Some(rotation) = rotation {
-                                grid.rotate(*width, *height, rotation).unwrap_or_else(|e| {
-                                    error!("Failed to rotate pattern {:?}: {:?}", rotation, e);
-                                });
-                                // reverse the stored width and height
-                                let (new_width, new_height) = (*height, *width);
-                                *width = new_width;
-                                *height = new_height;
-                            } else {
-                                info!("Ignoring Shift-<Up/Down>");
-                            }
-                        }
-                    }
                 }
 
 
@@ -1147,88 +1082,146 @@ impl MainState {
     /// called from update() when we are in the Run screen, and the focus is not captured by, for
     /// example, a text dialog.
     fn process_running_inputs(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
-        let keycode;
+        let keymods = self.inputs.key_info.modifier;
+        let is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
 
-        if let Some(k) = self.inputs.key_info.key {
-            keycode = k;
-        } else {
-            return Ok(());
-        }
-
-        match keycode {
-            KeyCode::Key1 => {
-                // pressing 1 clears selection
-                self.insert_mode = None;
-            }
-            k if k >= KeyCode::Key2 && k <= KeyCode::Key0 => {
-                // select a pattern
-                let grid_info_result = self.bit_pattern_from_char(keycode);
-                let grid_info = handle_error!{grid_info_result -> (BitGrid, usize, usize),
-                    ConwayError => |e| {
-                        return Err(format!("Invalid pattern bound to keycode {:?}: {}", keycode, e).into())
-                    }
-                }?;
-                self.insert_mode = Some(grid_info);
-                return Ok(());
-            }
-            KeyCode::Return => {
-                let chatbox_pane_id = self.ui_layout.chatbox_pane_id.clone();
-                match Pane::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &chatbox_pane_id) {
-                    Ok(chatbox_pane) => {
-                        if let Some(layer) = self.ui_layout.get_screen_layering(Screen::Run) {
-                            layer.enter_focus(ctx, &mut self.config, &chatbox_pane_id)?;
+        if let Some(keycode) = self.inputs.key_info.key {
+            match keycode {
+                KeyCode::Key1 => {
+                    // pressing 1 clears selection
+                    self.insert_mode = None;
+                }
+                k if k >= KeyCode::Key2 && k <= KeyCode::Key0 => {
+                    // select a pattern
+                    let grid_info_result = self.bit_pattern_from_char(keycode);
+                    let grid_info = handle_error!{grid_info_result -> (BitGrid, usize, usize),
+                        ConwayError => |e| {
+                            return Err(format!("Invalid pattern bound to keycode {:?}: {}", keycode, e).into())
+                        }
+                    }?;
+                    self.insert_mode = Some(grid_info);
+                }
+                KeyCode::Return => {
+                    let chatbox_pane_id = self.ui_layout.chatbox_pane_id.clone();
+                    match Pane::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &chatbox_pane_id) {
+                        Ok(chatbox_pane) => {
+                            if let Some(layer) = self.ui_layout.get_screen_layering(Screen::Run) {
+                                layer.enter_focus(ctx, &mut self.config, &chatbox_pane_id)?;
+                            }
+                        }
+                        Err(e) => {
+                            error!("Could not get Chatbox's textfield while processing key inputs: {:?}", e);
                         }
                     }
-                    Err(e) => {
-                        error!("Could not get Chatbox's textfield while processing key inputs: {:?}", e);
+                }
+                KeyCode::R => {
+                    if !self.inputs.key_info.repeating {
+                        self.running = !self.running;
                     }
                 }
-            }
-            KeyCode::R => {
-                if !self.inputs.key_info.repeating {
-                    self.running = !self.running;
+                KeyCode::Space => {
+                    self.single_step = true;
+                }
+                KeyCode::Up => {
+                    self.arrow_input = (0, -1);
+                }
+                KeyCode::Down => {
+                    self.arrow_input = (0, 1);
+                }
+                KeyCode::Left => {
+                    self.arrow_input = (-1, 0);
+                }
+                KeyCode::Right => {
+                    self.arrow_input = (1, 0);
+                }
+                KeyCode::Add | KeyCode::Equals => {
+                    self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
+                    let cell_size = self.viewport.get_cell_size();
+                    self.config.modify(|settings| {
+                        settings.gameplay.zoom = cell_size;
+                    });
+                }
+                KeyCode::Minus | KeyCode::Subtract => {
+                    self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
+                    let cell_size = self.viewport.get_cell_size();
+                    self.config.modify(|settings| {
+                        settings.gameplay.zoom = cell_size;
+                    });
+                }
+                KeyCode::D => {
+                    // TODO: do something with this debug code
+                    let visibility = None;  // can also do Some(player_id)
+                    let pat = self.uni.to_pattern(visibility);
+                    println!("PATTERN DUMP:\n{}", pat.0);
+                }
+                KeyCode::Escape => {
+                    self.toggle_paused_game = true;
+                }
+                _ => {
+                    println!("Unrecognized keycode {:?}", keycode);
                 }
             }
-            KeyCode::Space => {
-                self.single_step = true;
+        }
+
+        if self.inputs.mouse_info.mousebutton == MouseButton::Left {
+            let mouse_pos = self.inputs.mouse_info.position;
+
+            if let Some((ref grid, width, height)) = self.insert_mode {
+                // inserting a pattern
+                if self.inputs.mouse_info.action == Some(MouseAction::Click) {
+                    if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                        let insert_col = cell.col as isize - (width/2) as isize;
+                        let insert_row = cell.row as isize - (height/2) as isize;
+                        let dst_region = Region::new(insert_col, insert_row, width, height);
+                        self.uni.copy_from_bit_grid(grid, dst_region, Some(CURRENT_PLAYER_ID));
+                    }
+                }
+            } else {
+                // not inserting a pattern, just drawing single cells
+                match self.inputs.mouse_info.action {
+                    Some(MouseAction::Click) => {
+                        // release
+                        self.drag_draw = None;
+                    }
+                    Some(MouseAction::Drag) => {
+                        // hold + motion
+                        if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                            // Only make dead cells alive
+                            if let Some(cell_state) = self.drag_draw {
+                                self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
+                            }
+                        }
+                    }
+                    Some(MouseAction::Held) => {
+                        // depress, no move yet
+                        if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                            if self.drag_draw.is_none() {
+                                self.drag_draw = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
+                            }
+                        }
+                    }
+                    Some(MouseAction::DoubleClick) | None => {} // do nothing
+                }
             }
-            KeyCode::Up => {
-                self.arrow_input = (0, -1);
-            }
-            KeyCode::Down => {
-                self.arrow_input = (0, 1);
-            }
-            KeyCode::Left => {
-                self.arrow_input = (-1, 0);
-            }
-            KeyCode::Right => {
-                self.arrow_input = (1, 0);
-            }
-            KeyCode::Add | KeyCode::Equals => {
-                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
-                let cell_size = self.viewport.get_cell_size();
-                self.config.modify(|settings| {
-                    settings.gameplay.zoom = cell_size;
-                });
-            }
-            KeyCode::Minus | KeyCode::Subtract => {
-                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
-                let cell_size = self.viewport.get_cell_size();
-                self.config.modify(|settings| {
-                    settings.gameplay.zoom = cell_size;
-                });
-            }
-            KeyCode::D => {
-                // TODO: do something with this debug code
-                let visibility = None;  // can also do Some(player_id)
-                let pat = self.uni.to_pattern(visibility);
-                println!("PATTERN DUMP:\n{}", pat.0);
-            }
-            KeyCode::Escape => {
-                self.toggle_paused_game = true;
-            }
-            _ => {
-                println!("Unrecognized keycode {:?}", keycode);
+        } else if is_shift && self.arrow_input != (0, 0) {
+            if let Some((ref mut grid, ref mut width, ref mut height)) = self.insert_mode {
+                let rotation = match self.arrow_input {
+                    (-1, 0) => Some(Rotation::CCW),
+                    ( 1, 0) => Some(Rotation::CW),
+                    (0, 0) => unreachable!(),
+                    _ => None,   // do nothing in this case
+                };
+                if let Some(rotation) = rotation {
+                    grid.rotate(*width, *height, rotation).unwrap_or_else(|e| {
+                        error!("Failed to rotate pattern {:?}: {:?}", rotation, e);
+                    });
+                    // reverse the stored width and height
+                    let (new_width, new_height) = (*height, *width);
+                    *width = new_width;
+                    *height = new_height;
+                } else {
+                    info!("Ignoring Shift-<Up/Down>");
+                }
             }
         }
         Ok(())
