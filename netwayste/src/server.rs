@@ -180,9 +180,10 @@ pub struct ServerState {
 //////////////// Utilities ///////////////////////
 
 pub fn new_cookie() -> String {
-    let mut buf = [0u8; 16];
+    let mut buf = [0u8; 12];
     rand::thread_rng().fill_bytes(&mut buf);
-    base64::encode(&buf)
+    let config = base64::Config::new(base64::CharacterSet::UrlSafe, false);
+    base64::encode_config(&buf, config)
 }
 
 /*
@@ -1127,14 +1128,16 @@ impl ServerState {
     }
 
     pub fn new() -> Self {
-        ServerState {
+        let mut server_state = ServerState {
             tick:       0,
             players:    HashMap::<PlayerID, Player>::new(),
             rooms:      HashMap::<RoomID, Room>::new(),
             player_map: HashMap::<String, PlayerID>::new(),
             room_map:   HashMap::<String, RoomID>::new(),
             network_map: HashMap::<PlayerID, NetworkManager>::new(),
-        }
+        };
+        server_state.new_room("general".to_owned());
+        server_state
     }
 }
 
