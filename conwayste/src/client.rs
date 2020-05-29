@@ -577,7 +577,7 @@ impl EventHandler for MainState {
                             shift_pressed: is_shift,
                             text: None,
                         };
-                        layer.emit(&click_event, ctx, &mut self.config).unwrap_or_else(|e| {
+                        layer.emit(&click_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
                             error!("Error from layer.emit on left click: {:?}", e);
                         });
                     }
@@ -593,7 +593,7 @@ impl EventHandler for MainState {
                                 shift_pressed: is_shift,
                                 text: None,
                             };
-                            layer.emit(&key_event, ctx, &mut self.config).unwrap_or_else(|e| {
+                            layer.emit(&key_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
                                 error!("Error from layer.emit on key press: {:?}", e);
                             });
                             game_area_should_ignore_input = true;
@@ -612,7 +612,7 @@ impl EventHandler for MainState {
                             shift_pressed: is_shift,
                             text: None,
                         };
-                        layer.emit(&key_event, ctx, &mut self.config).unwrap_or_else(|e| {
+                        layer.emit(&key_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
                             error!("Error from layer.emit on key press (text input): {:?}", e);
                         });
                     }
@@ -1061,7 +1061,7 @@ impl MainState {
                     // TODO: make the Start Game button do this as well
                     let id = self.ui_layout.game_area_id.clone();
                     if let Some(layering) = self.ui_layout.get_screen_layering(Screen::Run) {
-                        layering.enter_focus(ggez_ctx, &mut self.config, &id).unwrap(); //XXX unwrap OK?
+                        layering.enter_focus(ggez_ctx, &mut self.config, &mut self.screen_stack, &id).unwrap(); //XXX unwrap OK?
                     }
 
                     self.running = true;
@@ -1106,7 +1106,7 @@ impl MainState {
                     match Pane::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &chatbox_pane_id) {
                         Ok(chatbox_pane) => {
                             if let Some(layer) = self.ui_layout.get_screen_layering(Screen::Run) {
-                                layer.enter_focus(ctx, &mut self.config, &chatbox_pane_id)?;
+                                layer.enter_focus(ctx, &mut self.config, &mut self.screen_stack, &chatbox_pane_id)?;
                             }
                         }
                         Err(e) => {
@@ -1423,7 +1423,7 @@ impl MainState {
                     self.screen_stack.push(Screen::ServerList); // XXX
                     // do other stuff
                     net_worker.try_send(NetwaysteEvent::List);
-                    net_worker.try_send(NetwaysteEvent::JoinRoom("room".to_owned()));
+                    net_worker.try_send(NetwaysteEvent::JoinRoom("general".to_owned()));
                 }
                 NetwaysteEvent::JoinedRoom(room_name) => {
                     println!("Joined Room: {}", room_name);

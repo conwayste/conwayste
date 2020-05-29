@@ -32,11 +32,13 @@ use id_tree::NodeId;
 use super::treeview::TreeView;
 use super::BoxedWidget;
 use crate::config;
+use crate::Screen;
 
 pub struct UIContext<'a> {
     pub ggez_context: &'a mut ggez::Context,
     pub config: &'a mut config::Config,
     pub widget_view: TreeView<'a, BoxedWidget>,
+    pub screen_stack: &'a mut Vec<Screen>,
     child_events: Vec<Event>,
 }
 
@@ -45,12 +47,14 @@ impl<'a> UIContext<'a> {
         ggez_context: &'a mut ggez::Context,
         config: &'a mut config::Config,
         view: TreeView<'a, BoxedWidget>,
+        screen_stack: &'a mut Vec<Screen>,
     ) -> Self {
         UIContext {
             ggez_context,
             config,
             widget_view: view,
             child_events: vec![],
+            screen_stack,
         }
     }
 
@@ -78,6 +82,7 @@ impl<'a> UIContext<'a> {
                 ggez_context: self.ggez_context,
                 config: self.config,
                 widget_view: subtree,
+                screen_stack: self.screen_stack,
                 child_events: vec![],
             },
         ))

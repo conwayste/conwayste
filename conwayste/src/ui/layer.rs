@@ -51,6 +51,7 @@ use super::{
 
 use crate::constants::{colors::*, LAYERING_NODE_CAPACITY, LAYERING_SWAP_CAPACITY};
 use crate::config;
+use crate::Screen; // for screen stack
 
 /// Dummy Widget to serve as a root node in the tree. Serves no other purpose.
 #[derive(Debug)]
@@ -378,6 +379,7 @@ impl Layering {
         &mut self,
         ggez_context: &mut ggez::Context,
         cfg: &mut config::Config,
+        screen_stack: &mut Vec<Screen>,
         id: &NodeId,
     ) -> UIResult<()> {
         let focus_cycle = &mut self.focus_cycles[self.highest_z_order];
@@ -403,7 +405,7 @@ impl Layering {
         let dyn_widget = node.data_mut();
         dyn_widget.enter_focus();
 
-        let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view);
+        let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view, screen_stack);
 
         let mut needs_gain_focus = true;
         if let Some(old_focused_widget) = old_focused_widget {
@@ -501,9 +503,10 @@ impl Layering {
         event: &context::Event,
         ggez_context: &mut ggez::Context,
         cfg: &mut config::Config,
+        screen_stack: &mut Vec<Screen>,
     ) -> Result<(), Box<dyn Error>> {
         let widget_view = treeview::TreeView::new(&mut self.widget_tree);
-        let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view);
+        let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view, screen_stack);
         if event.is_mouse_event() {
             Layering::emit_mouse_event(event, &mut uictx)
         } else if event.is_key_event() {
