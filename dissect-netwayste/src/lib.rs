@@ -520,7 +520,6 @@ extern "C" fn dissect_conwayste(
 extern "C" fn proto_register_conwayste() {
     println!("called proto_register_conwayste()");
 
-    // PR_GATE: See if it makes sense to combine these two routines into one
     hf::register_header_fields(&*hf_fields);
     hf::build_header_field_array(&*hf_fields, &*hf_info);
 
