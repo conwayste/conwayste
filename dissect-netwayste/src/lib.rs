@@ -329,8 +329,9 @@ impl ConwaysteTree {
                             }
 
                             // Bytes we peek at tell us how many items are in the list.
-                            // The cast shouldn't truncate due to quantities we're dealing with.
-                            item_count = data as i32; // PR_GATE check cast sign safeness
+                            // The u64-to-i32 cast should be safe due to the positive, but limited,
+                            // number of quantities being dealt with.
+                            item_count = data as i32;
 
                             // We may be dealing with a String so set up the encoding and
                             // length. If we are are dealing with something else we'll catch
