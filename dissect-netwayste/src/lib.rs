@@ -66,8 +66,8 @@ mod ws {
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
 
-// TODO get this from somewhere else. Not sure if self definition is the best route?
-const UDP_MTU_SIZE: usize = 1460;
+/// Ethernet MTU size is 1500 bytes. Subtract 20 bytes for IP header and 20 for TCP header.
+const ETH_MTU_PAYLOAD_LIMIT: usize = 1460;
 
 #[no_mangle]
 pub static plugin_version: StaticCString = StaticCString(b"0.0.3\0" as *const u8);
@@ -445,8 +445,10 @@ impl ConwaysteTree {
 fn get_cwte_packet(tvb: *mut ws::tvbuff_t) -> Result<NetwaystePacket, std::io::Error> {
     let tvblen = tvb_reported_length(tvb) as usize;
 
-    if tvblen > UDP_MTU_SIZE {
+    if tvblen > ETH_MTU_PAYLOAD_LIMIT {
         println!("Packet exceeds UDP MTU size!");
+    } else {
+        println!("tvblen: {}", tvblen);
     }
 
     let mut packet_vec = Vec::<u8>::with_capacity(tvblen);
