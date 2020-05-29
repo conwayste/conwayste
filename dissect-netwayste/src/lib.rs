@@ -327,6 +327,7 @@ impl ConwaysteTree {
 
                             // List turned out to be empty. Skip it and continue to next field descriptor
                             if data == 0 {
+                                *bytes_examined += len as i32;
                                 return;
                             }
 
