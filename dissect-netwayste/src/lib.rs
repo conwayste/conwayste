@@ -139,12 +139,12 @@ lazy_static! {
         _enum_strings
     };
 
+    // For lists displayed in a subtree, items in the list will be contained under an integer heading
     static ref indexes_as_strings: Vec<CString> = {
         let mut _vec = vec![];
-        // PR_GATE decide on a good max based on expected list size.
-        const MAX_NUMBER_OF_ITEMS: i32 = 100;
+        const MAX_LIST_LENGTH: i32 = 200;
 
-        for i in 0..MAX_NUMBER_OF_ITEMS {
+        for i in 0..MAX_LIST_LENGTH {
             _vec.push(CString::new(format!("{}", i)).unwrap());
         }
         _vec
