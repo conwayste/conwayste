@@ -222,7 +222,6 @@ impl ConwaysteTree {
     fn decode(&self, tvb: *mut ws::tvbuff_t) {
         let mut bytes_examined: i32 = 0;
 
-        println!("NEW DECODING STARTED");
         self.decode_nw_data_format(
             self.tree,
             tvb,
@@ -304,10 +303,8 @@ impl ConwaysteTree {
         let mut item_count: i32 = 1;
 
         for s in &fd.format {
-            println!("\t..Format: {:?}", s);
             match s {
                 Sizing::Fixed(bytes) => {
-                    println!("\t....Fixed");
                     field_length = item_count * (*bytes as i32);
                     encoding = WSEncoding::LittleEndian;
                 }
@@ -425,12 +422,6 @@ impl ConwaysteTree {
         }
 
         if add_field {
-            println!(
-                "Added from {} to {}, Enc {:?}",
-                bytes_examined,
-                *bytes_examined + field_length,
-                encoding
-            );
             unsafe {
                 // Attach stuff under "Conwayste Protocol" tree
                 ws::proto_tree_add_item(

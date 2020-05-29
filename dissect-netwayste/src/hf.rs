@@ -48,9 +48,9 @@ impl HFFieldAllocator {
             hf_fields: Vec::new(),  // 4-byte word list where values are managed by Wireshark
             allocated: HashMap::new(), // Maps a field name (ex: cookie) to its index into hf_fields
 
-            options_map: HashMap::new(), // Maps a field name, which is of Option<T> type, to an "_opt"
-                                         // appended version used only when the value is None.
-                                         // If the value is Some, then the normal field name is used.
+            options_map: HashMap::new(), // Maps a field name, which is of Option<T> type, to an
+                                         // appended version (".option") for when value is None.
+                                         // If the value is Some, then the non-appended name is used.
         }
     }
 
