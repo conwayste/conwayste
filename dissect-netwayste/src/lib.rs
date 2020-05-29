@@ -151,7 +151,7 @@ lazy_static! {
     };
 
     // setup protocol subtree array
-    static ref ett_conwayste_name: String = String::from("ConwaysteTree");
+    static ref ett_conwayste_name: CString = CString::new("ConwaysteTree").unwrap();
     static ref ett_info: Mutex<EttInfo> = Mutex::new(EttInfo::new());
 
     // setup protocol field array
@@ -211,6 +211,7 @@ impl ConwaysteTree {
                 tvb_data_length,
                 no_encoding,
             );
+
             let tree =
                 ws::proto_item_add_subtree(ti, ett_get_address(&*ett_info, &*ett_conwayste_name));
             ConwaysteTree { tree }
@@ -530,8 +531,7 @@ extern "C" fn proto_register_conwayste() {
 
     ett_register(&*ett_info, &*ett_conwayste_name);
     for structure in netwayste_data.keys() {
-        let structure_string = structure.clone().into_string().unwrap();
-        ett_register(&*ett_info, &structure_string);
+        ett_register(&*ett_info, &structure);
     }
 
     ett_set_all_item_addresses(&*ett_info);

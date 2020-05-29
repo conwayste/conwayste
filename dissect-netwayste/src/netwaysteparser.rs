@@ -46,7 +46,7 @@ pub enum Sizing {
     /// Field size is determined by data buffer content to drive how many "things" there are
     Variable(VariableContainer),
     /// Field size is complex. Refer to the data type (enum, struct, etc.)
-    DataType(String),
+    DataType(CString),
 }
 
 #[derive(Debug, Clone)]
@@ -132,7 +132,7 @@ fn parse_size_from_type(type_arg: String) -> Vec<Sizing> {
                 "u8" | "i8" | "bool" => Sizing::Fixed(1),
                 "usize" => Sizing::Fixed(std::mem::size_of::<usize>()),
                 "isize" => Sizing::Fixed(std::mem::size_of::<isize>()),
-                name @ _ => Sizing::DataType(name.to_string()),
+                name @ _ => Sizing::DataType(CString::new(name.to_string()).unwrap()),
             });
         }
     }
@@ -486,7 +486,7 @@ mod test {
         let string = "Vec<CustomDataType>".to_owned();
         let expected_sizing = vec![
             Sizing::Variable(VariableContainer::Vector),
-            Sizing::DataType("CustomDataType".to_owned()),
+            Sizing::DataType(CString::new("CustomDataType".to_owned()).unwrap()),
         ];
 
         let parsed_sizing = parse_size_from_type(string);
@@ -504,7 +504,7 @@ mod test {
             Sizing::Variable(VariableContainer::Optional),
             Sizing::Variable(VariableContainer::Vector),
             Sizing::Variable(VariableContainer::Optional),
-            Sizing::DataType("CustomDataType".to_owned()),
+            Sizing::DataType(CString::new("CustomDataType".to_owned()).unwrap()),
         ];
 
         let parsed_sizing = parse_size_from_type(string);

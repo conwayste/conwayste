@@ -18,6 +18,7 @@
  */
 
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::mem;
 use std::os::raw::c_int;
 use std::sync::Mutex;
@@ -32,7 +33,7 @@ use std::sync::Mutex;
 pub struct EttInfo {
     ett_items: Vec<c_int>,      // 4-byte word list where values are managed by Wireshark
     pub addresses: Vec<usize>,  // Parallel vector to ett_items containing the address of each element
-    map: HashMap<String, usize>,    // Maps a field name (ex: "cookie") to its index into `ett_items`
+    map: HashMap<CString, usize>,    // Maps a field name (ex: "cookie") to its index into `ett_items`
 }
 
 impl EttInfo {
@@ -49,7 +50,7 @@ impl EttInfo {
     /// # Panics
     /// Will panic if the provided String is not registered. This is intentional as a means to catch
     /// bugs.
-    fn get_ett_addr(&mut self, name: &String) -> c_int {
+    fn get_ett_addr(&mut self, name: &CString) -> c_int {
         if let Some(index) = self.map.get(name) {
             assert!(*index < self.ett_items.len());
             // Unwrap safe b/c of assert
@@ -61,7 +62,7 @@ impl EttInfo {
 
     /// Registers a spot in the `ett_items` list for tree/sub-tree usage by the dissector. It links
     /// the provided string to the index of the spot that was registere.
-    fn register_ett(&mut self, name: &String) {
+    fn register_ett(&mut self, name: &CString) {
         if !self.map.contains_key(name) {
             // Wireshark will overwrite this later.
             self.ett_items.push(-1);
@@ -87,7 +88,7 @@ impl EttInfo {
     }
 }
 
-pub fn ett_register(ett_info: &Mutex<EttInfo>, name: &String) {
+pub fn ett_register(ett_info: &Mutex<EttInfo>, name: &CString) {
     ett_info.lock().unwrap().register_ett(name);
 }
 
@@ -99,7 +100,7 @@ pub fn ett_get_addresses(ett_info: &Mutex<EttInfo>) -> *const usize {
     ett_info.lock().unwrap().addresses.as_ptr() as *const usize
 }
 
-pub fn ett_get_address(ett_info: &Mutex<EttInfo>, name: &String) -> c_int {
+pub fn ett_get_address(ett_info: &Mutex<EttInfo>, name: &CString) -> c_int {
     ett_info.lock().unwrap().get_ett_addr(name)
 }
 
@@ -123,8 +124,9 @@ mod test {
     #[test]
     fn test_ettinfo_register_ett() {
         let mut ettinfo = EttInfo::new();
+        let ett_cstring = CString::new("RequestAction".to_owned()).unwrap();
 
-        ettinfo.register_ett(&"RequestAction".to_owned());
+        ettinfo.register_ett(&ett_cstring);
 
         assert_eq!(ettinfo.ett_items.len(), 1);
         assert_eq!(ettinfo.map.len(), 1);
@@ -134,9 +136,10 @@ mod test {
     #[test]
     fn test_ettinfo_register_ett_duplicate_not_created() {
         let mut ettinfo = EttInfo::new();
+        let ett_cstring = CString::new("RequestAction".to_owned()).unwrap();
 
-        ettinfo.register_ett(&"RequestAction".to_owned());
-        ettinfo.register_ett(&"RequestAction".to_owned());
+        ettinfo.register_ett(&ett_cstring);
+        ettinfo.register_ett(&ett_cstring);
 
         assert_eq!(ettinfo.ett_items.len(), 1);
         assert_eq!(ettinfo.map.len(), 1);
@@ -146,30 +149,30 @@ mod test {
     #[test]
     fn test_ettinfo_get_address_before_set() {
         let mut ettinfo = EttInfo::new();
-        let ett_string = "RequestAction".to_owned();
+        let ett_cstring = CString::new("RequestAction".to_owned()).unwrap();
 
-        ettinfo.register_ett(&ett_string);
-        ettinfo.get_ett_addr(&ett_string);
+        ettinfo.register_ett(&ett_cstring);
+        ettinfo.get_ett_addr(&ett_cstring);
     }
 
     #[test]
     #[should_panic]
     fn test_ettinfo_get_address_ett_string_does_not_exist() {
         let mut ettinfo = EttInfo::new();
-        let ett_string = "RequestAction".to_owned();
+        let ett_cstring = CString::new("RequestAction".to_owned()).unwrap();
 
-        ettinfo.get_ett_addr(&ett_string);
+        ettinfo.get_ett_addr(&ett_cstring);
     }
 
     #[test]
     fn test_ettinfo_set_all_addresses() {
         let mut ettinfo = EttInfo::new();
-        let ett_string1 = "RequestAction".to_owned();
-        let ett_string2 = "ResponseAction".to_owned();
+        let ett_cstring1 = CString::new("RequestAction".to_owned()).unwrap();
+        let ett_cstring2 = CString::new("ResponseAction".to_owned()).unwrap();
 
         assert!(ettinfo.addresses.is_empty());
-        ettinfo.register_ett(&ett_string1);
-        ettinfo.register_ett(&ett_string2);
+        ettinfo.register_ett(&ett_cstring1);
+        ettinfo.register_ett(&ett_cstring2);
         ettinfo.set_all_item_addresses();
         assert_eq!(ettinfo.addresses.len(), 2);
     }
