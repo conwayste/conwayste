@@ -447,9 +447,8 @@ fn get_cwte_packet(tvb: *mut ws::tvbuff_t) -> Result<NetwaystePacket, std::io::E
     let tvblen = tvb_reported_length(tvb) as usize;
 
     if tvblen > ETH_MTU_PAYLOAD_LIMIT {
-        println!("Packet exceeds UDP MTU size!");
-    } else {
-        println!("tvblen: {}", tvblen);
+        println!("Packet exceeds UDP MTU payload limit! {} (exceeds {})",
+            tvblen, ETH_MTU_PAYLOAD_LIMIT);
     }
 
     let mut packet_vec = Vec::<u8>::with_capacity(tvblen);
