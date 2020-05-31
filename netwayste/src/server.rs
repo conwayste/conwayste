@@ -426,11 +426,14 @@ impl ServerState {
         ResponseCode::RoomList{rooms}
     }
 
-    pub fn new_room(&mut self, name: String) {
+    /// Creates a new room. Does _not_ check whether it already exists!
+    pub fn new_room(&mut self, name: String) -> RoomID {
         let room = Room::new(name.clone(), vec![]);
+        let id = room.room_id;
 
         self.room_map.insert(name, room.room_id);
         self.rooms.insert(room.room_id, room);
+        id
     }
 
     pub fn create_new_room(&mut self, opt_player_id: Option<PlayerID>, room_name: String) -> ResponseCode {
@@ -449,7 +452,7 @@ impl ServerState {
 
         // Create room if the room name is not already taken
         if !self.room_map.get(&room_name).is_some() {
-            self.new_room(room_name.clone());
+            self.new_room(room_name);
 
             return ResponseCode::OK;
         } else {
@@ -457,7 +460,7 @@ impl ServerState {
         }
     }
 
-    pub fn join_room(&mut self, player_id: PlayerID, room_name: String) -> ResponseCode {
+    pub fn join_room(&mut self, player_id: PlayerID, room_name: &str) -> ResponseCode {
         let already_playing = self.is_player_in_game(player_id);
         if already_playing {
             return ResponseCode::BadRequest{error_msg: "cannot join game because in-game".to_owned()};
@@ -473,10 +476,10 @@ impl ServerState {
                     room_id: gs.room_id.clone(),
                     chat_msg_seq_num: None
                 });
-                return ResponseCode::JoinedRoom{room_name};
+                return ResponseCode::JoinedRoom{room_name: room_name.to_owned()};
             }
         }
-        return ResponseCode::BadRequest{error_msg: format!("no room named {:?}", room_name)};
+        ResponseCode::BadRequest{error_msg: format!("no room named {:?}", room_name)}
     }
 
     pub fn leave_room(&mut self, player_id: PlayerID) -> ResponseCode {
@@ -501,7 +504,7 @@ impl ServerState {
         return ResponseCode::LeaveRoom;
     }
 
-    pub fn remove_player(&mut self, player_id: PlayerID, player_cookie: String) {
+    pub fn remove_player(&mut self, player_id: PlayerID, player_cookie: &str) {
         if self.is_player_in_game(player_id) {
             let player = self.get_player(player_id);
             let broadcast_msg = format!("Player {} has left.", player.name);
@@ -509,14 +512,14 @@ impl ServerState {
             room.broadcast(broadcast_msg);
             let _left = self.leave_room(player_id);     // Ignore return since we don't care
         }
-        self.player_map.remove(&player_cookie);
+        self.player_map.remove(player_cookie);
         self.players.remove(&player_id);
     }
 
     pub fn handle_disconnect(&mut self, player_id: PlayerID) -> ResponseCode {
         let player = self.get_player(player_id);
         let player_cookie = player.cookie.clone();
-        self.remove_player(player_id, player_cookie);
+        self.remove_player(player_id, &player_cookie);
 
         ResponseCode::OK
     }
@@ -543,7 +546,7 @@ impl ServerState {
                 return self.create_new_room(Some(player_id), room_name);
             }
             RequestAction::JoinRoom{room_name} => {
-                return self.join_room(player_id, room_name);
+                return self.join_room(player_id, &room_name);
             }
             RequestAction::LeaveRoom   => {
                 return self.leave_room(player_id);
@@ -958,7 +961,7 @@ impl ServerState {
 
     pub fn handle_new_connection(&mut self, name: String, addr: SocketAddr) -> Packet {
         if self.is_unique_player_name(&name) {
-            let player = self.add_new_player(name.clone(), addr.clone());
+            let player = self.add_new_player(name, addr.clone());
             let cookie = player.cookie.clone();
 
             // Sequence is assumed to start at 0 for all new connections
@@ -1127,6 +1130,8 @@ impl ServerState {
 
     }
 
+    /// Creates a new struct representing the global state of this server. Initially, there is one
+    /// room -- "general".
     pub fn new() -> Self {
         let mut server_state = ServerState {
             tick:       0,
@@ -1344,7 +1349,7 @@ mod netwayste_server_tests {
         };
         // make the player join the room
         {
-            server.join_room(player_id, String::from(room_name));
+            server.join_room(player_id, room_name);
         }
         let resp_code: ResponseCode = server.list_players(player_id);
         match resp_code {
@@ -1368,7 +1373,7 @@ mod netwayste_server_tests {
         };
         // make the player join the room
         {
-            server.join_room(player_id, String::from(room_name));
+            server.join_room(player_id, room_name);
         }
         let player = server.get_player(player_id);
         assert_eq!(player.has_chatted(), false);
@@ -1388,7 +1393,7 @@ mod netwayste_server_tests {
         };
         // make the player join the room
         {
-            server.join_room(player_id, String::from(room_name));
+            server.join_room(player_id, room_name);
         }
 
         // A chat-less player now has something to to say
@@ -1446,7 +1451,7 @@ mod netwayste_server_tests {
         // make the player join the room
         // Give it a single message
         {
-            server.join_room(player_id, String::from(room_name));
+            server.join_room(player_id, room_name);
             server.handle_chat_message(player_id, "ChatMessage".to_owned());
         }
 
@@ -1511,7 +1516,7 @@ mod netwayste_server_tests {
             p.player_id
         };
         {
-            server.join_room(player_id, String::from(room_name));
+            server.join_room(player_id, room_name);
         }
 
         // Picking a value slightly less than max of u64
@@ -1557,7 +1562,7 @@ mod netwayste_server_tests {
             p.player_id
         };
         {
-            server.join_room(player_id, String::from(room_name));
+            server.join_room(player_id, room_name);
         }
 
         {
@@ -1608,7 +1613,7 @@ mod netwayste_server_tests {
             p.player_id
         };
         {
-            server.join_room(player_id, String::from(room_name));
+            server.join_room(player_id, room_name);
         }
 
         {
@@ -1682,9 +1687,7 @@ mod netwayste_server_tests {
 
             p.player_id
         };
-        {
-            server.join_room(player_id, room_name.to_owned());
-        }
+        server.join_room(player_id, room_name);
 
         let response = server.handle_chat_message(player_id, "test msg".to_owned());
         assert_eq!(response, ResponseCode::OK);
@@ -1708,9 +1711,7 @@ mod netwayste_server_tests {
 
             p.player_id
         };
-        {
-            server.join_room(player_id, room_name.to_owned());
-        }
+        server.join_room(player_id, room_name);
 
         let response = server.handle_chat_message(player_id, "test msg first".to_owned());
         assert_eq!(response, ResponseCode::OK);
@@ -1771,9 +1772,7 @@ mod netwayste_server_tests {
 
             p.player_id
         };
-        {
-            server.join_room(player_id, room_name.to_owned());
-        }
+        server.join_room(player_id, &room_name);
 
         assert_eq!( server.create_new_room(Some(player_id), other_room_name), ResponseCode::BadRequest{error_msg: "cannot create room because in-game".to_owned()});
     }
@@ -1783,15 +1782,15 @@ mod netwayste_server_tests {
     {
 
         let mut server = ServerState::new();
-        let room_name = "some room".to_owned();
-        assert_eq!(server.create_new_room(None, room_name.clone()), ResponseCode::OK);
+        let room_name = "some room";
+        assert_eq!(server.create_new_room(None, room_name.to_owned()), ResponseCode::OK);
 
         let player_id = {
             let p: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
 
             p.player_id
         };
-        assert_eq!(server.join_room(player_id, room_name.to_owned()), ResponseCode::JoinedRoom{room_name: "some room".to_owned()});
+        assert_eq!(server.join_room(player_id, room_name), ResponseCode::JoinedRoom{room_name: "some room".to_owned()});
     }
 
     #[test]
@@ -1799,15 +1798,15 @@ mod netwayste_server_tests {
     {
 
         let mut server = ServerState::new();
-        let room_name = "some room".to_owned();
-        assert_eq!(server.create_new_room(None, room_name.clone()), ResponseCode::OK);
+        let room_name = "some room";
+        assert_eq!(server.create_new_room(None, room_name.to_owned()), ResponseCode::OK);
 
         let player_id = {
             let p: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
 
             p.player_id
         };
-        assert_eq!(server.join_room(player_id, room_name.clone()), ResponseCode::JoinedRoom{room_name: "some room".to_owned()});
+        assert_eq!(server.join_room(player_id, room_name), ResponseCode::JoinedRoom{room_name: "some room".to_owned()});
         assert_eq!( server.join_room(player_id, room_name), ResponseCode::BadRequest{error_msg: "cannot join game because in-game".to_owned()});
     }
 
@@ -1822,7 +1821,7 @@ mod netwayste_server_tests {
 
             p.player_id
         };
-        assert_eq!(server.join_room(player_id, "some room".to_owned()), ResponseCode::BadRequest{error_msg: "no room named \"some room\"".to_owned()});
+        assert_eq!(server.join_room(player_id, "some room"), ResponseCode::BadRequest{error_msg: "no room named \"some room\"".to_owned()});
     }
 
     #[test]
@@ -1838,9 +1837,7 @@ mod netwayste_server_tests {
 
             p.player_id
         };
-        {
-            server.join_room(player_id, room_name.to_owned());
-        }
+        server.join_room(player_id, room_name);
 
         assert_eq!( server.leave_room(player_id), ResponseCode::LeaveRoom );
 
@@ -1915,15 +1912,13 @@ mod netwayste_server_tests {
     fn expire_old_messages_in_all_rooms_one_room_good_case()
     {
         let mut server = ServerState::new();
-        let room_name = "some room";
 
-        server.create_new_room(None, room_name.to_owned().clone());
         let player_id: PlayerID = {
             let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
             player.player_id
         };
 
-        server.join_room(player_id, room_name.to_owned());
+        server.join_room(player_id, "general");
 
         server.handle_chat_message(player_id, "Conwayste is such a fun game".to_owned());
         server.handle_chat_message(player_id, "There are not loot boxes".to_owned());
@@ -1951,8 +1946,8 @@ mod netwayste_server_tests {
         let room_name = "some room";
         let room_name2 = "some room2";
 
-        server.create_new_room(None, room_name.to_owned().clone());
-        server.create_new_room(None, room_name2.to_owned().clone());
+        let room_id = server.new_room(room_name.to_owned());
+        let room_id2 = server.new_room(room_name2.to_owned());
         let player_id: PlayerID = {
             let player: &mut Player = server.add_new_player("some player".to_owned(), fake_socket_addr());
             player.player_id
@@ -1962,8 +1957,8 @@ mod netwayste_server_tests {
             player.player_id
         };
 
-        server.join_room(player_id, room_name.to_owned());
-        server.join_room(player_id2, room_name2.to_owned());
+        server.join_room(player_id, room_name);
+        server.join_room(player_id2, room_name2);
 
         server.handle_chat_message(player_id, "Conwayste is such a fun game".to_owned());
         server.handle_chat_message(player_id, "There are not loot boxes".to_owned());
@@ -1984,9 +1979,8 @@ mod netwayste_server_tests {
         // Messages are not old enough to be expired
         server.expire_old_messages_in_all_rooms(time::Instant::now());
 
-        for room in server.rooms.values() {
-            assert_eq!(room.messages.len(), 2);
-        }
+        assert_eq!(server.rooms[&room_id].messages.len(), 2);
+        assert_eq!(server.rooms[&room_id2].messages.len(), 2);
     }
 
     #[test]
@@ -2001,7 +1995,7 @@ mod netwayste_server_tests {
             player.player_id
         };
 
-        server.join_room(player_id, room_name.to_owned());
+        server.join_room(player_id, room_name);
 
         server.handle_chat_message(player_id, "Conwayste is such a fun game".to_owned());
         server.handle_chat_message(player_id, "There are not loot boxes".to_owned());
@@ -2049,8 +2043,8 @@ mod netwayste_server_tests {
             player.player_id
         };
 
-        server.join_room(player_id, room_name.to_owned());
-        server.join_room(player_id2, room_name.to_owned());
+        server.join_room(player_id, room_name);
+        server.join_room(player_id2, room_name);
 
         server.handle_chat_message(player_id, "Conwayste is such a fun game".to_owned());
         server.handle_chat_message(player_id, "There are not loot boxes".to_owned());
@@ -2209,7 +2203,11 @@ mod netwayste_server_tests {
         let pkt: Packet = server.prepare_response(player_id, RequestAction::ListRooms).unwrap();
         match pkt {
             Packet::Response{code, sequence, request_ack} => {
-                assert_eq!(code, ResponseCode::RoomList{rooms: vec![]});
+                if let ResponseCode::RoomList{rooms} = code {
+                    assert_eq!(rooms.len(), 1); // 1 room - general
+                } else {
+                    panic!("`code` is not a RoomList! code is {:?}", code);
+                }
                 assert_eq!(sequence, 1);
                 assert_eq!(request_ack, Some(2));
             }
@@ -2293,11 +2291,11 @@ mod netwayste_server_tests {
     #[test]
     fn construct_client_updates_populated_room_returns_all_messages() {
         let mut server = ServerState::new();
-        let room_name = "some_room".to_owned();
+        let room_name = "some_room";
         let player_name = "some player".to_owned();
         let message_text = "Message".to_owned();
 
-        server.create_new_room(None, room_name.clone());
+        server.create_new_room(None, room_name.to_owned());
 
         let player_id: PlayerID = {
             let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
@@ -2342,11 +2340,11 @@ mod netwayste_server_tests {
     #[test]
     fn construct_client_updates_populated_room_returns_updates_after_client_acked() {
         let mut server = ServerState::new();
-        let room_name = "some_room".to_owned();
+        let room_name = "some_room";
         let player_name = "some player".to_owned();
         let message_text = "Message".to_owned();
 
-        server.create_new_room(None, room_name.clone());
+        server.create_new_room(None, room_name.to_owned());
 
         let player_id: PlayerID = {
             let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
@@ -2395,10 +2393,10 @@ mod netwayste_server_tests {
     #[test]
     fn broadcast_message_to_two_players_in_room() {
         let mut server = ServerState::new();
-        let room_name = "some_room".to_owned();
+        let room_name = "some_room";
         let player_name = "some player".to_owned();
 
-        server.create_new_room(None, room_name.clone());
+        server.create_new_room(None, room_name.to_owned());
 
         let player_id: PlayerID = {
             let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
@@ -2414,7 +2412,7 @@ mod netwayste_server_tests {
             let room: &mut Room = server.get_room_mut(player_id).unwrap();
             room.broadcast("Silver birch against a Swedish sky".to_owned());
         }
-        server.join_room(player_id2, room_name.clone());
+        server.join_room(player_id2, room_name);
         let room: &Room = server.get_room(player_id).unwrap();
 
         let player = (*server.get_player(player_id)).clone();
@@ -2481,7 +2479,7 @@ mod netwayste_server_tests {
     #[test]
     fn disconnect_while_in_room_removes_all_traces_of_player() {
         let mut server = ServerState::new();
-        let room_name = "some_room".to_owned();
+        let room_name = "some_room";
         let player_name = "some player".to_owned();
 
         let player_id: PlayerID = {
@@ -2489,7 +2487,7 @@ mod netwayste_server_tests {
             player.player_id
         };
 
-        server.create_new_room(None, room_name.clone());
+        server.create_new_room(None, room_name.to_owned());
         server.join_room(player_id, room_name);
         let room_id = {
             let room: &Room = server.get_room(player_id).unwrap();
