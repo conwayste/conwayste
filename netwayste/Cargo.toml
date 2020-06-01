@@ -26,4 +26,4 @@ clap                 = "2"
 color-backtrace      = "0.1"
 
 [dev-dependencies]
-proptest             = "0.9"
+proptest             = "0.10"
