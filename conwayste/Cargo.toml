@@ -13,11 +13,11 @@ conway       = { path = "../libconway" }
 custom_error = "1.7"
 downcast-rs  = "1.1.1"
 enum-iterator = "0.5"
-id_tree      = "1.7.0"
 env_logger   = "0.7.1"
 futures      = "0.1.17"
 ggez         = "0.5"
-lazy_static  = "1.2"
+id_tree      = "1.7.0"
+lazy_static  = "1.3"
 log          = "0.4.8"
 netwayste    = { path = "../netwayste" }
 rand         = "0.4"
