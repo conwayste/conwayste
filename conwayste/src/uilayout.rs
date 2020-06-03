@@ -79,12 +79,7 @@ impl UILayout {
         self.layers.get_mut(&screen)
     }
 
-    pub fn new(ctx: &mut Context, config: &Config, font: Font) -> UIResult<Self> {
-        let mut ui_layers = HashMap::new();
-
-        let default_font_info = common::FontInfo::new(ctx, font, None);
-
-        // ==== Main Menu ====
+    fn build_main_menu(ctx: &mut Context, config: &Config, default_font_info: common::FontInfo) -> UIResult<Layering> {
         let mut layer_mainmenu = Layering::new();
 
         // Create a new pane, and add two test buttons to it.
@@ -93,28 +88,28 @@ impl UILayout {
             ctx,
             UIAction::ScreenTransition(Screen::ServerList),
             default_font_info,
-            "ServerList".to_owned(),
+            "Server List".to_owned(),
         ));
         serverlist_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0))?;
-        register_test_click_handler(&mut serverlist_button, "Server List!".to_owned()).unwrap(); // XXX
+        serverlist_button.on(EventType::Click, Box::new(server_list_click_handler)).unwrap(); // unwrap OK
 
         let mut inroom_button = Box::new(Button::new(
             ctx,
             UIAction::ScreenTransition(Screen::InRoom),
             default_font_info,
-            "InRoom".to_owned(),
+            "In Room".to_owned(),
         ));
         inroom_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0))?;
-        register_test_click_handler(&mut inroom_button, "In Room!".to_owned()).unwrap(); // XXX
+        inroom_button.on(EventType::Click, Box::new(in_room_click_handler)).unwrap(); // unwrap OK
 
         let mut startgame_button = Box::new(Button::new(
             ctx,
             UIAction::ScreenTransition(Screen::Run),
             default_font_info,
-            "StartGame".to_owned(),
+            "Start Game".to_owned(),
         ));
         startgame_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0))?;
-        register_test_click_handler(&mut startgame_button, "Start Game!".to_owned()).unwrap(); // XXX
+        startgame_button.on(EventType::Click, Box::new(start_or_resume_game_click_handler)).unwrap(); // unwrap OK
 
         let mut fullscreen_checkbox = Box::new(Checkbox::new(
             ctx,
@@ -145,6 +140,15 @@ impl UILayout {
             fullscreen_checkbox,
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
+        Ok(layer_mainmenu)
+    }
+
+    pub fn new(ctx: &mut Context, config: &Config, font: Font) -> UIResult<Self> {
+        let mut ui_layers = HashMap::new();
+
+        let default_font_info = common::FontInfo::new(ctx, font, None);
+
+        let layer_mainmenu = UILayout::build_main_menu(ctx, config, default_font_info)?;
         debug!("MENU WIDGET TREE");
         layer_mainmenu.debug_display_widget_tree();
         ui_layers.insert(Screen::Menu, layer_mainmenu);
@@ -216,24 +220,33 @@ fn fullscreen_toggle_handler(
     Ok(Handled)
 }
 
-fn register_test_click_handler(button: &mut Button, text: String) -> Result<(), Box<dyn Error>> {
-    let handler = move |obj: &mut dyn EmitEvent,
-                        _uictx: &mut context::UIContext,
-                        evt: &context::Event|
-          -> Result<context::Handled, Box<dyn Error>> {
-        use context::Handled::*;
-        let btn = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this is only registered on a button
-        info!("test click handler: button {:?}: {}", btn.id(), text);
-        info!(
-            "test click handler: button {:?}: ^^^ click at {:?}",
-            btn.id(),
-            evt.point
-        );
-        Ok(Handled)
-    };
-    button.on(EventType::Click, Box::new(handler))?;
+fn server_list_click_handler(
+    _obj: &mut dyn EmitEvent,
+    uictx: &mut context::UIContext,
+    _evt: &context::Event,
+) -> Result<context::Handled, Box<dyn Error>> {
+    uictx.push_screen(Screen::ServerList);
+    Ok(context::Handled::Handled)
+}
 
-    Ok(())
+fn in_room_click_handler(
+    _obj: &mut dyn EmitEvent,
+    uictx: &mut context::UIContext,
+    _evt: &context::Event,
+) -> Result<context::Handled, Box<dyn Error>> {
+    uictx.push_screen(Screen::InRoom);
+    Ok(context::Handled::Handled)
+}
+
+fn start_or_resume_game_click_handler(
+    obj: &mut dyn EmitEvent,
+    uictx: &mut context::UIContext,
+    evt: &context::Event,
+) -> Result<context::Handled, Box<dyn Error>> {
+    let btn = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this is only registered on a button
+    btn.label.set_text(uictx.ggez_context, "Resume Game".to_owned());
+    uictx.push_screen(Screen::Run);
+    Ok(context::Handled::Handled)
 }
 
 add_layering_support!(Button);

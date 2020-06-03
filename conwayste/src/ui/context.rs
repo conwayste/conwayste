@@ -90,12 +90,14 @@ impl<'a> UIContext<'a> {
 
     /// Return a Result containing a reference to a `Box<dyn Widget>` for the specified `NodeId` if
     /// it exists and is in view in the tree, or else a `NodeIdError`.
+    #[allow(unused)]
     pub fn get(&self, node_id: &NodeId) -> Result<&BoxedWidget, Box<dyn Error>> {
         Ok(self.widget_view.get(node_id)?.data())
     }
 
     /// Return a Result containing a mutable reference to a `Box<dyn Widget>` for the specified
     /// `NodeId` if it exists and is in view in the tree, or else a `NodeIdError`.
+    #[allow(unused)]
     pub fn get_mut(&mut self, node_id: &NodeId) -> Result<&mut BoxedWidget, Box<dyn Error>> {
         Ok(self.widget_view.get_mut(node_id)?.data_mut())
     }
@@ -106,10 +108,56 @@ impl<'a> UIContext<'a> {
         self.child_events.push(event);
     }
 
+    /// Retrieve all events from this widget's children. Typically called after `emit` onto a child
+    /// widget.
     pub fn collect_child_events(&mut self) -> Vec<Event> {
         let mut events = vec![];
         mem::swap(&mut self.child_events, &mut events);
         events
+    }
+
+    /// Gets the current screen.
+    ///
+    /// # Panics
+    ///
+    /// This will panic if the screen stack is empty, but that shouldn't ever happen.
+    #[allow(unused)]
+    pub fn current_screen(&self) -> Screen {
+        *self.screen_stack.last().unwrap()
+    }
+
+    /// Pops off the current screen on the stack, returning to the screen below it. If successful,
+    /// the popped screen is returned.
+    ///
+    /// # Errors
+    ///
+    /// This will return an error if the screen stack would become empty as a result.
+    #[allow(unused)]
+    pub fn pop_screen(&mut self) -> Result<Screen, Box<dyn Error>> {
+        if self.screen_stack.len() <= 1 {
+            return Err(format!("cannot pop_screen; screen_stack is only {:?}", self.screen_stack).into());
+        }
+        Ok(self.screen_stack.pop().unwrap())
+    }
+
+    /// Pushes a screen onto the screen stack.
+    #[allow(unused)]
+    pub fn push_screen(&mut self, screen: Screen) {
+        self.screen_stack.push(screen)
+    }
+
+    /// Replaces the current screen with a new screen. The screen stack's size does not change. The
+    /// previous screen is returned.
+    ///
+    /// # Panics
+    ///
+    /// This will panic if the screen stack is empty, but that shouldn't ever happen.
+    #[allow(unused)]
+    pub fn replace_screen(&mut self, screen: Screen) -> Screen {
+        let old_screen = *self.screen_stack.last().unwrap();
+        let last_index = self.screen_stack.len()-1;
+        self.screen_stack[last_index] = screen;
+        old_screen
     }
 }
 

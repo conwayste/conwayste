@@ -34,6 +34,8 @@ use super::{
 
 pub struct Label {
     id: Option<NodeId>,
+    font_info: FontInfo,
+    color: Color,
     z_index: usize,
     pub textfrag: TextFragment,
     pub dimensions: Rect,
@@ -105,10 +107,45 @@ impl Label {
 
         Label {
             id: None,
+            font_info,
+            color,
             z_index: std::usize::MAX,
             textfrag: text_fragment,
             dimensions: dimensions
         }
+    }
+
+    /// Sets the text for this label. Note that the dimensions are changed by this.
+    pub fn set_text(&mut self, ctx: &mut Context, text: String) {
+        let dest = self.dimensions.point();
+        let text_fragment;
+        #[cfg(not(test))]
+        {
+            text_fragment = TextFragment::new(text)
+                .scale(self.font_info.scale)
+                .color(self.color)
+                .font(self.font_info.font);
+        }
+        #[cfg(test)]
+        {
+            text_fragment = TextFragment::new(text)
+                .scale(self.font_info.scale)
+                .color(self.color)
+                .font(Font::default());
+        }
+
+        let text = Text::new(text_fragment.clone());
+        // unwrap safe b/c if this fails then the game is fundamentally broken and is not in a usable state
+        let mut dimensions = <Text as Drawable>::dimensions(&text, ctx).unwrap();
+        dimensions.move_to(dest);
+        self.dimensions = dimensions;
+        self.textfrag = text_fragment;
+    }
+
+    /// Gets the text set for this label.
+    #[allow(unused)]
+    pub fn text(&self) -> &str {
+        &self.textfrag.text
     }
 }
 

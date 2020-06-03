@@ -124,6 +124,7 @@ pub enum Screen {
 struct MainState {
     system_font:         Font,
     screen_stack:        Vec<Screen>,       // Where are we in the game (Intro/Menu Main/Running..)
+                                            // If the top is Exit, then the game exits
     uni:                 Universe,          // Things alive and moving here
     intro_uni:           Universe,
     first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
@@ -145,7 +146,6 @@ struct MainState {
     drag_draw:           Option<CellState>,
     insert_mode:         Option<(BitGrid, usize, usize)>,   // pattern to be drawn on click along with width and height;
                                                             // if Some(...), dragging doesn't draw anything
-    toggle_paused_game:  bool,
     current_intro_duration:  f64,
 
     ui_layout:           UILayout,
@@ -349,11 +349,6 @@ impl MainState {
         let mut vs = video::VideoSettings::new();
         graphics::set_resizable(ctx, true)?;
 
-        /* TODO: delete this once we are sure resizable windows are OK.
-            vs.gather_display_modes(ctx)?;
-            vs.print_resolutions();
-        */
-
         // On first-run, use default supported resolution
         let (w, h) = config.get_resolution();
         vs.set_resolution(ctx, video::Resolution{w, h}, true)?;
@@ -482,7 +477,6 @@ impl MainState {
             arrow_input:         (0, 0),
             drag_draw:           None,
             insert_mode:         None,
-            toggle_paused_game:  false,
             current_intro_duration:  0.0,
             ui_layout:           ui_layout,
         };
@@ -501,17 +495,17 @@ impl EventHandler for MainState {
 
         self.receive_net_updates()?;
 
-        let current_screen = match self.screen_stack.last() {
-            Some(screen) => screen,
-            None => panic!("Error in main thread update! Screen_stack is empty!"),
-        };
+        let screen = self.get_current_screen();
 
-        match current_screen {
+        // Handle special case screens
+        // NOTE: each match arm except default must return
+        match screen {
             Screen::Intro => {
                 // Any key should skip the intro
                 if self.inputs.key_info.key.is_some() || (self.current_intro_duration > INTRO_DURATION) {
                     self.screen_stack.pop();
                     self.screen_stack.push(Screen::Menu);
+                    self.inputs.key_info.key = None;
 
                     // update universe draw params now that intro is gone
                     self.uni_draw_params = UniDrawParams {
@@ -527,154 +521,149 @@ impl EventHandler for MainState {
                         self.intro_uni.next();
                     }
                 }
+                return Ok(());
             }
-            Screen::Menu | Screen::Run => {
-                let key = self.inputs.key_info.key;
-                let keymods = self.inputs.key_info.modifier;
-                let is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
-
-                let mouse_point = self.inputs.mouse_info.position;
-                let origin_point = self.inputs.mouse_info.down_position;
-
-                let mouse_action = self.inputs.mouse_info.action;
-
-                let left_mouse_click = mouse_action == Some(MouseAction::Click) &&
-                    self.inputs.mouse_info.mousebutton == MouseButton::Left;
-
-                let screen = self.get_current_screen();
-
-                let mut game_area_has_keyboard_focus = false;
-                let game_area_id = self.ui_layout.game_area_id.clone();
-                match GameArea::widget_from_screen_and_id(&mut self.ui_layout, screen, &game_area_id) {
-                    Ok(gamearea) => {
-                        game_area_has_keyboard_focus = gamearea.has_keyboard_focus;
-                    }
-                    Err(e) => {
-                        if screen == Screen::Run {
-                            error!("failed to look up GameArea widget: {:?}", e);
-                        }
-                    }
-                }
-
-                // ==== Handle widget events ====
-                let mut game_area_should_ignore_input = false;
-                if let Some(layer) = self.ui_layout.get_screen_layering(screen) {
-                    layer.on_hover(&mouse_point);
-
-                    if let Some(action) = mouse_action {
-                        if action == MouseAction::Drag {
-                            layer.on_drag(&origin_point, &mouse_point);
-                        }
-                    }
-
-                    if left_mouse_click {
-                        let click_event = Event {
-                            what: EventType::Click,
-                            point: Some(mouse_point),
-                            prev_point: None,
-                            button: Some(self.inputs.mouse_info.mousebutton),
-                            key: None,
-                            shift_pressed: is_shift,
-                            text: None,
-                        };
-                        layer.emit(&click_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
-                            error!("Error from layer.emit on left click: {:?}", e);
-                        });
-                    }
-
-                    if !game_area_has_keyboard_focus {
-                        if let Some(key) = key {
-                            let key_event = Event {
-                                what: EventType::KeyPress,
-                                point: Some(mouse_point),
-                                prev_point: None,
-                                button: None,
-                                key: Some(KeyCodeOrChar::KeyCode(key)),
-                                shift_pressed: is_shift,
-                                text: None,
-                            };
-                            layer.emit(&key_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
-                                error!("Error from layer.emit on key press: {:?}", e);
-                            });
-                            game_area_should_ignore_input = true;
-                        }
-                    }
-
-                    let mut text_input = vec![];
-                    std::mem::swap(&mut self.inputs.text_input, &mut text_input);
-                    for character in text_input {
-                        let key_event = Event {
-                            what: EventType::KeyPress,
-                            point: Some(mouse_point),
-                            prev_point: None,
-                            button: None,
-                            key: Some(KeyCodeOrChar::Char(character)),
-                            shift_pressed: is_shift,
-                            text: None,
-                        };
-                        layer.emit(&key_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
-                            error!("Error from layer.emit on key press (text input): {:?}", e);
-                        });
-                    }
-                }
-
-                // TODO: remove legacy menu support
-                if screen == Screen::Menu {
-                    self.update_main_menu_selection(ctx)?;
-                }
-
-                if screen == Screen::Run && game_area_has_keyboard_focus && !game_area_should_ignore_input {
-                    let result = self.process_running_inputs(ctx);
-                    handle_error!(result,
-                        UIError => |e| {
-                            error!("Received UI Error from process_running_inputs(). {:?}", e);
-                        },
-                        else => |e| {
-                            error!("Received unexpected error from process_running_inputs(). {:?}", e);
-                        }
-                    ).unwrap(); // OK to call unwrap here because there is an else match arm (all errors handled)
-
-                }
-
-
-                if screen == Screen::Run {
-                    if self.single_step {
-                        self.running = false;
-                    }
-
-                    if self.first_gen_was_drawn && (self.running || self.single_step) {
-                        self.uni.next();     // next generation
-                        self.single_step = false;
-                    }
-
-                    if self.toggle_paused_game {
-                        self.pause_or_resume_game(ctx);
-                    }
-
-                    if !is_shift {
-                        // Arrow keys (but not Shift-<Arrow>!) move the player's view of the universe around
-                        self.viewport.update(self.arrow_input);
-                    }
-                }
-            }
-            Screen::InRoom => {
-                // TODO implement
-                if let Some(_k) = self.inputs.key_info.key {
-                    debug!("Leaving InRoom to ServerList");
-                    self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
-                }
-            }
-            Screen::ServerList => {
-                if let Some(_k) = self.inputs.key_info.key {
-                    debug!("Leaving ServerList to MainMenu");
-                    self.screen_stack.pop(); // for testing, go back to main menu so we can get to the game
-                }
-                // TODO implement
-             },
             Screen::Exit => {
                let _ = ggez::event::quit(ctx);
+               return Ok(());
+            }
+            _ => {} // all others handled below
+        }
+        let key = self.inputs.key_info.key;
+        let keymods = self.inputs.key_info.modifier;
+        let is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
+
+        let mouse_point = self.inputs.mouse_info.position;
+        let origin_point = self.inputs.mouse_info.down_position;
+
+        let mouse_action = self.inputs.mouse_info.action;
+
+        let left_mouse_click = mouse_action == Some(MouseAction::Click) &&
+            self.inputs.mouse_info.mousebutton == MouseButton::Left;
+
+        let mut game_area_has_keyboard_focus = false;
+        let game_area_id = self.ui_layout.game_area_id.clone();
+        match GameArea::widget_from_screen_and_id(&mut self.ui_layout, screen, &game_area_id) {
+            Ok(gamearea) => {
+                game_area_has_keyboard_focus = gamearea.has_keyboard_focus;
+            }
+            Err(e) => {
+                if screen == Screen::Run {
+                    error!("failed to look up GameArea widget: {:?}", e);
+                }
             }
         }
+
+        // ==== Handle widget events ====
+        let mut game_area_should_ignore_input = false;
+        if let Some(layer) = self.ui_layout.get_screen_layering(screen) {
+            layer.on_hover(&mouse_point);
+
+            if let Some(action) = mouse_action {
+                if action == MouseAction::Drag {
+                    layer.on_drag(&origin_point, &mouse_point);
+                }
+            }
+
+            if left_mouse_click {
+                let click_event = Event {
+                    what: EventType::Click,
+                    point: Some(mouse_point),
+                    prev_point: None,
+                    button: Some(self.inputs.mouse_info.mousebutton),
+                    key: None,
+                    shift_pressed: is_shift,
+                    text: None,
+                };
+                layer.emit(&click_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
+                    error!("Error from layer.emit on left click: {:?}", e);
+                });
+            }
+
+            if !game_area_has_keyboard_focus {
+                if let Some(key) = key {
+                    let key_event = Event {
+                        what: EventType::KeyPress,
+                        point: Some(mouse_point),
+                        prev_point: None,
+                        button: None,
+                        key: Some(KeyCodeOrChar::KeyCode(key)),
+                        shift_pressed: is_shift,
+                        text: None,
+                    };
+                    layer.emit(&key_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
+                        error!("Error from layer.emit on key press: {:?}", e);
+                    });
+                    game_area_should_ignore_input = true;
+                }
+            }
+
+            let mut text_input = vec![];
+            std::mem::swap(&mut self.inputs.text_input, &mut text_input);
+            for character in text_input {
+                let key_event = Event {
+                    what: EventType::KeyPress,
+                    point: Some(mouse_point),
+                    prev_point: None,
+                    button: None,
+                    key: Some(KeyCodeOrChar::Char(character)),
+                    shift_pressed: is_shift,
+                    text: None,
+                };
+                layer.emit(&key_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
+                    error!("Error from layer.emit on key press (text input): {:?}", e);
+                });
+            }
+        }
+
+        // TODO: remove legacy menu support
+        if screen == Screen::Menu {
+            self.update_main_menu_selection(ctx)?;
+        }
+
+        if screen == Screen::Run && game_area_has_keyboard_focus && !game_area_should_ignore_input {
+            let result = self.process_running_inputs(ctx);
+            handle_error!(result,
+                UIError => |e| {
+                    error!("Received UI Error from process_running_inputs(). {:?}", e);
+                },
+                else => |e| {
+                    error!("Received unexpected error from process_running_inputs(). {:?}", e);
+                }
+            ).unwrap(); // OK to call unwrap here because there is an else match arm (all errors handled)
+
+        }
+
+
+        if screen == Screen::Run {
+            if self.single_step {
+                self.running = false;
+            }
+
+            if self.first_gen_was_drawn && (self.running || self.single_step) {
+                self.uni.next();     // next generation
+                self.single_step = false;
+            }
+
+            if !is_shift {
+                // Arrow keys (but not Shift-<Arrow>!) move the player's view of the universe around
+                self.viewport.update(self.arrow_input);
+            }
+        }
+
+        // Handle Escape, only if screen was not changed above
+        if key == Some(KeyCode::Escape) && screen == self.get_current_screen() {
+            if screen == Screen::Menu {
+                self.screen_stack.push(Screen::Run);
+            } else {
+                self.screen_stack.pop();
+            }
+        }
+
+        let new_screen = self.get_current_screen();
+        self.transition_screen(ctx, screen, new_screen).unwrap_or_else(|e| {
+            error!("Failed to transition_screen: {:?}", e);
+        });
 
         // HACK: propagate any video-related config settings from UI handlers to self.video_settings
         // TODO: consider removing self.video_settings
@@ -874,8 +863,12 @@ impl EventHandler for MainState {
         self.video_settings.set_resolution(ctx, video::Resolution{w: width, h: height}, false).unwrap();
     }
 
-    fn quit_event(&mut self, ctx: &mut Context) -> bool {
-        println!("Got quit event!");
+    /// Called when the user requests that the window be closed (ggez gets a
+    /// WindowEvent::CloseRequested event from winit)
+    fn quit_event(&mut self, _ctx: &mut Context) -> bool {
+        info!("Got quit event!");
+        false
+        /*
         let mut quit = false;
         let current_screen = match self.screen_stack.last() {
             Some(screen) => screen,
@@ -884,7 +877,9 @@ impl EventHandler for MainState {
 
         match current_screen {
             Screen::Run => {
-                self.pause_or_resume_game(ctx);
+                self.screen_stack.pop();
+                assert_eq!(self.get_current_screen(), Screen::Menu);
+                self.transition_screen(ctx, Screen::Run, Screen::Menu);
             }
             Screen::Menu | Screen::InRoom | Screen::ServerList => {
                 // This is currently handled in the menu processing state path as well
@@ -900,6 +895,7 @@ impl EventHandler for MainState {
         }
 
         !quit
+        */
     }
 
 }
@@ -1047,35 +1043,26 @@ impl MainState {
         self.draw_game_of_life(ctx, &self.uni)
     }
 
-    fn pause_or_resume_game(&mut self, ggez_ctx: &mut Context) {
-        let cur_menu_state = self.menu_sys.menu_state;
-        let current_screen = match self.screen_stack.last() {
-            Some(screen) => screen,
-            None => panic!("Error in key_down_event! Screen_stack is empty!"),
-        };
-
-        match current_screen {
+    fn transition_screen(&mut self, ggez_ctx: &mut Context, old_screen: Screen, new_screen: Screen) -> Result<(), Box<dyn Error>> {
+        match old_screen {
             Screen::Menu => {
-                if cur_menu_state == menu::MenuState::MainMenu {
-                    self.screen_stack.push(Screen::Run);
-                    // TODO: make the Start Game button do this as well
+                if new_screen == Screen::Run {
                     let id = self.ui_layout.game_area_id.clone();
                     if let Some(layering) = self.ui_layout.get_screen_layering(Screen::Run) {
-                        layering.enter_focus(ggez_ctx, &mut self.config, &mut self.screen_stack, &id).unwrap(); //XXX unwrap OK?
+                        layering.enter_focus(ggez_ctx, &mut self.config, &mut self.screen_stack, &id)?;
                     }
-
                     self.running = true;
                 }
             }
             Screen::Run => {
-                self.screen_stack.pop();
-                self.menu_sys.menu_state = menu::MenuState::MainMenu;
-                self.running = false;
+                if new_screen == Screen::Menu {
+                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
+                    self.running = false;
+                }
             }
-            _ => unimplemented!()
+            _ => {}
         }
-
-        self.toggle_paused_game = false;
+        Ok(())
     }
 
     /// Handles keyboard and mouse input stored in `self.inputs` by the ggez callbacks. This is
@@ -1153,9 +1140,6 @@ impl MainState {
                     let visibility = None;  // can also do Some(player_id)
                     let pat = self.uni.to_pattern(visibility);
                     println!("PATTERN DUMP:\n{}", pat.0);
-                }
-                KeyCode::Escape => {
-                    self.toggle_paused_game = true;
                 }
                 _ => {
                     println!("Unrecognized keycode {:?}", keycode);
@@ -1310,7 +1294,8 @@ impl MainState {
 
                                 }
                                 menu::MenuItemIdentifier::StartGame => {
-                                    self.pause_or_resume_game(ctx);
+                                    // Transition to Run
+                                    self.screen_stack.push(Screen::Run);
                                 }
                                 menu::MenuItemIdentifier::ExitGame => {
                                     self.screen_stack.push(Screen::Exit);
