@@ -246,8 +246,12 @@ impl Widget for Button {
         if new_dims.w < self.label.dimensions.w + BUTTON_LABEL_PADDING_W
         || new_dims.h < self.label.dimensions.h + BUTTON_LABEL_PADDING_H {
             return Err(Box::new(UIError::InvalidDimensions{
-                reason: format!("Cannot set the Button's size smaller than the space taken by the
-                    button's text: {:?}", self.id())
+                reason: format!("Cannot set the Button's size {}x{} smaller than the space taken by the
+                    button's text ({:?} size {}x{}): {:?}",
+                    new_dims.w, new_dims.h, self.label.text(),
+                    self.label.dimensions.w + BUTTON_LABEL_PADDING_W,
+                    self.label.dimensions.h + BUTTON_LABEL_PADDING_H,
+                    self.id())
             }));
         }
 

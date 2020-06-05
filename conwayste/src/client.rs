@@ -112,8 +112,9 @@ use uilayout::UILayout;
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum Screen {
-    Intro,   // seconds
+    Intro,
     Menu,
+    Options,
     ServerList,
     InRoom,
     Run,          // TODO: break it out more to indicate whether waiting for game or playing game
@@ -426,7 +427,7 @@ impl MainState {
             GameError::ConfigError(msg)
         })?;
 
-        let mut ui_layout = UILayout::new(ctx, &config, font.clone())?;
+        let mut ui_layout = UILayout::new(ctx, &config, font.clone()).unwrap(); // TODO: unwrap not OK!
 
         // Update universe draw parameters for intro
         let intro_uni_draw_params = UniDrawParams {
@@ -698,17 +699,18 @@ impl EventHandler for MainState {
             }
             Screen::InRoom => {
                 ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("In Room"), &Point2::new(100.0, 100.0))?;
-                // TODO
             }
             Screen::ServerList => {
                 ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("Server List"), &Point2::new(100.0, 100.0))?;
-                // TODO
+             },
+            Screen::Options => {
+                ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("Options"), &Point2::new(100.0, 100.0))?;
              },
             Screen::Exit => {}
         }
 
         if let Some(layering) = self.ui_layout.get_screen_layering(current_screen) {
-            layering.draw(ctx)?;
+            layering.draw(ctx).unwrap(); // TODO: unwrap not OK!
         }
 
         graphics::present(ctx)?;

@@ -29,7 +29,7 @@ use crate::config::Config;
 use crate::constants;
 use crate::ui::{
     common, context, Button, Chatbox, Checkbox, GameArea, InsertLocation, Label, Layering, Pane,
-    TextField, UIAction, UIError, UIResult, Widget,
+    TextField, UIAction, UIResult, Widget,
 };
 use crate::Screen;
 
@@ -79,51 +79,12 @@ impl UILayout {
         self.layers.get_mut(&screen)
     }
 
-    fn build_main_menu(
+    fn build_options_menu(
         ctx: &mut Context,
         config: &Config,
         default_font_info: common::FontInfo,
     ) -> UIResult<Layering> {
-        let mut layer_mainmenu = Layering::new();
-
-        // Create a new pane, and add two test buttons to it.
-        let pane = Box::new(Pane::new(Rect::new_i32(20, 20, 410, 250)));
-        let mut serverlist_button = Box::new(Button::new(
-            ctx,
-            UIAction::ScreenTransition(Screen::ServerList),
-            default_font_info,
-            "Server List".to_owned(),
-        ));
-        serverlist_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0))?;
-        serverlist_button
-            .on(EventType::Click, Box::new(server_list_click_handler))
-            .unwrap(); // unwrap OK
-
-        let mut inroom_button = Box::new(Button::new(
-            ctx,
-            UIAction::ScreenTransition(Screen::InRoom),
-            default_font_info,
-            "In Room".to_owned(),
-        ));
-        inroom_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0))?;
-        inroom_button
-            .on(EventType::Click, Box::new(in_room_click_handler))
-            .unwrap(); // unwrap OK
-
-        let mut startgame_button = Box::new(Button::new(
-            ctx,
-            UIAction::ScreenTransition(Screen::Run),
-            default_font_info,
-            "Start Game".to_owned(),
-        ));
-        startgame_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0))?;
-        startgame_button
-            .on(
-                EventType::Click,
-                Box::new(start_or_resume_game_click_handler),
-            )
-            .unwrap(); // unwrap OK
-
+        let mut layer_options = Layering::new();
         let mut fullscreen_checkbox = Box::new(Checkbox::new(
             ctx,
             config.get().video.fullscreen,
@@ -135,22 +96,70 @@ impl UILayout {
         fullscreen_checkbox
             .on(EventType::Click, Box::new(fullscreen_toggle_handler))
             .unwrap();
+        layer_options.add_widget(
+            fullscreen_checkbox,
+            InsertLocation::AtCurrentLayer,
+        )?;
+
+        Ok(layer_options)
+    }
+
+    fn build_main_menu(
+        ctx: &mut Context,
+        config: &Config,
+        default_font_info: common::FontInfo,
+    ) -> UIResult<Layering> {
+        let mut layer_mainmenu = Layering::new();
+
+        // Create a new pane, and add two test buttons to it.
+        let pane = Box::new(Pane::new(Rect::new_i32(20, 20, 410, 450)));
+        let mut serverlist_button = Box::new(Button::new(
+            ctx,
+            UIAction::ScreenTransition(Screen::ServerList),
+            default_font_info,
+            "Server List".to_owned(),
+        ));
+        serverlist_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0))?;
+        serverlist_button
+            .on(EventType::Click, Box::new(server_list_click_handler))
+            .unwrap(); // unwrap OK
+
+        let mut options_button = Box::new(Button::new(
+            ctx,
+            UIAction::ScreenTransition(Screen::InRoom),
+            default_font_info,
+            "Options".to_owned(),
+        ));
+        options_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0))?;
+        options_button
+            .on(EventType::Click, Box::new(options_click_handler))
+            .unwrap(); // unwrap OK
+
+        let mut start_1p_game_button = Box::new(Button::new(
+            ctx,
+            UIAction::ScreenTransition(Screen::Run),
+            default_font_info,
+            "Start Single Player Game".to_owned(),
+        ));
+        start_1p_game_button.set_rect(Rect::new(10.0, 130.0, 350.0, 50.0))?;
+        start_1p_game_button
+            .on(
+                EventType::Click,
+                Box::new(start_or_resume_game_click_handler),
+            )
+            .unwrap(); // unwrap OK
 
         let menupane_id = layer_mainmenu.add_widget(pane, InsertLocation::AtCurrentLayer)?;
         layer_mainmenu.add_widget(
-            startgame_button,
+            start_1p_game_button,
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
         layer_mainmenu.add_widget(
-            inroom_button,
+            options_button,
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
         layer_mainmenu.add_widget(
             serverlist_button,
-            InsertLocation::ToNestedContainer(&menupane_id),
-        )?;
-        layer_mainmenu.add_widget(
-            fullscreen_checkbox,
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
         Ok(layer_mainmenu)
@@ -161,10 +170,21 @@ impl UILayout {
 
         let default_font_info = common::FontInfo::new(ctx, font, None);
 
-        let layer_mainmenu = UILayout::build_main_menu(ctx, config, default_font_info)?;
+        let layer_mainmenu = UILayout::build_main_menu(ctx, config, default_font_info).map_err(|e| {
+            debug!("error from build_main_menu! {:?}", e); // TODO: this is lame
+            e
+        })?;
         debug!("MENU WIDGET TREE");
         layer_mainmenu.debug_display_widget_tree();
         ui_layers.insert(Screen::Menu, layer_mainmenu);
+
+        let layer_options = UILayout::build_options_menu(ctx, config, default_font_info).map_err(|e| {
+            debug!("error from build_options_menu! {:?}", e); // TODO: this is lame
+            e
+        })?;
+        debug!("OPTIONS WIDGET TREE");
+        layer_options.debug_display_widget_tree();
+        ui_layers.insert(Screen::Options, layer_options);
 
         // ==== In-Game (Run screen) ====
         let mut layer_ingame = Layering::new();
@@ -242,23 +262,26 @@ fn server_list_click_handler(
     Ok(context::Handled::Handled)
 }
 
-fn in_room_click_handler(
+fn options_click_handler(
     _obj: &mut dyn EmitEvent,
     uictx: &mut context::UIContext,
     _evt: &context::Event,
 ) -> Result<context::Handled, Box<dyn Error>> {
-    uictx.push_screen(Screen::InRoom);
+    uictx.push_screen(Screen::Options);
     Ok(context::Handled::Handled)
 }
 
 fn start_or_resume_game_click_handler(
     obj: &mut dyn EmitEvent,
     uictx: &mut context::UIContext,
-    evt: &context::Event,
+    _evt: &context::Event,
 ) -> Result<context::Handled, Box<dyn Error>> {
     let btn = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this is only registered on a button
+
+    // TODO: don't do this anymore once we have an in-game menu that is above Screen::Run in screen_stack.
     btn.label
         .set_text(uictx.ggez_context, "Resume Game".to_owned());
+
     uictx.push_screen(Screen::Run);
     Ok(context::Handled::Handled)
 }
