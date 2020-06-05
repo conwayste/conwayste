@@ -106,7 +106,6 @@ impl UILayout {
 
     fn build_main_menu(
         ctx: &mut Context,
-        config: &Config,
         default_font_info: common::FontInfo,
     ) -> UIResult<Layering> {
         let mut layer_mainmenu = Layering::new();
@@ -165,11 +164,7 @@ impl UILayout {
 
         let menupane_id = layer_mainmenu.add_widget(pane, InsertLocation::AtCurrentLayer)?;
         layer_mainmenu.add_widget(
-            start_1p_game_button,
-            InsertLocation::ToNestedContainer(&menupane_id),
-        )?;
-        layer_mainmenu.add_widget(
-            options_button,
+            quit_button,
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
         layer_mainmenu.add_widget(
@@ -177,7 +172,11 @@ impl UILayout {
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
         layer_mainmenu.add_widget(
-            quit_button,
+            options_button,
+            InsertLocation::ToNestedContainer(&menupane_id),
+        )?;
+        layer_mainmenu.add_widget(
+            start_1p_game_button,
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
         Ok(layer_mainmenu)
@@ -188,7 +187,7 @@ impl UILayout {
 
         let default_font_info = common::FontInfo::new(ctx, font, None);
 
-        let layer_mainmenu = UILayout::build_main_menu(ctx, config, default_font_info).map_err(|e| {
+        let layer_mainmenu = UILayout::build_main_menu(ctx, default_font_info).map_err(|e| {
             debug!("error from build_main_menu! {:?}", e); // TODO: this is lame
             e
         })?;

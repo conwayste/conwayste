@@ -365,6 +365,7 @@ impl Layering {
     }
 
     /// Returns the NodeId of the widget currently in-focus
+    #[allow(unused)]
     pub fn focused_widget_id(&self) -> Option<&NodeId> {
         self.focus_cycles[self.highest_z_order].focused_widget_id()
     }

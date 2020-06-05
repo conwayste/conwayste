@@ -222,6 +222,7 @@ impl<'a, T> TreeView<'a, T> {
     ///
     /// In addition to errors from Tree.insert, an error is returned when the TreeView is
     /// sharing the Tree.
+    #[allow(unused)]
     pub fn insert(
         &mut self,
         node: Node<T>,
@@ -242,6 +243,7 @@ impl<'a, T> TreeView<'a, T> {
     ///
     /// In addition to errors from Tree.remove_node, an error is returned when the TreeView is
     /// sharing the Tree.
+    #[allow(unused)]
     pub fn remove(
         &mut self,
         node_id: NodeId,

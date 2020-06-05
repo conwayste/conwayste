@@ -96,7 +96,6 @@ use ui::{
     Pane,
     TextField,
     UIError,
-    Widget,
     EventType,
     context::{
         EmitEvent,
@@ -1689,17 +1688,17 @@ pub fn main() {
         .format(|buf, record| {
             writeln!(buf,
                 "{} [{:5}] - {}",
-                Local::now().format("%a %Y-%m-%d %H:%M:%S%.6f"),
+                Local::now().format("%H:%M:%S%.6f"),
                 record.level(),
                 record.args(),
             )
         })
-        .filter(None, LevelFilter::Trace)
-        .filter(Some("futures"), LevelFilter::Off)
-        .filter(Some("tokio_core"), LevelFilter::Off)
-        .filter(Some("tokio_reactor"), LevelFilter::Off)
-        .filter(Some("conway"), LevelFilter::Off)
-        .filter(Some("ggez"), LevelFilter::Off)
+        .filter(None, LevelFilter::Debug)
+        .filter(Some("futures"), LevelFilter::Info)
+        .filter(Some("tokio_core"), LevelFilter::Info)
+        .filter(Some("tokio_reactor"), LevelFilter::Info)
+        .filter(Some("conway"), LevelFilter::Info)
+        .filter(Some("ggez"), LevelFilter::Warn)
         .filter(Some("gfx_device_gl"), LevelFilter::Off)
         .init();
 
@@ -1738,6 +1737,7 @@ pub fn main() {
             if let Err(e) = result {
                 println!("Error encountered while running game: {}", e);
             } else {
+                game.cleanup();
                 println!("Game exited cleanly.");
             }
         }

@@ -124,14 +124,14 @@ impl TextField {
         tf.on(EventType::KeyPress, Box::new(TextField::key_handler)).unwrap(); // unwrap OK b/c not inside handler now
 
         // Set handlers for toggling has_keyboard_focus
-        let gain_focus_handler = move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, evt: &Event|
+        let gain_focus_handler = move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event|
               -> Result<Handled, Box<dyn Error>> {
             let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
             tf.focused = true;
             Ok(Handled::NotHandled)
         };
 
-        let lose_focus_handler = move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, evt: &Event|
+        let lose_focus_handler = move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event|
               -> Result<Handled, Box<dyn Error>> {
             let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
             tf.focused = false;

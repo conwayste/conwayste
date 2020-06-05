@@ -51,7 +51,7 @@ impl GameArea {
         // Set handlers for toggling has_keyboard_focus
         let gain_focus_handler = move |obj: &mut dyn EmitEvent,
                                        _uictx: &mut UIContext,
-                                       evt: &Event|
+                                       _evt: &Event|
               -> Result<Handled, Box<dyn Error>> {
             let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
             game_area.has_keyboard_focus = true;
@@ -60,7 +60,7 @@ impl GameArea {
 
         let lose_focus_handler = move |obj: &mut dyn EmitEvent,
                                        _uictx: &mut UIContext,
-                                       evt: &Event|
+                                       _evt: &Event|
               -> Result<Handled, Box<dyn Error>> {
             let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
             game_area.has_keyboard_focus = false;

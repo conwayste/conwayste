@@ -404,7 +404,7 @@ pub struct ChatboxPublishHandle {
 
 impl ChatboxPublishHandle {
     pub fn add_message(&mut self, msg: String) {
-        self.msg_sender.send(msg).unwrap_or_else(|e| {
+        self.msg_sender.send(msg).unwrap_or_else(|_e| {
             error!("Chatbox has been dropped!");
         });
     }
