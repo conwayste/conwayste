@@ -149,6 +149,20 @@ impl UILayout {
             )
             .unwrap(); // unwrap OK
 
+        let mut quit_button = Box::new(Button::new(
+            ctx,
+            UIAction::ScreenTransition(Screen::Run),
+            default_font_info,
+            "Quit".to_owned(),
+        ));
+        quit_button.set_rect(Rect::new(10.0, 190.0, 180.0, 50.0))?;
+        quit_button
+            .on(
+                EventType::Click,
+                Box::new(quit_click_handler),
+            )
+            .unwrap(); // unwrap OK
+
         let menupane_id = layer_mainmenu.add_widget(pane, InsertLocation::AtCurrentLayer)?;
         layer_mainmenu.add_widget(
             start_1p_game_button,
@@ -160,6 +174,10 @@ impl UILayout {
         )?;
         layer_mainmenu.add_widget(
             serverlist_button,
+            InsertLocation::ToNestedContainer(&menupane_id),
+        )?;
+        layer_mainmenu.add_widget(
+            quit_button,
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
         Ok(layer_mainmenu)
@@ -283,6 +301,16 @@ fn start_or_resume_game_click_handler(
         .set_text(uictx.ggez_context, "Resume Game".to_owned());
 
     uictx.push_screen(Screen::Run);
+    Ok(context::Handled::Handled)
+}
+
+fn quit_click_handler(
+    _obj: &mut dyn EmitEvent,
+    uictx: &mut context::UIContext,
+    _evt: &context::Event,
+) -> Result<context::Handled, Box<dyn Error>> {
+    info!("QUIT CLICKED");
+    ggez::event::quit(uictx.ggez_context);
     Ok(context::Handled::Handled)
 }
 
