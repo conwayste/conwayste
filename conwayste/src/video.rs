@@ -55,6 +55,7 @@ impl VideoSettings {
     }
 
     /// Gets the current active resolution.
+    #[allow(unused)]
     pub fn get_resolution(&self) -> Resolution {
         self.resolution
     }

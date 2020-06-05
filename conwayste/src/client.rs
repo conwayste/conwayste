@@ -40,7 +40,6 @@ mod config;
 mod constants;
 mod error;
 mod input;
-mod menu;
 mod network;
 mod ui;
 mod uilayout;
@@ -131,7 +130,6 @@ struct MainState {
     color_settings:      ColorSettings,
     uni_draw_params:     UniDrawParams,
     running:             bool,
-    menu_sys:            menu::MenuSystem,
     video_settings:      video::VideoSettings,
     config:              config::Config,
     viewport:            viewport::GridView,
@@ -465,7 +463,6 @@ impl MainState {
             uni_draw_params:     intro_uni_draw_params,
             color_settings:      color_settings,
             running:             false,
-            menu_sys:            menu::MenuSystem::new(font),
             video_settings:      vs,
             config:              config,
             viewport:            viewport,
@@ -616,11 +613,6 @@ impl EventHandler for MainState {
             }
         }
 
-        // TODO: remove legacy menu support
-        if screen == Screen::Menu {
-            self.update_main_menu_selection(ctx)?;
-        }
-
         if screen == Screen::Run && game_area_has_keyboard_focus && !game_area_should_ignore_input {
             let result = self.process_running_inputs(ctx);
             handle_error!(result,
@@ -689,7 +681,7 @@ impl EventHandler for MainState {
                 });
             }
             Screen::Menu => {
-                self.menu_sys.draw_menu(&self.video_settings, ctx, self.first_gen_was_drawn)?;
+                ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("Main Menu"), &Point2::new(500.0, 100.0))?;
             }
             Screen::Run => {
                 self.draw_universe(ctx).unwrap_or_else(|e| {
@@ -1057,7 +1049,6 @@ impl MainState {
             }
             Screen::Run => {
                 if new_screen == Screen::Menu {
-                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
                     self.running = false;
                 }
             }
@@ -1206,186 +1197,6 @@ impl MainState {
                     *height = new_height;
                 } else {
                     info!("Ignoring Shift-<Up/Down>");
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn process_menu_inputs(&mut self) {
-        let keycode;
-
-        if let Some(k) = self.inputs.key_info.key {
-            keycode = k;
-        } else {
-            return;
-        }
-
-        match keycode {
-            KeyCode::Up => {
-                self.arrow_input = (0, -1);
-            }
-            KeyCode::Down => {
-                self.arrow_input = (0, 1);
-            }
-            KeyCode::Left => {
-                self.arrow_input = (-1, 0);
-            }
-            KeyCode::Right => {
-                self.arrow_input = (1, 0);
-            }
-            _ => {}
-        }
-    }
-
-    // TODO: migrate all of this to the widget system pronto!
-    fn update_main_menu_selection(&mut self, ctx: &mut Context) -> GameResult<()> {
-        self.process_menu_inputs();
-
-        ////////////////////////////////////////
-        //// Directional Key / Menu movement
-        ////////////////////////////////////////
-        if self.arrow_input != (0,0) && self.inputs.key_info.key.is_some() {
-            // move selection accordingly
-            let (_,y) = self.arrow_input;
-            {
-                let container = self.menu_sys.get_menu_container_mut();
-                let mainmenu_md = container.get_metadata();
-                mainmenu_md.adjust_index(y);
-            }
-            self.menu_sys.get_controls().set_menu_key_pressed(true);
-        }
-        else {
-            /////////////////////////
-            //// Non-Arrow key was pressed
-            //////////////////////////
-            if let Some(k) = self.inputs.key_info.key {
-                let escape_key_pressed = k == KeyCode::Escape && !self.inputs.key_info.repeating;
-                let return_key_pressed = k == KeyCode::Return && !self.inputs.key_info.repeating;
-
-                if !escape_key_pressed && !return_key_pressed {
-                    return Ok(());
-                }
-
-                let mut id = {
-                    let container = self.menu_sys.get_menu_container();
-                    let index = container.get_menu_item_index();
-                    let menu_item_list = container.get_menu_item_list();
-                    let menu_item = menu_item_list.get(index).unwrap();
-                    menu_item.id
-                };
-
-                if escape_key_pressed {
-                    id = menu::MenuItemIdentifier::ReturnToPreviousMenu;
-                }
-
-                match self.menu_sys.menu_state {
-                    menu::MenuState::MainMenu => {
-                        if !escape_key_pressed {
-                            match id {
-                                menu::MenuItemIdentifier::Connect => {
-                                    let mut net_worker_guard = self.net_worker.lock().unwrap();
-                                    if net_worker_guard.is_some() {
-                                        info!("already connected! Reconnecting...");
-                                    }
-                                    let mut net_worker = network::ConwaysteNetWorker::new();
-                                    net_worker.connect(self.config.get().user.name.clone());
-                                    info!("Connecting...");
-                                    *net_worker_guard = Some(net_worker);
-
-                                }
-                                menu::MenuItemIdentifier::StartGame => {
-                                    // Transition to Run
-                                    self.screen_stack.push(Screen::Run);
-                                }
-                                menu::MenuItemIdentifier::ExitGame => {
-                                    self.screen_stack.push(Screen::Exit);
-                                }
-                                menu::MenuItemIdentifier::Options => {
-                                    self.menu_sys.menu_state = menu::MenuState::Options;
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    menu::MenuState::Options => {
-                        match id {
-                            menu::MenuItemIdentifier::VideoSettings => {
-                                if !escape_key_pressed {
-                                    self.menu_sys.menu_state = menu::MenuState::Video;
-                                }
-                            }
-                            menu::MenuItemIdentifier::AudioSettings => {
-                                if !escape_key_pressed {
-                                    self.menu_sys.menu_state = menu::MenuState::Audio;
-                                }
-                            }
-                            menu::MenuItemIdentifier::GameplaySettings => {
-                                if !escape_key_pressed {
-                                    self.menu_sys.menu_state = menu::MenuState::Gameplay;
-                                }
-                            }
-                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                    self.menu_sys.menu_state = menu::MenuState::MainMenu;
-                            }
-                            _ => {}
-                        }
-                    }
-                    menu::MenuState::Audio => {
-                        match id {
-                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                self.menu_sys.menu_state = menu::MenuState::Options;
-                            }
-                            _ => {
-                                if !escape_key_pressed { }
-                            }
-                        }
-                    }
-                    menu::MenuState::Gameplay => {
-                        match id {
-                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                self.menu_sys.menu_state = menu::MenuState::Options;
-                            }
-                            _ => {
-                                if !escape_key_pressed { }
-                            }
-                        }
-                    }
-                    menu::MenuState::Video => {
-                        match id {
-                            menu::MenuItemIdentifier::ReturnToPreviousMenu => {
-                                self.menu_sys.menu_state = menu::MenuState::Options;
-                            }
-                            menu::MenuItemIdentifier::Fullscreen => {
-                                if !escape_key_pressed {
-                                    // toggle
-                                    let is_fullscreen = !self.video_settings.is_fullscreen;
-                                    self.video_settings.is_fullscreen = is_fullscreen;
-                                    // actually update screen based on what we toggled
-                                    self.video_settings.update_fullscreen(ctx).unwrap(); // TODO: rollback if fail
-                                    // save to persistent config storage
-                                    self.config.modify(|settings| {
-                                        settings.video.fullscreen = is_fullscreen;
-                                    });
-                                }
-                            }
-                            menu::MenuItemIdentifier::Resolution => {
-                                // NO-OP; menu item is effectively read-only
-                                /*
-                                if !escape_key_pressed {
-                                    self.video_settings.advance_to_next_resolution(ctx);
-
-                                    // Update the configuration file and resize the viewing
-                                    // screen
-                                    let (w,h) = self.video_settings.get_resolution();
-                                    self.config.set_resolution(w, h);
-                                    self.viewport.set_size(w, h);
-                                }
-                                */
-                            }
-                            _ => {}
-                        }
-                    }
                 }
             }
         }
