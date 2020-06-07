@@ -20,7 +20,6 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use ggez::graphics::{Font, Rect};
-use ggez::nalgebra::Vector2;
 use ggez::Context;
 
 use id_tree::NodeId;
