@@ -563,15 +563,7 @@ impl EventHandler for MainState {
             }
 
             if left_mouse_click {
-                let click_event = Event {
-                    what: EventType::Click,
-                    point: Some(mouse_point),
-                    prev_point: None,
-                    button: Some(self.inputs.mouse_info.mousebutton),
-                    key: None,
-                    shift_pressed: is_shift,
-                    text: None,
-                };
+                let click_event = Event::new_click(mouse_point, self.inputs.mouse_info.mousebutton, is_shift);
                 layer.emit(&click_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
                     error!("Error from layer.emit on left click: {:?}", e);
                 });
@@ -579,15 +571,7 @@ impl EventHandler for MainState {
 
             if !game_area_has_keyboard_focus {
                 if let Some(key) = key {
-                    let key_event = Event {
-                        what: EventType::KeyPress,
-                        point: Some(mouse_point),
-                        prev_point: None,
-                        button: None,
-                        key: Some(KeyCodeOrChar::KeyCode(key)),
-                        shift_pressed: is_shift,
-                        text: None,
-                    };
+                    let key_event = Event::new_key_press(mouse_point, key, is_shift);
                     layer.emit(&key_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
                         error!("Error from layer.emit on key press: {:?}", e);
                     });
@@ -598,15 +582,7 @@ impl EventHandler for MainState {
             let mut text_input = vec![];
             std::mem::swap(&mut self.inputs.text_input, &mut text_input);
             for character in text_input {
-                let key_event = Event {
-                    what: EventType::KeyPress,
-                    point: Some(mouse_point),
-                    prev_point: None,
-                    button: None,
-                    key: Some(KeyCodeOrChar::Char(character)),
-                    shift_pressed: is_shift,
-                    text: None,
-                };
+                let key_event = Event::new_char_press(mouse_point, character, is_shift);
                 layer.emit(&key_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
                     error!("Error from layer.emit on key press (text input): {:?}", e);
                 });

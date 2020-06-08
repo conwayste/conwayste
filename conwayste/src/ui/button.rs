@@ -160,15 +160,7 @@ impl Button {
             }
             // create a synthetic click event
             let mouse_point = button.position();
-            let click_event = Event {
-                what: EventType::Click,
-                point: Some(mouse_point),
-                prev_point: None,
-                button: Some(MouseButton::Left),
-                key: None,
-                shift_pressed: false,
-                text: None,
-            };
+            let click_event = Event::new_click(mouse_point, MouseButton::Left, false);
             button.emit(&click_event, uictx)?;
             Ok(Handled::NotHandled) // allow other handlers for this event type to be activated
         };

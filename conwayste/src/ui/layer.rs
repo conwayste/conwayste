@@ -633,17 +633,12 @@ impl Layering {
 
     fn emit_focus_change(what: context::EventType, uictx: &mut context::UIContext, focused_id: &NodeId) -> Result<(), Box<dyn Error>> {
         debug!("Layering::emit_focus_change({:?}) to {:?}", what, focused_id); //XXX
+        if what != context::EventType::GainFocus && what != context::EventType::LoseFocus {
+            return Err(format!("Unexpected event type passed to Pane::emit_focus_change: {:?}", what).into());
+        }
         let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
         if let Some(emittable) = widget_ref.as_emit_event() {
-            let event = context::Event {
-                what,
-                point: None,
-                prev_point: None,
-                button: None,
-                key: None,
-                shift_pressed: false,
-                text: None,
-            };
+            let event = context::Event::new_gain_or_lose_focus(what);
             emittable.emit(&event, &mut subuictx)?;
             let pane_events = subuictx.collect_child_events();
             if pane_events.len() != 0 {

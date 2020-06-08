@@ -177,15 +177,7 @@ impl TextField {
                         let text = tf.text();
                         if text.is_some() {
                             tf.clear();
-                            let evt = Event {
-                                what: EventType::TextEntered,
-                                point: None,
-                                prev_point: None,
-                                button: None,
-                                key: None,
-                                shift_pressed: false,
-                                text,
-                            };
+                            let evt = Event::new_text_entered(text.unwrap());
                             tf.emit(&evt, uictx).unwrap_or_else(|e| {
                                 error!("Error from TextEntered handler on textfield: {:?}", e);
                             });
@@ -215,15 +207,7 @@ impl TextField {
     /// Sends a notification to the parent widget that we have released focus.
     fn release_focus(&mut self, uictx: &mut UIContext) {
         self.focused = false;
-        let evt = Event {
-            what: EventType::ChildReleasedFocus,
-            point: None,
-            prev_point: None,
-            button: None,
-            key: None,
-            shift_pressed: false,
-            text: None,
-        };
+        let evt = Event::new_child_released_focus();
         uictx.child_event(evt);
     }
 

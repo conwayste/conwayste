@@ -207,15 +207,7 @@ impl Pane {
             if pane.focus_cycle.focused_widget_id().is_none() {
                 debug!("[Pane] key_press_handler: sending event to parent: ChildReleasedFocus"); //XXX
                 // we lost focus; send ChildReleasedFocus event to parent
-                let event = Event {
-                    what: EventType::ChildReleasedFocus,
-                    point: None,
-                    prev_point: None,
-                    button: None,
-                    key: None,
-                    shift_pressed: false,
-                    text: None,
-                };
+                let event = Event::new_child_released_focus();
                 uictx.child_event(event);
             }
         } else {
@@ -262,15 +254,7 @@ impl Pane {
         if self.focus_cycle.focused_widget_id().is_none() {
             debug!("[Pane] handle_events_from_child: sending event to parent: ChildReleasedFocus"); //XXX
             // we lost focus; send ChildReleasedFocus event to parent
-            let event = Event {
-                what: EventType::ChildReleasedFocus,
-                point: None,
-                prev_point: None,
-                button: None,
-                key: None,
-                shift_pressed: false,
-                text: None,
-            };
+            let event = Event::new_child_released_focus();
             uictx.child_event(event);
         }
         Ok(())
@@ -303,17 +287,12 @@ impl Pane {
         focused_id: &NodeId,
     ) -> Result<(), Box<dyn Error>> {
         debug!("Pane::emit_focus_change({:?}) to {:?}", what, focused_id); //XXX
+        if what != EventType::GainFocus && what != EventType::LoseFocus {
+            return Err(format!("Unexpected event type passed to Pane::emit_focus_change: {:?}", what).into());
+        }
         let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
         if let Some(emittable) = widget_ref.as_emit_event() {
-            let event = Event {
-                what,
-                point: None,
-                prev_point: None,
-                button: None,
-                key: None,
-                shift_pressed: false,
-                text: None,
-            };
+            let event = Event::new_gain_or_lose_focus(what);
             emittable.emit(&event, &mut subuictx)?;
             let pane_events = subuictx.collect_child_events();
             debug!("[Pane] emit_focus_change: calling handle_events_from_child w/ subuictx"); //XXX

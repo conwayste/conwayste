@@ -241,6 +241,84 @@ impl EventType {
 }
 
 impl Event {
+    pub fn new_char_press(mouse_point: Point2<f32>, character: char, is_shift: bool) -> Self {
+        Event {
+            what: EventType::KeyPress,
+            point: Some(mouse_point),
+            prev_point: None,
+            button: None,
+            key: Some(KeyCodeOrChar::Char(character)),
+            shift_pressed: is_shift,
+            text: None,
+        }
+    }
+
+    pub fn new_key_press(mouse_point: Point2<f32>, key_code: KeyCode, is_shift: bool) -> Self {
+        Event {
+            what: EventType::KeyPress,
+            point: Some(mouse_point),
+            prev_point: None,
+            button: None,
+            key: Some(KeyCodeOrChar::KeyCode(key_code)),
+            shift_pressed: is_shift,
+            text: None,
+        }
+    }
+
+    pub fn new_click(mouse_point: Point2<f32>, mouse_button: MouseButton, is_shift: bool) -> Self {
+        Event {
+            what: EventType::Click,
+            point: Some(mouse_point),
+            prev_point: None,
+            button: Some(mouse_button),
+            key: None,
+            shift_pressed: is_shift,
+            text: None,
+        }
+    }
+
+    pub fn new_child_released_focus() -> Self {
+        Event {
+            what: EventType::ChildReleasedFocus,
+            point: None,
+            prev_point: None,
+            button: None,
+            key: None,
+            shift_pressed: false,
+            text: None,
+        }
+    }
+
+    pub fn new_text_entered(text: String) -> Self {
+        Event {
+            what: EventType::TextEntered,
+            point: None,
+            prev_point: None,
+            button: None,
+            key: None,
+            shift_pressed: false,
+            text: Some(text),
+        }
+    }
+
+    /// # Panics
+    ///
+    /// Will panic if event type is not a GainFocus or LoseFocus
+    pub fn new_gain_or_lose_focus(what: EventType) -> Self {
+        if what != EventType::GainFocus && what != EventType::LoseFocus {
+            panic!("Unexpected event type passed to new_gain_or_lose_focus: {:?}", what);
+        }
+        Event {
+            what,
+            point: None,
+            prev_point: None,
+            button: None,
+            key: None,
+            shift_pressed: false,
+            text: None,
+        }
+    }
+
     /// Returns true if and only if this is a keyboard event.
     pub fn is_key_event(&self) -> bool {
         self.what.is_key_event()
