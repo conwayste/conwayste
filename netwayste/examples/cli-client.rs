@@ -99,6 +99,7 @@ fn read_stdin(channel_to_netwayste: mpsc::UnboundedSender<NetwaysteEvent>) {
 fn print_help() {
     info!("");
     info!("/help                  - print this text");
+    info!("/status                - get the server's status");
     info!("/connect <player_name> - connect to server");
     info!("/disconnect            - disconnect from server");
     info!("/list                  - list rooms when in lobby, or players when in game");
@@ -116,6 +117,11 @@ fn build_command_request_action(cmd: String, args: Vec<String>) -> NetwaysteEven
     match cmd.as_str() {
         "help" | "?" | "h" => {
             print_help();
+        }
+        "status" | "s" => {
+            let nonce = rand::random::<u64>();
+            println!("Nonce for get status: {}", nonce);
+            new_event = NetwaysteEvent::GetStatus(nonce);
         }
         "connect" | "c" => {
             if args.len() == 1 {

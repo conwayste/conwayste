@@ -597,20 +597,29 @@ impl ClientNetState {
                             client_state.handle_network_event(&udp_tx);
                         }
                         Event::ConwaysteEvent(netwayste_request) => {
-                            let action: RequestAction =
-                                NetwaysteEvent::build_request_action_from_netwayste_event(
-                                    netwayste_request,
-                                    client_state.in_game(),
+                            if let NetwaysteEvent::GetStatus(nonce) = netwayste_request {
+                                let server_address = client_state.server_address.unwrap().clone();
+                                netwayste_send!(
+                                    udp_tx,
+                                    (server_address, Packet::GetStatus{nonce}),
+                                    ("Could not send user input cmd to server")
                                 );
-                            match action {
-                                RequestAction::Connect { ref name, .. } => {
-                                    // TODO: do not store the name on client_state since that's the wrong
-                                    // place for it.
-                                    client_state.name = Some(name.to_owned());
+                            } else {
+                                let action: RequestAction =
+                                    NetwaysteEvent::build_request_action_from_netwayste_event(
+                                        netwayste_request,
+                                        client_state.in_game(),
+                                    );
+                                match action {
+                                    RequestAction::Connect { ref name, .. } => {
+                                        // TODO: do not store the name on client_state since that's the wrong
+                                        // place for it.
+                                        client_state.name = Some(name.to_owned());
+                                    }
+                                    _ => {}
                                 }
-                                _ => {}
+                                client_state.try_server_send(&udp_tx, &exit_tx, action);
                             }
-                            client_state.try_server_send(&udp_tx, &exit_tx, action);
                         }
                     }
 
