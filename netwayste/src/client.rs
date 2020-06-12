@@ -275,17 +275,21 @@ impl ClientNetState {
                     )
                 );
             }
-            Packet::Request { .. } => {
+            Packet::Request { .. } | Packet::UpdateReply { .. } | Packet::GetStatus { .. } => {
                 warn!(
                     "Ignoring packet from server normally sent by clients: {:?}",
                     packet
                 );
             }
-            Packet::UpdateReply { .. } => {
-                warn!(
-                    "Ignoring packet from server normally sent by clients: {:?}",
-                    packet
-                );
+            Packet::Status { .. } => {
+                self.channel_to_conwayste
+                    .send(NetwaysteEvent::Status(packet))
+                    .unwrap_or_else(|e| {
+                        error!(
+                            "Could not send a netwayste response via channel_to_conwayste: {:?}",
+                            e
+                        );
+                    });
             }
         }
     }

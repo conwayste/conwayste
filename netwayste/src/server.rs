@@ -590,7 +590,7 @@ impl ServerState {
             }
             RequestAction::None => {
                 return ResponseCode::BadRequest {
-                    error_msg: "Invalid request".to_owned(),
+                    error_msg: format!("Invalid request: {:?}", action),
                 };
             }
         }
@@ -652,7 +652,7 @@ impl ServerState {
         }
     }
 
-    /// Processes a player's request action for all non Connect requests. If necessary, a response is buffered
+    /// Processes a player's request action for all non-logged in requests. If necessary, a response is buffered
     /// for later transmission
     pub fn process_player_request_action(
         &mut self,
@@ -885,7 +885,7 @@ impl ServerState {
         packet: Packet,
     ) -> Result<Option<Packet>, Box<dyn Error>> {
         match packet.clone() {
-            _pkt @ Packet::Response { .. } | _pkt @ Packet::Update { .. } => {
+            Packet::Response { .. } | Packet::Update { .. } | Packet::Status { .. } => {
                 return Err(Box::new(io::Error::new(
                     ErrorKind::InvalidData,
                     "invalid packet type",
@@ -1032,6 +1032,17 @@ impl ServerState {
                 }
                 Ok(None)
             }
+            Packet::GetStatus { nonce } => Ok(Some(self.get_status(nonce))),
+        }
+    }
+
+    fn get_status(&self, nonce: u64) -> Packet {
+        Packet::Status {
+            nonce,
+            player_count: self.player_map.len() as u64,
+            room_count: self.room_map.len() as u64,
+            server_name: "Leto II".to_owned(),
+            server_version: VERSION.to_owned(),
         }
     }
 

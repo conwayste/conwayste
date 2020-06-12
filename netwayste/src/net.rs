@@ -91,10 +91,14 @@ impl From<io::Error> for NetError {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum RequestAction {
     None, // never actually sent
+
+    /* These actions do not require a user to be logged in to the server */
     Connect {
         name: String,
         client_version: String,
     },
+
+    /* All actions below require a log-in via a Connect request */
     Disconnect,
     KeepAlive {
         latest_response_ack: u64,
@@ -150,6 +154,8 @@ pub enum ResponseCode {
     NotConnected {
         error_msg: String,
     }, // no equivalent in HTTP due to handling at lower (TCP) level
+
+    // Misc.
     KeepAlive, // Server's heart is beating
 }
 
@@ -284,6 +290,16 @@ pub enum Packet {
         last_game_update_seq: Option<u64>, // seq. number of latest game update from server
         last_gen: Option<u64>,      // generation number client is currently at
     },
+    GetStatus {
+        nonce: u64,
+    },
+    Status {
+        nonce: u64,
+        server_version: String,
+        player_count: u64,
+        room_count: u64,
+        server_name: String,
+    }, // Provide basic server information to the requester
 }
 
 impl Packet {
@@ -381,6 +397,13 @@ impl fmt::Debug for Packet {
             Packet::UpdateReply{ cookie, last_chat_seq, last_game_update_seq, last_gen} => {
                 write!(f, "[UpdateReply] cookie: {:?} last_chat_seq: {:?} last_game_update_seq: {:?} last_game: {:?}",
                     cookie, last_chat_seq, last_game_update_seq, last_gen)
+            }
+            Packet::GetStatus{ nonce} => {
+                write!(f, "[GetStatus] nonce: {}", nonce)
+            }
+            Packet::Status{ nonce, player_count, room_count, server_name, server_version} => {
+                write!(f, "[Status] nonce: {} player_count: {} room_count: {} server_version: {:?} server_name: {:?}",
+                nonce, player_count, room_count, server_version, server_name)
             }
         }
     }
@@ -1098,6 +1121,10 @@ pub enum NetwaysteEvent {
     // Updates
     ChatMessages(Vec<(String, String)>), // (player name, message)
     UniverseUpdate,                      // TODO add libconway stuff for current universe gen
+
+    // Server Status
+    GetStatus(u64),
+    Status(Packet), // Only uses the `Packet::Status` variant
 }
 
 impl NetwaysteEvent {
