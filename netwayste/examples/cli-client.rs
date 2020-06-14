@@ -221,8 +221,8 @@ fn main() {
         // This is inefficient -- it would be better not to poll for messages on the channel.
         // However, we are polling in GUI client's update() function so do it here as well.
         match ggez_server_response.try_recv() {
-            Ok(response_code) => {
-                println!("{:?}", response_code);
+            Ok(nw_event_from_server_code) => {
+                println!("{:?}", nw_event_from_server_code);
             }
             Err(TryRecvError::Empty) => {
                 // Nothing to do in the empty case

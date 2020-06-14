@@ -36,6 +36,8 @@ use crate::net::{
     VERSION,
 };
 
+use crate::utils::PingFilter;
+
 const TICK_INTERVAL_IN_MS: u64 = 1000;
 const NETWORK_INTERVAL_IN_MS: u64 = 1000;
 
@@ -63,6 +65,7 @@ pub struct ClientNetState {
     pub disconnect_initiated: bool,
     pub server_address: Option<SocketAddr>,
     pub channel_to_conwayste: std::sync::mpsc::Sender<NetwaysteEvent>,
+    ping_filter: PingFilter,
 }
 
 impl ClientNetState {
@@ -80,6 +83,7 @@ impl ClientNetState {
             disconnect_initiated: false,
             server_address: None,
             channel_to_conwayste: channel_to_conwayste,
+            ping_filter: PingFilter::new(),
         }
     }
 
@@ -101,6 +105,7 @@ impl ClientNetState {
             ref mut disconnect_initiated,
             ref mut server_address,
             channel_to_conwayste: ref _channel_to_conwayste, // Don't clear the channel to conwayste
+            ref mut ping_filter,
         } = *self;
         *sequence = 0;
         *response_sequence = 0;
@@ -112,6 +117,7 @@ impl ClientNetState {
         *disconnect_initiated = false;
         *server_address = None;
         network.reset();
+        ping_filter.reset();
 
         trace!("ClientNetState reset!");
     }
@@ -282,6 +288,8 @@ impl ClientNetState {
                 );
             }
             Packet::Status { .. } => {
+                self.ping_filter.update();
+
                 self.channel_to_conwayste
                     .send(NetwaysteEvent::Status(packet))
                     .unwrap_or_else(|e| {
@@ -599,6 +607,9 @@ impl ClientNetState {
                         Event::ConwaysteEvent(netwayste_request) => {
                             if let NetwaysteEvent::GetStatus(nonce) = netwayste_request {
                                 let server_address = client_state.server_address.unwrap().clone();
+
+                                client_state.ping_filter.start();
+
                                 netwayste_send!(
                                     udp_tx,
                                     (server_address, Packet::GetStatus{nonce}),

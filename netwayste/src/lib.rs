@@ -31,6 +31,7 @@ extern crate tokio_core;
 #[macro_use]
 pub mod net;
 pub mod client;
+mod utils;
 
 #[cfg(test)]
 pub mod tests;
