@@ -612,7 +612,7 @@ impl ClientNetState {
 
                                 netwayste_send!(
                                     udp_tx,
-                                    (server_address, Packet::GetStatus{nonce}),
+                                    (server_address, Packet::GetStatus { nonce }),
                                     ("Could not send user input cmd to server")
                                 );
                             } else {

@@ -133,10 +133,13 @@ mod tests {
     fn test_ping_filter_filled_sets_latency_with_varying_pings() {
         let mut pf = PingFilter::new();
 
-        (0..=PING_FILTER_DEPTH*100).step_by(100).into_iter().for_each(|i| {
-            pf.set_start_time(i as u64);
-            pf.update();
-        });
+        (0..=PING_FILTER_DEPTH * 100)
+            .step_by(100)
+            .into_iter()
+            .for_each(|i| {
+                pf.set_start_time(i as u64);
+                pf.update();
+            });
 
         assert_eq!(pf.average_latency_ms, 650);
     }
