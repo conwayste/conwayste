@@ -190,6 +190,7 @@ pub enum EventType {
     // ChildReleasedFocus goes toward the root of the tree! Emitted by Pane onto its parent via
     // child_event(). Note that a LoseFocus event will not be received after this is sent.
     TextEntered,
+    Update,
 }
 
 // TODO: move this elsewhere; it's in here to keep separate from other code (avoid merge conflicts)
@@ -310,6 +311,18 @@ impl Event {
         }
         Event {
             what,
+            point: None,
+            prev_point: None,
+            button: None,
+            key: None,
+            shift_pressed: false,
+            text: None,
+        }
+    }
+
+    pub fn new_update() -> Self {
+        Event {
+            what: EventType::Update,
             point: None,
             prev_point: None,
             button: None,

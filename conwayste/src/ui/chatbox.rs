@@ -16,6 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::error::Error;
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::mpsc::{Receiver, Sender, channel};
@@ -31,7 +32,7 @@ use super::{
     widget::Widget,
     UIAction,
     UIError, UIResult,
-    context::{HandlerData, EmitEvent},
+    context::{HandlerData, EmitEvent, EventType, Handled, Event, UIContext},
 };
 
 use crate::constants::{self, colors::*};
@@ -82,7 +83,7 @@ impl Chatbox {
         // TODO: affix to bottom left corner once "anchoring"/"gravity" is implemented
         let rect = *constants::DEFAULT_CHATBOX_RECT;
         let (msg_tx, msg_rx) = channel::<String>();
-        Chatbox {
+        let mut chatbox = Chatbox {
             id: None,
             z_index: std::usize::MAX,
             history_lines,
@@ -96,11 +97,27 @@ impl Chatbox {
             msg_sender: msg_tx,
             msg_receiver: msg_rx,
             handler_data: HandlerData::new(),
-        }
+        };
+        chatbox.on(EventType::Update, Box::new(Chatbox::update_handler)).unwrap(); // unwrap OK because we aren't in handler
+        chatbox
     }
 
+    /// Returns a handle that enables you to asynchronously publish messages to this chatbox.
     pub fn new_handle(&self) -> ChatboxPublishHandle {
         ChatboxPublishHandle::new(self.msg_sender.clone())
+    }
+
+    fn update_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        let chatbox = obj.downcast_mut::<Chatbox>().unwrap(); // unwrap OK because it's always a Chatbox
+        loop {
+            if let Ok(msg) = chatbox.msg_receiver.try_recv() {
+                // TODO: maybe we should batch add these? Benchmark!
+                chatbox.add_message(msg);
+            } else {
+                break;
+            }
+        }
+        Ok(Handled::NotHandled)
     }
 
     /// Adds a message to the chatbox
@@ -318,17 +335,6 @@ impl Widget for Chatbox {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        // XXX HACK: this really belongs in update() but that isn't called so yeah...
-        loop {
-            if let Ok(msg) = self.msg_receiver.try_recv() {
-                // TODO: maybe we should batch add these? Benchmark!
-                self.add_message(msg);
-            } else {
-                break;
-            }
-        }
-
-
         // TODO: Add support to scroll through history
         if self.hover {
             // Add in a teal border while hovered. Color checkbox differently to indicate hovered state.

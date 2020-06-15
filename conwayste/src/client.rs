@@ -554,10 +554,17 @@ impl EventHandler for MainState {
         // ==== Handle widget events ====
         let mut game_area_should_ignore_input = false;
         if let Some(layer) = self.ui_layout.get_screen_layering(screen) {
+            let update = Event::new_update();
+            layer.emit(&update, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
+                error!("Error from layer.emit on update: {:?}", e);
+            });
+
+            // TODO: replace with event
             layer.on_hover(&mouse_point);
 
             if let Some(action) = mouse_action {
                 if action == MouseAction::Drag {
+                    // TODO: replace with event
                     layer.on_drag(&origin_point, &mouse_point);
                 }
             }

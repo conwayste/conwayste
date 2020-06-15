@@ -140,7 +140,20 @@ impl TextField {
 
         tf.on(EventType::GainFocus, Box::new(gain_focus_handler)).unwrap(); // unwrap OK
         tf.on(EventType::LoseFocus, Box::new(lose_focus_handler)).unwrap(); // unwrap OK
+        tf.on(EventType::Update, Box::new(TextField::update_handler)).unwrap(); // unwrap OK because we aren't in handler
         tf
+    }
+
+    fn update_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK because it's always a TextField
+        if let Some(prev_blink_ms) = tf.cursor_blink_timestamp {
+            if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
+                tf.draw_cursor ^= true;
+                tf.cursor_blink_timestamp = Some(Instant::now());
+            }
+        }
+
+        Ok(Handled::NotHandled)
     }
 
     /// Maximum number of characters that can be visible at once.
@@ -358,14 +371,6 @@ impl Widget for TextField {
         if !self.focused && self.text.is_empty() {
             // textfield is hidden
             return Ok(());
-        }
-
-        //XXX HACK: we are no longer calling update though we probably should
-        if let Some(prev_blink_ms) = self.cursor_blink_timestamp {
-            if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
-                self.draw_cursor ^= true;
-                self.cursor_blink_timestamp = Some(Instant::now());
-            }
         }
 
         if let Some(bg_color) = self.bg_color {

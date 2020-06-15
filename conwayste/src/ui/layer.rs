@@ -508,7 +508,9 @@ impl Layering {
     ) -> Result<(), Box<dyn Error>> {
         let widget_view = treeview::TreeView::new(&mut self.widget_tree);
         let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view, screen_stack);
-        if event.is_mouse_event() {
+        if event.what == context::EventType::Update {
+            Layering::emit_update_event(event, &mut uictx)
+        } else if event.is_mouse_event() {
             Layering::emit_mouse_event(event, &mut uictx)
         } else if event.is_key_event() {
             Layering::handle_keyboard_event(event, &mut uictx, &mut self.focus_cycles[self.highest_z_order])
@@ -516,6 +518,27 @@ impl Layering {
             warn!("Don't know how to handle event type {:?}", event.what); // nothing to do if this is not a key or a mouse event
             Ok(())
         }
+    }
+
+    fn emit_update_event(event: &context::Event, uictx: &mut context::UIContext) -> Result<(), Box<dyn Error>> {
+        for child_id in uictx.widget_view.children_ids() {
+            // Get a mutable reference to a BoxedWidget, as well as a UIContext with a view on the
+            // widgets in the tree under this widget.
+            let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK b/c NodeId valid & in view
+
+            if let Some(emittable) = widget_ref.as_emit_event() {
+                emittable.emit(event, &mut subuictx)?;
+                let pane_events = subuictx.collect_child_events();
+                if pane_events.len() != 0 {
+                    warn!("[Layering] expected no update child events to be collected from Pane; got {:?}",
+                        pane_events);
+                }
+                return Ok(());
+            } else {
+                debug!("nothing to emit on; widget is not an EmitEvent");
+            }
+        }
+        Ok(())
     }
 
     fn handle_keyboard_event(event: &context::Event, uictx: &mut context::UIContext, focus_cycle: &mut FocusCycle) -> Result<(), Box<dyn Error>> {
