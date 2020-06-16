@@ -18,12 +18,14 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 
+/// This indicates the number of samples needed by the ping filter to calculate a statistically
+/// meaningful average.
 const PING_FILTER_DEPTH: usize = 12;
 
 pub struct PingFilter {
-    pub average_latency_ms: u128,
-    running_sum: u128,
-    history: VecDeque<u128>,
+    pub average_latency_ms: Option<u64>,
+    running_sum: u64,
+    history: VecDeque<u64>,
     start_timestamp: Instant,
     in_progress: bool,
 }
@@ -31,7 +33,7 @@ pub struct PingFilter {
 impl PingFilter {
     pub fn new() -> PingFilter {
         PingFilter {
-            average_latency_ms: 0,
+            average_latency_ms: None,
             running_sum: 0,
             history: VecDeque::with_capacity(PING_FILTER_DEPTH),
             start_timestamp: Instant::now(),
@@ -49,7 +51,7 @@ impl PingFilter {
             ref mut in_progress,
         } = *self;
 
-        *average_latency_ms = 0;
+        *average_latency_ms = None;
         *running_sum = 0;
         history.clear();
         *start_timestamp = Instant::now();
@@ -67,7 +69,7 @@ impl PingFilter {
         }
 
         let latency = Instant::now().duration_since(self.start_timestamp);
-        let latency_ms = latency.as_millis();
+        let latency_ms = latency.as_millis() as u64;
 
         self.running_sum += latency_ms;
         self.history.push_back(latency_ms);
@@ -77,8 +79,10 @@ impl PingFilter {
             // unwraps safe b/c of length check
             let oldest = self.history.pop_front().unwrap();
             self.running_sum -= oldest;
-            self.average_latency_ms = (self.running_sum as f64 / PING_FILTER_DEPTH as f64) as u128;
-            println!("Client-side Ping: {}", self.average_latency_ms); // PR_GATE
+
+            let average_latency_ms = (self.running_sum as f64 / PING_FILTER_DEPTH as f64) as u64;
+            println!("Client-side Ping: {}", average_latency_ms); // PR_GATE
+            self.average_latency_ms = Some(average_latency_ms);
         }
 
         self.in_progress = false;
@@ -86,6 +90,8 @@ impl PingFilter {
 
     #[cfg(test)]
     fn set_start_time(&mut self, ms_in_past: u64) {
+        use std::time::Duration;
+
         self.in_progress = true;
         let opt_past_timestamp = Instant::now().checked_sub(Duration::from_millis(ms_in_past));
         if let Some(past_timestamp) = opt_past_timestamp {
@@ -107,7 +113,7 @@ mod tests {
             pf.update();
         });
 
-        assert_eq!(pf.average_latency_ms, 0);
+        assert_eq!(pf.average_latency_ms, None);
     }
 
     #[test]
@@ -119,7 +125,7 @@ mod tests {
             pf.update();
         });
 
-        assert_eq!(pf.average_latency_ms, 500);
+        assert_eq!(pf.average_latency_ms, Some(500));
 
         // Perform an additional 12 for shiggles
         (0..=PING_FILTER_DEPTH).into_iter().for_each(|_| {
@@ -127,7 +133,7 @@ mod tests {
             pf.update();
         });
 
-        assert_eq!(pf.average_latency_ms, 500);
+        assert_eq!(pf.average_latency_ms, Some(500));
     }
 
     #[test]
@@ -142,7 +148,7 @@ mod tests {
                 pf.update();
             });
 
-        assert_eq!(pf.average_latency_ms, 650);
+        assert_eq!(pf.average_latency_ms, Some(650));
     }
 
     #[test]
