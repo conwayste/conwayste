@@ -39,6 +39,7 @@ impl PingFilter {
         }
     }
 
+    #[deny(unused_variables)]
     pub fn reset(&mut self) {
         let Self {
             ref mut average_latency_ms,
