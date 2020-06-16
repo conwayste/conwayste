@@ -22,6 +22,7 @@ use std::time::Instant;
 /// meaningful average.
 const PING_FILTER_DEPTH: usize = 12;
 
+/// A moving-average filter used to level out the latencies calculated from network request/response times.
 pub struct PingFilter {
     pub average_latency_ms: Option<u64>,
     running_sum: u64,
@@ -65,7 +66,7 @@ impl PingFilter {
 
     pub fn update(&mut self) {
         if !self.in_progress {
-            panic!("start() was not called so a duration cannot be computed");
+            error!("The PingFilter's start() was not called so a duration cannot be computed.");
         }
 
         let latency = Instant::now().duration_since(self.start_timestamp);
@@ -151,10 +152,4 @@ mod tests {
         assert_eq!(pf.average_latency_ms, Some(650));
     }
 
-    #[test]
-    #[should_panic(expected = "start() was not called so a duration cannot be computed")]
-    fn test_ping_filter_update_called_before_start() {
-        let mut pf = PingFilter::new();
-        pf.update();
-    }
 }
