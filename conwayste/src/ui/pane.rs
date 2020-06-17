@@ -124,6 +124,8 @@ impl Pane {
             } else {
                 // nothing to do if this is not a key or a mouse event
             }
+
+            pane.on(EventType::Update, Box::new(Pane::update_handler)).unwrap(); // unwrap OK because not called w/in handler
         }
 
         // Set handler for focusing first widget in focus cycle when focus is gained
@@ -147,6 +149,28 @@ impl Pane {
             .unwrap(); // unwrap OK
 
         pane
+    }
+
+    fn update_handler(
+        _obj: &mut dyn EmitEvent,
+        uictx: &mut UIContext,
+        event: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        for child_id in uictx.widget_view.children_ids() {
+            // Get a mutable reference to a BoxedWidget, as well as a UIContext with a view on the
+            // widgets in the tree under this widget.
+            let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK b/c NodeId valid & in view
+
+            if let Some(emittable) = widget_ref.as_emit_event() {
+                emittable.emit(event, &mut subuictx)?;
+                let pane_events = subuictx.collect_child_events();
+                if pane_events.len() != 0 {
+                    warn!("[Pane] expected no update child events to be collected from child widget; got {:?}",
+                        pane_events);
+                }
+            }
+        }
+        Ok(Handled::NotHandled)
     }
 
     fn key_press_handler(

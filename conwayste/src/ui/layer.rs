@@ -530,12 +530,9 @@ impl Layering {
                 emittable.emit(event, &mut subuictx)?;
                 let pane_events = subuictx.collect_child_events();
                 if pane_events.len() != 0 {
-                    warn!("[Layering] expected no update child events to be collected from Pane; got {:?}",
+                    warn!("[Layering] expected no update child events to be collected from child widget; got {:?}",
                         pane_events);
                 }
-                return Ok(());
-            } else {
-                debug!("nothing to emit on; widget is not an EmitEvent");
             }
         }
         Ok(())

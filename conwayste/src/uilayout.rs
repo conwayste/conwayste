@@ -21,6 +21,7 @@ use std::error::Error;
 
 use ggez::graphics::{Font, Rect};
 use ggez::Context;
+use ggez::nalgebra::Point2;
 
 use id_tree::NodeId;
 
@@ -28,7 +29,7 @@ use crate::config::Config;
 use crate::constants;
 use crate::ui::{
     common, context, Button, Chatbox, Checkbox, GameArea, InsertLocation, Label, Layering, Pane,
-    TextField, UIAction, UIResult, Widget,
+    TextField, UIAction, UIResult, Widget, color_with_alpha,
 };
 use crate::Screen;
 
@@ -36,6 +37,7 @@ use context::{
     EmitEvent, // so we can call .on(...) on widgets that implement this
     EventType,
 };
+use chromatica::css;
 
 // When adding support for a new widget, use this macro to define a routine which allows the
 // developer to search in a `UILayout`/`Screen` pair for a widget by its ID
@@ -91,6 +93,19 @@ impl UILayout {
             "Toggle FullScreen".to_owned(),
             Rect::new(10.0, 210.0, 20.0, 20.0),
         ));
+
+        let name_color = color_with_alpha(css::WHITE, 1.0);
+        let value_color = color_with_alpha(css::AQUAMARINE, 1.0);
+        layer_options.add_widget(Box::new(
+                Label::new(ctx, default_font_info, "Resolution".to_owned(), name_color, Point2::new(10.0, 300.0))),
+                InsertLocation::AtCurrentLayer)?;
+
+        let mut resolution_value_label = Box::new(
+            Label::new(ctx, default_font_info, "<no data>".to_owned(), value_color, Point2::new(200.0, 300.0))
+        );
+        resolution_value_label.on(context::EventType::Update, Box::new(resolution_update_handler)).unwrap();
+        layer_options.add_widget(resolution_value_label, InsertLocation::AtCurrentLayer)?;
+
         // unwrap OK here because we are not calling .on from within a handler
         fullscreen_checkbox
             .on(EventType::Click, Box::new(fullscreen_toggle_handler))
@@ -162,10 +177,7 @@ impl UILayout {
             .unwrap(); // unwrap OK
 
         let menupane_id = layer_mainmenu.add_widget(pane, InsertLocation::AtCurrentLayer)?;
-        layer_mainmenu.add_widget(
-            quit_button,
-            InsertLocation::ToNestedContainer(&menupane_id),
-        )?;
+        // Add widgets in the order you want keyboard focus
         layer_mainmenu.add_widget(
             serverlist_button,
             InsertLocation::ToNestedContainer(&menupane_id),
@@ -176,6 +188,10 @@ impl UILayout {
         )?;
         layer_mainmenu.add_widget(
             start_1p_game_button,
+            InsertLocation::ToNestedContainer(&menupane_id),
+        )?;
+        layer_mainmenu.add_widget(
+            quit_button,
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
         Ok(layer_mainmenu)
@@ -309,6 +325,20 @@ fn quit_click_handler(
 ) -> Result<context::Handled, Box<dyn Error>> {
     info!("QUIT CLICKED");
     ggez::event::quit(uictx.ggez_context);
+    Ok(context::Handled::Handled)
+}
+
+fn resolution_update_handler(
+    obj: &mut dyn EmitEvent,
+    uictx: &mut context::UIContext,
+    _evt: &context::Event,
+) -> Result<context::Handled, Box<dyn Error>> {
+    let mut label = obj.downcast_mut::<Label>().unwrap(); // unwrap OK because it's always a Label
+    let (x, y) = (uictx.config.get().video.resolution_x, uictx.config.get().video.resolution_y);
+    let new_res_text = format!("{} x {}", x, y);
+    if label.text() != new_res_text.as_str() {
+        label.set_text(uictx.ggez_context, new_res_text);
+    }
     Ok(context::Handled::Handled)
 }
 

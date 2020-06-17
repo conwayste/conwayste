@@ -48,7 +48,8 @@ pub use common::{
     center,
     draw_text,
     intersection,
-    point_offset
+    point_offset,
+    color_with_alpha,
 };
 pub use label::Label;
 pub use layer::{Layering, InsertLocation};

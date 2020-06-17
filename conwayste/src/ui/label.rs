@@ -30,6 +30,7 @@ use super::{
     common::FontInfo,
     widget::Widget,
     UIError, UIResult,
+    context::{EmitEvent, HandlerData},
 };
 
 pub struct Label {
@@ -39,6 +40,7 @@ pub struct Label {
     z_index: usize,
     pub textfrag: TextFragment,
     pub dimensions: Rect,
+    handler_data: HandlerData,
 }
 
 impl fmt::Debug for Label {
@@ -111,7 +113,8 @@ impl Label {
             color,
             z_index: std::usize::MAX,
             textfrag: text_fragment,
-            dimensions: dimensions
+            dimensions,
+            handler_data: HandlerData::new(),
         }
     }
 
@@ -230,6 +233,11 @@ impl Widget for Label {
 
         Ok(())
     }
+
+    fn as_emit_event(&mut self) -> Option<&mut dyn EmitEvent> {
+        Some(self)
+    }
 }
 
 widget_from_id!(Label);
+impl_emit_event!(Label, self.handler_data);
