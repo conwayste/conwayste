@@ -88,7 +88,9 @@ impl LatencyFilter {
             let oldest = self.history.pop_front().unwrap();
             self.running_sum -= oldest;
 
-            let average_latency_ms = (self.running_sum as f64 / LATENCY_FILTER_DEPTH as f64) as u64;
+            // average round-trip time
+            let average_rtt_ms = (self.running_sum as f64 / LATENCY_FILTER_DEPTH as f64) as u64;
+            let average_latency_ms = average_rtt_ms / 2;
             println!("Client-side Ping: {}", average_latency_ms); // PR_GATE
             self.average_latency_ms = Some(average_latency_ms);
         }
