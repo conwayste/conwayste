@@ -18,12 +18,12 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 
-/// This indicates the number of samples needed by the ping filter to calculate a statistically
+/// This indicates the number of samples needed by the latency filter to calculate a statistically
 /// meaningful average.
-const PING_FILTER_DEPTH: usize = 12;
+const LATENCY_FILTER_DEPTH: usize = 12;
 
 /// A moving-average filter used to level out the latencies calculated from network request/response times.
-pub struct PingFilter {
+pub struct LatencyFilter {
     pub average_latency_ms: Option<u64>,
     running_sum: u64,
     history: VecDeque<u64>,
@@ -31,12 +31,12 @@ pub struct PingFilter {
     in_progress: bool,
 }
 
-impl PingFilter {
-    pub fn new() -> PingFilter {
-        PingFilter {
+impl LatencyFilter {
+    pub fn new() -> LatencyFilter {
+        LatencyFilter {
             average_latency_ms: None,
             running_sum: 0,
-            history: VecDeque::with_capacity(PING_FILTER_DEPTH),
+            history: VecDeque::with_capacity(LATENCY_FILTER_DEPTH),
             start_timestamp: Instant::now(),
             in_progress: false,
         }
@@ -66,10 +66,10 @@ impl PingFilter {
 
     pub fn update(&mut self) {
         if !self.in_progress {
-            error!("The PingFilter's start() was not called so a duration cannot be computed.");
+            error!("The LatencyFilter's start() was not called so a duration cannot be computed.");
             let elapsed = self.start_timestamp.elapsed();
             error!(
-                "PingFilter.start_timestamp snapshot was {}.{}.{} seconds ago.",
+                "LatencyFilter.start_timestamp snapshot was {}.{}.{} seconds ago.",
                 elapsed.as_secs(),
                 elapsed.as_millis(),
                 elapsed.as_micros()
@@ -83,12 +83,12 @@ impl PingFilter {
         self.history.push_back(latency_ms);
 
         // Wait for the filter to be populated
-        if self.history.len() > PING_FILTER_DEPTH {
+        if self.history.len() > LATENCY_FILTER_DEPTH {
             // unwraps safe b/c of length check
             let oldest = self.history.pop_front().unwrap();
             self.running_sum -= oldest;
 
-            let average_latency_ms = (self.running_sum as f64 / PING_FILTER_DEPTH as f64) as u64;
+            let average_latency_ms = (self.running_sum as f64 / LATENCY_FILTER_DEPTH as f64) as u64;
             println!("Client-side Ping: {}", average_latency_ms); // PR_GATE
             self.average_latency_ms = Some(average_latency_ms);
         }
@@ -114,9 +114,9 @@ mod tests {
 
     #[test]
     fn test_ping_filter_under_filled_does_not_set_latency() {
-        let mut pf = PingFilter::new();
+        let mut pf = LatencyFilter::new();
 
-        (0..PING_FILTER_DEPTH).into_iter().for_each(|_| {
+        (0..LATENCY_FILTER_DEPTH).into_iter().for_each(|_| {
             pf.set_start_time(500);
             pf.update();
         });
@@ -126,9 +126,9 @@ mod tests {
 
     #[test]
     fn test_ping_filter_filled_sets_latency() {
-        let mut pf = PingFilter::new();
+        let mut pf = LatencyFilter::new();
 
-        (0..=PING_FILTER_DEPTH).into_iter().for_each(|_| {
+        (0..=LATENCY_FILTER_DEPTH).into_iter().for_each(|_| {
             pf.set_start_time(500);
             pf.update();
         });
@@ -136,7 +136,7 @@ mod tests {
         assert_eq!(pf.average_latency_ms, Some(500));
 
         // Perform an additional 12 for shiggles
-        (0..=PING_FILTER_DEPTH).into_iter().for_each(|_| {
+        (0..=LATENCY_FILTER_DEPTH).into_iter().for_each(|_| {
             pf.set_start_time(500);
             pf.update();
         });
@@ -146,9 +146,9 @@ mod tests {
 
     #[test]
     fn test_ping_filter_filled_sets_latency_with_varying_pings() {
-        let mut pf = PingFilter::new();
+        let mut pf = LatencyFilter::new();
 
-        (0..=PING_FILTER_DEPTH * 100)
+        (0..=LATENCY_FILTER_DEPTH * 100)
             .step_by(100)
             .into_iter()
             .for_each(|i| {

@@ -36,7 +36,7 @@ use crate::net::{
     VERSION,
 };
 
-use crate::utils::PingFilter;
+use crate::utils::LatencyFilter;
 
 const TICK_INTERVAL_IN_MS: u64 = 1000;
 const NETWORK_INTERVAL_IN_MS: u64 = 1000;
@@ -65,7 +65,7 @@ pub struct ClientNetState {
     pub disconnect_initiated: bool,
     pub server_address: Option<SocketAddr>,
     pub channel_to_conwayste: std::sync::mpsc::Sender<NetwaysteEvent>,
-    ping_filter: PingFilter,
+    ping_filter: LatencyFilter,
 }
 
 impl ClientNetState {
@@ -83,7 +83,7 @@ impl ClientNetState {
             disconnect_initiated: false,
             server_address: None,
             channel_to_conwayste: channel_to_conwayste,
-            ping_filter: PingFilter::new(),
+            ping_filter: LatencyFilter::new(),
         }
     }
 
@@ -514,7 +514,7 @@ impl ClientNetState {
             );
         }
         if v4_addr_vec.len() > 1 {
-            // This is probably not the best option -- could pick based on ping time, random choice,
+            // This is probably not the best option -- could pick based on latency time, random choice,
             // and could also try other ones on connection failure.
             warn!(
                 "Multiple ({:?}) addresses returned; arbitrarily picking the first one.",

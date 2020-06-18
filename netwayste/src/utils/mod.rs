@@ -17,4 +17,4 @@
 
 mod ping;
 
-pub use ping::PingFilter;
+pub use ping::LatencyFilter;
