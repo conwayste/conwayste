@@ -67,6 +67,13 @@ impl PingFilter {
     pub fn update(&mut self) {
         if !self.in_progress {
             error!("The PingFilter's start() was not called so a duration cannot be computed.");
+            let elapsed = self.start_timestamp.elapsed();
+            error!(
+                "PingFilter.start_timestamp snapshot was {}.{}.{} seconds ago.",
+                elapsed.as_secs(),
+                elapsed.as_millis(),
+                elapsed.as_micros()
+            );
         }
 
         let latency = Instant::now().duration_since(self.start_timestamp);
@@ -151,5 +158,4 @@ mod tests {
 
         assert_eq!(pf.average_latency_ms, Some(650));
     }
-
 }
