@@ -39,6 +39,7 @@ use log::LevelFilter;
 use netwayste::{
     client::{ClientNetState, CLIENT_VERSION},
     net::NetwaysteEvent,
+    utils::PingPong,
 };
 
 const SLEEP: Duration = Duration::from_millis(33); // 30 "frames" per second
@@ -119,9 +120,8 @@ fn build_command_request_action(cmd: String, args: Vec<String>) -> NetwaysteEven
             print_help();
         }
         "status" | "s" => {
-            let nonce = rand::random::<u64>();
-            println!("Nonce for get status: {}", nonce);
-            new_event = NetwaysteEvent::GetStatus(nonce);
+            let ping= PingPong::ping();
+            new_event = NetwaysteEvent::GetStatus(ping);
         }
         "connect" | "c" => {
             if args.len() == 1 {

@@ -36,7 +36,7 @@ use crate::net::{
     VERSION,
 };
 
-use crate::utils::LatencyFilter;
+use crate::utils::{PingPong, LatencyFilter};
 
 const TICK_INTERVAL_IN_MS: u64 = 1000;
 const NETWORK_INTERVAL_IN_MS: u64 = 1000;
@@ -259,6 +259,7 @@ impl ClientNetState {
                 chats,
                 game_updates: _,
                 universe_update: _,
+                ping
             } => {
                 if chats.len() != 0 {
                     self.handle_incoming_chats(chats);
@@ -270,6 +271,7 @@ impl ClientNetState {
                     last_chat_seq: Some(self.chat_msg_seq_num),
                     last_game_update_seq: None,
                     last_gen: None,
+                    pong: PingPong::pong(ping.nonce),
                 };
 
                 netwayste_send!(
@@ -605,14 +607,14 @@ impl ClientNetState {
                             client_state.handle_network_event(&udp_tx);
                         }
                         Event::ConwaysteEvent(netwayste_request) => {
-                            if let NetwaysteEvent::GetStatus(nonce) = netwayste_request {
+                            if let NetwaysteEvent::GetStatus(ping) = netwayste_request {
                                 let server_address = client_state.server_address.unwrap().clone();
 
                                 client_state.ping_filter.start();
 
                                 netwayste_send!(
                                     udp_tx,
-                                    (server_address, Packet::GetStatus { nonce }),
+                                    (server_address, Packet::GetStatus { ping }),
                                     ("Could not send user input cmd to server")
                                 );
                             } else {

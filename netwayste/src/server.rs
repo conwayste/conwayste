@@ -19,8 +19,10 @@
 
 #[macro_use]
 extern crate log;
+
 #[macro_use]
 mod net;
+mod utils;
 
 #[cfg(test)]
 #[macro_use]
@@ -29,8 +31,10 @@ extern crate proptest;
 use netwayste::net::{
     bind, get_version, has_connection_timed_out, BroadcastChatMessage, LineCodec, NetworkManager,
     NetworkQueue, Packet, RequestAction, ResponseCode, RoomList, UniUpdateType, DEFAULT_HOST,
-    DEFAULT_PORT, VERSION,
+    DEFAULT_PORT, VERSION
 };
+
+use netwayste::utils::PingPong;
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -1005,6 +1009,7 @@ impl ServerState {
                 last_chat_seq,
                 last_game_update_seq: _,
                 last_gen: _,
+                pong: _,
             } => {
                 let opt_player_id = self.get_player_id_by_cookie(cookie.as_str());
 
@@ -1030,15 +1035,18 @@ impl ServerState {
                 if player.game_info.is_some() {
                     player.update_chat_seq_num(last_chat_seq);
                 }
+
+                // PR_GATE track player latency and update from pong
+
                 Ok(None)
             }
-            Packet::GetStatus { nonce } => Ok(Some(self.get_status(nonce))),
+            Packet::GetStatus { ping } => Ok(Some(self.get_status(ping.nonce))),
         }
     }
 
     fn get_status(&self, nonce: u64) -> Packet {
         Packet::Status {
-            nonce,
+            pong: PingPong {nonce},
             player_count: self.player_map.len() as u64,
             room_count: self.room_map.len() as u64,
             server_name: "Leto II".to_owned(),
@@ -1158,6 +1166,7 @@ impl ServerState {
                     chats: unsent_messages,
                     game_updates: vec![],
                     universe_update: UniUpdateType::NoChange,
+                    ping: PingPong::ping()
                 };
 
                 if messages_available || game_updates_available || universe_updates_available {
@@ -1592,6 +1601,7 @@ mod netwayste_server_tests {
                     last_chat_seq: Some(1),
                     last_game_update_seq: None,
                     last_gen: None,
+                    pong: PingPong::pong(0),
                 },
             )
             .unwrap();
@@ -1610,6 +1620,7 @@ mod netwayste_server_tests {
                     last_chat_seq: Some(0),
                     last_game_update_seq: None,
                     last_gen: None,
+                    pong: PingPong::pong(0),
                 },
             )
             .unwrap();
@@ -1628,6 +1639,7 @@ mod netwayste_server_tests {
                     last_chat_seq: None,
                     last_game_update_seq: None,
                     last_gen: None,
+                    pong: PingPong::pong(0),
                 },
             )
             .unwrap();
@@ -2600,11 +2612,13 @@ mod netwayste_server_tests {
             player.cookie.clone()
         };
 
+        // TODO: Move this into a private helper
         let update_reply_packet = Packet::UpdateReply {
             cookie: cookie,
             last_chat_seq: Some(0),
             last_game_update_seq: None,
             last_gen: None,
+            pong: PingPong::pong(0),
         };
 
         let result = server.decode_packet(fake_socket_addr(), update_reply_packet);
@@ -2628,6 +2642,7 @@ mod netwayste_server_tests {
             last_chat_seq: Some(0),
             last_game_update_seq: None,
             last_gen: None,
+            pong: PingPong::pong(0),
         };
 
         let result = server.decode_packet(fake_socket_addr(), update_reply_packet);
@@ -2684,6 +2699,7 @@ mod netwayste_server_tests {
                 chats,
                 game_updates,
                 universe_update,
+                ping,
             } => {
                 assert!(game_updates.is_empty());
                 assert_eq!(universe_update, UniUpdateType::NoChange);
@@ -2745,6 +2761,7 @@ mod netwayste_server_tests {
                 mut chats,
                 game_updates,
                 universe_update,
+                ping,
             } => {
                 assert!(game_updates.is_empty());
                 assert_eq!(universe_update, UniUpdateType::NoChange);

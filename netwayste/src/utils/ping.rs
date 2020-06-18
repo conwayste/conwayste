@@ -14,13 +14,36 @@
  * You should have received a copy of the GNU General Public License along with
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#![allow(dead_code)]    // Because this file is pub for server.rs. TODO: Refactor server into crate
 
 use std::collections::VecDeque;
 use std::time::Instant;
 
+use serde::{Deserialize, Serialize};
+use rand::random;
+
 /// This indicates the number of samples needed by the latency filter to calculate a statistically
 /// meaningful average.
 const LATENCY_FILTER_DEPTH: usize = 12;
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+pub struct PingPong {
+    pub nonce: u64
+}
+
+impl PingPong {
+    pub fn ping() -> PingPong {
+        PingPong {
+            nonce: random::<u64>()
+        }
+    }
+
+    pub fn pong(nonce: u64) -> PingPong {
+        PingPong {
+            nonce
+        }
+    }
+}
 
 /// A moving-average filter used to level out the latencies calculated from network request/response times.
 pub struct LatencyFilter {

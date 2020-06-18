@@ -18,3 +18,4 @@
 mod ping;
 
 pub use ping::LatencyFilter;
+pub use ping::PingPong;

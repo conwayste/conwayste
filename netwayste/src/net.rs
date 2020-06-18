@@ -33,6 +33,8 @@ use serde::{Deserialize, Serialize};
 use tokio_core::net::{UdpCodec, UdpSocket};
 use tokio_core::reactor::Handle;
 
+use crate::utils::PingPong;
+
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
 pub const DEFAULT_PORT: u16 = 2016;
@@ -282,6 +284,7 @@ pub enum Packet {
         chats: Vec<BroadcastChatMessage>, // All non-acknowledged chats are sent each update
         game_updates: Vec<GameUpdate>,    // Information pertaining to a game tick update
         universe_update: UniUpdateType,   //
+        ping: PingPong,                   // Used for server-to-client latency measurement
     },
     UpdateReply {
         // in-game: sent by client in reply to server
@@ -289,12 +292,13 @@ pub enum Packet {
         last_chat_seq: Option<u64>, // sequence number of latest chat msg. received from server
         last_game_update_seq: Option<u64>, // seq. number of latest game update from server
         last_gen: Option<u64>,      // generation number client is currently at
+        pong: PingPong,             // Used for server-to-client latency measurement
     },
     GetStatus {
-        nonce: u64,
+        ping: PingPong,             // Used for client-to-server latency measurement
     },
     Status {
-        nonce: u64,
+        pong: PingPong,             // used for client-to-server latency measurement
         server_version: String,
         player_count: u64,
         room_count: u64,
@@ -324,6 +328,7 @@ impl Packet {
             chats: _,
             game_updates: _,
             universe_update,
+            ping: _,
         } = self
         {
             // TODO revisit once mechanics are fleshed out
@@ -390,20 +395,20 @@ impl fmt::Debug for Packet {
                 write!(f, "[Response] sequence: {} req_ack: {:?} event: {:?}",
                     sequence, request_ack, code)
             }
-            Packet::Update{ chats: _, game_updates, universe_update } => {
+            Packet::Update{ chats: _, game_updates, universe_update, ping: _ } => {
                 write!(f, "[Update] game_updates: {:?} universe_update: {:?}",
                     game_updates, universe_update)
             }
-            Packet::UpdateReply{ cookie, last_chat_seq, last_game_update_seq, last_gen} => {
+            Packet::UpdateReply{ cookie, last_chat_seq, last_game_update_seq, last_gen, pong: _} => {
                 write!(f, "[UpdateReply] cookie: {:?} last_chat_seq: {:?} last_game_update_seq: {:?} last_game: {:?}",
                     cookie, last_chat_seq, last_game_update_seq, last_gen)
             }
-            Packet::GetStatus{ nonce} => {
-                write!(f, "[GetStatus] nonce: {}", nonce)
+            Packet::GetStatus{ ping} => {
+                write!(f, "[GetStatus] nonce: {}", ping.nonce)
             }
-            Packet::Status{ nonce, player_count, room_count, server_name, server_version} => {
+            Packet::Status{ pong, player_count, room_count, server_name, server_version} => {
                 write!(f, "[Status] nonce: {} player_count: {} room_count: {} server_version: {:?} server_name: {:?}",
-                nonce, player_count, room_count, server_version, server_name)
+                pong.nonce, player_count, room_count, server_version, server_name)
             }
         }
     }
@@ -1123,7 +1128,7 @@ pub enum NetwaysteEvent {
     UniverseUpdate,                      // TODO add libconway stuff for current universe gen
 
     // Server Status
-    GetStatus(u64),
+    GetStatus(PingPong),
     Status(Packet), // Only uses the `Packet::Status` variant
 }
 
