@@ -101,7 +101,6 @@ use ui::{
         Event,
         Handled,
         Handler,
-        KeyCodeOrChar,
         UIContext,
     }
 };
@@ -565,7 +564,7 @@ impl EventHandler for MainState {
             if let Some(action) = mouse_action {
                 if action == MouseAction::Drag {
                     // TODO: replace with event
-                    layer.on_drag(&origin_point, &mouse_point);
+                    //layer.on_drag(&origin_point, &mouse_point);
                 }
             }
 

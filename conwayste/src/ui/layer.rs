@@ -404,7 +404,6 @@ impl Layering {
         // Call the widget's handler to enter focus
         let node = widget_view.get_mut(id).unwrap();
         let dyn_widget = node.data_mut();
-        dyn_widget.enter_focus();
 
         let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view, screen_stack);
 
@@ -455,6 +454,7 @@ impl Layering {
         }
     }
 
+    /* XXX re-implement using events
     pub fn on_drag(&mut self, original_pos: &Point2<f32>, current_pos: &Point2<f32>) {
         let node_ids = self.collect_node_ids(self.highest_z_order);
 
@@ -463,6 +463,7 @@ impl Layering {
             widget.on_drag(original_pos, current_pos);
         }
     }
+    */
 
     pub fn draw(&mut self, ctx: &mut Context) -> UIResult<()> {
         if self.highest_z_order > 0 {

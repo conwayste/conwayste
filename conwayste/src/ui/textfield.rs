@@ -32,7 +32,7 @@ use super::common::draw_text;
 use super::{
     common::{within_widget, FontInfo},
     widget::Widget,
-    UIAction, UIError, UIResult,
+    UIError, UIResult,
     context::{
         EmitEvent,
         UIContext,
@@ -59,7 +59,6 @@ pub enum TextInputState {
 pub struct TextField {
     id: Option<NodeId>,
     z_index: usize,
-    action: UIAction,
     focused: bool,
     text: String,
     cursor_index: usize, // Position of the cursor in the text fields' string
@@ -75,8 +74,8 @@ pub struct TextField {
 
 impl fmt::Debug for TextField {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TextField {{ id: {:?}, z_index: {}, dimensions: {:?}, action: {:?}, focused: {:?} }}",
-            self.id, self.z_index, self.dimensions, self.action, self.focused)
+        write!(f, "TextField {{ id: {:?}, z_index: {}, dimensions: {:?}, focused: {:?} }}",
+            self.id, self.z_index, self.dimensions, self.focused)
     }
 }
 
@@ -114,7 +113,6 @@ impl TextField {
             cursor_blink_timestamp: None,
             draw_cursor: false,
             dimensions,
-            action: UIAction::EnterText,
             hover: false,
             visible_start_index: 0,
             font_info,
@@ -128,6 +126,8 @@ impl TextField {
               -> Result<Handled, Box<dyn Error>> {
             let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
             tf.focused = true;
+            tf.draw_cursor = true;
+            tf.cursor_blink_timestamp = Some(Instant::now());
             Ok(Handled::NotHandled)
         };
 
@@ -135,6 +135,7 @@ impl TextField {
               -> Result<Handled, Box<dyn Error>> {
             let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
             tf.focused = false;
+            tf.draw_cursor = false;
             Ok(Handled::NotHandled)
         };
 
@@ -345,28 +346,6 @@ impl Widget for TextField {
         self.hover = within_widget(point, &self.dimensions);
     }
 
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction> {
-        self.enter_focus();
-        return Some(self.action);
-    }
-
-    fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        if !self.focused {
-            return Ok(());
-        }
-
-        /*
-        if let Some(prev_blink_ms) = self.cursor_blink_timestamp {
-            if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
-                self.draw_cursor ^= true;
-                self.cursor_blink_timestamp = Some(Instant::now());
-            }
-        }
-        */
-
-        Ok(())
-    }
-
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         if !self.focused && self.text.is_empty() {
             // textfield is hidden
@@ -494,20 +473,6 @@ impl Widget for TextField {
 
     fn translate(&mut self, dest: Vector2<f32>) {
         self.dimensions.translate(dest);
-    }
-
-    /// Textfield gains focus and begins accepting user input
-    //XXX move to handler
-    fn enter_focus(&mut self) {
-        self.focused = true;
-        self.draw_cursor = true;
-        self.cursor_blink_timestamp = Some(Instant::now());
-    }
-
-    /// Textfield loses focus and does not accept user input
-    fn exit_focus(&mut self) {
-        self.focused = false;
-        self.draw_cursor = false;
     }
 
     /// convert to EmitEvent

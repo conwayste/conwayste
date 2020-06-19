@@ -65,10 +65,3 @@ pub use context::{
 };
 
 type BoxedWidget = Box<dyn Widget>;
-
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub enum UIAction {
-    ScreenTransition(Screen),
-    EnterText, // TODO: see if we still need this "gunk residue"
-    None,
-}

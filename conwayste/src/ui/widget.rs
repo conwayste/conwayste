@@ -25,7 +25,6 @@ use downcast_rs::Downcast;
 use id_tree::NodeId;
 
 use super::{
-    UIAction,
     UIResult,
     context,
 };
@@ -57,41 +56,9 @@ pub trait Widget: Downcast + std::fmt::Debug {
         ()
     }
 
-    /// Action to be taken when the widget is given the provided point, and a mouse click occurs
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction> {
-        None
-    }
-
-    /// Action to be taken when the widget is interacted with while the mouse is clicked-and-held
-    /// and dragged around the screen.
-    ///
-    /// # Arguments
-    /// * `original_point` - the point at which the dragging began
-    /// * `point` - the current position of the mouse cursor
-    fn on_drag(&mut self, _original_point: &Point2<f32>, _point: &Point2<f32>) {
-        ()
-    }
-
     /// Called upon each graphical draw tick. This should be where the widget's graphics takes place.
     fn draw(&mut self, _ctx: &mut Context) -> GameResult<()> {
         Ok(())
-    }
-
-    /// Called upon each logic update tick. This should be where the widget's logic takes place.
-    fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        Ok(())
-    }
-
-    // TODO: delete
-    /// Widget gains focus and begins accepting user input
-    fn enter_focus(&mut self) {
-        ()
-    }
-
-    // TODO: delete
-    /// Widget loses focus and does not accept user input
-    fn exit_focus(&mut self) {
-        ()
     }
 
     /// Get the rectangle describing the widget.

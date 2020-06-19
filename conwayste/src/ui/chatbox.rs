@@ -30,7 +30,6 @@ use id_tree::NodeId;
 use super::{
     common::{within_widget, FontInfo},
     widget::Widget,
-    UIAction,
     UIError, UIResult,
     context::{HandlerData, EmitEvent, EventType, Handled, Event, UIContext},
 };
@@ -46,7 +45,6 @@ pub struct Chatbox {
     wrapped: VecDeque<(bool, Text)>,
     dimensions: Rect,
     hover: bool,
-    action: UIAction,
     font_info: FontInfo,
     msg_sender: Sender<String>,
     msg_receiver: Receiver<String>,
@@ -55,8 +53,8 @@ pub struct Chatbox {
 
 impl fmt::Debug for Chatbox {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Chatbox {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}, history_lines: {} }}",
-            self.id, self.z_index, self.dimensions, self.action, self.history_lines)
+        write!(f, "Chatbox {{ id: {:?}, z_index: {}, dimensions: {:?}, history_lines: {} }}",
+            self.id, self.z_index, self.dimensions, self.history_lines)
     }
 }
 
@@ -92,7 +90,6 @@ impl Chatbox {
             wrapped: VecDeque::new(),
             dimensions: rect,
             hover: false,
-            action: UIAction::EnterText,
             font_info,
             msg_sender: msg_tx,
             msg_receiver: msg_rx,
@@ -328,10 +325,6 @@ impl Widget for Chatbox {
 
     fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
-    }
-
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction> {
-        return Some(self.action);
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {

@@ -33,7 +33,6 @@ use super::{
     label::Label,
     widget::Widget,
     common::{within_widget, color_with_alpha, center, FontInfo},
-    UIAction,
     UIError, UIResult,
     context::{
         EmitEvent,
@@ -55,15 +54,13 @@ pub struct Button {
     pub hover: bool, // is mouse hovering over this?
     pub focused: bool, // has keyboard focus?
     pub borderless: bool,
-    pub action: UIAction,
     pub handler_data: context::HandlerData, // required for impl_emit_event!
-    // option solely so that we can not mut borrow self twice at once
 }
 
 impl fmt::Debug for Button {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Button {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}}}",
-            self.id, self.z_index, self.dimensions, self.action)
+        write!(f, "Button {{ id: {:?}, z_index: {}, dimensions: {:?} }}",
+            self.id, self.z_index, self.dimensions)
     }
 }
 
@@ -92,7 +89,6 @@ impl Button {
     /// let font_info = common::FontInfo::new(ctx, font, Some(20.0));
     /// let b = Button::new(
     ///     ctx,
-    ///     UIAction::PrintHelloWorld,
     ///     font_info,
     ///     "TestButton"
     /// );
@@ -102,7 +98,6 @@ impl Button {
     ///
     pub fn new(
         ctx: &mut Context,
-        action: UIAction,
         font_info: FontInfo,
         button_text: String,
     ) -> Self {
@@ -134,7 +129,6 @@ impl Button {
             hover: false,
             focused: false,
             borderless: false,
-            action,
             handler_data: context::HandlerData::new(),
         };
         b.center_label_text();
@@ -202,11 +196,6 @@ impl Widget for Button {
 
     fn on_hover(&mut self, point: &Point2<f32>) {
         self.hover = within_widget(point, &self.dimensions);
-    }
-
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction>
-    {
-        return Some(self.action);
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {

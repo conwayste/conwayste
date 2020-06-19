@@ -29,7 +29,7 @@ use crate::config::Config;
 use crate::constants;
 use crate::ui::{
     common, context, Button, Chatbox, Checkbox, GameArea, InsertLocation, Label, Layering, Pane,
-    TextField, UIAction, UIResult, Widget, color_with_alpha,
+    TextField, UIResult, Widget, color_with_alpha,
 };
 use crate::Screen;
 
@@ -128,7 +128,6 @@ impl UILayout {
         let pane = Box::new(Pane::new(Rect::new_i32(20, 20, 410, 450)));
         let mut serverlist_button = Box::new(Button::new(
             ctx,
-            UIAction::ScreenTransition(Screen::ServerList),
             default_font_info,
             "Server List".to_owned(),
         ));
@@ -139,7 +138,6 @@ impl UILayout {
 
         let mut options_button = Box::new(Button::new(
             ctx,
-            UIAction::ScreenTransition(Screen::InRoom),
             default_font_info,
             "Options".to_owned(),
         ));
@@ -150,7 +148,6 @@ impl UILayout {
 
         let mut start_1p_game_button = Box::new(Button::new(
             ctx,
-            UIAction::ScreenTransition(Screen::Run),
             default_font_info,
             "Start Single Player Game".to_owned(),
         ));
@@ -164,7 +161,6 @@ impl UILayout {
 
         let mut quit_button = Box::new(Button::new(
             ctx,
-            UIAction::ScreenTransition(Screen::Run),
             default_font_info,
             "Quit".to_owned(),
         ));
