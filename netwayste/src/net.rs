@@ -1129,7 +1129,7 @@ pub enum NetwaysteEvent {
 
     // Server Status
     GetStatus(PingPong),
-    Status(Packet), // Only uses the `Packet::Status` variant
+    Status(Packet, Option<u64>), // `Packet::Status` variant only; u64 is latency. None if not yet calculated.
 }
 
 impl NetwaysteEvent {

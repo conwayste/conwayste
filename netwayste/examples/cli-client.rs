@@ -223,6 +223,12 @@ fn main() {
         match ggez_server_response.try_recv() {
             Ok(nw_event_from_server_code) => {
                 println!("{:?}", nw_event_from_server_code);
+
+                if let NetwaysteEvent::Status(_pkt, opt_latency) = nw_event_from_server_code {
+                    if let Some(latency_ms) = opt_latency {
+                        println!("Average Latency: {}", latency_ms);
+                    }
+                }
             }
             Err(TryRecvError::Empty) => {
                 // Nothing to do in the empty case

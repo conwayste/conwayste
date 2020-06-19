@@ -116,8 +116,6 @@ impl LatencyFilter {
             let average_rtt_ms = (self.running_sum as f64 / LATENCY_FILTER_DEPTH as f64) as u64;
             let average_latency_ms = average_rtt_ms / 2;
 
-            // TODO: Remove me once the server list is implemented in the UI
-            println!("Client-side Ping: {}", average_latency_ms);
             self.average_latency_ms = Some(average_latency_ms);
         }
 

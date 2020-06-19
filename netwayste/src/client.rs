@@ -293,7 +293,7 @@ impl ClientNetState {
                 self.latency_filter.update();
 
                 self.channel_to_conwayste
-                    .send(NetwaysteEvent::Status(packet))
+                    .send(NetwaysteEvent::Status(packet, self.latency_filter.average_latency_ms))
                     .unwrap_or_else(|e| {
                         error!(
                             "Could not send a netwayste response via channel_to_conwayste: {:?}",
