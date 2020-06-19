@@ -114,7 +114,9 @@ impl LatencyFilter {
             // average round-trip time
             let average_rtt_ms = (self.running_sum as f64 / LATENCY_FILTER_DEPTH as f64) as u64;
             let average_latency_ms = average_rtt_ms / 2;
-            println!("Client-side Ping: {}", average_latency_ms); // PR_GATE
+
+            // TODO: Remove me once the server list is implemented in the UI
+            println!("Client-side Ping: {}", average_latency_ms);
             self.average_latency_ms = Some(average_latency_ms);
         }
 
@@ -138,7 +140,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_ping_filter_under_filled_does_not_set_latency() {
+    fn test_latency_filter_under_filled_does_not_set_latency() {
         let mut pf = LatencyFilter::new();
 
         (0..LATENCY_FILTER_DEPTH).into_iter().for_each(|_| {
@@ -150,7 +152,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ping_filter_filled_sets_latency() {
+    fn test_latency_filter_filled_sets_latency() {
         let mut pf = LatencyFilter::new();
 
         (0..=LATENCY_FILTER_DEPTH).into_iter().for_each(|_| {
@@ -158,7 +160,7 @@ mod tests {
             pf.update();
         });
 
-        assert_eq!(pf.average_latency_ms, Some(500));
+        assert_eq!(pf.average_latency_ms, Some(250));
 
         // Perform an additional 12 for shiggles
         (0..=LATENCY_FILTER_DEPTH).into_iter().for_each(|_| {
@@ -166,11 +168,11 @@ mod tests {
             pf.update();
         });
 
-        assert_eq!(pf.average_latency_ms, Some(500));
+        assert_eq!(pf.average_latency_ms, Some(250));
     }
 
     #[test]
-    fn test_ping_filter_filled_sets_latency_with_varying_pings() {
+    fn test_latency_filter_filled_sets_latency_with_varying_pings() {
         let mut pf = LatencyFilter::new();
 
         (0..=LATENCY_FILTER_DEPTH * 100)
@@ -181,6 +183,6 @@ mod tests {
                 pf.update();
             });
 
-        assert_eq!(pf.average_latency_ms, Some(650));
+        assert_eq!(pf.average_latency_ms, Some(325));
     }
 }

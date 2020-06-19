@@ -65,7 +65,7 @@ pub struct ClientNetState {
     pub disconnect_initiated: bool,
     pub server_address: Option<SocketAddr>,
     pub channel_to_conwayste: std::sync::mpsc::Sender<NetwaysteEvent>,
-    ping_filter: LatencyFilter,
+    latency_filter: LatencyFilter,
 }
 
 impl ClientNetState {
@@ -83,7 +83,7 @@ impl ClientNetState {
             disconnect_initiated: false,
             server_address: None,
             channel_to_conwayste: channel_to_conwayste,
-            ping_filter: LatencyFilter::new(),
+            latency_filter: LatencyFilter::new(),
         }
     }
 
@@ -105,7 +105,7 @@ impl ClientNetState {
             ref mut disconnect_initiated,
             ref mut server_address,
             channel_to_conwayste: ref _channel_to_conwayste, // Don't clear the channel to conwayste
-            ref mut ping_filter,
+            ref mut latency_filter,
         } = *self;
         *sequence = 0;
         *response_sequence = 0;
@@ -117,7 +117,7 @@ impl ClientNetState {
         *disconnect_initiated = false;
         *server_address = None;
         network.reset();
-        ping_filter.reset();
+        latency_filter.reset();
 
         trace!("ClientNetState reset!");
     }
@@ -290,7 +290,7 @@ impl ClientNetState {
                 );
             }
             Packet::Status { .. } => {
-                self.ping_filter.update();
+                self.latency_filter.update();
 
                 self.channel_to_conwayste
                     .send(NetwaysteEvent::Status(packet))
@@ -610,7 +610,7 @@ impl ClientNetState {
                             if let NetwaysteEvent::GetStatus(ping) = netwayste_request {
                                 let server_address = client_state.server_address.unwrap().clone();
 
-                                client_state.ping_filter.start();
+                                client_state.latency_filter.start();
 
                                 netwayste_send!(
                                     udp_tx,
