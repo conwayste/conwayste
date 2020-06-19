@@ -46,6 +46,7 @@ impl PingPong {
 }
 
 /// A moving-average filter used to level out the latencies calculated from network request/response times.
+#[derive(PartialEq,Eq,Debug, Clone)]
 pub struct LatencyFilter {
     pub average_latency_ms: Option<u64>,
     running_sum: u64,

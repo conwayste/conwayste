@@ -34,7 +34,7 @@ use netwayste::net::{
     DEFAULT_PORT, VERSION
 };
 
-use netwayste::utils::PingPong;
+use netwayste::utils::{PingPong, LatencyFilter};
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -91,6 +91,7 @@ pub struct Player {
     pub next_resp_seq: u64, // This is the sequence number for the Response packet the Server sends to the Client
     pub game_info: Option<PlayerInGameInfo>, // none means in lobby
     pub last_received: time::Instant, // Time of last message received from player
+    pub latency_filter: LatencyFilter, // Latency information
 }
 
 // info for a player as it relates to a game/room
@@ -1036,7 +1037,7 @@ impl ServerState {
                     player.update_chat_seq_num(last_chat_seq);
                 }
 
-                // PR_GATE track player latency and update from pong
+                player.latency_filter.update();
 
                 Ok(None)
             }
@@ -1266,6 +1267,7 @@ impl ServerState {
             next_resp_seq: 0,
             game_info: None,
             last_received: Instant::now(),
+            latency_filter: LatencyFilter::new(),
         };
 
         // save player into players hash map, and save player ID into hash map using cookie
@@ -1459,6 +1461,21 @@ pub fn main() {
                         server_state.expire_old_messages_in_all_rooms(time::Instant::now());
                         if let Some(update_packets) = server_state.construct_client_updates() {
                             for update in update_packets {
+
+                                // Start the clock for player latency timing
+                                let (ref player_address, ref packet) = update;
+                                match packet {
+                                    Packet::Update {..} => {
+                                        for (_player_id, ref mut player) in &mut server_state.players {
+                                            if player.addr == *player_address {
+                                                player.latency_filter.start();
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    _ => { /* do nothing */ }
+                                }
+
                                 netwayste_send!(
                                     tx,
                                     update,
@@ -2537,7 +2554,7 @@ mod netwayste_server_tests {
         assert_eq!(
             result,
             ResponseCode::BadRequest {
-                error_msg: "Invalid request".to_owned()
+                error_msg: "Invalid request: None".to_owned()
             }
         );
     }
@@ -2699,7 +2716,7 @@ mod netwayste_server_tests {
                 chats,
                 game_updates,
                 universe_update,
-                ping,
+                ping: _,
             } => {
                 assert!(game_updates.is_empty());
                 assert_eq!(universe_update, UniUpdateType::NoChange);
@@ -2761,7 +2778,7 @@ mod netwayste_server_tests {
                 mut chats,
                 game_updates,
                 universe_update,
-                ping,
+                ping: _,
             } => {
                 assert!(game_updates.is_empty());
                 assert_eq!(universe_update, UniUpdateType::NoChange);
