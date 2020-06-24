@@ -136,27 +136,27 @@ impl UILayout {
             .on(EventType::Click, Box::new(server_list_click_handler))
             .unwrap(); // unwrap OK
 
-        let mut options_button = Box::new(Button::new(
-            ctx,
-            default_font_info,
-            "Options".to_owned(),
-        ));
-        options_button.set_rect(Rect::new(10.0, 70.0, 180.0, 50.0))?;
-        options_button
-            .on(EventType::Click, Box::new(options_click_handler))
-            .unwrap(); // unwrap OK
-
         let mut start_1p_game_button = Box::new(Button::new(
             ctx,
             default_font_info,
             "Start Single Player Game".to_owned(),
         ));
-        start_1p_game_button.set_rect(Rect::new(10.0, 130.0, 350.0, 50.0))?;
+        start_1p_game_button.set_rect(Rect::new(10.0, 70.0, 350.0, 50.0))?;
         start_1p_game_button
             .on(
                 EventType::Click,
                 Box::new(start_or_resume_game_click_handler),
             )
+            .unwrap(); // unwrap OK
+
+        let mut options_button = Box::new(Button::new(
+            ctx,
+            default_font_info,
+            "Options".to_owned(),
+        ));
+        options_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0))?;
+        options_button
+            .on(EventType::Click, Box::new(options_click_handler))
             .unwrap(); // unwrap OK
 
         let mut quit_button = Box::new(Button::new(
@@ -179,11 +179,11 @@ impl UILayout {
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
         layer_mainmenu.add_widget(
-            options_button,
+            start_1p_game_button,
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
         layer_mainmenu.add_widget(
-            start_1p_game_button,
+            options_button,
             InsertLocation::ToNestedContainer(&menupane_id),
         )?;
         layer_mainmenu.add_widget(
