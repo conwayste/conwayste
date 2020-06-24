@@ -31,7 +31,7 @@ use id_tree::NodeId;
 use super::{
     label::Label,
     widget::Widget,
-    common::{within_widget, FontInfo},
+    common::FontInfo,
     UIError,
     UIResult,
 };
@@ -43,6 +43,7 @@ use super::context::{
     HandlerData,
     UIContext,
     KeyCodeOrChar,
+    MoveCross,
 };
 
 use crate::constants::colors::*;
@@ -54,7 +55,8 @@ pub struct Checkbox {
     pub enabled: bool,
     pub dimensions: Rect,
     pub focused: bool, // has keyboard focus?
-    pub draw_hover: bool, //XXX delete this
+    pub hover_box: bool, // hovering checkbox itself?
+    pub hover_label: bool, // hovering label?
     pub handler_data: HandlerData, // required for impl_emit_event!
 }
 
@@ -116,7 +118,8 @@ impl Checkbox {
             enabled,
             dimensions,
             focused: false,
-            draw_hover: false,
+            hover_box: false,
+            hover_label: false,
             handler_data: HandlerData::new(),
         };
 
@@ -128,6 +131,8 @@ impl Checkbox {
 
         // setup handler to forward a space keyboard event to the click handler
         cb.on(EventType::KeyPress, Box::new(Checkbox::keypress_handler)).unwrap(); // unwrap OK b/c not being called within handler
+
+        cb.on(EventType::MouseMove, Box::new(Checkbox::mouse_move_handler)).unwrap(); // unwrap OK b/c not being called within handler
 
         cb
     }
@@ -160,6 +165,30 @@ impl Checkbox {
         // toggle
         checkbox.enabled = !checkbox.enabled;
 
+        Ok(Handled::NotHandled)
+    }
+
+    fn mouse_move_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+        let cb = obj.downcast_mut::<Checkbox>().unwrap(); // unwrap OK because this will always be Checkbox
+        let label_dimensions = cb.label.rect();
+        match event.move_did_cross(cb.dimensions) {
+            MoveCross::Enter => {
+                cb.hover_box = true;
+            }
+            MoveCross::Exit => {
+                cb.hover_box = false;
+            }
+            MoveCross::None => {}
+        };
+        match event.move_did_cross(label_dimensions) {
+            MoveCross::Enter => {
+                cb.hover_label = true;
+            }
+            MoveCross::Exit => {
+                cb.hover_label = false;
+            }
+            MoveCross::None => {}
+        };
         Ok(Handled::NotHandled)
     }
 }
@@ -229,14 +258,9 @@ impl Widget for Checkbox {
         self.label.translate(dest);
     }
 
-    fn on_hover(&mut self, point: &Point2<f32>) {
-        let label_dimensions = self.label.rect();
-        self.draw_hover = within_widget(point, &self.dimensions) || within_widget(point, &label_dimensions);
-    }
-
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
 
-        if self.draw_hover || self.focused {
+        if self.hover_box || self.hover_label || self.focused {
             // Add in a violet border/fill while hovered. Color checkbox differently to indicate
             // hovering and/or keyboard focus.
             let border_rect = Rect::new(

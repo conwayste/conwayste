@@ -25,6 +25,7 @@ use downcast_rs::Downcast;
 use enum_iterator::IntoEnumIterator;
 use ggez;
 use ggez::event::MouseButton;
+use ggez::graphics::Rect;
 use ggez::input::keyboard::KeyCode;
 use ggez::nalgebra::Point2;
 use id_tree::NodeId;
@@ -193,6 +194,14 @@ pub enum EventType {
     Update,
 }
 
+/// Describes a MouseMove event in relation to a Rect.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum MoveCross {
+    Enter,
+    Exit,
+    None,
+}
+
 // TODO: move this elsewhere; it's in here to keep separate from other code (avoid merge conflicts)
 #[derive(Debug, Clone)]
 pub struct Event {
@@ -275,6 +284,37 @@ impl Event {
             key: None,
             shift_pressed: is_shift,
             text: None,
+        }
+    }
+
+    pub fn new_mouse_move(prev_point: Point2<f32>, point: Point2<f32>, mouse_button: MouseButton, is_shift: bool) -> Self {
+        Event {
+            what: EventType::MouseMove,
+            point: Some(point),
+            prev_point: Some(prev_point),
+            button: Some(mouse_button),
+            key: None,
+            shift_pressed: is_shift,
+            text: None,
+        }
+    }
+
+    /// For MouseMove events, indicate whether the mouse entered/exited the given box, or neither.
+    /// Use this to implement on-hover displays.
+    pub fn move_did_cross(&self, rect: Rect) -> MoveCross {
+        if self.what != EventType::MouseMove {
+            // Not an error
+            return MoveCross::None;
+        }
+
+        let previously_inside = rect.contains(self.prev_point.unwrap());
+        let currently_inside = rect.contains(self.point.unwrap());
+        if previously_inside == currently_inside {
+            MoveCross::None
+        } else if !previously_inside && currently_inside {
+            MoveCross::Enter
+        } else {
+            MoveCross::Exit
         }
     }
 

@@ -51,11 +51,6 @@ pub trait Widget: Downcast + std::fmt::Debug {
         ()
     }
 
-    /// Action to be taken when the widget is given the provided point
-    fn on_hover(&mut self, _point: &Point2<f32>) {
-        ()
-    }
-
     /// Called upon each graphical draw tick. This should be where the widget's graphics takes place.
     fn draw(&mut self, _ctx: &mut Context) -> GameResult<()> {
         Ok(())

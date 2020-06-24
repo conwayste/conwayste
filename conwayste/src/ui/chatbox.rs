@@ -28,10 +28,10 @@ use ggez::{Context, GameResult};
 use id_tree::NodeId;
 
 use super::{
-    common::{within_widget, FontInfo},
+    common::FontInfo,
     widget::Widget,
     UIError, UIResult,
-    context::{HandlerData, EmitEvent, EventType, Handled, Event, UIContext},
+    context::{HandlerData, EmitEvent, EventType, Handled, Event, MoveCross, UIContext},
 };
 
 use crate::constants::{self, colors::*};
@@ -96,6 +96,7 @@ impl Chatbox {
             handler_data: HandlerData::new(),
         };
         chatbox.on(EventType::Update, Box::new(Chatbox::update_handler)).unwrap(); // unwrap OK because we aren't in handler
+        chatbox.on(EventType::MouseMove, Box::new(Chatbox::mouse_move_handler)).unwrap(); // unwrap OK b/c not being called within handler
         chatbox
     }
 
@@ -114,6 +115,20 @@ impl Chatbox {
                 break;
             }
         }
+        Ok(Handled::NotHandled)
+    }
+
+    fn mouse_move_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+        let chatbox = obj.downcast_mut::<Chatbox>().unwrap(); // unwrap OK because it's always a Chatbox
+        match event.move_did_cross(chatbox.dimensions) {
+            MoveCross::Enter => {
+                chatbox.hover = true;
+            }
+            MoveCross::Exit => {
+                chatbox.hover = false;
+            }
+            MoveCross::None => {}
+        };
         Ok(Handled::NotHandled)
     }
 
@@ -321,10 +336,6 @@ impl Widget for Chatbox {
 
     fn translate(&mut self, dest: Vector2<f32>) {
         self.dimensions.translate(dest);
-    }
-
-    fn on_hover(&mut self, point: &Point2<f32>) {
-        self.hover = within_widget(point, &self.dimensions);
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {

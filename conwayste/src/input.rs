@@ -40,6 +40,7 @@ pub struct MouseInfo {
     pub scroll_event: Option<ScrollEvent>,
     pub down_timestamp: Option<Instant>,
     pub down_position: Point2<f32>,
+    pub prev_position: Point2<f32>, // Position change since the last update()
     pub position: Point2<f32>,
     pub debug_print: bool
 }
@@ -52,6 +53,7 @@ impl MouseInfo {
             scroll_event: None,
             down_timestamp: None,
             down_position: Point2::new(0.0, 0.0),
+            prev_position: Point2::new(0.0, 0.0),
             position: Point2::new(0.0, 0.0),
             debug_print: false,
         }

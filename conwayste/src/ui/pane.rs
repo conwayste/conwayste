@@ -44,7 +44,6 @@ pub struct Pane {
     id: Option<NodeId>,
     z_index: usize,
     pub dimensions: Rect,
-    pub hover: bool,
     pub floating: bool, // can the window be dragged around?
     pub previous_pos: Option<Point2<f32>>,
     pub border: f32,
@@ -75,7 +74,6 @@ impl Pane {
             id: None,
             z_index: std::usize::MAX,
             dimensions,
-            hover: false,
             floating: true,
             previous_pos: None,
             border: 1.0,
@@ -125,7 +123,8 @@ impl Pane {
                 // nothing to do if this is not a key or a mouse event
             }
 
-            pane.on(EventType::Update, Box::new(Pane::update_handler)).unwrap(); // unwrap OK because not called w/in handler
+            pane.on(EventType::Update, Box::new(Pane::broadcast_handler)).unwrap(); // unwrap OK because not called w/in handler
+            pane.on(EventType::MouseMove, Box::new(Pane::broadcast_handler)).unwrap(); // unwrap OK because not called w/in handler
         }
 
         // Set handler for focusing first widget in focus cycle when focus is gained
@@ -151,7 +150,7 @@ impl Pane {
         pane
     }
 
-    fn update_handler(
+    fn broadcast_handler(
         _obj: &mut dyn EmitEvent,
         uictx: &mut UIContext,
         event: &Event,
@@ -165,8 +164,8 @@ impl Pane {
                 emittable.emit(event, &mut subuictx)?;
                 let pane_events = subuictx.collect_child_events();
                 if pane_events.len() != 0 {
-                    warn!("[Pane] expected no update child events to be collected from child widget; got {:?}",
-                        pane_events);
+                    warn!("[Pane] expected no {:?} child events to be collected from child widget; got {:?}",
+                        event.what, pane_events);
                 }
             }
         }
@@ -424,10 +423,6 @@ impl Widget for Pane {
 
     fn translate(&mut self, dest: Vector2<f32>) {
         self.dimensions.translate(dest);
-    }
-
-    fn on_hover(&mut self, point: &Point2<f32>) {
-        self.hover = within_widget(point, &self.dimensions);
     }
 
     /* TODO: fix all the drag issues

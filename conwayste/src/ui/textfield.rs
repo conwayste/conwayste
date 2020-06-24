@@ -30,7 +30,7 @@ use id_tree::NodeId;
 #[cfg(not(test))]
 use super::common::draw_text;
 use super::{
-    common::{within_widget, FontInfo},
+    common::FontInfo,
     widget::Widget,
     UIError, UIResult,
     context::{
@@ -65,7 +65,6 @@ pub struct TextField {
     cursor_blink_timestamp: Option<Instant>, // last time the cursor blinked on/off
     draw_cursor: bool,
     dimensions: Rect,
-    hover: bool,
     visible_start_index: usize, // The index of the first character in `self.text` that is visible.
     font_info: FontInfo,
     pub bg_color: Option<Color>, //XXX should not be public
@@ -113,7 +112,6 @@ impl TextField {
             cursor_blink_timestamp: None,
             draw_cursor: false,
             dimensions,
-            hover: false,
             visible_start_index: 0,
             font_info,
             bg_color: None,
@@ -340,10 +338,6 @@ impl Widget for TextField {
 
     fn set_z_index(&mut self, new_z_index: usize) {
         self.z_index = new_z_index;
-    }
-
-    fn on_hover(&mut self, point: &Point2<f32>) {
-        self.hover = within_widget(point, &self.dimensions);
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {

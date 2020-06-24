@@ -558,8 +558,18 @@ impl EventHandler for MainState {
                 error!("Error from layer.emit on update: {:?}", e);
             });
 
-            // TODO: replace with event
-            layer.on_hover(&mouse_point);
+            if self.inputs.mouse_info.prev_position != self.inputs.mouse_info.position {
+                let mouse_move = Event::new_mouse_move(
+                    self.inputs.mouse_info.prev_position,
+                    self.inputs.mouse_info.position,
+                    self.inputs.mouse_info.mousebutton,
+                    is_shift,
+                );
+                layer.emit(&mouse_move, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
+                    error!("Error from layer.emit on mouse move: {:?}", e);
+                });
+                self.inputs.mouse_info.prev_position = self.inputs.mouse_info.position;
+            }
 
             if let Some(action) = mouse_action {
                 if action == MouseAction::Drag {

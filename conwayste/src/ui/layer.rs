@@ -445,15 +445,6 @@ impl Layering {
     }
     */
 
-    pub fn on_hover(&mut self, point: &Point2<f32>) {
-        let node_ids = self.collect_node_ids(self.highest_z_order);
-
-        for node_id in node_ids {
-            let widget = self.widget_tree.get_mut(&node_id).unwrap().data_mut();
-            widget.on_hover(point);
-        }
-    }
-
     /* XXX re-implement using events
     pub fn on_drag(&mut self, original_pos: &Point2<f32>, current_pos: &Point2<f32>) {
         let node_ids = self.collect_node_ids(self.highest_z_order);
@@ -509,8 +500,8 @@ impl Layering {
     ) -> Result<(), Box<dyn Error>> {
         let widget_view = treeview::TreeView::new(&mut self.widget_tree);
         let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view, screen_stack);
-        if event.what == context::EventType::Update {
-            Layering::emit_update_event(event, &mut uictx)
+        if event.what == context::EventType::Update || event.what == context::EventType::MouseMove {
+            Layering::broadcast_event(event, &mut uictx)
         } else if event.is_mouse_event() {
             Layering::emit_mouse_event(event, &mut uictx)
         } else if event.is_key_event() {
@@ -521,7 +512,7 @@ impl Layering {
         }
     }
 
-    fn emit_update_event(event: &context::Event, uictx: &mut context::UIContext) -> Result<(), Box<dyn Error>> {
+    fn broadcast_event(event: &context::Event, uictx: &mut context::UIContext) -> Result<(), Box<dyn Error>> {
         for child_id in uictx.widget_view.children_ids() {
             // Get a mutable reference to a BoxedWidget, as well as a UIContext with a view on the
             // widgets in the tree under this widget.
@@ -531,8 +522,8 @@ impl Layering {
                 emittable.emit(event, &mut subuictx)?;
                 let pane_events = subuictx.collect_child_events();
                 if pane_events.len() != 0 {
-                    warn!("[Layering] expected no update child events to be collected from child widget; got {:?}",
-                        pane_events);
+                    warn!("[Layering] expected no {:?} child events to be collected from child widget; got {:?}",
+                        event.what, pane_events);
                 }
             }
         }

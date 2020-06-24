@@ -41,6 +41,7 @@ use super::{
         Event,
         Handled,
         KeyCodeOrChar,
+        MoveCross,
     },
 };
 
@@ -160,6 +161,8 @@ impl Button {
         };
         b.on(EventType::KeyPress, Box::new(keypress)).unwrap(); // unwrap OK b/c not being called within handler
 
+        b.on(EventType::MouseMove, Box::new(Button::mouse_move_handler)).unwrap(); // unwrap OK b/c not being called within handler
+
         b
     }
 
@@ -175,6 +178,21 @@ impl Button {
             self.dimensions.y + (button_center.y - label_center_point.y),
         );
     }
+
+    fn mouse_move_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+        let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
+        match event.move_did_cross(button.dimensions) {
+            MoveCross::Enter => {
+                button.hover = true;
+            }
+            MoveCross::Exit => {
+                button.hover = false;
+            }
+            MoveCross::None => {}
+        };
+        Ok(Handled::NotHandled)
+    }
+
 }
 
 impl Widget for Button {
@@ -192,10 +210,6 @@ impl Widget for Button {
 
     fn set_z_index(&mut self, new_z_index: usize) {
         self.z_index = new_z_index;
-    }
-
-    fn on_hover(&mut self, point: &Point2<f32>) {
-        self.hover = within_widget(point, &self.dimensions);
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
