@@ -82,7 +82,8 @@ pub trait Widget: Downcast + std::fmt::Debug {
     /// Translate the widget from one location to another.
     fn translate(&mut self, _dest: Vector2<f32>);
 
-    //XXX HACK
+    /// If the widget implements EmitEvent, implementors should have this return Some(self) here.
+    /// NOTE: we wouldn't need this if our downcasting crate was smarter.
     fn as_emit_event(&mut self) -> Option<&mut dyn context::EmitEvent> {
         None
     }

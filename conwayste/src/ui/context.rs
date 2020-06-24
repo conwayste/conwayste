@@ -202,7 +202,6 @@ pub enum MoveCross {
     None,
 }
 
-// TODO: move this elsewhere; it's in here to keep separate from other code (avoid merge conflicts)
 #[derive(Debug, Clone)]
 pub struct Event {
     pub what: EventType,
@@ -436,6 +435,9 @@ impl HandlerData {
 ///
 /// Generally, this should be implemented on widgets using impl_emit_event!(...), rather than
 /// handwriting implementations for the two required methods.
+///
+/// Don't return an error from a handler unless things are really screwed up, ok? Also prefer to
+/// return NotHandled so that other handlers on this widget can be attached later.
 ///
 /// # Errors
 ///

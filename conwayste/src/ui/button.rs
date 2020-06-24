@@ -32,7 +32,7 @@ use super::{
     context,
     label::Label,
     widget::Widget,
-    common::{within_widget, color_with_alpha, center, FontInfo},
+    common::{color_with_alpha, center, FontInfo},
     UIError, UIResult,
     context::{
         EmitEvent,
@@ -179,7 +179,7 @@ impl Button {
         );
     }
 
-    fn mouse_move_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+    fn mouse_move_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
         let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
         match event.move_did_cross(button.dimensions) {
             MoveCross::Enter => {

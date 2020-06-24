@@ -37,8 +37,6 @@ mod treeview;
 mod gamearea;
 pub(crate) mod ui_errors;
 
-use crate::Screen;
-
 pub use button::Button;
 pub use chatbox::{Chatbox, ChatboxPublishHandle};
 pub use checkbox::Checkbox;

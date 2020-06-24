@@ -530,7 +530,7 @@ impl EventHandler for MainState {
         let is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
 
         let mouse_point = self.inputs.mouse_info.position;
-        let origin_point = self.inputs.mouse_info.down_position;
+        //let origin_point = self.inputs.mouse_info.down_position; // TODO: when we need drag support, we'll need this
 
         let mouse_action = self.inputs.mouse_info.action;
 
@@ -1075,7 +1075,7 @@ impl MainState {
                 KeyCode::Return => {
                     let chatbox_pane_id = self.ui_layout.chatbox_pane_id.clone();
                     match Pane::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &chatbox_pane_id) {
-                        Ok(chatbox_pane) => {
+                        Ok(_chatbox_pane) => {
                             if let Some(layer) = self.ui_layout.get_screen_layering(Screen::Run) {
                                 layer.enter_focus(ctx, &mut self.config, &mut self.screen_stack, &chatbox_pane_id)?;
                             }

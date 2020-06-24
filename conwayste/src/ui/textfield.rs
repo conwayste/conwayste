@@ -48,14 +48,6 @@ use crate::constants::{colors::*, CHATBOX_BORDER_PIXELS};
 
 pub const BLINK_RATE_MS: u64 = 500;
 
-/* XXX delete
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub enum TextInputState {
-    EnteringText,
-    TextInputComplete,
-}
-*/
-
 pub struct TextField {
     id: Option<NodeId>,
     z_index: usize,
@@ -67,7 +59,7 @@ pub struct TextField {
     dimensions: Rect,
     visible_start_index: usize, // The index of the first character in `self.text` that is visible.
     font_info: FontInfo,
-    pub bg_color: Option<Color>, //XXX should not be public
+    pub bg_color: Option<Color>,
     pub handler_data: HandlerData, // required for impl_emit_event!
 }
 

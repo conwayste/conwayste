@@ -44,7 +44,7 @@ use id_tree::{self, InsertBehavior, Node, NodeId, NodeIdError, RemoveBehavior, T
 enum Restriction {
     None,                     // TreeView has full access to the Tree
     SubTree(NodeId),          // TreeView has access to all Nodes under this Node, but not this Node
-    InclusiveSubTree(NodeId), // TreeView has access to this Node and all Nodes under it // TODO: need method for this?
+    InclusiveSubTree(NodeId), // TreeView has access to this Node and all Nodes under it
 }
 
 impl Restriction {

@@ -399,11 +399,7 @@ impl Layering {
             return Ok(());
         }
 
-        let mut widget_view = treeview::TreeView::new(&mut self.widget_tree);
-
-        // Call the widget's handler to enter focus
-        let node = widget_view.get_mut(id).unwrap();
-        let dyn_widget = node.data_mut();
+        let widget_view = treeview::TreeView::new(&mut self.widget_tree);
 
         let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view, screen_stack);
 
@@ -411,7 +407,6 @@ impl Layering {
         if let Some(old_focused_widget) = old_focused_widget {
             if old_focused_widget != *id {
                 // old ID loses focus
-                debug!("[Layering] lose focus 1"); //XXX XXX XXX
                 Layering::emit_focus_change(context::EventType::LoseFocus, &mut uictx, &old_focused_widget)
                     .map_err(|e| {
                         UIError::InvalidAction{reason: format!("{:?}", e)}
@@ -431,21 +426,7 @@ impl Layering {
         Ok(())
     }
 
-    /* TODO: do we need this?
-    /// Clears the focus of the layering
-    pub fn exit_focus(&mut self) {
-        if let Some(id) = self.focused_widget_id() {
-            let id = id.clone();
-            if let Ok(dyn_widget) = self.get_widget_mut(&id) {
-                dyn_widget.exit_focus();
-            }
-        }
-
-        self.focus_cycles[self.highest_z_order].clear_focus();
-    }
-    */
-
-    /* XXX re-implement using events
+    /* TODO: re-implement using events
     pub fn on_drag(&mut self, original_pos: &Point2<f32>, current_pos: &Point2<f32>) {
         let node_ids = self.collect_node_ids(self.highest_z_order);
 
@@ -537,15 +518,13 @@ impl Layering {
         })?;
 
         if key == KeyCodeOrChar::KeyCode(KeyCode::Tab) {
-            debug!("[Layering] handle_keyboard_event: Tab"); //XXX XXX XXX
             // special key press logic to handle focus changes
 
             let opt_child_id = focus_cycle.focused_widget_id().map(|child_id_ref| child_id_ref.clone());
             let opt_widget = opt_child_id.as_ref().map(|child_id| uictx.widget_view.get(child_id).unwrap().data());
             if opt_child_id.is_some() && opt_widget.unwrap().downcast_ref::<Pane>().is_some() {
-                debug!("[Layering] handle_keyboard_event: Tab: pane in focus"); //XXX XXX XXX
                 let child_id = opt_child_id.unwrap();
-                let pane_events = Layering::emit_keyboard_event(event, uictx, &child_id)?;  // TODO: ok to ret if Pane returns error here?
+                let pane_events = Layering::emit_keyboard_event(event, uictx, &child_id)?;
 
                 // check if the Pane's focus dropped of the end of its open-ended focus "cycle"
                 for pane_event in pane_events {
@@ -574,20 +553,16 @@ impl Layering {
                 // previously focused widget.
                 if focus_cycle.focused_widget_id() != opt_child_id.as_ref() {
                     // send a GainFocus event to the newly focused widget (if any)
-                    debug!("[Layering] handle_keyboard_event: Tab: non-pane was in focus; just did focus prev/next"); //XXX XXX XXX
                     if let Some(newly_focused_id) = focus_cycle.focused_widget_id() {
-                        debug!("[Layering] handle_keyboard_event: Tab: non-pane was in focus; new widget gained: {:?}", newly_focused_id); //XXX XXX XXX
                         Layering::emit_focus_change(context::EventType::GainFocus, uictx, newly_focused_id)?;
                     }
 
                     // send a LoseFocus event to the previously focused widget (if any)
                     if let Some(newly_focused_id) = opt_child_id {
-                        debug!("[Layering] lose focus 2"); //XXX XXX XXX
                         Layering::emit_focus_change(context::EventType::LoseFocus, uictx, &newly_focused_id)?;
                     }
                 }
             }
-            debug!("[Layering] handle_keyboard_event: Tab: DONE"); //XXX
 
             Ok(())
 
@@ -597,7 +572,7 @@ impl Layering {
             if let Some(id) = focused_id {
                 let id = id.clone();
                 let pane_events = Layering::emit_keyboard_event(event, uictx, &id)?;
-                Layering::handle_events_from_child(focus_cycle, uictx, &id, &pane_events[..], false)?;
+                Layering::handle_events_from_child(focus_cycle, uictx, &pane_events[..], false)?;
             }
             Ok(())
         }
@@ -606,14 +581,12 @@ impl Layering {
     fn handle_events_from_child(
         focus_cycle: &mut FocusCycle,
         uictx: &mut context::UIContext,
-        child_id: &NodeId,
         child_events: &[context::Event],
         shift_pressed: bool,
     ) -> Result<(), Box<dyn Error>> {
         for child_event in child_events {
             // ignore all event types except this one for now
             if child_event.what == context::EventType::ChildReleasedFocus {
-                debug!( "[Layering] handle_events_from_child: previously focused child released focus: {:?}", child_id); //XXX
                 if shift_pressed {
                     focus_cycle.focus_previous();
                 } else {
@@ -644,7 +617,6 @@ impl Layering {
     }
 
     fn emit_focus_change(what: context::EventType, uictx: &mut context::UIContext, focused_id: &NodeId) -> Result<(), Box<dyn Error>> {
-        debug!("Layering::emit_focus_change({:?}) to {:?}", what, focused_id); //XXX
         if what != context::EventType::GainFocus && what != context::EventType::LoseFocus {
             return Err(format!("Unexpected event type passed to Pane::emit_focus_change: {:?}", what).into());
         }
@@ -887,58 +859,6 @@ mod test {
         assert_eq!(layer_info.widget_exists(&pane_id), true);
         assert_eq!(layer_info.widget_exists(&chatbox_id), true);
     }
-
-    /* XXX fix this test
-    #[test]
-    fn test_layering_enter_focus_basic() {
-        let mut layer_info = Layering::new();
-
-        let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
-        let pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
-
-        assert!(layer_info.enter_focus(&pane_id).is_ok());
-        assert_eq!(layer_info.focused_widget_id(), Some(&pane_id));
-    }
-    */
-
-    /* XXX fix this test
-    #[test]
-    fn test_layering_enter_focus_widget_not_found() {
-        let mut layer_info = Layering::new();
-
-        let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
-        let _pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
-
-        let pane2 = Pane::new(Rect::new(10.0, 10.0, 1.0, 1.0));
-        let pane_id2 = layer_info
-            .add_widget(Box::new(pane2), InsertLocation::AtCurrentLayer).unwrap();
-
-        let removal = layer_info.remove_widget(pane_id2.clone());
-        assert_eq!(removal.is_ok(), true);
-
-        assert!(layer_info.enter_focus(&pane_id2).is_err());
-        assert_eq!(layer_info.focused_widget_id(), None);
-    }
-    */
-
-    /* TODO: do we need this?
-    #[test]
-    fn test_layering_exit_focus() {
-        let mut layer_info = Layering::new();
-
-        let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
-        let pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
-
-        assert!(layer_info.enter_focus(&pane_id).is_ok());
-        assert_eq!(layer_info.focused_widget_id(), Some(&pane_id));
-
-        layer_info.exit_focus();
-        assert_eq!(layer_info.focused_widget_id(), None);
-    }
-    */
 
     #[test]
     fn test_widget_exists_widget_found() {
