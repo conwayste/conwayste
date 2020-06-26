@@ -135,31 +135,11 @@ impl Button {
         b.center_label_text();
 
         // setup handler to allow changing appearance when it has keyboard focus
-        let focus_chg = |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, event: &Event| -> Result<Handled, Box<dyn Error>> {
-            let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
-            match event.what {
-                EventType::GainFocus => button.focused = true,
-                EventType::LoseFocus => button.focused = false,
-                _ => unimplemented!("this handler is only for gaining/losing focus"),
-            };
-            Ok(Handled::NotHandled) // allow other handlers for this event type to be activated
-        };
-        b.on(EventType::GainFocus, Box::new(focus_chg.clone())).unwrap(); // unwrap OK b/c not being called within handler
-        b.on(EventType::LoseFocus, Box::new(focus_chg)).unwrap(); // unwrap OK b/c not being called within handler
+        b.on(EventType::GainFocus, Box::new(Button::focus_change_handler)).unwrap(); // unwrap OK b/c not being called within handler
+        b.on(EventType::LoseFocus, Box::new(Button::focus_change_handler)).unwrap(); // unwrap OK b/c not being called within handler
 
         // setup handler to forward a space keyboard event to the click handler
-        let keypress = |obj: &mut dyn EmitEvent, uictx: &mut UIContext, event: &Event| -> Result<Handled, Box<dyn Error>> {
-            let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
-            if Some(KeyCodeOrChar::KeyCode(KeyCode::Space)) != event.key {
-                return Ok(Handled::NotHandled);
-            }
-            // create a synthetic click event
-            let mouse_point = button.position();
-            let click_event = Event::new_click(mouse_point, MouseButton::Left, false);
-            button.emit(&click_event, uictx)?;
-            Ok(Handled::NotHandled) // allow other handlers for this event type to be activated
-        };
-        b.on(EventType::KeyPress, Box::new(keypress)).unwrap(); // unwrap OK b/c not being called within handler
+        b.on(EventType::KeyPress, Box::new(Button::key_press_handler)).unwrap(); // unwrap OK b/c not being called within handler
 
         b.on(EventType::MouseMove, Box::new(Button::mouse_move_handler)).unwrap(); // unwrap OK b/c not being called within handler
 
@@ -191,6 +171,28 @@ impl Button {
             MoveCross::None => {}
         };
         Ok(Handled::NotHandled)
+    }
+
+    fn focus_change_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+        let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
+        match event.what {
+            EventType::GainFocus => button.focused = true,
+            EventType::LoseFocus => button.focused = false,
+            _ => unimplemented!("this handler is only for gaining/losing focus"),
+        };
+        Ok(Handled::NotHandled) // allow other handlers for this event type to be activated
+    }
+
+    fn key_press_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+        let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
+        if Some(KeyCodeOrChar::KeyCode(KeyCode::Space)) != event.key {
+            return Ok(Handled::NotHandled);
+        }
+        // create a synthetic click event
+        let mouse_point = button.position();
+        let click_event = Event::new_click(mouse_point, MouseButton::Left, false);
+        button.emit(&click_event, uictx)?;
+        Ok(Handled::NotHandled) // allow other handlers for this event type to be activated
     }
 
 }

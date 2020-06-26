@@ -35,6 +35,12 @@ use super::BoxedWidget;
 use crate::config;
 use crate::Screen;
 
+/// Stores references to many things a handler is likely to need:
+///
+/// * `ggez_context` - useful for game engine interactions.
+/// * `config` - Conwayste configuration settings.
+/// * `widget_view` - a `TreeView` on the handler's widget and all widgets beneath it in the widget tree.
+/// * `screen_stack` - the layers of `Screen`s in the UI. Handlers are able to push or pop this stack.
 pub struct UIContext<'a> {
     pub ggez_context: &'a mut ggez::Context,
     pub config: &'a mut config::Config,
@@ -142,7 +148,6 @@ impl<'a> UIContext<'a> {
     }
 
     /// Pushes a screen onto the screen stack.
-    #[allow(unused)]
     pub fn push_screen(&mut self, screen: Screen) {
         self.screen_stack.push(screen)
     }
@@ -174,7 +179,6 @@ impl<'a> Drop for UIContext<'a> {
 }
 
 /// The type of an event.
-#[allow(unused)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, IntoEnumIterator)]
 pub enum EventType {
     Click,
@@ -202,6 +206,11 @@ pub enum MoveCross {
     None,
 }
 
+/// Represents an event to be used by one or more handlers. The `what` field indicates the type of
+/// the event. Each type uses only a subset of the fields in this struct, and creators of `Event`s
+/// must ensure that all the fields a handler is expecting are present to avoid panics from
+/// unwrapping fields; for this reason, it is recommended to use the type-specific constructors
+/// (for example, `Event::new_key_press`).
 #[derive(Debug, Clone)]
 pub struct Event {
     pub what: EventType,
@@ -388,7 +397,6 @@ impl Event {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Handled {
     Handled,    // no other handlers should be called

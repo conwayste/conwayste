@@ -112,25 +112,9 @@ impl TextField {
         tf.on(EventType::KeyPress, Box::new(TextField::key_handler)).unwrap(); // unwrap OK b/c not inside handler now
 
         // Set handlers for toggling has_keyboard_focus
-        let gain_focus_handler = move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event|
-              -> Result<Handled, Box<dyn Error>> {
-            let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
-            tf.focused = true;
-            tf.draw_cursor = true;
-            tf.cursor_blink_timestamp = Some(Instant::now());
-            Ok(Handled::NotHandled)
-        };
+        tf.on(EventType::GainFocus, Box::new(TextField::gain_focus_handler)).unwrap(); // unwrap OK
+        tf.on(EventType::LoseFocus, Box::new(TextField::lose_focus_handler)).unwrap(); // unwrap OK
 
-        let lose_focus_handler = move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event|
-              -> Result<Handled, Box<dyn Error>> {
-            let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
-            tf.focused = false;
-            tf.draw_cursor = false;
-            Ok(Handled::NotHandled)
-        };
-
-        tf.on(EventType::GainFocus, Box::new(gain_focus_handler)).unwrap(); // unwrap OK
-        tf.on(EventType::LoseFocus, Box::new(lose_focus_handler)).unwrap(); // unwrap OK
         tf.on(EventType::Update, Box::new(TextField::update_handler)).unwrap(); // unwrap OK because we aren't in handler
         tf
     }
@@ -144,6 +128,21 @@ impl TextField {
             }
         }
 
+        Ok(Handled::NotHandled)
+    }
+
+    fn gain_focus_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
+        tf.focused = true;
+        tf.draw_cursor = true;
+        tf.cursor_blink_timestamp = Some(Instant::now());
+        Ok(Handled::NotHandled)
+    }
+
+    fn lose_focus_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
+        tf.focused = false;
+        tf.draw_cursor = false;
         Ok(Handled::NotHandled)
     }
 

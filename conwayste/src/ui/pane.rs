@@ -89,7 +89,6 @@ impl Pane {
                                uictx: &mut context::UIContext,
                                evt: &context::Event|
                  -> Result<Handled, Box<dyn Error>> {
-                    // let pane = obj.downcast_mut::<Pane>()?; // uncomment and rename _obj to obj above if we need a Pane
 
                     for child_id in uictx.widget_view.children_ids() {
                         let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK because 1) valid ID, 2) in view

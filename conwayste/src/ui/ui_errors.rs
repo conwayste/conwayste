@@ -39,12 +39,3 @@ impl From<GameError> for Box<UIError> {
         GameError::from(e).into()
     }
 }
-
-/*
- // This causes an infinite loop! FIXME: do we need this?
-impl From<Box<UIError>> for GameError {
-    fn from(e: Box<UIError>) -> GameError {
-        e.into()
-    }
-}
-*/
