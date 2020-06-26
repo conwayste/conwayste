@@ -21,12 +21,14 @@ use std::collections::HashMap;
 use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
+use std::path::PathBuf;
 
 use syn::{
     self,
     Item::{Enum, Struct},
     PathArguments::AngleBracketed,
 };
+use walkdir::WalkDir;
 
 //
 #[derive(Debug, Clone, PartialEq)]
@@ -251,37 +253,70 @@ fn parse_struct(s: &syn::ItemStruct) -> Vec<FieldDescriptor> {
     fields
 }
 
-/// Scans the Netwayste `net.rs` abstract syntax tree (AST) looking for enum and structure
-/// definitions. An enum is described by its variants, and a structure ny its members. Both are
-/// parsed into a format that can easily describe the type and size of each sub-item.
+/// Iterates over the netwayste source directory producing a path of all of the rust source files.
+pub fn collect_netwayste_source_files() -> Vec<PathBuf> {
+    WalkDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../netwayste/src/"))
+        .into_iter()
+        .filter_entry(|entry| {
+            // Fully recurse the entire path including subdirectories and rust source
+            if entry.file_type().is_dir() {
+                true
+            } else {
+                entry
+                    .file_name()
+                    .to_str()
+                    .map(|s| s.ends_with(".rs"))
+                    .unwrap_or(false) // Not a rust source file
+            }
+        })
+        .flatten()
+        .filter_map(|entry| {
+            if !entry.file_type().is_dir() {
+                Some(PathBuf::from(entry.path()))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<PathBuf>>()
+}
+
+/// Scans netwayste source file abstract syntax trees (AST) looking for enum and structure
+/// definitions. An enum is described by its variants while a structure is desribed by its members.
+/// Both are parsed into a format that can easily describe the type and size of each sub-item.
 pub fn parse_netwayste_format() -> HashMap<CString, NetwaysteDataFormat> {
-    let filename = concat!(env!("CARGO_MANIFEST_DIR"), "/../netwayste/src/net.rs");
-    let mut file = File::open(&filename).expect("Unable to open file");
-
-    let mut src = String::new();
-    file.read_to_string(&mut src).expect("Unable to read file");
-    let syntax = syn::parse_file(&src).expect("Unable to parse file");
-
     let mut map: HashMap<CString, NetwaysteDataFormat> = HashMap::new();
 
-    for item in syntax.items {
-        match item {
-            Enum(ref e) => {
-                let (variants, fields) = parse_enum(&e);
-                map.insert(
-                    CString::new(e.ident.to_string()).unwrap(),
-                    NetwaysteDataFormat::Enumerator(variants, fields),
-                );
+    // Collect what netwayste source files we'll iterate over using WalkDir
+    let netwayste_files = collect_netwayste_source_files();
+
+    // Scan each file's AST and build up the hashmap
+    for filename in netwayste_files {
+        println!("Filename: {:?}", filename);
+        let mut file = File::open(&filename).expect("Unable to open file");
+
+        let mut src = String::new();
+        file.read_to_string(&mut src).expect("Unable to read file");
+        let syntax = syn::parse_file(&src).expect("Unable to parse file");
+
+        for item in syntax.items {
+            match item {
+                Enum(ref e) => {
+                    let (variants, fields) = parse_enum(&e);
+                    map.insert(
+                        CString::new(e.ident.to_string()).unwrap(),
+                        NetwaysteDataFormat::Enumerator(variants, fields),
+                    );
+                }
+                Struct(ref s) => {
+                    let structure = parse_struct(&s);
+                    let name = s.ident.to_string();
+                    map.insert(
+                        CString::new(name).unwrap(),
+                        NetwaysteDataFormat::Structure(structure),
+                    );
+                }
+                _ => {}
             }
-            Struct(ref s) => {
-                let structure = parse_struct(&s);
-                let name = s.ident.to_string();
-                map.insert(
-                    CString::new(name).unwrap(),
-                    NetwaysteDataFormat::Structure(structure),
-                );
-            }
-            _ => {}
         }
     }
 
@@ -297,10 +332,10 @@ mod test {
     // Count the differences between the two Sizing sets
     fn compare_sizing(expected_sizing: Vec<Sizing>, parsed_sizing: Vec<Sizing>) -> usize {
         parsed_sizing
-                    .iter()
-                    .zip(expected_sizing.iter())
-                    .filter(|&(a, b)| a != b)
-                    .count()
+            .iter()
+            .zip(expected_sizing.iter())
+            .filter(|&(a, b)| a != b)
+            .count()
     }
 
     #[test]

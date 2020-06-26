@@ -88,7 +88,7 @@ lazy_static! {
 pub const CHATBOX_BORDER_PIXELS: f32 = 1.0;
 pub const CHATBOX_LINE_SPACING: f32 = 2.0;
 pub const CHATBOX_HISTORY: usize = 20;
-pub const CHAT_TEXTFIELD_HEIGHT: f32 = (25.0);
+pub const CHAT_TEXTFIELD_HEIGHT: f32 = 25.0;
 
 // Layering's tree data structure capacities. Arbitrarily chosen.
 pub const LAYERING_NODE_CAPACITY: usize = 100;
