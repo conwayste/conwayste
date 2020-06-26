@@ -382,7 +382,7 @@ impl ConwaysteTree {
                             1, /*Can we get the size of inner struct?*/
                             ett_get_address(&*ett_info, name), /* Index in ett corresponding to this item */
                             ptr::null_mut(),
-                            name.as_ptr() as *const i8,
+                            field_name.as_ptr() as *const i8,
                         )
                     };
 
