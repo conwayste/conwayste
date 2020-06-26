@@ -22,40 +22,44 @@ extern crate chromatica;
 
 #[macro_use]
 pub(crate) mod common;
+#[macro_use]
+pub(crate) mod context;
 mod button;
 mod chatbox;
 mod checkbox;
+mod focus;
 mod label;
 mod layer;
 mod pane;
 mod widget;
 mod textfield;
+mod treeview;
+mod gamearea;
 pub(crate) mod ui_errors;
 
-use crate::Screen;
-
 pub use button::Button;
-pub use chatbox::Chatbox;
+pub use chatbox::{Chatbox, ChatboxPublishHandle};
 pub use checkbox::Checkbox;
+pub use gamearea::GameArea;
 pub use common::{
     within_widget,
     center,
     draw_text,
     intersection,
-    point_offset
+    point_offset,
+    color_with_alpha,
 };
 pub use label::Label;
 pub use layer::{Layering, InsertLocation};
 pub use pane::Pane;
-pub use textfield::{TextField, TextInputState};
+pub use textfield::TextField;
 pub use ui_errors::{UIResult, UIError};
 pub use widget::Widget;
+pub use context::{
+    UIContext,
+    EmitEvent,
+    Event,
+    EventType,
+};
 
 type BoxedWidget = Box<dyn Widget>;
-
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub enum UIAction {
-    ScreenTransition(Screen),
-    Toggle(bool),
-    EnterText, // TODO: see if we still need this "gunk residue"
-}

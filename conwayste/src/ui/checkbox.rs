@@ -18,19 +18,32 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::fmt;
+use std::error::Error;
 
 use ggez::graphics::{self, Rect, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
+use ggez::input::keyboard::KeyCode;
+use ggez::event::MouseButton;
 
 use id_tree::NodeId;
 
 use super::{
     label::Label,
     widget::Widget,
-    common::{within_widget, FontInfo},
-    UIAction,
-    UIError, UIResult,
+    common::FontInfo,
+    UIError,
+    UIResult,
+};
+use super::context::{
+    EmitEvent,
+    Event,
+    EventType,
+    Handled,
+    HandlerData,
+    UIContext,
+    KeyCodeOrChar,
+    MoveCross,
 };
 
 use crate::constants::colors::*;
@@ -41,14 +54,16 @@ pub struct Checkbox {
     pub label: Label,
     pub enabled: bool,
     pub dimensions: Rect,
-    pub hover: bool,
-    pub action: UIAction
+    pub focused: bool, // has keyboard focus?
+    pub hover_box: bool, // hovering checkbox itself?
+    pub hover_label: bool, // hovering label?
+    pub handler_data: HandlerData, // required for impl_emit_event!
 }
 
 impl fmt::Debug for Checkbox {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Checkbox {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}, Checked: {} }}",
-            self.id, self.z_index, self.dimensions, self.action, self.enabled)
+        write!(f, "Checkbox {{ id: {:?}, z-index: {}, Dimensions: {:?}, Checked: {} }}",
+            self.id, self.z_index, self.dimensions, self.enabled)
     }
 }
 
@@ -96,21 +111,85 @@ impl Checkbox {
             dimensions.y + dimensions.h + LABEL_OFFSET_Y
         );
 
-        Checkbox {
+        let mut cb = Checkbox {
             id: None,
             z_index: std::usize::MAX,
             label: Label::new(ctx, font_info, text, *CHECKBOX_TEXT_COLOR, label_origin),
-            enabled: enabled,
-            dimensions: dimensions,
-            hover: false,
-            action: UIAction::Toggle(enabled)
-        }
+            enabled,
+            dimensions,
+            focused: false,
+            hover_box: false,
+            hover_label: false,
+            handler_data: HandlerData::new(),
+        };
+
+        // setup handler to allow changing appearance when it has keyboard focus
+        cb.on(EventType::GainFocus, Box::new(Checkbox::focus_change_handler)).unwrap(); // unwrap OK b/c not being called within handler
+        cb.on(EventType::LoseFocus, Box::new(Checkbox::focus_change_handler)).unwrap(); // unwrap OK b/c not being called within handler
+
+        cb.on(EventType::Click, Box::new(Checkbox::click_handler)).unwrap();
+
+        // setup handler to forward a space keyboard event to the click handler
+        cb.on(EventType::KeyPress, Box::new(Checkbox::keypress_handler)).unwrap(); // unwrap OK b/c not being called within handler
+
+        cb.on(EventType::MouseMove, Box::new(Checkbox::mouse_move_handler)).unwrap(); // unwrap OK b/c not being called within handler
+
+        cb
     }
 
-    /// Toggles the checkbox between enabled or disabled, and returns its new state
-    pub fn toggle_checkbox(&mut self) -> bool {
-        self.enabled = !self.enabled;
-        self.enabled
+    fn focus_change_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+        let checkbox = obj.downcast_mut::<Checkbox>().unwrap(); // unwrap OK because this will always be Checkbox
+        match event.what {
+            EventType::GainFocus => checkbox.focused = true,
+            EventType::LoseFocus => checkbox.focused = false,
+            _ => unimplemented!("this handler is only for gaining/losing focus"),
+        };
+        Ok(Handled::NotHandled) // allow other handlers for this event type to be activated
+    }
+
+    fn keypress_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+        let checkbox = obj.downcast_mut::<Checkbox>().unwrap(); // unwrap OK because this will always be Checkbox
+        if Some(KeyCodeOrChar::KeyCode(KeyCode::Space)) != event.key {
+            return Ok(Handled::NotHandled);
+        }
+        // create a synthetic click event
+        let mouse_point = checkbox.position();
+        let click_event = Event::new_click(mouse_point, MouseButton::Left, false);
+        checkbox.emit(&click_event, uictx)?;
+        Ok(Handled::NotHandled) // allow other handlers for this event type to be activated
+    }
+
+    fn click_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        let mut checkbox = obj.downcast_mut::<Checkbox>().unwrap();
+
+        // toggle
+        checkbox.enabled = !checkbox.enabled;
+
+        Ok(Handled::NotHandled)
+    }
+
+    fn mouse_move_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+        let cb = obj.downcast_mut::<Checkbox>().unwrap(); // unwrap OK because this will always be Checkbox
+        let label_dimensions = cb.label.rect();
+        match event.move_did_cross(cb.dimensions) {
+            MoveCross::Enter => {
+                cb.hover_box = true;
+            }
+            MoveCross::Exit => {
+                cb.hover_box = false;
+            }
+            MoveCross::None => {}
+        };
+        match event.move_did_cross(label_dimensions) {
+            MoveCross::Enter => {
+                cb.hover_label = true;
+            }
+            MoveCross::Exit => {
+                cb.hover_label = false;
+            }
+            MoveCross::None => {}
+        };
+        Ok(Handled::NotHandled)
     }
 }
 
@@ -179,21 +258,11 @@ impl Widget for Checkbox {
         self.label.translate(dest);
     }
 
-    fn on_hover(&mut self, point: &Point2<f32>) {
-        let label_dimensions = self.label.rect();
-        self.hover = within_widget(point, &self.dimensions) || within_widget(point, &label_dimensions);
-    }
-
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction>
-    {
-        // TODO: Check child label for an on_click event once it's refactored out
-        return Some(UIAction::Toggle(self.toggle_checkbox()));
-    }
-
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
 
-        if self.hover {
-            // Add in a violet border/fill while hovered. Color checkbox differently to indicate  hovered state.
+        if self.hover_box || self.hover_label || self.focused {
+            // Add in a violet border/fill while hovered. Color checkbox differently to indicate
+            // hovering and/or keyboard focus.
             let border_rect = Rect::new(
                 self.dimensions.x-1.0,
                 self.dimensions.y-1.0,
@@ -237,6 +306,17 @@ impl Widget for Checkbox {
 
         Ok(())
     }
+
+    /// convert to EmitEvent
+    fn as_emit_event(&mut self) -> Option<&mut dyn EmitEvent> {
+        Some(self)
+    }
+
+    /// Whether this widget accepts keyboard events
+    fn accepts_keyboard_events(&self) -> bool {
+        true
+    }
 }
 
+impl_emit_event!(Checkbox, self.handler_data);
 widget_from_id!(Checkbox);

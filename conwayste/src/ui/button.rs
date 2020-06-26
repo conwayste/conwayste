@@ -16,21 +16,33 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 use std::fmt;
+use std::error::Error;
 
 use chromatica::css;
 
 use ggez::graphics::{self, Rect, Color, DrawMode, DrawParam};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
+use ggez::input::keyboard::KeyCode;
+use ggez::event::MouseButton;
 
 use id_tree::NodeId;
 
 use super::{
+    context,
     label::Label,
     widget::Widget,
-    common::{within_widget, color_with_alpha, center, FontInfo},
-    UIAction,
+    common::{color_with_alpha, center, FontInfo},
     UIError, UIResult,
+    context::{
+        EmitEvent,
+        UIContext,
+        EventType,
+        Event,
+        Handled,
+        KeyCodeOrChar,
+        MoveCross,
+    },
 };
 
 pub struct Button {
@@ -40,15 +52,16 @@ pub struct Button {
     pub button_color: Color,
     pub draw_mode: DrawMode,
     pub dimensions: Rect,
-    pub hover: bool,
+    pub hover: bool, // is mouse hovering over this?
+    pub focused: bool, // has keyboard focus?
     pub borderless: bool,
-    pub action: UIAction
+    pub handler_data: context::HandlerData, // required for impl_emit_event!
 }
 
 impl fmt::Debug for Button {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Button {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}}}",
-            self.id, self.z_index, self.dimensions, self.action)
+        write!(f, "Button {{ id: {:?}, z_index: {}, dimensions: {:?} }}",
+            self.id, self.z_index, self.dimensions)
     }
 }
 
@@ -77,7 +90,6 @@ impl Button {
     /// let font_info = common::FontInfo::new(ctx, font, Some(20.0));
     /// let b = Button::new(
     ///     ctx,
-    ///     UIAction::PrintHelloWorld,
     ///     font_info,
     ///     "TestButton"
     /// );
@@ -87,7 +99,6 @@ impl Button {
     ///
     pub fn new(
         ctx: &mut Context,
-        action: UIAction,
         font_info: FontInfo,
         button_text: String,
     ) -> Self {
@@ -112,15 +123,26 @@ impl Button {
         let mut b = Button {
             id: None,
             z_index: std::usize::MAX,
-            label: label,
+            label,
             button_color: color_with_alpha(css::DARKCYAN, 0.8),
             draw_mode: DrawMode::fill(),
-            dimensions: dimensions,
+            dimensions,
             hover: false,
+            focused: false,
             borderless: false,
-            action: action,
+            handler_data: context::HandlerData::new(),
         };
         b.center_label_text();
+
+        // setup handler to allow changing appearance when it has keyboard focus
+        b.on(EventType::GainFocus, Box::new(Button::focus_change_handler)).unwrap(); // unwrap OK b/c not being called within handler
+        b.on(EventType::LoseFocus, Box::new(Button::focus_change_handler)).unwrap(); // unwrap OK b/c not being called within handler
+
+        // setup handler to forward a space keyboard event to the click handler
+        b.on(EventType::KeyPress, Box::new(Button::key_press_handler)).unwrap(); // unwrap OK b/c not being called within handler
+
+        b.on(EventType::MouseMove, Box::new(Button::mouse_move_handler)).unwrap(); // unwrap OK b/c not being called within handler
+
         b
     }
 
@@ -136,6 +158,43 @@ impl Button {
             self.dimensions.y + (button_center.y - label_center_point.y),
         );
     }
+
+    fn mouse_move_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+        let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
+        match event.move_did_cross(button.dimensions) {
+            MoveCross::Enter => {
+                button.hover = true;
+            }
+            MoveCross::Exit => {
+                button.hover = false;
+            }
+            MoveCross::None => {}
+        };
+        Ok(Handled::NotHandled)
+    }
+
+    fn focus_change_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+        let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
+        match event.what {
+            EventType::GainFocus => button.focused = true,
+            EventType::LoseFocus => button.focused = false,
+            _ => unimplemented!("this handler is only for gaining/losing focus"),
+        };
+        Ok(Handled::NotHandled) // allow other handlers for this event type to be activated
+    }
+
+    fn key_press_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+        let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
+        if Some(KeyCodeOrChar::KeyCode(KeyCode::Space)) != event.key {
+            return Ok(Handled::NotHandled);
+        }
+        // create a synthetic click event
+        let mouse_point = button.position();
+        let click_event = Event::new_click(mouse_point, MouseButton::Left, false);
+        button.emit(&click_event, uictx)?;
+        Ok(Handled::NotHandled) // allow other handlers for this event type to be activated
+    }
+
 }
 
 impl Widget for Button {
@@ -155,17 +214,8 @@ impl Widget for Button {
         self.z_index = new_z_index;
     }
 
-    fn on_hover(&mut self, point: &Point2<f32>) {
-        self.hover = within_widget(point, &self.dimensions);
-    }
-
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction>
-    {
-        return Some(self.action);
-    }
-
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        let draw_mode = if self.hover {
+        let draw_mode = if self.hover || self.focused {
             DrawMode::fill()
         } else {
             DrawMode::stroke(2.0)
@@ -193,8 +243,12 @@ impl Widget for Button {
         if new_dims.w < self.label.dimensions.w + BUTTON_LABEL_PADDING_W
         || new_dims.h < self.label.dimensions.h + BUTTON_LABEL_PADDING_H {
             return Err(Box::new(UIError::InvalidDimensions{
-                reason: format!("Cannot set the Button's size smaller than the space taken by the
-                    button's text: {:?}", self.id())
+                reason: format!("Cannot set the Button's size {}x{} smaller than the space taken by the
+                    button's text ({:?} size {}x{}): {:?}",
+                    new_dims.w, new_dims.h, self.label.text(),
+                    self.label.dimensions.w + BUTTON_LABEL_PADDING_W,
+                    self.label.dimensions.h + BUTTON_LABEL_PADDING_H,
+                    self.id())
             }));
         }
 
@@ -244,6 +298,17 @@ impl Widget for Button {
         self.dimensions.translate(dest);
         self.label.translate(dest);
     }
+
+    /// convert to EmitEvent
+    fn as_emit_event(&mut self) -> Option<&mut dyn context::EmitEvent> {
+        Some(self)
+    }
+
+    /// Whether this widget accepts keyboard events
+    fn accepts_keyboard_events(&self) -> bool {
+        true
+    }
 }
 
+impl_emit_event!(Button, self.handler_data);
 widget_from_id!(Button);

@@ -18,6 +18,7 @@
 
 use std::fmt;
 use std::time::{Duration, Instant};
+use std::error::Error;
 
 use ggez::event::KeyCode;
 use ggez::graphics::{self, Color, DrawMode, DrawParam, Rect};
@@ -29,41 +30,43 @@ use id_tree::NodeId;
 #[cfg(not(test))]
 use super::common::draw_text;
 use super::{
-    common::{within_widget, FontInfo},
+    common::FontInfo,
     widget::Widget,
-    UIAction, UIError, UIResult,
+    UIError, UIResult,
+    context::{
+        EmitEvent,
+        UIContext,
+        Event,
+        Handled,
+        HandlerData,
+        KeyCodeOrChar,
+        EventType,
+    },
 };
 
 use crate::constants::{colors::*, CHATBOX_BORDER_PIXELS};
 
 pub const BLINK_RATE_MS: u64 = 500;
 
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub enum TextInputState {
-    EnteringText,
-    TextInputComplete,
-}
-
 pub struct TextField {
     id: Option<NodeId>,
     z_index: usize,
-    action: UIAction,
-    pub input_state: Option<TextInputState>,
+    focused: bool,
     text: String,
     cursor_index: usize, // Position of the cursor in the text fields' string
     cursor_blink_timestamp: Option<Instant>, // last time the cursor blinked on/off
     draw_cursor: bool,
     dimensions: Rect,
-    hover: bool,
     visible_start_index: usize, // The index of the first character in `self.text` that is visible.
     font_info: FontInfo,
     pub bg_color: Option<Color>,
+    pub handler_data: HandlerData, // required for impl_emit_event!
 }
 
 impl fmt::Debug for TextField {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "TextField {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}, Input_State: {:?} }}",
-            self.id, self.z_index, self.dimensions, self.action, self.input_state)
+        write!(f, "TextField {{ id: {:?}, z_index: {}, dimensions: {:?}, focused: {:?} }}",
+            self.id, self.z_index, self.dimensions, self.focused)
     }
 }
 
@@ -92,21 +95,55 @@ impl TextField {
     /// ```
     ///
     pub fn new(font_info: FontInfo, dimensions: Rect) -> TextField {
-        TextField {
+        let mut tf = TextField {
             id: None,
             z_index: std::usize::MAX,
-            input_state: None,
+            focused: false,
             text: String::new(),
             cursor_index: 0,
             cursor_blink_timestamp: None,
             draw_cursor: false,
-            dimensions: dimensions,
-            action: UIAction::EnterText,
-            hover: false,
+            dimensions,
             visible_start_index: 0,
             font_info,
             bg_color: None,
+            handler_data: HandlerData::new(),
+        };
+        tf.on(EventType::KeyPress, Box::new(TextField::key_handler)).unwrap(); // unwrap OK b/c not inside handler now
+
+        // Set handlers for toggling has_keyboard_focus
+        tf.on(EventType::GainFocus, Box::new(TextField::gain_focus_handler)).unwrap(); // unwrap OK
+        tf.on(EventType::LoseFocus, Box::new(TextField::lose_focus_handler)).unwrap(); // unwrap OK
+
+        tf.on(EventType::Update, Box::new(TextField::update_handler)).unwrap(); // unwrap OK because we aren't in handler
+        tf
+    }
+
+    fn update_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK because it's always a TextField
+        if let Some(prev_blink_ms) = tf.cursor_blink_timestamp {
+            if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
+                tf.draw_cursor ^= true;
+                tf.cursor_blink_timestamp = Some(Instant::now());
+            }
         }
+
+        Ok(Handled::NotHandled)
+    }
+
+    fn gain_focus_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
+        tf.focused = true;
+        tf.draw_cursor = true;
+        tf.cursor_blink_timestamp = Some(Instant::now());
+        Ok(Handled::NotHandled)
+    }
+
+    fn lose_focus_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
+        tf.focused = false;
+        tf.draw_cursor = false;
+        Ok(Handled::NotHandled)
     }
 
     /// Maximum number of characters that can be visible at once.
@@ -130,31 +167,51 @@ impl TextField {
         self.cursor_index = 0;
     }
 
-    /// Handle a text character being typed by the user.
-    pub fn on_char(&mut self, character: char) {
-        if self.input_state.is_some() {
-            self.add_char_at_cursor(character);
+    /// Handle a key.
+    fn key_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK because it's always a TextField
+        if evt.key.is_none() {
+            return Err("keyboard event does not have a key!".to_owned().into());
         }
-    }
+        match evt.key.unwrap() {
+            KeyCodeOrChar::KeyCode(keycode) => {
+                match keycode {
+                    KeyCode::Return => {
+                        let text = tf.text();
+                        if text.is_some() {
+                            tf.clear();
+                            let evt = Event::new_text_entered(text.unwrap());
+                            tf.emit(&evt, uictx).unwrap_or_else(|e| {
+                                error!("Error from TextEntered handler on textfield: {:?}", e);
+                            });
+                        }
 
-    /// Handle a typed keycode that is not a textual key. For example, arrow keys.
-    pub fn on_keycode(&mut self, keycode: KeyCode) {
-        if keycode == KeyCode::Return {
-            self.input_state = Some(TextInputState::TextInputComplete);
-            return;
-        }
-        if let Some(TextInputState::EnteringText) = self.input_state {
-            match keycode {
-                KeyCode::Back => self.remove_left_of_cursor(),
-                KeyCode::Delete => self.remove_right_of_cursor(),
-                KeyCode::Left => self.move_cursor_left(),
-                KeyCode::Right => self.move_cursor_right(),
-                KeyCode::Home => self.cursor_home(),
-                KeyCode::End => self.cursor_end(),
-                KeyCode::Escape => self.exit_focus(),
-                _ => ()
+                        tf.release_focus(uictx);
+                    },
+                    KeyCode::Back => tf.remove_left_of_cursor(),
+                    KeyCode::Delete => tf.remove_right_of_cursor(),
+                    KeyCode::Left => tf.move_cursor_left(),
+                    KeyCode::Right => tf.move_cursor_right(),
+                    KeyCode::Home => tf.cursor_home(),
+                    KeyCode::End => tf.cursor_end(),
+                    KeyCode::Escape => tf.release_focus(uictx),
+                    _ => ()
+                }
+            }
+            KeyCodeOrChar::Char(ch) => {
+                if tf.focused {
+                    tf.add_char_at_cursor(ch);
+                }
             }
         }
+        Ok(Handled::NotHandled)
+    }
+
+    /// Sends a notification to the parent widget that we have released focus.
+    fn release_focus(&mut self, uictx: &mut UIContext) {
+        self.focused = false;
+        let evt = Event::new_child_released_focus();
+        uictx.child_event(evt);
     }
 
     /// Adds a character at the current cursor position
@@ -274,29 +331,8 @@ impl Widget for TextField {
         self.z_index = new_z_index;
     }
 
-    fn on_hover(&mut self, point: &Point2<f32>) {
-        self.hover = within_widget(point, &self.dimensions);
-    }
-
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction> {
-        self.enter_focus();
-        return Some(self.action);
-    }
-
-    fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        if Some(TextInputState::EnteringText) == self.input_state {
-            if let Some(prev_blink_ms) = self.cursor_blink_timestamp {
-                if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
-                    self.draw_cursor ^= true;
-                    self.cursor_blink_timestamp = Some(Instant::now());
-                }
-            }
-        }
-        Ok(())
-    }
-
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        if self.input_state.is_none() && self.text.is_empty() {
+        if !self.focused && self.text.is_empty() {
             // textfield is hidden
             return Ok(());
         }
@@ -308,7 +344,7 @@ impl Widget for TextField {
         }
 
         let colored_rect;
-        if !self.text.is_empty() && self.input_state.is_none() {
+        if !self.text.is_empty() && !self.focused {
             colored_rect = graphics::Mesh::new_rectangle(
                 ctx,
                 DrawMode::stroke(CHATBOX_BORDER_PIXELS),
@@ -424,21 +460,19 @@ impl Widget for TextField {
         self.dimensions.translate(dest);
     }
 
-    /// Textfield gains focus and begins accepting user input
-    fn enter_focus(&mut self) {
-        self.input_state = Some(TextInputState::EnteringText);
-        self.draw_cursor = true;
-        self.cursor_blink_timestamp = Some(Instant::now());
+    /// convert to EmitEvent
+    fn as_emit_event(&mut self) -> Option<&mut dyn EmitEvent> {
+        Some(self)
     }
 
-    /// Textfield loses focus and does not accept user input
-    fn exit_focus(&mut self) {
-        self.input_state = None;
-        self.draw_cursor = false;
+    /// Text fields can receive keyboard focus.
+    fn accepts_keyboard_events(&self) -> bool {
+        true
     }
 }
 
 widget_from_id!(TextField);
+impl_emit_event!(TextField, self.handler_data);
 
 #[cfg(test)]
 mod test {

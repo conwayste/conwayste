@@ -39,9 +39,3 @@ impl From<GameError> for Box<UIError> {
         GameError::from(e).into()
     }
 }
-
-impl From<Box<UIError>> for GameError {
-    fn from(e: Box<UIError>) -> GameError {
-        e.into()
-    }
-}

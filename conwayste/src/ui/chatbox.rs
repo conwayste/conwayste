@@ -16,8 +16,10 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::error::Error;
 use std::collections::VecDeque;
 use std::fmt;
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Rect, Text};
 use ggez::nalgebra::{Point2, Vector2};
@@ -26,10 +28,10 @@ use ggez::{Context, GameResult};
 use id_tree::NodeId;
 
 use super::{
-    common::{within_widget, FontInfo},
+    common::FontInfo,
     widget::Widget,
-    UIAction,
     UIError, UIResult,
+    context::{HandlerData, EmitEvent, EventType, Handled, Event, MoveCross, UIContext},
 };
 
 use crate::constants::{self, colors::*};
@@ -43,14 +45,16 @@ pub struct Chatbox {
     wrapped: VecDeque<(bool, Text)>,
     dimensions: Rect,
     hover: bool,
-    action: UIAction,
     font_info: FontInfo,
+    msg_sender: Sender<String>,
+    msg_receiver: Receiver<String>,
+    handler_data: HandlerData,
 }
 
 impl fmt::Debug for Chatbox {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Chatbox {{ id: {:?}, z-index: {}, Dimensions: {:?}, Action: {:?}, history_lines: {} }}",
-            self.id, self.z_index, self.dimensions, self.action, self.history_lines)
+        write!(f, "Chatbox {{ id: {:?}, z_index: {}, dimensions: {:?}, history_lines: {} }}",
+            self.id, self.z_index, self.dimensions, self.history_lines)
     }
 }
 
@@ -76,7 +80,8 @@ impl Chatbox {
     pub fn new(font_info: FontInfo, history_lines: usize) -> Self {
         // TODO: affix to bottom left corner once "anchoring"/"gravity" is implemented
         let rect = *constants::DEFAULT_CHATBOX_RECT;
-        Chatbox {
+        let (msg_tx, msg_rx) = channel::<String>();
+        let mut chatbox = Chatbox {
             id: None,
             z_index: std::usize::MAX,
             history_lines,
@@ -85,9 +90,46 @@ impl Chatbox {
             wrapped: VecDeque::new(),
             dimensions: rect,
             hover: false,
-            action: UIAction::EnterText,
             font_info,
+            msg_sender: msg_tx,
+            msg_receiver: msg_rx,
+            handler_data: HandlerData::new(),
+        };
+        chatbox.on(EventType::Update, Box::new(Chatbox::update_handler)).unwrap(); // unwrap OK because we aren't in handler
+        chatbox.on(EventType::MouseMove, Box::new(Chatbox::mouse_move_handler)).unwrap(); // unwrap OK b/c not being called within handler
+        chatbox
+    }
+
+    /// Returns a handle that enables you to asynchronously publish messages to this chatbox.
+    pub fn new_handle(&self) -> ChatboxPublishHandle {
+        ChatboxPublishHandle::new(self.msg_sender.clone())
+    }
+
+    fn update_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        let chatbox = obj.downcast_mut::<Chatbox>().unwrap(); // unwrap OK because it's always a Chatbox
+        loop {
+            if let Ok(msg) = chatbox.msg_receiver.try_recv() {
+                // TODO: maybe we should batch add these? Benchmark!
+                chatbox.add_message(msg);
+            } else {
+                break;
+            }
         }
+        Ok(Handled::NotHandled)
+    }
+
+    fn mouse_move_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, event: &Event) -> Result<Handled, Box<dyn Error>> {
+        let chatbox = obj.downcast_mut::<Chatbox>().unwrap(); // unwrap OK because it's always a Chatbox
+        match event.move_did_cross(chatbox.dimensions) {
+            MoveCross::Enter => {
+                chatbox.hover = true;
+            }
+            MoveCross::Exit => {
+                chatbox.hover = false;
+            }
+            MoveCross::None => {}
+        };
+        Ok(Handled::NotHandled)
     }
 
     /// Adds a message to the chatbox
@@ -296,14 +338,6 @@ impl Widget for Chatbox {
         self.dimensions.translate(dest);
     }
 
-    fn on_hover(&mut self, point: &Point2<f32>) {
-        self.hover = within_widget(point, &self.dimensions);
-    }
-
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<UIAction> {
-        return Some(self.action);
-    }
-
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         // TODO: Add support to scroll through history
         if self.hover {
@@ -364,9 +398,33 @@ impl Widget for Chatbox {
 
         Ok(())
     }
+
+    fn as_emit_event(&mut self) -> Option<&mut dyn EmitEvent> {
+        Some(self)
+    }
 }
 
 widget_from_id!(Chatbox);
+impl_emit_event!(Chatbox, self.handler_data);
+
+
+pub struct ChatboxPublishHandle {
+    msg_sender: Sender<String>,
+}
+
+impl ChatboxPublishHandle {
+    pub fn add_message(&mut self, msg: String) {
+        self.msg_sender.send(msg).unwrap_or_else(|_e| {
+            error!("Chatbox has been dropped!");
+        });
+    }
+
+    pub fn new(msg_sender: Sender<String>) -> Self {
+        ChatboxPublishHandle {
+            msg_sender,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
