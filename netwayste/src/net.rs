@@ -23,12 +23,16 @@ use std::{io, fmt, str, result, time::{Duration, Instant}};
 use std::net::{self, SocketAddr};
 use std::collections::VecDeque;
 
-use futures::sync::mpsc;
-use tokio_core::net::{UdpSocket, UdpCodec};
-use tokio_core::reactor::Handle;
 use bincode::{serialize, deserialize, Infinite};
+use bytes::{BytesMut};
+use futures::channel::mpsc;
+use futures::prelude::*;
 use semver::{Version, SemVerError};
 use serde::{Serialize, Deserialize};
+use tokio::io::Result as tokResult;
+use tokio::prelude::*;
+use tokio::net::UdpSocket;
+use tokio_util::codec::{Decoder, Encoder};
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
@@ -349,8 +353,9 @@ impl Ord for Packet {
 
 //////////////// Packet (de)serialization ////////////////
 #[allow(dead_code)]
-pub struct LineCodec;
-impl UdpCodec for LineCodec {
+pub struct NetwaystePacketCodec;
+/*
+impl UdpCodec for NetwaystePacketCodec {
     type In = (SocketAddr, Option<Packet>);   // if 2nd element is None, it means deserialization failure
     type Out = (SocketAddr, Packet);
 
@@ -378,15 +383,38 @@ impl UdpCodec for LineCodec {
         addr
     }
 }
+*/
+
+impl Decoder for NetwaystePacketCodec {
+    type Item = Packet;
+    type Error = io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        match deserialize(src) {
+            Ok(decoded) => Ok(Some(decoded)),
+            Err(_) => Ok(None)
+        }
+    }
+}
+
+impl Encoder<Packet> for NetwaystePacketCodec {
+    type Error = io::Error;
+
+    fn encode(&mut self, packet: Packet, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let encoded: Vec<u8> = serialize(&packet, Infinite).unwrap();
+        dst.extend_from_slice(&encoded[..]);
+        Ok(())
+    }
+}
 
 //////////////// Network interface ////////////////
 #[allow(dead_code)]
-pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket, NetError> {
-
+pub async fn bind(opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket, io::Error> {
     let host = if let Some(host) = opt_host { host } else { DEFAULT_HOST };
     let port = if let Some(port) = opt_port { port } else { DEFAULT_PORT };
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
-    let sock = UdpSocket::bind(&addr, &handle).expect("failed to bind socket");
+    info!("Attempting to bind to {}", addr);
+    let sock = UdpSocket::bind(&addr).await?;
     Ok(sock)
 }
 

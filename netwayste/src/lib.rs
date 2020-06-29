@@ -25,12 +25,11 @@ extern crate log;
 extern crate rand;
 extern crate semver;
 extern crate serde;
-extern crate tokio_core;
 extern crate clap;
 
 #[macro_use]
 pub mod net;
-pub mod client;
+//pub mod client; XXX
 
 #[cfg(test)]
 pub mod tests;

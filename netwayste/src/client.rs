@@ -422,6 +422,7 @@ impl ClientNetState {
             server_str = format!("{}:{}", server_str, DEFAULT_PORT);
         }
 
+        /// XXX
         // synchronously resolve DNS because... why not?
         trace!("Resolving {:?}...", server_str);
         let addr_vec = tokio_dns::resolve_sock_addr(&server_str[..]).wait()      // wait() is synchronous!!!

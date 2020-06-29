@@ -25,30 +25,29 @@
 extern crate proptest;
 
 use netwayste::net::{
-    RequestAction, ResponseCode, Packet, LineCodec, bind, RoomList,
-    UniUpdateType, BroadcastChatMessage, NetworkManager,
-    NetworkQueue, get_version, VERSION, has_connection_timed_out,
-    DEFAULT_HOST, DEFAULT_PORT,
+    RequestAction, ResponseCode, Packet, NetwaystePacketCodec, RoomList,
+    UniUpdateType, BroadcastChatMessage, NetworkManager, NetworkQueue,
+    VERSION, DEFAULT_HOST, DEFAULT_PORT,
+    bind, get_version, has_connection_timed_out,
 };
 
+use std::collections::{HashMap, VecDeque};
 use std::error::Error;
+use std::fmt;
 use std::io::{self, ErrorKind, Write};
 use std::iter;
 use std::net::SocketAddr;
 use std::process::exit;
-use std::time::{Duration, Instant};
-use std::collections::HashMap;
-use std::fmt;
-use std::time;
-use std::collections::VecDeque;
+use std::time::{self, Duration, Instant};
 
-use tokio_core::reactor::{Core, Timeout};
 use chrono::Local;
+use clap::{App, Arg};
+use futures::channel::mpsc;
+use futures::prelude::*;
 use log::LevelFilter;
-use futures::{Future, Sink, Stream, stream, future::ok, sync::mpsc};
 use rand::RngCore;
 use semver::Version;
-use clap::{App, Arg};
+use tokio_util::udp::UdpFramed;
 
 pub const TICK_INTERVAL_IN_MS:    u64      = 10;
 pub const NETWORK_INTERVAL_IN_MS: u64      = 100;    // Arbitrarily chosen
@@ -1157,7 +1156,8 @@ enum Event {
 //    Notify((SocketAddr, Option<Packet>)),
 }
 
-pub fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     env_logger::Builder::new()
     .format(|buf, record| {
         writeln!(buf,
@@ -1187,33 +1187,27 @@ pub fn main() {
              .takes_value(true))
         .get_matches();
 
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-
     let (tx, rx) = mpsc::unbounded();
 
-    let opt_port = matches.value_of("port").map(|p_str| {
-        p_str.parse::<u16>().unwrap_or_else(|e| {
-            error!("Error while attempting to parse {:?} as port number: {:?}", p_str, e);
+    let opt_host = matches.value_of("address");
+    let opt_port = matches.value_of("port").map(|port_str| {
+        port_str.parse::<u16>().unwrap_or_else(|e| {
+            error!("Error while attempting to parse {:?} as port number: {:?}", port_str, e);
             exit(1);
         })
     });
-    let udp = bind(&handle,
-                        matches.value_of("address"),
-                        opt_port)
-        .unwrap_or_else(|e| {
-            error!("Error while trying to bind UDP socket: {:?}", e);
-            exit(1);
-        });
+    let udp = bind(opt_host, opt_port).await.unwrap_or_else(|e| {
+        error!("Error while trying to bind UDP socket: {:?}", e);
+        exit(1);
+    });
 
-    trace!("Listening for connections on {:?}...", udp.local_addr().unwrap());
+    trace!("Listening for connections on {:?}...", udp.local_addr()?);
 
-    let (udp_sink, udp_stream) = udp.framed(LineCodec).split();
+    let (mut udp_sink, mut udp_stream) = UdpFramed::new(udp, NetwaystePacketCodec).split();
 
     let initial_server_state = ServerState::new();
 
-    let iter_stream = stream::iter_ok::<_, io::Error>(iter::repeat( () ));
-    let tick_stream = iter_stream.and_then(|_| {
+    let tick_stream = stream::repeat::repeat(()).and_then(|_| {
         let timeout = Timeout::new(Duration::from_millis(TICK_INTERVAL_IN_MS), &handle).unwrap();
         timeout.and_then(move |_| {
             ok(Event::TickEvent)
@@ -1321,7 +1315,7 @@ pub fn main() {
         .select(sink_fut)
         .map(|_| ());   // wait for either server_fut or sink_fut to complete
 
-    drop(core.run(combined_fut));
+    Ok(())
 }
 
 #[cfg(test)]
