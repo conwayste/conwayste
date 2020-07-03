@@ -37,15 +37,15 @@ use crate::{enum_strings, netwayste_data, ws};
 /// list used during the decoding process.
 #[derive(Debug)]
 pub struct HFFieldAllocator {
-    hf_fields: Vec<c_int>,
-    allocated: HashMap<CString, usize>,
+    hf_fields:   Vec<c_int>,
+    allocated:   HashMap<CString, usize>,
     options_map: HashMap<CString, CString>,
 }
 
 impl HFFieldAllocator {
     pub fn new() -> HFFieldAllocator {
         HFFieldAllocator {
-            hf_fields: Vec::new(),  // 4-byte word list where values are managed by Wireshark
+            hf_fields: Vec::new(),     // 4-byte word list where values are managed by Wireshark
             allocated: HashMap::new(), // Maps a field name (ex: cookie) to its index into hf_fields
 
             options_map: HashMap::new(), // Maps a field name, which is of Option<T> type, to an
@@ -147,10 +147,7 @@ pub fn hf_info_len(hf_info: &Mutex<Vec<sync_hf_register_info>>) -> usize {
     len
 }
 
-pub fn hf_append(
-    hf_info: &Mutex<Vec<sync_hf_register_info>>,
-    hf_list: &mut Vec<sync_hf_register_info>,
-) {
+pub fn hf_append(hf_info: &Mutex<Vec<sync_hf_register_info>>, hf_list: &mut Vec<sync_hf_register_info>) {
     hf_info.lock().unwrap().append(hf_list);
 }
 
@@ -207,10 +204,7 @@ pub fn register_header_fields(hf_fields: &Mutex<HFFieldAllocator>) {
 // Walks the parsed `net.rs` AST and builds a header field entry for each enum, variants with data,
 // and structures. The header field entry is provided to Wireshark so that it knows how to interpret
 // each data field when it's added to the ett during packet dissection.
-pub fn build_header_field_array(
-    hf_fields: &Mutex<HFFieldAllocator>,
-    hf_info: &Mutex<Vec<sync_hf_register_info>>,
-) {
+pub fn build_header_field_array(hf_fields: &Mutex<HFFieldAllocator>, hf_info: &Mutex<Vec<sync_hf_register_info>>) {
     let mut _hf = {
         let mut _hf = vec![];
 
@@ -219,7 +213,7 @@ pub fn build_header_field_array(
             let f = hf_get_mut_ptr(hf_fields, key);
 
             let enum_hf = sync_hf_register_info {
-                p_id: f,
+                p_id:   f,
                 hfinfo: ws::header_field_info {
                     name: key.as_ptr() as *const i8,
                     abbrev: key.as_ptr() as *const i8,
@@ -275,7 +269,7 @@ pub fn build_header_field_array(
                         let hf_id = hf_get_option_id(hf_fields, &field.name);
                         let optioned_name = hf_get_option(hf_fields, &field.name);
                         let variant_hf = sync_hf_register_info {
-                            p_id: hf_id,
+                            p_id:   hf_id,
                             hfinfo: ws::header_field_info {
                                 name: optioned_name,
                                 abbrev: optioned_name,
@@ -313,7 +307,7 @@ pub fn build_header_field_array(
 
             let hf_id = hf_get_mut_ptr(hf_fields, &field.name);
             let variant_hf = sync_hf_register_info {
-                p_id: hf_id,
+                p_id:   hf_id,
                 hfinfo: ws::header_field_info {
                     name: field.name.as_ptr() as *const i8,
                     abbrev: field.name.as_ptr() as *const i8,
@@ -408,7 +402,10 @@ mod test {
         let test_string = CString::new("TestString").unwrap();
         hffa.new_option(&test_string);
 
-        assert_eq!(*hffa.get_option_name(&test_string), CString::new("TestString.option").unwrap());
+        assert_eq!(
+            *hffa.get_option_name(&test_string),
+            CString::new("TestString.option").unwrap()
+        );
     }
 
     #[test]
@@ -438,5 +435,4 @@ mod test {
 
         hffa.get_mut_option_id(&test_string);
     }
-
 }

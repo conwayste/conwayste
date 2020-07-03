@@ -20,47 +20,34 @@ use std::error::Error;
 
 use std::collections::HashSet;
 
-use ggez::Context;
 use ggez::graphics::{self, DrawMode, DrawParam, Rect};
 use ggez::input::keyboard::KeyCode;
 use ggez::nalgebra::{Point2, Vector2};
+use ggez::Context;
 
-use id_tree::{
-    InsertBehavior,
-    RemoveBehavior,
-    NodeId,
-    Tree,
-    TreeBuilder,
-    Node,
-};
+use id_tree::{InsertBehavior, Node, NodeId, RemoveBehavior, Tree, TreeBuilder};
 
 use super::{
     common::within_widget,
-    widget::Widget,
-    BoxedWidget,
-    Pane,
-    UIError,
-    UIResult,
     context,
+    focus::{CycleType, FocusCycle},
     treeview,
-    focus::{
-        CycleType,
-        FocusCycle,
-    },
+    widget::Widget,
+    BoxedWidget, Pane, UIError, UIResult,
 };
 
-use crate::constants::{colors::*, LAYERING_NODE_CAPACITY, LAYERING_SWAP_CAPACITY};
 use crate::config;
+use crate::constants::{colors::*, LAYERING_NODE_CAPACITY, LAYERING_SWAP_CAPACITY};
 use crate::Screen; // for screen stack
 
 /// Dummy Widget to serve as a root node in the tree. Serves no other purpose.
 #[derive(Debug)]
 struct LayerRootNode {
-    root_id: Option<NodeId>
+    root_id: Option<NodeId>,
 }
 impl LayerRootNode {
     fn new() -> BoxedWidget {
-        Box::new(LayerRootNode {root_id: None})
+        Box::new(LayerRootNode { root_id: None })
     }
 }
 
@@ -86,28 +73,29 @@ impl Widget for LayerRootNode {
     fn size(&self) -> (f32, f32) {
         (0.0, 0.0)
     }
-    fn translate(&mut self, _dest: Vector2<f32>) {}
+    fn translate(&mut self, _dest: Vector2<f32>) {
+    }
 }
 
 #[allow(unused)]
 #[derive(Eq, PartialEq)]
 pub enum InsertLocation<'a> {
-    AtCurrentLayer, // Insertion will be made at whatever the top-most layer order is
-    AtNextLayer,    // Insertion will increment the layer order, and insert
+    AtCurrentLayer,                // Insertion will be made at whatever the top-most layer order is
+    AtNextLayer,                   // Insertion will increment the layer order, and insert
     ToNestedContainer(&'a NodeId), // Inserted as a child to the specified node in the tree
 }
 
 pub struct Layering {
     pub with_transparency: bool, // Determines if a transparent film is drawn in between two
     // adjacent layers
-    widget_tree: Tree<BoxedWidget>, // Tree of widgets. Container-like widgets (think Panes)
-                                    // will have children nodes which are the nested elements
-                                    // (think Buttons) of the widget.
-    removed_node_ids: HashSet<NodeId>, // Set of all node-ids that have been removed from the Tree
-    highest_z_order: usize, // Number of layers allocated in the system + 1
-    focus_cycles: Vec<FocusCycle>,  // For each layer, a "FocusCycle" keeping track of which widgets
-                                    // can be tabbed through to get focus, in which order, and which
-                                    // widget of these (if any) has focus.
+    widget_tree:           Tree<BoxedWidget>, // Tree of widgets. Container-like widgets (think Panes)
+    // will have children nodes which are the nested elements
+    // (think Buttons) of the widget.
+    removed_node_ids:      HashSet<NodeId>, // Set of all node-ids that have been removed from the Tree
+    highest_z_order:       usize,           // Number of layers allocated in the system + 1
+    focus_cycles:          Vec<FocusCycle>, // For each layer, a "FocusCycle" keeping track of which widgets
+                                            // can be tabbed through to get focus, in which order, and which
+                                            // widget of these (if any) has focus.
 }
 
 /// A `Layering` is a container of one or more widgets or panes (hereby referred to as widgets),
@@ -138,15 +126,15 @@ pub struct Layering {
 impl Layering {
     pub fn new() -> Self {
         Layering {
-            widget_tree: TreeBuilder::new()
+            widget_tree:       TreeBuilder::new()
                 .with_node_capacity(LAYERING_NODE_CAPACITY)
                 .with_swap_capacity(LAYERING_SWAP_CAPACITY)
                 .with_root(Node::new(LayerRootNode::new()))
                 .build(),
-            removed_node_ids: HashSet::new(),
-            highest_z_order: 0,
+            removed_node_ids:  HashSet::new(),
+            highest_z_order:   0,
             with_transparency: false,
-            focus_cycles: vec![FocusCycle::new(CycleType::Circular)], // empty focus cycle for z_order 0
+            focus_cycles:      vec![FocusCycle::new(CycleType::Circular)], // empty focus cycle for z_order 0
         }
     }
 
@@ -206,11 +194,7 @@ impl Layering {
     /// A `NodeIDCollision` error can be returned if the node id exists in this layering.
     /// An `InvalidAction` error can be returned if the widget addition operation fails.
     /// A `WidgetNotFound` error can be returned if the nested container's node id does not exist.
-    pub fn add_widget(
-        &mut self,
-        mut widget: BoxedWidget,
-        modifier: InsertLocation,
-    ) -> UIResult<NodeId> {
+    pub fn add_widget(&mut self, mut widget: BoxedWidget, modifier: InsertLocation) -> UIResult<NodeId> {
         // Check that we aren't inserting a widget into the tree that already exists
         if let Some(id) = widget.id() {
             return Err(Box::new(UIError::NodeIDCollision {
@@ -230,7 +214,8 @@ impl Layering {
         match modifier {
             InsertLocation::AtCurrentLayer | InsertLocation::AtNextLayer => {
                 widget.set_z_index(self.highest_z_order);
-                inserted_node_id = self.widget_tree
+                inserted_node_id = self
+                    .widget_tree
                     .insert(Node::new(widget), InsertBehavior::UnderNode(&root_id))
                     .or_else(|e| {
                         Err(Box::new(UIError::InvalidAction {
@@ -248,8 +233,7 @@ impl Layering {
                     return Err(Box::new(UIError::WidgetNotFound {
                         reason: format!(
                             "Parent Container with NodeId {:?} not found in tree. Cannot nest {:?}.",
-                            parent_id,
-                            widget
+                            parent_id, widget
                         ),
                     }));
                 }
@@ -267,13 +251,17 @@ impl Layering {
                 }
 
                 // Insert the node under the found node_id corresponding to the Pane
-                inserted_node_id = self.widget_tree.insert(Node::new(widget), InsertBehavior::UnderNode(&parent_id))
-                    .or_else(|e| Err(Box::new(UIError::InvalidAction {
-                        reason: format!("Error during insertion, ToNestedContainer({:?}, z_order={}): {}",
-                            parent_id,
-                            self.highest_z_order,
-                            e)
-                    })))?;
+                inserted_node_id = self
+                    .widget_tree
+                    .insert(Node::new(widget), InsertBehavior::UnderNode(&parent_id))
+                    .or_else(|e| {
+                        Err(Box::new(UIError::InvalidAction {
+                            reason: format!(
+                                "Error during insertion, ToNestedContainer({:?}, z_order={}): {}",
+                                parent_id, self.highest_z_order, e
+                            ),
+                        }))
+                    })?;
                 let parent_dyn_widget = self.widget_tree.get_mut(&parent_id).unwrap().data_mut();
                 if let Some(pane) = downcast_widget_mut!(parent_dyn_widget, Pane) {
                     // notify the Pane that we added a widget to it (used for keyboard focus)
@@ -296,7 +284,10 @@ impl Layering {
 
         // Note the behavior if id_tree (somehow) reused an ID
         if self.removed_node_ids.contains(&inserted_node_id) {
-            warn!("NodeId {:?} found in removed-hashset during widget insertion. Possible reusage!", inserted_node_id);
+            warn!(
+                "NodeId {:?} found in removed-hashset during widget insertion. Possible reusage!",
+                inserted_node_id
+            );
         }
 
         Ok(inserted_node_id)
@@ -330,7 +321,7 @@ impl Layering {
         }
 
         // Insert the node's children ids to the removed hash-set
-        if let Ok(children_ids ) = self.widget_tree.children_ids(&id) {
+        if let Ok(children_ids) = self.widget_tree.children_ids(&id) {
             // collect nodes to bypass issue with double borrow on ChildrenIds iterator
             for node_id_ref in children_ids {
                 self.removed_node_ids.insert((*node_id_ref).clone());
@@ -346,17 +337,18 @@ impl Layering {
         self.focus_cycles[self.highest_z_order].remove(&id);
 
         // clone is okay because it is required
-        self.widget_tree.remove_node(id.clone(), RemoveBehavior::DropChildren).or_else(|e| {
-            return Err(Box::new(UIError::InvalidAction {
-                // clone is okay for error reporting
-                reason: format!("NodeIDError occurred during removal of {:?}: {:?}", id.clone(), e)
-            }));
-        })?;
+        self.widget_tree
+            .remove_node(id.clone(), RemoveBehavior::DropChildren)
+            .or_else(|e| {
+                return Err(Box::new(UIError::InvalidAction {
+                    // clone is okay for error reporting
+                    reason: format!("NodeIDError occurred during removal of {:?}: {:?}", id.clone(), e),
+                }));
+            })?;
 
         // Determine if the highest z-order changes due to the widget removal by checking no other
         // widgets are present at that z_order
-        while self.highest_z_order != 0 &&
-            self.collect_node_ids(self.highest_z_order).is_empty() {
+        while self.highest_z_order != 0 && self.collect_node_ids(self.highest_z_order).is_empty() {
             self.highest_z_order -= 1;
             self.focus_cycles.pop();
         }
@@ -386,7 +378,10 @@ impl Layering {
         let focus_cycle = &mut self.focus_cycles[self.highest_z_order];
         if focus_cycle.find(id).is_none() {
             return Err(Box::new(UIError::WidgetNotFound {
-                reason: format!("{:?} either not found in layering's widget list or can't receive focus", id),
+                reason: format!(
+                    "{:?} either not found in layering's widget list or can't receive focus",
+                    id
+                ),
             }));
         }
 
@@ -407,20 +402,22 @@ impl Layering {
         if let Some(old_focused_widget) = old_focused_widget {
             if old_focused_widget != *id {
                 // old ID loses focus
-                Layering::emit_focus_change(context::EventType::LoseFocus, &mut uictx, &old_focused_widget)
-                    .map_err(|e| {
-                        UIError::InvalidAction{reason: format!("{:?}", e)}
-                    })?;
+                Layering::emit_focus_change(context::EventType::LoseFocus, &mut uictx, &old_focused_widget).map_err(
+                    |e| UIError::InvalidAction {
+                        reason: format!("{:?}", e),
+                    },
+                )?;
             } else {
                 needs_gain_focus = false;
             }
         }
         if needs_gain_focus {
             // new ID gains focus
-            Layering::emit_focus_change(context::EventType::GainFocus, &mut uictx, id)
-                .map_err(|e| {
-                    UIError::InvalidAction{reason: format!("{:?}", e)}
-                })?;
+            Layering::emit_focus_change(context::EventType::GainFocus, &mut uictx, id).map_err(|e| {
+                UIError::InvalidAction {
+                    reason: format!("{:?}", e),
+                }
+            })?;
         }
 
         Ok(())
@@ -503,15 +500,21 @@ impl Layering {
                 emittable.emit(event, &mut subuictx)?;
                 let pane_events = subuictx.collect_child_events();
                 if pane_events.len() != 0 {
-                    warn!("[Layering] expected no {:?} child events to be collected from child widget; got {:?}",
-                        event.what, pane_events);
+                    warn!(
+                        "[Layering] expected no {:?} child events to be collected from child widget; got {:?}",
+                        event.what, pane_events
+                    );
                 }
             }
         }
         Ok(())
     }
 
-    fn handle_keyboard_event(event: &context::Event, uictx: &mut context::UIContext, focus_cycle: &mut FocusCycle) -> Result<(), Box<dyn Error>> {
+    fn handle_keyboard_event(
+        event: &context::Event,
+        uictx: &mut context::UIContext,
+        focus_cycle: &mut FocusCycle,
+    ) -> Result<(), Box<dyn Error>> {
         use context::KeyCodeOrChar;
         let key = event.key.ok_or_else(|| -> Box<dyn Error> {
             format!("layering event of type {:?} has no key", event.what).into()
@@ -521,7 +524,9 @@ impl Layering {
             // special key press logic to handle focus changes
 
             let opt_child_id = focus_cycle.focused_widget_id().map(|child_id_ref| child_id_ref.clone());
-            let opt_widget = opt_child_id.as_ref().map(|child_id| uictx.widget_view.get(child_id).unwrap().data());
+            let opt_widget = opt_child_id
+                .as_ref()
+                .map(|child_id| uictx.widget_view.get(child_id).unwrap().data());
             if opt_child_id.is_some() && opt_widget.unwrap().downcast_ref::<Pane>().is_some() {
                 let child_id = opt_child_id.unwrap();
                 let pane_events = Layering::emit_keyboard_event(event, uictx, &child_id)?;
@@ -565,7 +570,6 @@ impl Layering {
             }
 
             Ok(())
-
         } else {
             // regular key press logic (no focus changes)
             let focused_id = focus_cycle.focused_widget_id();
@@ -603,11 +607,16 @@ impl Layering {
         Ok(())
     }
 
-    fn emit_keyboard_event(event: &context::Event, uictx: &mut context::UIContext, focused_id: &NodeId) -> Result<Vec<context::Event>, Box<dyn Error>> {
+    fn emit_keyboard_event(
+        event: &context::Event,
+        uictx: &mut context::UIContext,
+        focused_id: &NodeId,
+    ) -> Result<Vec<context::Event>, Box<dyn Error>> {
         let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
         if let Some(emittable) = widget_ref.as_emit_event() {
-            return emittable.emit(event, &mut subuictx)
-                    .map(|_| subuictx.collect_child_events());
+            return emittable
+                .emit(event, &mut subuictx)
+                .map(|_| subuictx.collect_child_events());
         } else {
             // We probably won't ever get here due to the FocusCycle only holding widgets that can
             // receive keyboard events.
@@ -616,7 +625,11 @@ impl Layering {
         Ok(vec![])
     }
 
-    fn emit_focus_change(what: context::EventType, uictx: &mut context::UIContext, focused_id: &NodeId) -> Result<(), Box<dyn Error>> {
+    fn emit_focus_change(
+        what: context::EventType,
+        uictx: &mut context::UIContext,
+        focused_id: &NodeId,
+    ) -> Result<(), Box<dyn Error>> {
         if what != context::EventType::GainFocus && what != context::EventType::LoseFocus {
             return Err(format!("Unexpected event type passed to Pane::emit_focus_change: {:?}", what).into());
         }
@@ -626,8 +639,10 @@ impl Layering {
             emittable.emit(&event, &mut subuictx)?;
             let pane_events = subuictx.collect_child_events();
             if pane_events.len() != 0 {
-                warn!("[Layering] emit focus chg: expected no child events to be collected from Pane; got {:?}",
-                    pane_events);
+                warn!(
+                    "[Layering] emit focus chg: expected no child events to be collected from Pane; got {:?}",
+                    pane_events
+                );
             }
             return Ok(());
         } else {
@@ -639,9 +654,10 @@ impl Layering {
     }
 
     fn emit_mouse_event(event: &context::Event, uictx: &mut context::UIContext) -> Result<(), Box<dyn Error>> {
-        let point = event.point.as_ref().ok_or_else(|| -> Box<dyn Error> {
-            format!("event of type {:?} has no point", event.what).into()
-        })?;
+        let point = event
+            .point
+            .as_ref()
+            .ok_or_else(|| -> Box<dyn Error> { format!("event of type {:?} has no point", event.what).into() })?;
         for child_id in uictx.widget_view.children_ids() {
             // Get a mutable reference to a BoxedWidget, as well as a UIContext with a view on the
             // widgets in the tree under this widget.
@@ -652,8 +668,10 @@ impl Layering {
                     emittable.emit(event, &mut subuictx)?;
                     let pane_events = subuictx.collect_child_events();
                     if pane_events.len() != 0 {
-                        warn!("[Layering] expected no mouse child events to be collected from Pane; got {:?}",
-                            pane_events);
+                        warn!(
+                            "[Layering] expected no mouse child events to be collected from Pane; got {:?}",
+                            pane_events
+                        );
                     }
                     return Ok(());
                 } else {
@@ -674,8 +692,8 @@ mod test {
 
     fn create_dummy_font() -> FontInfo {
         FontInfo {
-            font: (),                   //dummy font because we can't create a real Font without ggez
-            scale: Scale::uniform(1.0), // Does not matter
+            font:            (),                  //dummy font because we can't create a real Font without ggez
+            scale:           Scale::uniform(1.0), // Does not matter
             char_dimensions: Vector2::<f32>::new(5.0, 5.0), // any positive values will do
         }
     }
@@ -687,8 +705,7 @@ mod test {
         let history_len = 5;
         let chatbox = Chatbox::new(font_info, history_len);
 
-        let id = layer_info
-            .add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer);
+        let id = layer_info.add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer);
 
         assert!(id.is_ok());
         let id = id.unwrap();
@@ -707,8 +724,7 @@ mod test {
 
         let chatbox = Chatbox::new(font_info, history_len);
 
-        let id = layer_info
-            .add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer);
+        let id = layer_info.add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer);
         assert!(id.is_ok());
         let id = id.unwrap();
 
@@ -725,7 +741,8 @@ mod test {
         let chatbox = Chatbox::new(font_info, history_len);
 
         let id = layer_info
-            .add_widget(Box::new(chatbox), InsertLocation::AtNextLayer).unwrap();
+            .add_widget(Box::new(chatbox), InsertLocation::AtNextLayer)
+            .unwrap();
 
         let w = layer_info.get_widget_mut(&id).unwrap();
         assert_eq!(w.id(), Some(&id));
@@ -751,7 +768,8 @@ mod test {
 
         // Add the widget to generate a NodeId
         let id = layer_info
-            .add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer).unwrap();
+            .add_widget(Box::new(chatbox), InsertLocation::AtCurrentLayer)
+            .unwrap();
 
         // Remove the widget and perform a check of the ID
         let removal = layer_info.remove_widget(id.clone());
@@ -765,7 +783,8 @@ mod test {
         let pane = Pane::new(Rect::new(0.0, 0.0, 100.0, 100.0));
 
         let pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
+            .unwrap();
 
         let w = layer_info.get_widget_mut(&pane_id).unwrap();
         assert_eq!(w.id(), Some(&pane_id));
@@ -789,12 +808,11 @@ mod test {
 
         assert!(size_update_result.is_ok());
         let pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
+            .unwrap();
         let chatbox_id = layer_info
-            .add_widget(
-                Box::new(chatbox),
-                InsertLocation::ToNestedContainer(&pane_id)
-            ).unwrap();
+            .add_widget(Box::new(chatbox), InsertLocation::ToNestedContainer(&pane_id))
+            .unwrap();
 
         let w = layer_info.get_widget_mut(&chatbox_id).unwrap();
         assert_eq!(w.id(), Some(&chatbox_id));
@@ -818,12 +836,11 @@ mod test {
 
         assert!(size_update_result.is_ok());
         let pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
+            .unwrap();
         let chatbox_id = layer_info
-            .add_widget(
-                Box::new(chatbox),
-                InsertLocation::ToNestedContainer(&pane_id)
-            ).unwrap();
+            .add_widget(Box::new(chatbox), InsertLocation::ToNestedContainer(&pane_id))
+            .unwrap();
 
         let removal = layer_info.remove_widget(chatbox_id.clone());
         assert_eq!(removal.is_ok(), true);
@@ -849,12 +866,11 @@ mod test {
 
         assert!(size_update_result.is_ok());
         let pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
+            .unwrap();
         let chatbox_id = layer_info
-            .add_widget(
-                Box::new(chatbox),
-                InsertLocation::ToNestedContainer(&pane_id)
-            ).unwrap();
+            .add_widget(Box::new(chatbox), InsertLocation::ToNestedContainer(&pane_id))
+            .unwrap();
 
         assert_eq!(layer_info.widget_exists(&pane_id), true);
         assert_eq!(layer_info.widget_exists(&chatbox_id), true);
@@ -866,7 +882,8 @@ mod test {
 
         let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
         let pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
+            .unwrap();
         assert_eq!(layer_info.widget_exists(&pane_id), true);
     }
 
@@ -876,7 +893,8 @@ mod test {
 
         let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
         let pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
+            .unwrap();
         assert_eq!(layer_info.widget_exists(&pane_id), true);
 
         let removal = layer_info.remove_widget(pane_id.clone());
@@ -890,7 +908,8 @@ mod test {
 
         let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
         let pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
+            .unwrap();
 
         let removal = layer_info.remove_widget(pane_id.clone());
         assert_eq!(removal.is_ok(), true);
@@ -902,7 +921,8 @@ mod test {
 
         let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
         let pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
+            .unwrap();
 
         let removal = layer_info.remove_widget(pane_id.clone());
         assert_eq!(removal.is_ok(), true);
@@ -917,7 +937,8 @@ mod test {
 
         let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
         let pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
+            .unwrap();
 
         let removal = layer_info.remove_widget(pane_id.clone());
         assert_eq!(removal.is_ok(), true);
@@ -932,12 +953,15 @@ mod test {
         let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
         let mut pane2 = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
         let pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
+            .unwrap();
         let _removal = layer_info.remove_widget(pane_id.clone());
 
         // Try to re-insert with a previously allocated node_id
         pane2.set_id(pane_id);
-        assert!(layer_info.add_widget(Box::new(pane2), InsertLocation::AtCurrentLayer).is_err());
+        assert!(layer_info
+            .add_widget(Box::new(pane2), InsertLocation::AtCurrentLayer)
+            .is_err());
     }
 
     #[test]
@@ -948,12 +972,17 @@ mod test {
 
         let pane = Pane::new(Rect::new(0.0, 0.0, 1.0, 1.0));
         let pane_id = layer_info
-            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer).unwrap();
+            .add_widget(Box::new(pane), InsertLocation::AtCurrentLayer)
+            .unwrap();
 
-        let child_node_ids: Vec<NodeId> = (0..5).map(|_| {
-            let chatbox = Chatbox::new(font_info, history_len);
-            layer_info.add_widget(Box::new(chatbox), InsertLocation::ToNestedContainer(&pane_id)).unwrap()
-        }).collect();
+        let child_node_ids: Vec<NodeId> = (0..5)
+            .map(|_| {
+                let chatbox = Chatbox::new(font_info, history_len);
+                layer_info
+                    .add_widget(Box::new(chatbox), InsertLocation::ToNestedContainer(&pane_id))
+                    .unwrap()
+            })
+            .collect();
 
         let removal = layer_info.remove_widget(pane_id.clone());
         assert_eq!(removal.is_ok(), true);

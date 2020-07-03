@@ -16,12 +16,11 @@
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
 mod universe_tests {
-    use crate::universe::*;
-    use crate::universe::test_helpers::*;
+    use crate::error::ConwayError::*;
     use crate::grids::CharGrid;
     use crate::rle::Pattern;
-    use crate::error::ConwayError::*;
-
+    use crate::universe::test_helpers::*;
+    use crate::universe::*;
 
     #[test]
     fn new_universe_with_valid_dims() {
@@ -35,8 +34,7 @@ mod universe_tests {
 
     #[test]
     fn new_universe_with_bad_dims() {
-
-        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
+        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16)); // used for the glider gun and predefined patterns
         let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
         let players = vec![player0, player1];
 
@@ -89,19 +87,19 @@ mod universe_tests {
     #[test]
     fn set_unchecked_with_valid_rows_and_cols() {
         let mut uni = generate_test_universe_with_default_params(UniType::Server);
-        let max_width = uni.width()-1;
-        let max_height = uni.height()-1;
+        let max_width = uni.width() - 1;
+        let max_height = uni.height() - 1;
         let mut cell_state;
-        
-        for x in 0.. max_width {
+
+        for x in 0..max_width {
             for y in 0..max_height {
-                cell_state = uni.get_cell_state(x,y, None);
+                cell_state = uni.get_cell_state(x, y, None);
                 assert_eq!(cell_state, CellState::Dead);
             }
         }
 
         uni.set_unchecked(0, 0, CellState::Alive(None));
-        cell_state = uni.get_cell_state(0,0, None);
+        cell_state = uni.get_cell_state(0, 0, None);
         assert_eq!(cell_state, CellState::Alive(None));
 
         uni.set_unchecked(max_width, max_height, CellState::Alive(None));
@@ -109,7 +107,7 @@ mod universe_tests {
 
         uni.set_unchecked(55, 55, CellState::Alive(None));
         assert_eq!(cell_state, CellState::Alive(None));
-   }
+    }
 
     #[test]
     #[should_panic]
@@ -121,12 +119,12 @@ mod universe_tests {
     #[test]
     fn universe_cell_states_are_dead_on_creation() {
         let mut uni = generate_test_universe_with_default_params(UniType::Server);
-        let max_width = uni.width()-1;
-        let max_height = uni.height()-1;
-        
+        let max_width = uni.width() - 1;
+        let max_height = uni.height() - 1;
+
         for x in 0..max_width {
             for y in 0..max_height {
-                let cell_state = uni.get_cell_state(x,y, None);
+                let cell_state = uni.get_cell_state(x, y, None);
                 assert_eq!(cell_state, CellState::Dead);
             }
         }
@@ -135,15 +133,15 @@ mod universe_tests {
     #[test]
     fn set_checked_verify_players_remain_within_writable_regions() {
         let mut uni = generate_test_universe_with_default_params(UniType::Server);
-        let max_width = uni.width()-1;
-        let max_height = uni.height()-1;
+        let max_width = uni.width() - 1;
+        let max_height = uni.height() - 1;
         let player_id = 1; // writing into player 1's regions
         let alive_player_cell = CellState::Alive(Some(player_id));
         let mut cell_state;
 
         // Writable region OK, Transitions to Alive
         uni.set(0, 0, alive_player_cell, player_id);
-        cell_state = uni.get_cell_state(0,0, Some(player_id));
+        cell_state = uni.get_cell_state(0, 0, Some(player_id));
         assert_eq!(cell_state, alive_player_cell);
 
         // This should be dead as it is outside the writable region
@@ -170,14 +168,21 @@ mod universe_tests {
         let row = 0;
         let col = 0;
 
-        assert_eq!(uni.toggle(row, col, player_one),
-                   Err(AccessDenied{reason: "player 0 cannot write to col=0, row=0".to_owned()}));
-        assert_eq!(uni.toggle(row, col, player_two).unwrap(), CellState::Alive(Some(player_two)));
+        assert_eq!(
+            uni.toggle(row, col, player_one),
+            Err(AccessDenied {
+                reason: "player 0 cannot write to col=0, row=0".to_owned(),
+            })
+        );
+        assert_eq!(
+            uni.toggle(row, col, player_two).unwrap(),
+            CellState::Alive(Some(player_two))
+        );
     }
 
     #[test]
     fn generate_fog_circle_bitmap_fails_with_radius_zero() {
-        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
+        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16)); // used for the glider gun and predefined patterns
         let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
         let players = vec![player0, player1];
 
@@ -219,17 +224,21 @@ mod universe_tests {
             cells_with_pos.push((col, row, state));
         });
         assert_eq!(cells_with_pos.len(), 10);
-        assert_eq!(cells_with_pos, vec![(10, 12, CellState::Wall),
-                                        (11, 12, CellState::Wall),
-                                        (12, 12, CellState::Wall),
-                                        (13, 12, CellState::Wall),
-                                        (14, 12, CellState::Wall),
-                                        (20, 21, CellState::Alive(Some(1))),
-                                        (22, 21, CellState::Alive(Some(1))),
-                                        (21, 22, CellState::Alive(Some(1))),
-                                        (22, 22, CellState::Alive(Some(1))),
-                                        (21, 23, CellState::Alive(Some(1)))]);
-
+        assert_eq!(
+            cells_with_pos,
+            vec![
+                (10, 12, CellState::Wall),
+                (11, 12, CellState::Wall),
+                (12, 12, CellState::Wall),
+                (13, 12, CellState::Wall),
+                (14, 12, CellState::Wall),
+                (20, 21, CellState::Alive(Some(1))),
+                (22, 21, CellState::Alive(Some(1))),
+                (21, 22, CellState::Alive(Some(1))),
+                (22, 22, CellState::Alive(Some(1))),
+                (21, 23, CellState::Alive(Some(1)))
+            ]
+        );
     }
 
     #[test]
@@ -245,7 +254,14 @@ mod universe_tests {
 
         // attempt to view as different player
         uni.each_non_dead(Region::new(0, 0, 80, 80), Some(player0), &mut |col, row, state| {
-            assert_eq!(state, CellState::Fog, "expected fog at col {} row {} but found {:?}", col, row, state);
+            assert_eq!(
+                state,
+                CellState::Fog,
+                "expected fog at col {} row {} but found {:?}",
+                col,
+                row,
+                state
+            );
         });
     }
 
@@ -275,7 +291,7 @@ mod universe_tests {
 
     #[test]
     fn universe_apply_but_already_applied() {
-        let mut s_uni = generate_test_universe_with_default_params(UniType::Server);  // server
+        let mut s_uni = generate_test_universe_with_default_params(UniType::Server); // server
         let mut c_uni = generate_test_universe_with_default_params(UniType::Client); // client is missing generation 1
         let player1 = 1;
         // glider
@@ -291,14 +307,14 @@ mod universe_tests {
         let diff = s_uni.diff(0, 5, None).unwrap();
         c_uni.apply(&diff, None).unwrap();
         assert_eq!(c_uni.apply(&diff, None).unwrap(), None); // applying a second time does nothing
-        // earlier gen
+                                                             // earlier gen
         let diff2 = s_uni.diff(0, 4, None).unwrap();
         assert_eq!(c_uni.apply(&diff2, None).unwrap(), None); // applying does noting if our gen is later than diff's gen
     }
 
     #[test]
     fn universe_apply_but_base_gen_absent() {
-        let mut s_uni = generate_test_universe_with_default_params(UniType::Server);  // server
+        let mut s_uni = generate_test_universe_with_default_params(UniType::Server); // server
         let mut c_uni = generate_test_universe_with_default_params(UniType::Client); // client is missing generation 1
         let player1 = 1;
         // glider
@@ -318,9 +334,18 @@ mod universe_tests {
     #[test]
     fn universe_apply_too_large_range() {
         let base = 3;
-        let diff = GenStateDiff{gen0: base, gen1: base + GEN_BUFSIZE + 1, pattern: Pattern("!".to_owned())};
+        let diff = GenStateDiff {
+            gen0:    base,
+            gen1:    base + GEN_BUFSIZE + 1,
+            pattern: Pattern("!".to_owned()),
+        };
         let mut c_uni = generate_test_universe_with_default_params(UniType::Client);
-        assert_eq!(c_uni.apply(&diff, None), Err(InvalidData{reason: "diff is across too many generations to be applied: 17 >= 16".to_owned()}));
+        assert_eq!(
+            c_uni.apply(&diff, None),
+            Err(InvalidData {
+                reason: "diff is across too many generations to be applied: 17 >= 16".to_owned(),
+            })
+        );
     }
 
     #[test]
@@ -354,12 +379,11 @@ mod universe_tests {
         assert_eq!(diff.gen0, 2);
         assert_eq!(diff.gen1, 3);
         let pat_str = diff.pattern.0.as_str();
-        let s = pat_str.split("256\"$")
-                       .filter(|&s| {
-                           s != "\r\n" && s != ""
-                       })
-                       .next()
-                       .unwrap();
+        let s = pat_str
+            .split("256\"$")
+            .filter(|&s| s != "\r\n" && s != "")
+            .next()
+            .unwrap();
         assert_eq!(s, "15\"b240\"$15\"Bb239\"$17\"B238\"$");
     }
 
@@ -397,7 +421,7 @@ mod universe_tests {
             uni.next();
         }
         let diff = uni.diff(0, 4, Some(player1)).unwrap();
-        assert!(diff.pattern.0.find('B').is_some());  // should find cells from player 1
+        assert!(diff.pattern.0.find('B').is_some()); // should find cells from player 1
     }
 
     #[test]
@@ -416,7 +440,7 @@ mod universe_tests {
             uni.next();
         }
         let diff = uni.diff(0, 4, Some(other_player)).unwrap();
-        assert!(diff.pattern.0.find('B').is_none());  // should not find cells from player 1
+        assert!(diff.pattern.0.find('B').is_none()); // should not find cells from player 1
     }
 
     #[test]
@@ -434,11 +458,10 @@ mod universe_tests {
     }
 }
 
-
 mod genstate_tests {
-    use crate::universe::test_helpers::*;
     use crate::grids::CharGrid;
     use crate::rle::Pattern;
+    use crate::universe::test_helpers::*;
 
     #[test]
     fn gen_state_get_run_simple() {
@@ -469,18 +492,20 @@ mod genstate_tests {
         let mut genstate = make_gen_state();
 
         Pattern("15o3A2B9o!".to_owned()).to_grid(&mut genstate, None).unwrap();
-        assert_eq!(genstate.get_run(0,      0, None), (15, 'o'));
-        assert_eq!(genstate.get_run(15,     0, None), (3,  'A'));
-        assert_eq!(genstate.get_run(15+3,   0, None), (2,  'B'));
-        assert_eq!(genstate.get_run(15+3+2, 0, None), (9,  'o'));
+        assert_eq!(genstate.get_run(0, 0, None), (15, 'o'));
+        assert_eq!(genstate.get_run(15, 0, None), (3, 'A'));
+        assert_eq!(genstate.get_run(15 + 3, 0, None), (2, 'B'));
+        assert_eq!(genstate.get_run(15 + 3 + 2, 0, None), (9, 'o'));
     }
 
     #[test]
     fn gen_state_get_run_player1_no_fog() {
         let mut genstate = make_gen_state();
 
-        let write_pattern_as = Some(1);   // avoid clearing fog for players other than player 1
-        Pattern("o!".to_owned()).to_grid(&mut genstate, write_pattern_as).unwrap();
+        let write_pattern_as = Some(1); // avoid clearing fog for players other than player 1
+        Pattern("o!".to_owned())
+            .to_grid(&mut genstate, write_pattern_as)
+            .unwrap();
         let visibility = Some(1); // as player 1
         assert_eq!(genstate.get_run(0, 0, visibility), (1, 'o'));
     }
@@ -516,7 +541,6 @@ mod genstate_tests {
     }
 }
 
-
 mod region_tests {
     use crate::universe::*;
 
@@ -531,7 +555,7 @@ mod region_tests {
         assert_eq!(region.right(), 100);
         assert_eq!(region.bottom(), 209);
     }
-    
+
     #[test]
     fn region_with_valid_dims_negative_top_and_left() {
         let region = Region::new(-1, -10, 100, 200);
@@ -558,7 +582,7 @@ mod region_tests {
         assert!(region1.contains(50, 50));
         assert!(region2.contains(-50, -50));
     }
-    
+
     #[test]
     fn region_does_not_contain_sub_region() {
         let region1 = Region::new(1, 10, 100, 200);
@@ -584,7 +608,7 @@ mod region_tests {
 
     #[test]
     fn region_intersection_overlap() {
-        let region1 = Region::new( 1,  10, 100, 200);
+        let region1 = Region::new(1, 10, 100, 200);
         let region2 = Region::new(90, 120, 100, 200);
         assert_eq!(region1.intersection(region2), Some(Region::new(90, 120, 11, 90)));
     }
@@ -619,9 +643,9 @@ mod cellstate_tests {
 }
 
 mod grid_tests {
-    use crate::universe::Region;
-    use crate::rle::Pattern;
     use crate::grids::*;
+    use crate::rle::Pattern;
+    use crate::universe::Region;
 
     #[test]
     fn height_works() {
@@ -632,7 +656,7 @@ mod grid_tests {
     #[test]
     fn width_works() {
         let grid = BitGrid::new(2, 5);
-        assert_eq!(grid.width(), 2*64);
+        assert_eq!(grid.width(), 2 * 64);
     }
 
     #[test]
@@ -642,7 +666,7 @@ mod grid_tests {
         let grid = BitGrid::new(width_in_words, height);
 
         assert_eq!(grid[0][0], 0);
-        assert_eq!(grid[height-1][width_in_words-1], 0);
+        assert_eq!(grid[height - 1][width_in_words - 1], 0);
 
         for x in 0..height {
             for y in 0..width_in_words {
@@ -671,11 +695,11 @@ mod grid_tests {
             }
         }
 
-        grid.modify_bits_in_word(height/2, width_in_words/2, 1<<63, BitOperation::Set);
-        assert_eq!(grid[height/2][width_in_words/2] >> 63, 1);
-        
-        grid.modify_bits_in_word(height-1, width_in_words-1, 1<<63, BitOperation::Set);
-        assert_eq!(grid[height-1][width_in_words-1] >> 63, 1);
+        grid.modify_bits_in_word(height / 2, width_in_words / 2, 1 << 63, BitOperation::Set);
+        assert_eq!(grid[height / 2][width_in_words / 2] >> 63, 1);
+
+        grid.modify_bits_in_word(height - 1, width_in_words - 1, 1 << 63, BitOperation::Set);
+        assert_eq!(grid[height - 1][width_in_words - 1] >> 63, 1);
     }
 
     #[test]
@@ -690,11 +714,11 @@ mod grid_tests {
             }
         }
 
-        grid.modify_bits_in_word(height/2, width_in_words/2, 1<<63, BitOperation::Clear);
-        assert_eq!(grid[height/2][width_in_words/2] >> 63, 0);
-        
-        grid.modify_bits_in_word(height-1, width_in_words-1, 1<<63, BitOperation::Clear);
-        assert_eq!(grid[height-1][width_in_words-1] >> 63, 0);
+        grid.modify_bits_in_word(height / 2, width_in_words / 2, 1 << 63, BitOperation::Clear);
+        assert_eq!(grid[height / 2][width_in_words / 2] >> 63, 0);
+
+        grid.modify_bits_in_word(height - 1, width_in_words - 1, 1 << 63, BitOperation::Clear);
+        assert_eq!(grid[height - 1][width_in_words - 1] >> 63, 0);
     }
 
     #[test]
@@ -709,11 +733,11 @@ mod grid_tests {
             }
         }
 
-        grid.modify_bits_in_word(height/2, width_in_words/2, 1<<63, BitOperation::Toggle);
-        assert_eq!(grid[height/2][width_in_words/2] >> 63, 0);
-        
-        grid.modify_bits_in_word(height/2, width_in_words/2, 1<<63, BitOperation::Toggle);
-        assert_eq!(grid[height/2][width_in_words/2] >> 63, 1);
+        grid.modify_bits_in_word(height / 2, width_in_words / 2, 1 << 63, BitOperation::Toggle);
+        assert_eq!(grid[height / 2][width_in_words / 2] >> 63, 0);
+
+        grid.modify_bits_in_word(height / 2, width_in_words / 2, 1 << 63, BitOperation::Toggle);
+        assert_eq!(grid[height / 2][width_in_words / 2] >> 63, 1);
     }
 
     #[test]
@@ -778,28 +802,29 @@ mod grid_tests {
 
     #[test]
     fn bounding_box_for_single_line_complicated() {
-        let grid = Pattern("15b87o!".to_owned()).to_new_bit_grid(15+87, 1).unwrap();
+        let grid = Pattern("15b87o!".to_owned()).to_new_bit_grid(15 + 87, 1).unwrap();
         assert_eq!(grid.bounding_box(), Some(Region::new(15, 0, 87, 1)));
     }
 
     #[test]
     fn bounding_box_for_single_line_complicated2() {
-        let grid = Pattern("82b87o!".to_owned()).to_new_bit_grid(82+87, 1).unwrap();
+        let grid = Pattern("82b87o!".to_owned()).to_new_bit_grid(82 + 87, 1).unwrap();
         assert_eq!(grid.bounding_box(), Some(Region::new(82, 0, 87, 1)));
     }
 
     #[test]
     fn bounding_box_for_multi_line_complicated() {
-        let grid = Pattern("4$15b87o!".to_owned()).to_new_bit_grid(15+87, 5).unwrap();
+        let grid = Pattern("4$15b87o!".to_owned()).to_new_bit_grid(15 + 87, 5).unwrap();
         assert_eq!(grid.bounding_box(), Some(Region::new(15, 4, 87, 1)));
     }
 
     #[test]
     fn bounding_box_for_multi_line_complicated2() {
-        let grid = Pattern("4$15b87o$10b100o$25b3o!".to_owned()).to_new_bit_grid(110, 7).unwrap();
+        let grid = Pattern("4$15b87o$10b100o$25b3o!".to_owned())
+            .to_new_bit_grid(110, 7)
+            .unwrap();
         assert_eq!(grid.bounding_box(), Some(Region::new(10, 4, 100, 3)));
     }
-
 
     #[test]
     fn copy_simple() {
@@ -855,7 +880,6 @@ mod grid_tests {
         assert_eq!(grid2.to_pattern(None).0, "7$3b4o!".to_owned());
     }
 
-
     #[test]
     #[should_panic]
     fn modify_region_with_a_negative_region_panics() {
@@ -893,17 +917,15 @@ mod grid_tests {
 
     #[test]
     fn get_run_nonzero_col_complicated() {
-        let grid = Pattern("15b87o!".to_owned()).to_new_bit_grid(15+87, 1).unwrap();
+        let grid = Pattern("15b87o!".to_owned()).to_new_bit_grid(15 + 87, 1).unwrap();
         assert_eq!(grid.get_run(15, 0, None), (87, 'o'));
     }
 
     #[test]
     fn get_run_nonzero_col_multiline_complicated() {
-        let grid = Pattern("3$15b87o!".to_owned()).to_new_bit_grid(15+87, 4).unwrap();
+        let grid = Pattern("3$15b87o!".to_owned()).to_new_bit_grid(15 + 87, 4).unwrap();
         assert_eq!(grid.get_run(15, 3, None), (87, 'o'));
     }
-
-
 
     #[test]
     fn to_pattern_simple() {
@@ -916,7 +938,7 @@ mod grid_tests {
     #[test]
     fn to_pattern_nonzero_col_3empty_then_complicated() {
         let original_pattern = Pattern("3$15b87o!".to_owned());
-        let grid = original_pattern.to_new_bit_grid(15+87, 4).unwrap();
+        let grid = original_pattern.to_new_bit_grid(15 + 87, 4).unwrap();
         let pattern = grid.to_pattern(None);
         assert_eq!(pattern, original_pattern);
     }
@@ -934,7 +956,7 @@ mod grid_tests {
 
     #[test]
     fn get_run_empty() {
-        let grid = BitGrid::new(1,1);
+        let grid = BitGrid::new(1, 1);
         let pattern = grid.to_pattern(None);
         assert_eq!(pattern.0.as_str(), "!");
     }
@@ -984,7 +1006,7 @@ mod grid_tests {
         let grid = pat.to_new_bit_grid(3, 3).unwrap();
         let expected = vec![(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)];
         let mut i = 0;
-        grid.each_set(|c,r| {
+        grid.each_set(|c, r| {
             assert_eq!((c, r), expected[i]);
             i += 1;
         });
@@ -992,137 +1014,237 @@ mod grid_tests {
     }
 }
 
-
 mod rle_tests {
-    use crate::rle::*;
-    use crate::grids::BitGrid;
-    use std::str::FromStr;
     use crate::error::ConwayError;
+    use crate::grids::BitGrid;
+    use crate::rle::*;
+    use std::str::FromStr;
 
     #[test]
     fn one_line_parsing_works1() {
         // Glider gun
-        let gun = Pattern("24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!".to_owned()).to_new_bit_grid(36, 9).unwrap();
-        assert_eq!(gun[0][0], 0b0000000000000000000000001000000000000000000000000000000000000000);
-        assert_eq!(gun[1][0], 0b0000000000000000000000101000000000000000000000000000000000000000);
-        assert_eq!(gun[2][0], 0b0000000000001100000011000000000000110000000000000000000000000000);
-        assert_eq!(gun[3][0], 0b0000000000010001000011000000000000110000000000000000000000000000);
-        assert_eq!(gun[4][0], 0b1100000000100000100011000000000000000000000000000000000000000000);
-        assert_eq!(gun[5][0], 0b1100000000100010110000101000000000000000000000000000000000000000);
-        assert_eq!(gun[6][0], 0b0000000000100000100000001000000000000000000000000000000000000000);
-        assert_eq!(gun[7][0], 0b0000000000010001000000000000000000000000000000000000000000000000);
-        assert_eq!(gun[8][0], 0b0000000000001100000000000000000000000000000000000000000000000000);
+        let gun = Pattern(
+            "24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!"
+                .to_owned(),
+        )
+        .to_new_bit_grid(36, 9)
+        .unwrap();
+        assert_eq!(
+            gun[0][0],
+            0b0000000000000000000000001000000000000000000000000000000000000000
+        );
+        assert_eq!(
+            gun[1][0],
+            0b0000000000000000000000101000000000000000000000000000000000000000
+        );
+        assert_eq!(
+            gun[2][0],
+            0b0000000000001100000011000000000000110000000000000000000000000000
+        );
+        assert_eq!(
+            gun[3][0],
+            0b0000000000010001000011000000000000110000000000000000000000000000
+        );
+        assert_eq!(
+            gun[4][0],
+            0b1100000000100000100011000000000000000000000000000000000000000000
+        );
+        assert_eq!(
+            gun[5][0],
+            0b1100000000100010110000101000000000000000000000000000000000000000
+        );
+        assert_eq!(
+            gun[6][0],
+            0b0000000000100000100000001000000000000000000000000000000000000000
+        );
+        assert_eq!(
+            gun[7][0],
+            0b0000000000010001000000000000000000000000000000000000000000000000
+        );
+        assert_eq!(
+            gun[8][0],
+            0b0000000000001100000000000000000000000000000000000000000000000000
+        );
     }
-
 
     #[test]
     fn multi_line_parsing_works1() {
         // Glider gun with line break
         let gun = Pattern("24bo$22bobo$12b2o6b2o\r\n12b2o$\r\n11bo3bo4b2o12b2o$2o8b\ro5bo3b2o$2o8bo3bob2o4b\nobo$10bo5bo7bo$11bo3bo$12b2o!".to_owned()).to_new_bit_grid(36, 9).unwrap();
-        assert_eq!(gun[0][0], 0b0000000000000000000000001000000000000000000000000000000000000000);
-        assert_eq!(gun[1][0], 0b0000000000000000000000101000000000000000000000000000000000000000);
-        assert_eq!(gun[2][0], 0b0000000000001100000011000000000000110000000000000000000000000000);
-        assert_eq!(gun[3][0], 0b0000000000010001000011000000000000110000000000000000000000000000);
-        assert_eq!(gun[4][0], 0b1100000000100000100011000000000000000000000000000000000000000000);
-        assert_eq!(gun[5][0], 0b1100000000100010110000101000000000000000000000000000000000000000);
-        assert_eq!(gun[6][0], 0b0000000000100000100000001000000000000000000000000000000000000000);
-        assert_eq!(gun[7][0], 0b0000000000010001000000000000000000000000000000000000000000000000);
-        assert_eq!(gun[8][0], 0b0000000000001100000000000000000000000000000000000000000000000000);
+        assert_eq!(
+            gun[0][0],
+            0b0000000000000000000000001000000000000000000000000000000000000000
+        );
+        assert_eq!(
+            gun[1][0],
+            0b0000000000000000000000101000000000000000000000000000000000000000
+        );
+        assert_eq!(
+            gun[2][0],
+            0b0000000000001100000011000000000000110000000000000000000000000000
+        );
+        assert_eq!(
+            gun[3][0],
+            0b0000000000010001000011000000000000110000000000000000000000000000
+        );
+        assert_eq!(
+            gun[4][0],
+            0b1100000000100000100011000000000000000000000000000000000000000000
+        );
+        assert_eq!(
+            gun[5][0],
+            0b1100000000100010110000101000000000000000000000000000000000000000
+        );
+        assert_eq!(
+            gun[6][0],
+            0b0000000000100000100000001000000000000000000000000000000000000000
+        );
+        assert_eq!(
+            gun[7][0],
+            0b0000000000010001000000000000000000000000000000000000000000000000
+        );
+        assert_eq!(
+            gun[8][0],
+            0b0000000000001100000000000000000000000000000000000000000000000000
+        );
     }
 
     #[test]
     fn parsing_with_new_row_rle_works() {
-        let pattern = Pattern("27bo$28bo$29bo$28bo$27bo$29b3o20$oo$bbo$bbo$3b4o!".to_owned()).to_new_bit_grid(32, 29).unwrap();
-        assert_eq!(pattern.0[0..=5],
-           [[0b0000000000000000000000000001000000000000000000000000000000000000],
-            [0b0000000000000000000000000000100000000000000000000000000000000000],
-            [0b0000000000000000000000000000010000000000000000000000000000000000],
-            [0b0000000000000000000000000000100000000000000000000000000000000000],
-            [0b0000000000000000000000000001000000000000000000000000000000000000],
-            [0b0000000000000000000000000000011100000000000000000000000000000000]]);
+        let pattern = Pattern("27bo$28bo$29bo$28bo$27bo$29b3o20$oo$bbo$bbo$3b4o!".to_owned())
+            .to_new_bit_grid(32, 29)
+            .unwrap();
+        assert_eq!(
+            pattern.0[0..=5],
+            [
+                [0b0000000000000000000000000001000000000000000000000000000000000000],
+                [0b0000000000000000000000000000100000000000000000000000000000000000],
+                [0b0000000000000000000000000000010000000000000000000000000000000000],
+                [0b0000000000000000000000000000100000000000000000000000000000000000],
+                [0b0000000000000000000000000001000000000000000000000000000000000000],
+                [0b0000000000000000000000000000011100000000000000000000000000000000]
+            ]
+        );
         for row in 6..=24 {
             assert_eq!(pattern.0[row][0], 0);
         }
-        assert_eq!(pattern.0[25..=28],
-            [[0b1100000000000000000000000000000000000000000000000000000000000000],
-             [0b0010000000000000000000000000000000000000000000000000000000000000],
-             [0b0010000000000000000000000000000000000000000000000000000000000000],
-             [0b0001111000000000000000000000000000000000000000000000000000000000]]);
+        assert_eq!(
+            pattern.0[25..=28],
+            [
+                [0b1100000000000000000000000000000000000000000000000000000000000000],
+                [0b0010000000000000000000000000000000000000000000000000000000000000],
+                [0b0010000000000000000000000000000000000000000000000000000000000000],
+                [0b0001111000000000000000000000000000000000000000000000000000000000]
+            ]
+        );
     }
-
 
     #[test]
     fn parse_whole_file_works() {
         let pat: PatternFile = PatternFile::from_str("#N Gosper glider gun\n#C This was the first gun discovered.\n#C As its name suggests, it was discovered by Bill Gosper.\nx = 36, y = 9, rule = B3/S23\n24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4b\nobo$10bo5bo7bo$11bo3bo$12b2o!\n").unwrap();
         assert_eq!(pat.comment_lines.len(), 3);
-        assert_eq!(pat.header_line, HeaderLine{x: 36, y: 9, rule: Some("B3/S23".to_owned())});
-        assert_eq!(pat.pattern.0, "24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!");
+        assert_eq!(
+            pat.header_line,
+            HeaderLine {
+                x:    36,
+                y:    9,
+                rule: Some("B3/S23".to_owned()),
+            }
+        );
+        assert_eq!(
+            pat.pattern.0,
+            "24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!"
+        );
     }
 
     #[test]
     fn parse_whole_file_works_with_crap_at_the_end() {
         let pat: PatternFile = PatternFile::from_str("#N Gosper glider gun\n#C This was the first gun discovered.\n#C As its name suggests, it was discovered by Bill Gosper.\nx = 36, y = 9, rule = B3/S23\n24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4b\nobo$10bo5bo7bo$11bo3bo$12b2o!blah\n\nyaddayadda\n").unwrap();
         assert_eq!(pat.comment_lines.len(), 3);
-        assert_eq!(pat.header_line, HeaderLine{x: 36, y: 9, rule: Some("B3/S23".to_owned())});
-        assert_eq!(pat.pattern.0, "24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!");
+        assert_eq!(
+            pat.header_line,
+            HeaderLine {
+                x:    36,
+                y:    9,
+                rule: Some("B3/S23".to_owned()),
+            }
+        );
+        assert_eq!(
+            pat.pattern.0,
+            "24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!"
+        );
     }
 
     #[test]
     fn parse_whole_file_works_vacuum_cleaner() {
         let pat: PatternFile = PatternFile::from_str("#N Vacuum (gun)\r\n#O Dieter Leithner\r\n#C A true period 46 double-barreled gun found on February 21, 1997.\r\n#C www.conwaylife.com/wiki/index.php?title=Vacuum_(gun)\r\nx = 49, y = 43, rule = b3/s23\r\nb2o23b2o21b$b2o23bo22b$24bobo22b$15b2o7b2o23b$2o13bobo31b$2o13bob2o30b\r\n$16b2o31b$16bo32b$44b2o3b$16bo27b2o3b$16b2o31b$2o13bob2o13bo3bo12b$2o\r\n13bobo13bo5bo7b2o2b$15b2o14bo13b2o2b$31b2o3bo12b$b2o30b3o13b$b2o46b$\r\n33b3o13b$31b2o3bo12b$31bo13b2o2b$31bo5bo7b2o2b$32bo3bo12b2$44b2o3b$44b\r\n2o3b5$37b2o10b$37bobo7b2o$39bo7b2o$37b3o9b$22bobo24b$21b3o25b$21b3o25b\r\n$21bo15b3o9b$25bobo11bo9b$21b2o4bo9bobo9b$16b2o4bo3b2o9b2o10b$15bobo6b\r\no24b$15bo33b$14b2o!").unwrap();
         assert_eq!(pat.comment_lines.len(), 4);
-        assert_eq!(pat.header_line, HeaderLine{x: 49, y: 43, rule: Some("B3/S23".to_owned().to_lowercase())});
+        assert_eq!(
+            pat.header_line,
+            HeaderLine {
+                x:    49,
+                y:    43,
+                rule: Some("B3/S23".to_owned().to_lowercase()),
+            }
+        );
         assert_eq!(pat.pattern.0, "b2o23b2o21b$b2o23bo22b$24bobo22b$15b2o7b2o23b$2o13bobo31b$2o13bob2o30b$16b2o31b$16bo32b$44b2o3b$16bo27b2o3b$16b2o31b$2o13bob2o13bo3bo12b$2o13bobo13bo5bo7b2o2b$15b2o14bo13b2o2b$31b2o3bo12b$b2o30b3o13b$b2o46b$33b3o13b$31b2o3bo12b$31bo13b2o2b$31bo5bo7b2o2b$32bo3bo12b2$44b2o3b$44b2o3b5$37b2o10b$37bobo7b2o$39bo7b2o$37b3o9b$22bobo24b$21b3o25b$21b3o25b$21bo15b3o9b$25bobo11bo9b$21b2o4bo9bobo9b$16b2o4bo3b2o9b2o10b$15bobo6bo24b$15bo33b$14b2o!");
-        assert_eq!(pat.to_new_bit_grid().unwrap(), BitGrid(vec![
-            vec![0b0110000000000000000000000011000000000000000000000000000000000000],
-            vec![0b0110000000000000000000000010000000000000000000000000000000000000],
-            vec![0b0000000000000000000000001010000000000000000000000000000000000000],
-            vec![0b0000000000000001100000001100000000000000000000000000000000000000],
-            vec![0b1100000000000001010000000000000000000000000000000000000000000000],
-            vec![0b1100000000000001011000000000000000000000000000000000000000000000],
-            vec![0b0000000000000000110000000000000000000000000000000000000000000000],
-            vec![0b0000000000000000100000000000000000000000000000000000000000000000],
-            vec![0b0000000000000000000000000000000000000000000011000000000000000000],
-            vec![0b0000000000000000100000000000000000000000000011000000000000000000],
-            vec![0b0000000000000000110000000000000000000000000000000000000000000000],
-            vec![0b1100000000000001011000000000000010001000000000000000000000000000],
-            vec![0b1100000000000001010000000000000100000100000001100000000000000000],
-            vec![0b0000000000000001100000000000000100000000000001100000000000000000],
-            vec![0b0000000000000000000000000000000110001000000000000000000000000000],
-            vec![0b0110000000000000000000000000000001110000000000000000000000000000],
-            vec![0b0110000000000000000000000000000000000000000000000000000000000000],
-            vec![0b0000000000000000000000000000000001110000000000000000000000000000],
-            vec![0b0000000000000000000000000000000110001000000000000000000000000000],
-            vec![0b0000000000000000000000000000000100000000000001100000000000000000],
-            vec![0b0000000000000000000000000000000100000100000001100000000000000000],
-            vec![0b0000000000000000000000000000000010001000000000000000000000000000],
-            vec![0b0000000000000000000000000000000000000000000000000000000000000000],
-            vec![0b0000000000000000000000000000000000000000000011000000000000000000],
-            vec![0b0000000000000000000000000000000000000000000011000000000000000000],
-            vec![0b0000000000000000000000000000000000000000000000000000000000000000],
-            vec![0b0000000000000000000000000000000000000000000000000000000000000000],
-            vec![0b0000000000000000000000000000000000000000000000000000000000000000],
-            vec![0b0000000000000000000000000000000000000000000000000000000000000000],
-            vec![0b0000000000000000000000000000000000000110000000000000000000000000],
-            vec![0b0000000000000000000000000000000000000101000000011000000000000000],
-            vec![0b0000000000000000000000000000000000000001000000011000000000000000],
-            vec![0b0000000000000000000000000000000000000111000000000000000000000000],
-            vec![0b0000000000000000000000101000000000000000000000000000000000000000],
-            vec![0b0000000000000000000001110000000000000000000000000000000000000000],
-            vec![0b0000000000000000000001110000000000000000000000000000000000000000],
-            vec![0b0000000000000000000001000000000000000111000000000000000000000000],
-            vec![0b0000000000000000000000000101000000000001000000000000000000000000],
-            vec![0b0000000000000000000001100001000000000101000000000000000000000000],
-            vec![0b0000000000000000110000100011000000000110000000000000000000000000],
-            vec![0b0000000000000001010000001000000000000000000000000000000000000000],
-            vec![0b0000000000000001000000000000000000000000000000000000000000000000],
-            vec![0b0000000000000011000000000000000000000000000000000000000000000000]]));
+        assert_eq!(
+            pat.to_new_bit_grid().unwrap(),
+            BitGrid(vec![
+                vec![0b0110000000000000000000000011000000000000000000000000000000000000],
+                vec![0b0110000000000000000000000010000000000000000000000000000000000000],
+                vec![0b0000000000000000000000001010000000000000000000000000000000000000],
+                vec![0b0000000000000001100000001100000000000000000000000000000000000000],
+                vec![0b1100000000000001010000000000000000000000000000000000000000000000],
+                vec![0b1100000000000001011000000000000000000000000000000000000000000000],
+                vec![0b0000000000000000110000000000000000000000000000000000000000000000],
+                vec![0b0000000000000000100000000000000000000000000000000000000000000000],
+                vec![0b0000000000000000000000000000000000000000000011000000000000000000],
+                vec![0b0000000000000000100000000000000000000000000011000000000000000000],
+                vec![0b0000000000000000110000000000000000000000000000000000000000000000],
+                vec![0b1100000000000001011000000000000010001000000000000000000000000000],
+                vec![0b1100000000000001010000000000000100000100000001100000000000000000],
+                vec![0b0000000000000001100000000000000100000000000001100000000000000000],
+                vec![0b0000000000000000000000000000000110001000000000000000000000000000],
+                vec![0b0110000000000000000000000000000001110000000000000000000000000000],
+                vec![0b0110000000000000000000000000000000000000000000000000000000000000],
+                vec![0b0000000000000000000000000000000001110000000000000000000000000000],
+                vec![0b0000000000000000000000000000000110001000000000000000000000000000],
+                vec![0b0000000000000000000000000000000100000000000001100000000000000000],
+                vec![0b0000000000000000000000000000000100000100000001100000000000000000],
+                vec![0b0000000000000000000000000000000010001000000000000000000000000000],
+                vec![0b0000000000000000000000000000000000000000000000000000000000000000],
+                vec![0b0000000000000000000000000000000000000000000011000000000000000000],
+                vec![0b0000000000000000000000000000000000000000000011000000000000000000],
+                vec![0b0000000000000000000000000000000000000000000000000000000000000000],
+                vec![0b0000000000000000000000000000000000000000000000000000000000000000],
+                vec![0b0000000000000000000000000000000000000000000000000000000000000000],
+                vec![0b0000000000000000000000000000000000000000000000000000000000000000],
+                vec![0b0000000000000000000000000000000000000110000000000000000000000000],
+                vec![0b0000000000000000000000000000000000000101000000011000000000000000],
+                vec![0b0000000000000000000000000000000000000001000000011000000000000000],
+                vec![0b0000000000000000000000000000000000000111000000000000000000000000],
+                vec![0b0000000000000000000000101000000000000000000000000000000000000000],
+                vec![0b0000000000000000000001110000000000000000000000000000000000000000],
+                vec![0b0000000000000000000001110000000000000000000000000000000000000000],
+                vec![0b0000000000000000000001000000000000000111000000000000000000000000],
+                vec![0b0000000000000000000000000101000000000001000000000000000000000000],
+                vec![0b0000000000000000000001100001000000000101000000000000000000000000],
+                vec![0b0000000000000000110000100011000000000110000000000000000000000000],
+                vec![0b0000000000000001010000001000000000000000000000000000000000000000],
+                vec![0b0000000000000001000000000000000000000000000000000000000000000000],
+                vec![0b0000000000000011000000000000000000000000000000000000000000000000]
+            ])
+        );
     }
 
     #[test]
     fn calc_size1() {
         // Glider gun
-        let gun_pat = Pattern("24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!".to_owned());
+        let gun_pat = Pattern(
+            "24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!"
+                .to_owned(),
+        );
         let size_result = gun_pat.calc_size();
         let size = size_result.unwrap();
         assert_eq!(size, (36, 9));
@@ -1141,6 +1263,11 @@ mod rle_tests {
         let pat = Pattern("invalidpatternlol".to_owned());
         let size_result = pat.calc_size();
         let err = size_result.unwrap_err();
-        assert_eq!(err, ConwayError::InvalidData{reason:"Premature termination at Some(16)".to_owned()});
+        assert_eq!(
+            err,
+            ConwayError::InvalidData {
+                reason: "Premature termination at Some(16)".to_owned(),
+            }
+        );
     }
 }

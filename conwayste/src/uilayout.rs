@@ -20,24 +20,24 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use ggez::graphics::{Font, Rect};
-use ggez::Context;
 use ggez::nalgebra::Point2;
+use ggez::Context;
 
 use id_tree::NodeId;
 
 use crate::config::Config;
 use crate::constants;
 use crate::ui::{
-    common, context, Button, Chatbox, Checkbox, GameArea, InsertLocation, Label, Layering, Pane,
-    TextField, UIResult, Widget, color_with_alpha,
+    color_with_alpha, common, context, Button, Chatbox, Checkbox, GameArea, InsertLocation, Label, Layering, Pane,
+    TextField, UIResult, Widget,
 };
 use crate::Screen;
 
+use chromatica::css;
 use context::{
     EmitEvent, // so we can call .on(...) on widgets that implement this
     EventType,
 };
-use chromatica::css;
 
 // When adding support for a new widget, use this macro to define a routine which allows the
 // developer to search in a `UILayout`/`Screen` pair for a widget by its ID
@@ -68,10 +68,10 @@ pub struct UILayout {
     // The fields below correspond to static ui elements that the client may need to interact with
     // regardless of what is displayed on screen. For example, new chat messages should always be
     // forwarded to the UI widget.
-    pub chatbox_id: NodeId,
+    pub chatbox_id:      NodeId,
     pub chatbox_pane_id: NodeId,
-    pub chatbox_tf_id: NodeId,
-    pub game_area_id: NodeId,
+    pub chatbox_tf_id:   NodeId,
+    pub game_area_id:    NodeId,
 }
 
 /// `UILayout` is responsible for the definition and storage of UI elements.
@@ -97,41 +97,44 @@ impl UILayout {
 
         let name_color = color_with_alpha(css::WHITE, 1.0);
         let value_color = color_with_alpha(css::AQUAMARINE, 1.0);
-        layer_options.add_widget(Box::new(
-                Label::new(ctx, default_font_info, "Resolution".to_owned(), name_color, Point2::new(10.0, 300.0))),
-                InsertLocation::AtCurrentLayer)?;
+        layer_options.add_widget(
+            Box::new(Label::new(
+                ctx,
+                default_font_info,
+                "Resolution".to_owned(),
+                name_color,
+                Point2::new(10.0, 300.0),
+            )),
+            InsertLocation::AtCurrentLayer,
+        )?;
 
-        let mut resolution_value_label = Box::new(
-            Label::new(ctx, default_font_info, "<no data>".to_owned(), value_color, Point2::new(200.0, 300.0))
-        );
-        resolution_value_label.on(context::EventType::Update, Box::new(resolution_update_handler)).unwrap();
+        let mut resolution_value_label = Box::new(Label::new(
+            ctx,
+            default_font_info,
+            "<no data>".to_owned(),
+            value_color,
+            Point2::new(200.0, 300.0),
+        ));
+        resolution_value_label
+            .on(context::EventType::Update, Box::new(resolution_update_handler))
+            .unwrap();
         layer_options.add_widget(resolution_value_label, InsertLocation::AtCurrentLayer)?;
 
         // unwrap OK here because we are not calling .on from within a handler
         fullscreen_checkbox
             .on(EventType::Click, Box::new(fullscreen_toggle_handler))
             .unwrap();
-        layer_options.add_widget(
-            fullscreen_checkbox,
-            InsertLocation::AtCurrentLayer,
-        )?;
+        layer_options.add_widget(fullscreen_checkbox, InsertLocation::AtCurrentLayer)?;
 
         Ok(layer_options)
     }
 
-    fn build_main_menu(
-        ctx: &mut Context,
-        default_font_info: common::FontInfo,
-    ) -> UIResult<Layering> {
+    fn build_main_menu(ctx: &mut Context, default_font_info: common::FontInfo) -> UIResult<Layering> {
         let mut layer_mainmenu = Layering::new();
 
         // Create a new pane, and add two test buttons to it.
         let pane = Box::new(Pane::new(Rect::new_i32(20, 20, 410, 450)));
-        let mut serverlist_button = Box::new(Button::new(
-            ctx,
-            default_font_info,
-            "Server List".to_owned(),
-        ));
+        let mut serverlist_button = Box::new(Button::new(ctx, default_font_info, "Server List".to_owned()));
         serverlist_button.set_rect(Rect::new(10.0, 10.0, 180.0, 50.0))?;
         serverlist_button
             .on(EventType::Click, Box::new(server_list_click_handler))
@@ -144,53 +147,25 @@ impl UILayout {
         ));
         start_1p_game_button.set_rect(Rect::new(10.0, 70.0, 350.0, 50.0))?;
         start_1p_game_button
-            .on(
-                EventType::Click,
-                Box::new(start_or_resume_game_click_handler),
-            )
+            .on(EventType::Click, Box::new(start_or_resume_game_click_handler))
             .unwrap(); // unwrap OK
 
-        let mut options_button = Box::new(Button::new(
-            ctx,
-            default_font_info,
-            "Options".to_owned(),
-        ));
+        let mut options_button = Box::new(Button::new(ctx, default_font_info, "Options".to_owned()));
         options_button.set_rect(Rect::new(10.0, 130.0, 180.0, 50.0))?;
         options_button
             .on(EventType::Click, Box::new(options_click_handler))
             .unwrap(); // unwrap OK
 
-        let mut quit_button = Box::new(Button::new(
-            ctx,
-            default_font_info,
-            "Quit".to_owned(),
-        ));
+        let mut quit_button = Box::new(Button::new(ctx, default_font_info, "Quit".to_owned()));
         quit_button.set_rect(Rect::new(10.0, 190.0, 180.0, 50.0))?;
-        quit_button
-            .on(
-                EventType::Click,
-                Box::new(quit_click_handler),
-            )
-            .unwrap(); // unwrap OK
+        quit_button.on(EventType::Click, Box::new(quit_click_handler)).unwrap(); // unwrap OK
 
         let menupane_id = layer_mainmenu.add_widget(pane, InsertLocation::AtCurrentLayer)?;
         // Add widgets in the order you want keyboard focus
-        layer_mainmenu.add_widget(
-            serverlist_button,
-            InsertLocation::ToNestedContainer(&menupane_id),
-        )?;
-        layer_mainmenu.add_widget(
-            start_1p_game_button,
-            InsertLocation::ToNestedContainer(&menupane_id),
-        )?;
-        layer_mainmenu.add_widget(
-            options_button,
-            InsertLocation::ToNestedContainer(&menupane_id),
-        )?;
-        layer_mainmenu.add_widget(
-            quit_button,
-            InsertLocation::ToNestedContainer(&menupane_id),
-        )?;
+        layer_mainmenu.add_widget(serverlist_button, InsertLocation::ToNestedContainer(&menupane_id))?;
+        layer_mainmenu.add_widget(start_1p_game_button, InsertLocation::ToNestedContainer(&menupane_id))?;
+        layer_mainmenu.add_widget(options_button, InsertLocation::ToNestedContainer(&menupane_id))?;
+        layer_mainmenu.add_widget(quit_button, InsertLocation::ToNestedContainer(&menupane_id))?;
         Ok(layer_mainmenu)
     }
 
@@ -222,8 +197,7 @@ impl UILayout {
             chat_pane_rect.w,
             chat_pane_rect.h - constants::CHAT_TEXTFIELD_HEIGHT,
         );
-        let chatbox_font_info =
-            common::FontInfo::new(ctx, font, Some(*constants::DEFAULT_CHATBOX_FONT_SCALE));
+        let chatbox_font_info = common::FontInfo::new(ctx, font, Some(*constants::DEFAULT_CHATBOX_FONT_SCALE));
         let mut chatbox = Chatbox::new(chatbox_font_info, constants::CHATBOX_HISTORY);
         chatbox.set_rect(chatbox_rect)?;
 
@@ -237,10 +211,8 @@ impl UILayout {
         );
         let mut textfield = Box::new(TextField::new(default_font_info, textfield_rect));
         textfield.bg_color = Some(*constants::colors::CHAT_PANE_FILL_COLOR);
-        let chatbox_id =
-            layer_ingame.add_widget(chatbox, InsertLocation::ToNestedContainer(&chatpane_id))?;
-        let chatbox_tf_id =
-            layer_ingame.add_widget(textfield, InsertLocation::ToNestedContainer(&chatpane_id))?;
+        let chatbox_id = layer_ingame.add_widget(chatbox, InsertLocation::ToNestedContainer(&chatpane_id))?;
+        let chatbox_tf_id = layer_ingame.add_widget(textfield, InsertLocation::ToNestedContainer(&chatpane_id))?;
 
         let game_area = Box::new(GameArea::new());
         let game_area_id = layer_ingame.add_widget(game_area, InsertLocation::AtCurrentLayer)?;
@@ -302,8 +274,7 @@ fn start_or_resume_game_click_handler(
     let btn = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this is only registered on a button
 
     // TODO: don't do this anymore once we have an in-game menu that is above Screen::Run in screen_stack.
-    btn.label
-        .set_text(uictx.ggez_context, "Resume Game".to_owned());
+    btn.label.set_text(uictx.ggez_context, "Resume Game".to_owned());
 
     uictx.push_screen(Screen::Run);
     Ok(context::Handled::Handled)
@@ -325,7 +296,10 @@ fn resolution_update_handler(
     _evt: &context::Event,
 ) -> Result<context::Handled, Box<dyn Error>> {
     let label = obj.downcast_mut::<Label>().unwrap(); // unwrap OK because it's always a Label
-    let (x, y) = (uictx.config.get().video.resolution_x, uictx.config.get().video.resolution_y);
+    let (x, y) = (
+        uictx.config.get().video.resolution_x,
+        uictx.config.get().video.resolution_y,
+    );
     let new_res_text = format!("{} x {}", x, y);
     if label.text() != new_res_text.as_str() {
         label.set_text(uictx.ggez_context, new_res_text);

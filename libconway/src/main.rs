@@ -15,14 +15,22 @@
  *  You should have received a copy of the GNU General Public License
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
-
 extern crate conway;
 
-use std::{thread, time};
 use conway::universe::*;
+use std::{thread, time};
 
 fn main() {
-    let mut uni = Universe::new(128, 32, true, 16, 2, vec![Region::new(40,6,16,8), Region::new(60,16,8,8)], 16).unwrap();
+    let mut uni = Universe::new(
+        128,
+        32,
+        true,
+        16,
+        2,
+        vec![Region::new(40, 6, 16, 8), Region::new(60, 16, 8, 8)],
+        16,
+    )
+    .unwrap();
     let step_time = time::Duration::from_millis(150);
 
     // pi heptomino

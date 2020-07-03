@@ -16,9 +16,9 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+extern crate chromatica;
 extern crate env_logger;
 extern crate ggez;
-extern crate chromatica;
 
 #[macro_use]
 pub(crate) mod common;
@@ -28,38 +28,26 @@ mod button;
 mod chatbox;
 mod checkbox;
 mod focus;
+mod gamearea;
 mod label;
 mod layer;
 mod pane;
-mod widget;
 mod textfield;
 mod treeview;
-mod gamearea;
 pub(crate) mod ui_errors;
+mod widget;
 
 pub use button::Button;
 pub use chatbox::{Chatbox, ChatboxPublishHandle};
 pub use checkbox::Checkbox;
+pub use common::{center, color_with_alpha, draw_text, intersection, point_offset, within_widget};
+pub use context::{EmitEvent, Event, EventType, UIContext};
 pub use gamearea::GameArea;
-pub use common::{
-    within_widget,
-    center,
-    draw_text,
-    intersection,
-    point_offset,
-    color_with_alpha,
-};
 pub use label::Label;
-pub use layer::{Layering, InsertLocation};
+pub use layer::{InsertLocation, Layering};
 pub use pane::Pane;
 pub use textfield::TextField;
-pub use ui_errors::{UIResult, UIError};
+pub use ui_errors::{UIError, UIResult};
 pub use widget::Widget;
-pub use context::{
-    UIContext,
-    EmitEvent,
-    Event,
-    EventType,
-};
 
 type BoxedWidget = Box<dyn Widget>;
