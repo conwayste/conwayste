@@ -136,10 +136,12 @@ deploy:
   provider: releases
   skip_cleanup: true
 
-cache: cargo
-before_cache:
-  # Travis can't cache files that are not readable by "others"
-  - chmod -R a+r $HOME/.cargo
+# Removed this to fix a timeout for Windows: refer to the following issue:
+# https://travis-ci.community/t/builds-timeout-during-or-shortly-after-creating-directory-home-travis-cache-sccache/5001/5
+#cache: cargo
+#before_cache:
+#  # Travis can't cache files that are not readable by "others"
+#  - chmod -R a+r $HOME/.cargo
 
 branches:
   only:
