@@ -51,6 +51,9 @@ const RETRANSMISSION_COUNT: usize = 32; // Testing some ideas out:. Resend lengt
 // (110 is the avg weight of an amino acid in daltons :] Much larger than our current queue size)
 const MATCH_FOUND_SENTINEL: usize = 110;
 
+extern crate conway;
+use conway as C;
+
 //////////////// Public Macros /////////////////
 
 #[macro_export]
@@ -215,21 +218,6 @@ impl BroadcastChatMessage {
     }
 }
 
-// TODO: adapt or import following from libconway
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct GenState {
-    // state of the Universe
-    pub gen: u64,
-    pub dummy_data: u8,
-}
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct GenDiff {
-    // difference between states of Universe
-    pub old_gen: u64,
-    pub new_gen: u64,
-    pub dummy_data: u8,
-}
-
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GameOutcome {
     pub winner: Option<String>, // Some(<name>) if winner, or None, meaning it was a tie/forfeit
@@ -237,10 +225,45 @@ pub struct GameOutcome {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum GameUpdateType {
-    GameStart,
-    NewUserList(Vec<String>), // list of names of all users including current user
-    GameFinish(GameOutcome),
-    GameClose, // kicks user back to arena
+    GameNotification{msg: String},
+    GameStart{
+        options: GameOptions,
+    },
+    PlayerList{
+        /// List of names and other info of all users including current user.
+        players: Vec<PlayerInfo>,
+    },
+    PlayerChange{
+        /// Most up to date player information.
+        player: PlayerInfo,
+        /// If there was a name change, this is the old name.
+        old_name: Option<String>,
+    },
+    PlayerJoin{
+        player: PlayerInfo,
+    },
+    PlayerLeave{
+        name: String,
+    },
+    /// Game ended but the user is allowed to stay.
+    GameFinish{
+        outcome: GameOutcome,
+    },
+    /// Kicks user back to lobby.
+    RoomDeleted,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct GameOptions {
+    //XXX writable region and other Universe params
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct PlayerInfo {
+    /// Name of the player.
+    name: String,
+    /// Index of player in Universe; None means this player is a lurker (non-participant)
+    index: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -251,8 +274,12 @@ pub struct GameUpdate {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum UniUpdateType {
-    State(GenState),
-    Diff(GenDiff),
+    State{
+        state: C::universe::GenState,
+    },
+    Diff{
+        diff: C::universe::GenStateDiff,
+    },
     NoChange,
 }
 
@@ -307,7 +334,7 @@ pub enum Packet {
 }
 
 impl Packet {
-    #[allow(unused)]
+    /* XXX do we need this?
     pub fn sequence_number(&self) -> u64 {
         if let Packet::Request {
             sequence,
@@ -341,6 +368,7 @@ impl Packet {
             unimplemented!(); // UpdateReply is not saved
         }
     }
+    */
 
     #[allow(unused)]
     pub fn set_response_sequence(&mut self, new_ack: Option<u64>) {

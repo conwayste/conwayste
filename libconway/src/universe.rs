@@ -20,6 +20,7 @@ use std::{char, cmp, fmt};
 use crate::error::{ConwayError, ConwayResult};
 use crate::grids::{BitGrid, BitOperation, CharGrid};
 use crate::rle::{Pattern, NO_OP_CHAR};
+use serde::{Deserialize, Serialize};
 
 /// Builder paradigm to create `Universe` structs with default values.
 pub struct BigBang {
@@ -175,7 +176,7 @@ pub struct Universe {
 // Describes the state of the universe for a particular generation
 // This includes any cells alive, known, and each player's own gen states
 // for this current session
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct GenState {
     gen_or_none:   Option<usize>,        // Some(generation number) (redundant info); if None, this is an unused buffer
     cells:         BitGrid,              // 1 = cell is known to be Alive
@@ -184,14 +185,14 @@ pub struct GenState {
     player_states: Vec<PlayerGenState>,  // player-specific info (indexed by player_id)
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct GenStateDiff {
     pub gen0:    usize,         // must be >= 0; zero means diff is based off of the beginning of time
     pub gen1:    usize,         // must be >= 1
     pub pattern: Pattern,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct PlayerGenState {
     cells:     BitGrid,   // cells belonging to this player (if 1 here, must be 1 in GenState cells)
     fog:       BitGrid,   // cells that are currently invisible to the player

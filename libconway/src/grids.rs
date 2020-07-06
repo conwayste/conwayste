@@ -20,6 +20,7 @@ use std::ops::{Index, IndexMut};
 use std::cmp;
 use crate::universe::Region;
 use crate::rle::Pattern;
+use serde::{Deserialize, Serialize};
 
 
 #[derive(Eq, PartialEq, Debug, Clone, Copy)]
@@ -37,7 +38,7 @@ pub enum Rotation {
 }
 
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct BitGrid(pub Vec<Vec<u64>>);
 
 impl BitGrid {

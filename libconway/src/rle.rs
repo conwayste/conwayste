@@ -22,10 +22,11 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 use crate::error::{ConwayError, ConwayResult};
 use crate::grids::{BitGrid, CharGrid};
+use serde::{Deserialize, Serialize};
 
 
 /// This contains just the RLE pattern string. For example: "4bobo$7b3o!"
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct Pattern(pub String);
 
 /// Represents the contents of a RLE file.
