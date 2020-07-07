@@ -28,10 +28,10 @@ use std::{
 
 use crate::utils::PingPong;
 
-use bincode::{serialize, deserialize, Infinite};
+use bincode::{deserialize, serialize, Infinite};
 use bytes::BytesMut;
-use semver::{Version, SemVerError};
-use serde::{Serialize, Deserialize};
+use semver::{SemVerError, Version};
+use serde::{Deserialize, Serialize};
 use tokio::net::UdpSocket;
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -481,7 +481,7 @@ impl Decoder for NetwaystePacketCodec {
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         match deserialize(src) {
             Ok(decoded) => Ok(Some(decoded)),
-            Err(_) => Ok(None)
+            Err(_) => Ok(None),
         }
     }
 }
@@ -1049,7 +1049,7 @@ impl NetworkManager {
                 pkt.set_response_sequence(confirmed_ack);
                 trace!("[Retransmitting (Times={})] {:?}", send_counter, pkt);
                 for _ in 0..send_counter {
-                    expired_packets.push( ((*pkt).clone(), addr) );
+                    expired_packets.push(((*pkt).clone(), addr));
                 }
             } else {
                 error_occurred = true;

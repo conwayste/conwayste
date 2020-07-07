@@ -35,8 +35,8 @@ extern crate lazy_static;
 extern crate byteorder;
 extern crate tokio_core;
 
-use bytes::BytesMut;
 use byteorder::{ByteOrder, LittleEndian};
+use bytes::BytesMut;
 use netwayste::net::{NetwaystePacketCodec, Packet as NetwaystePacket};
 use tokio_util::codec::Decoder;
 
@@ -436,15 +436,13 @@ fn get_cwte_packet(tvb: *mut ws::tvbuff_t) -> Result<NetwaystePacket, std::io::E
     let mut packet_bytes = BytesMut::from(packet_vec.as_slice());
 
     // set the info column
-    NetwaystePacketCodec
-        .decode(&mut packet_bytes)
-        .and_then(|opt_packet| {
-            if let Some(packet) = opt_packet {
-                return Ok(packet);
-            } else {
-                return Err(Error::new(ErrorKind::InvalidData, "CWTE Decode Error"));
-            }
-        })
+    NetwaystePacketCodec.decode(&mut packet_bytes).and_then(|opt_packet| {
+        if let Some(packet) = opt_packet {
+            return Ok(packet);
+        } else {
+            return Err(Error::new(ErrorKind::InvalidData, "CWTE Decode Error"));
+        }
+    })
 }
 
 // Called once per Conwayste packet found in traffic
