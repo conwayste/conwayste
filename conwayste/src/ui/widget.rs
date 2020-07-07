@@ -16,18 +16,15 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::{Context, GameResult};
 use ggez::graphics::Rect;
 use ggez::nalgebra::{Point2, Vector2};
+use ggez::{Context, GameResult};
 
 use downcast_rs::Downcast;
 
 use id_tree::NodeId;
 
-use super::{
-    UIResult,
-    context,
-};
+use super::{context, UIResult};
 
 /// A user interface element trait that defines graphical, interactive behavior to be specified.
 /// Relies on the `downcast_rs` crate to be able to transform widgets into their specific
@@ -40,7 +37,6 @@ pub trait Widget: Downcast + std::fmt::Debug {
     fn id(&self) -> Option<&NodeId>;
 
     fn set_id(&mut self, new_id: NodeId);
-
 
     /// Retreives the widget's draw stack order
     fn z_index(&self) -> usize;

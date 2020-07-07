@@ -24,16 +24,22 @@
 #![windows_subsystem = "windows"]
 
 extern crate conway;
-#[macro_use] extern crate custom_error;
-#[macro_use] extern crate downcast_rs;
+#[macro_use]
+extern crate custom_error;
+#[macro_use]
+extern crate downcast_rs;
 extern crate env_logger;
 extern crate ggez;
-#[macro_use] extern crate log;
-#[macro_use] extern crate serde;
-#[macro_use] extern crate version;
-extern crate rand;
+#[macro_use]
+extern crate log;
+#[macro_use]
+extern crate serde;
+#[macro_use]
+extern crate version;
 extern crate color_backtrace;
-#[macro_use] extern crate lazy_static;
+extern crate rand;
+#[macro_use]
+extern crate lazy_static;
 extern crate chromatica;
 
 mod config;
@@ -49,63 +55,41 @@ mod viewport;
 use chrono::Local;
 use log::LevelFilter;
 
-use conway::universe::{BigBang, Universe, CellState, Region, PlayerBuilder};
-use conway::grids::{CharGrid, BitGrid};
-use conway::rle::Pattern;
-use conway::ConwayResult;
 use conway::error::ConwayError;
+use conway::grids::{BitGrid, CharGrid};
+use conway::rle::Pattern;
+use conway::universe::{BigBang, CellState, PlayerBuilder, Region, Universe};
+use conway::ConwayResult;
 use conway::Rotation;
 
 use netwayste::net::NetwaysteEvent;
 
 use ggez::conf;
 use ggez::event::*;
-use ggez::{GameError, GameResult, Context, ContextBuilder};
 use ggez::graphics::{self, Color, DrawParam, Font};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::timer;
+use ggez::{Context, ContextBuilder, GameError, GameResult};
 
+use std::collections::BTreeMap;
 use std::env;
 use std::error::Error;
 use std::io::Write; // For env logger
 use std::path;
-use std::collections::{BTreeMap};
 use std::sync::{Arc, Mutex};
 
 use std::time::Instant;
 
 use constants::{
-    CURRENT_PLAYER_ID,
-    DEFAULT_SCREEN_HEIGHT,
-    DEFAULT_SCREEN_WIDTH,
-    DEFAULT_ZOOM_LEVEL,
-    DrawStyle,
-    FOG_RADIUS,
-    GRID_DRAW_STYLE,
-    HISTORY_SIZE,
-    INTRO_DURATION,
-    INTRO_PAUSE_DURATION,
-    colors::*,
+    colors::*, DrawStyle, CURRENT_PLAYER_ID, DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, DEFAULT_ZOOM_LEVEL,
+    FOG_RADIUS, GRID_DRAW_STYLE, HISTORY_SIZE, INTRO_DURATION, INTRO_PAUSE_DURATION,
 };
 use input::{MouseAction, ScrollEvent};
 use ui::{
-    Chatbox,
-    ChatboxPublishHandle,
-    GameArea,
-    Pane,
-    TextField,
-    UIError,
-    EventType,
-    context::{
-        EmitEvent,
-        Event,
-        Handled,
-        Handler,
-        UIContext,
-    }
+    context::{EmitEvent, Event, Handled, Handler, UIContext},
+    Chatbox, ChatboxPublishHandle, EventType, GameArea, Pane, TextField, UIError,
 };
 use uilayout::UILayout;
-
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum Screen {
@@ -114,18 +98,18 @@ pub enum Screen {
     Options,
     ServerList,
     InRoom,
-    Run,          // TODO: break it out more to indicate whether waiting for game or playing game
-    Exit,         // We're getting ready to quit the game, WRAP IT UP SON
+    Run,  // TODO: break it out more to indicate whether waiting for game or playing game
+    Exit, // We're getting ready to quit the game, WRAP IT UP SON
 }
 
 // All game state
 struct MainState {
     system_font:         Font,
-    screen_stack:        Vec<Screen>,       // Where are we in the game (Intro/Menu Main/Running..)
-                                            // If the top is Exit, then the game exits
-    uni:                 Universe,          // Things alive and moving here
+    screen_stack:        Vec<Screen>, // Where are we in the game (Intro/Menu Main/Running..)
+    // If the top is Exit, then the game exits
+    uni:                 Universe, // Things alive and moving here
     intro_uni:           Universe,
-    first_gen_was_drawn: bool,              // The purpose of this is to inhibit gen calc until the first draw
+    first_gen_was_drawn: bool, // The purpose of this is to inhibit gen calc until the first draw
     color_settings:      ColorSettings,
     uni_draw_params:     UniDrawParams,
     running:             bool,
@@ -135,31 +119,30 @@ struct MainState {
     intro_viewport:      viewport::GridView,
     inputs:              input::InputManager,
     net_worker:          Arc<Mutex<Option<network::ConwaysteNetWorker>>>,
-    recvd_first_resize:  bool,       // work around an apparent ggez bug where the first resize event is bogus
+    recvd_first_resize:  bool, // work around an apparent ggez bug where the first resize event is bogus
 
     // Input state
-    single_step:         bool,
-    arrow_input:         (isize, isize),
-    drag_draw:           Option<CellState>,
-    insert_mode:         Option<(BitGrid, usize, usize)>,   // pattern to be drawn on click along with width and height;
-                                                            // if Some(...), dragging doesn't draw anything
-    current_intro_duration:  f64,
+    single_step:            bool,
+    arrow_input:            (isize, isize),
+    drag_draw:              Option<CellState>,
+    insert_mode:            Option<(BitGrid, usize, usize)>, // pattern to be drawn on click along with width and height;
+    // if Some(...), dragging doesn't draw anything
+    current_intro_duration: f64,
 
-    ui_layout:           UILayout,
+    ui_layout: UILayout,
 }
-
 
 // Support non-alive/dead/bg colors
 struct ColorSettings {
     cell_colors: BTreeMap<CellState, Color>,
-    background: Color,
+    background:  Color,
 }
 
 impl ColorSettings {
     fn get_color(&self, cell_or_none: Option<CellState>) -> Color {
         match cell_or_none {
             Some(cell) => self.cell_colors[&cell],
-            None       => self.background
+            None => self.background,
         }
     }
 
@@ -174,7 +157,6 @@ impl ColorSettings {
         }
         let mut iter = colors.into_iter();
         Color::new(iter.next().unwrap(), iter.next().unwrap(), iter.next().unwrap(), 1.0)
-
     }
 }
 
@@ -202,7 +184,6 @@ fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
     s.uni.toggle(28, 19, 0)?;
     s.uni.toggle(29, 19, 0)?;
     */
-
 
     // Simkin glider gun
     s.uni.toggle(100, 70, 0)?;
@@ -253,29 +234,29 @@ fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
     let bw = 5; // buffer width
 
     // right side
-    for row in (70-bw)..(83+bw+1) {
-        s.uni.set_unchecked(132+bw, row, CellState::Wall);
+    for row in (70 - bw)..(83 + bw + 1) {
+        s.uni.set_unchecked(132 + bw, row, CellState::Wall);
     }
 
     // top side
-    for col in (100-bw)..109 {
-        s.uni.set_unchecked(col, 70-bw, CellState::Wall);
+    for col in (100 - bw)..109 {
+        s.uni.set_unchecked(col, 70 - bw, CellState::Wall);
     }
-    for col in 114..(132+bw+1) {
-        s.uni.set_unchecked(col, 70-bw, CellState::Wall);
+    for col in 114..(132 + bw + 1) {
+        s.uni.set_unchecked(col, 70 - bw, CellState::Wall);
     }
 
     // left side
-    for row in (70-bw)..(83+bw+1) {
-        s.uni.set_unchecked(100-bw, row, CellState::Wall);
+    for row in (70 - bw)..(83 + bw + 1) {
+        s.uni.set_unchecked(100 - bw, row, CellState::Wall);
     }
 
     // bottom side
-    for col in (100-bw)..120 {
-        s.uni.set_unchecked(col, 83+bw, CellState::Wall);
+    for col in (100 - bw)..120 {
+        s.uni.set_unchecked(col, 83 + bw, CellState::Wall);
     }
-    for col in 125..(132+bw+1) {
-        s.uni.set_unchecked(col, 83+bw, CellState::Wall);
+    for col in 125..(132 + bw + 1) {
+        s.uni.set_unchecked(col, 83 + bw, CellState::Wall);
     }
 
     //Wall in player 1!
@@ -299,29 +280,24 @@ fn get_text_entered_handler(
     mut chatbox_pub_handle: ChatboxPublishHandle,
     net_worker: Arc<Mutex<Option<network::ConwaysteNetWorker>>>,
 ) -> Handler {
+    Box::new(
+        move |_obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event| -> Result<Handled, Box<dyn Error>> {
+            let username = uictx.config.get().user.name.clone();
+            let text = evt.text.as_ref().unwrap(); // unwrap OK because the generator will always set to Some(..)
+            if text.is_empty() {
+                return Ok(Handled::NotHandled);
+            }
+            let msg = format!("{}: {}", username, text);
 
-    Box::new(move |
-        _obj: &mut dyn EmitEvent,
-        uictx: &mut UIContext,
-        evt: &Event,
-    | -> Result<Handled, Box<dyn Error>> {
-        let username = uictx.config.get().user.name.clone();
-        let text = evt.text.as_ref().unwrap(); // unwrap OK because the generator will always set to Some(..)
-        if text.is_empty() {
-            return Ok(Handled::NotHandled);
-        }
-        let msg = format!("{}: {}", username, text);
+            chatbox_pub_handle.add_message(msg);
 
-        chatbox_pub_handle.add_message(msg);
-
-        if let Some(ref mut netwayste) = *(net_worker.lock().unwrap()) {
-            netwayste.try_send(NetwaysteEvent::ChatMessage(text.clone()));
-        }
-        Ok(Handled::NotHandled)
-    })
+            if let Some(ref mut netwayste) = *(net_worker.lock().unwrap()) {
+                netwayste.try_send(NetwaysteEvent::ChatMessage(text.clone()));
+            }
+            Ok(Handled::NotHandled)
+        },
+    )
 }
-
-
 
 // Then we implement the `ggez::game::GameState` trait on it, which
 // requires callbacks for creating the game state, updating it each
@@ -330,11 +306,10 @@ fn get_text_entered_handler(
 // The `GameState` trait also contains callbacks for event handling
 // that you can override if you wish, but the defaults are fine.
 impl MainState {
-
     fn new(ctx: &mut Context) -> GameResult<MainState> {
-        let universe_width_in_cells  = 256;
+        let universe_width_in_cells = 256;
         let universe_height_in_cells = 120;
-        let intro_universe_width_in_cells  = 256;
+        let intro_universe_width_in_cells = 256;
         let intro_universe_height_in_cells = 256;
 
         let mut config = config::Config::new();
@@ -348,7 +323,7 @@ impl MainState {
 
         // On first-run, use default supported resolution
         let (w, h) = config.get_resolution();
-        vs.set_resolution(ctx, video::Resolution{w, h}, true)?;
+        vs.set_resolution(ctx, video::Resolution { w, h }, true)?;
 
         let is_fullscreen = config.get().video.fullscreen;
         vs.is_fullscreen = is_fullscreen;
@@ -357,36 +332,49 @@ impl MainState {
         let intro_viewport = viewport::GridView::new(
             DEFAULT_ZOOM_LEVEL,
             intro_universe_width_in_cells,
-            intro_universe_height_in_cells);
+            intro_universe_height_in_cells,
+        );
 
         let viewport = viewport::GridView::new(
             config.get().gameplay.zoom,
             universe_width_in_cells,
-            universe_height_in_cells);
+            universe_height_in_cells,
+        );
 
         let mut color_settings = ColorSettings {
             cell_colors: BTreeMap::new(),
             background:  *UNIVERSE_BG_COLOR,
         };
-        color_settings.cell_colors.insert(CellState::Dead, *CELL_STATE_DEAD_COLOR);
+        color_settings
+            .cell_colors
+            .insert(CellState::Dead, *CELL_STATE_DEAD_COLOR);
         if GRID_DRAW_STYLE == DrawStyle::Line {
             // black background - for a "tetris-like" effect
-            color_settings.cell_colors.insert(CellState::Alive(None), *CELL_STATE_BG_FILL_HOLLOW_COLOR);
+            color_settings
+                .cell_colors
+                .insert(CellState::Alive(None), *CELL_STATE_BG_FILL_HOLLOW_COLOR);
         } else {
             // light background - default setting
-            color_settings.cell_colors.insert(CellState::Alive(None), *CELL_STATE_BG_FILL_SOLID_COLOR);
+            color_settings
+                .cell_colors
+                .insert(CellState::Alive(None), *CELL_STATE_BG_FILL_SOLID_COLOR);
         }
-        color_settings.cell_colors.insert(CellState::Alive(Some(0)), *CELL_STATE_ALIVE_PLAYER_0_COLOR);  // 0 is red
-        color_settings.cell_colors.insert(CellState::Alive(Some(1)), *CELL_STATE_ALIVE_PLAYER_1_COLOR);  // 1 is blue
-        color_settings.cell_colors.insert(CellState::Wall, *CELL_STATE_WALL_COLOR);
+        color_settings
+            .cell_colors
+            .insert(CellState::Alive(Some(0)), *CELL_STATE_ALIVE_PLAYER_0_COLOR); // 0 is red
+        color_settings
+            .cell_colors
+            .insert(CellState::Alive(Some(1)), *CELL_STATE_ALIVE_PLAYER_1_COLOR); // 1 is blue
+        color_settings
+            .cell_colors
+            .insert(CellState::Wall, *CELL_STATE_WALL_COLOR);
         color_settings.cell_colors.insert(CellState::Fog, *CELL_STATE_FOG_COLOR);
 
         // Note: fixed-width fonts are required!
         let font = Font::new(ctx, path::Path::new("/telegrama_render.ttf"))
-                    .map_err(|e| GameError::FilesystemError(format!("Could not load or find font. {:?}", e)))?;
+            .map_err(|e| GameError::FilesystemError(format!("Could not load or find font. {:?}", e)))?;
 
-        let bigbang =
-        {
+        let bigbang = {
             // we're going to have to tear this all out when this becomes a real game
             let player0_writable = Region::new(100, 70, 34, 16);
             let player1_writable = Region::new(0, 0, 80, 80);
@@ -396,18 +384,17 @@ impl MainState {
             let players = vec![player0, player1];
 
             BigBang::new()
-            .width(universe_width_in_cells)
-            .height(universe_height_in_cells)
-            .server_mode(true) // TODO will change to false once we get server support up
-                               // Currently 'client' is technically both client and server
-            .history(HISTORY_SIZE)
-            .fog_radius(FOG_RADIUS)
-            .add_players(players)
-            .birth()
+                .width(universe_width_in_cells)
+                .height(universe_height_in_cells)
+                .server_mode(true) // TODO will change to false once we get server support up
+                // Currently 'client' is technically both client and server
+                .history(HISTORY_SIZE)
+                .fog_radius(FOG_RADIUS)
+                .add_players(players)
+                .birth()
         };
 
-        let intro_universe =
-        {
+        let intro_universe = {
             let player = PlayerBuilder::new(Region::new(0, 0, 256, 256));
             BigBang::new()
                 .width(intro_universe_width_in_cells)
@@ -427,9 +414,9 @@ impl MainState {
 
         // Update universe draw parameters for intro
         let intro_uni_draw_params = UniDrawParams {
-            bg_color: graphics::BLACK,
-            fg_color: graphics::BLACK,
-            player_id: -1,
+            bg_color:     graphics::BLACK,
+            fg_color:     graphics::BLACK,
+            player_id:    -1,
             draw_counter: true,
         };
 
@@ -438,8 +425,10 @@ impl MainState {
         let chatbox_pub_handle = {
             let chatbox_id = ui_layout.chatbox_id.clone();
             let w = ui_layout
-                .get_screen_layering(Screen::Run).unwrap()
-                .get_widget_mut(&chatbox_id).unwrap();
+                .get_screen_layering(Screen::Run)
+                .unwrap()
+                .get_widget_mut(&chatbox_id)
+                .unwrap();
             let chatbox = w.downcast_ref::<Chatbox>().unwrap(); // unwrap OK because we know this ID is for a Chatbox
             chatbox.new_handle()
         };
@@ -447,34 +436,36 @@ impl MainState {
         {
             let textfield_id = ui_layout.chatbox_tf_id.clone();
             let w = ui_layout
-                .get_screen_layering(Screen::Run).unwrap()
-                .get_widget_mut(&textfield_id).unwrap();
+                .get_screen_layering(Screen::Run)
+                .unwrap()
+                .get_widget_mut(&textfield_id)
+                .unwrap();
             let tf = w.downcast_mut::<TextField>().unwrap();
             tf.on(EventType::TextEntered, text_entered_handler).unwrap(); // unwrap OK because not in handler
         }
 
         let mut s = MainState {
-            screen_stack:        vec![Screen::Intro],
-            system_font:         font.clone(),
-            uni:                 bigbang.unwrap(),
-            intro_uni:           intro_universe.unwrap(),
+            screen_stack: vec![Screen::Intro],
+            system_font: font.clone(),
+            uni: bigbang.unwrap(),
+            intro_uni: intro_universe.unwrap(),
             first_gen_was_drawn: false,
-            uni_draw_params:     intro_uni_draw_params,
-            color_settings:      color_settings,
-            running:             false,
-            video_settings:      vs,
-            config:              config,
-            viewport:            viewport,
-            intro_viewport:      intro_viewport,
-            inputs:              input::InputManager::new(),
+            uni_draw_params: intro_uni_draw_params,
+            color_settings: color_settings,
+            running: false,
+            video_settings: vs,
+            config: config,
+            viewport: viewport,
+            intro_viewport: intro_viewport,
+            inputs: input::InputManager::new(),
             net_worker,
-            recvd_first_resize:  false,
-            single_step:         false,
-            arrow_input:         (0, 0),
-            drag_draw:           None,
-            insert_mode:         None,
-            current_intro_duration:  0.0,
-            ui_layout:           ui_layout,
+            recvd_first_resize: false,
+            single_step: false,
+            arrow_input: (0, 0),
+            drag_draw: None,
+            insert_mode: None,
+            current_intro_duration: 0.0,
+            ui_layout: ui_layout,
         };
 
         init_patterns(&mut s).unwrap();
@@ -505,9 +496,9 @@ impl EventHandler for MainState {
 
                     // update universe draw params now that intro is gone
                     self.uni_draw_params = UniDrawParams {
-                        bg_color: self.color_settings.get_color(None),
-                        fg_color: self.color_settings.get_color(Some(CellState::Dead)),
-                        player_id: 1, // Current player, TODO sync with Server's CLIENT ID
+                        bg_color:     self.color_settings.get_color(None),
+                        fg_color:     self.color_settings.get_color(Some(CellState::Dead)),
+                        player_id:    1, // Current player, TODO sync with Server's CLIENT ID
                         draw_counter: true,
                     };
                 } else {
@@ -520,8 +511,8 @@ impl EventHandler for MainState {
                 return Ok(());
             }
             Screen::Exit => {
-               let _ = ggez::event::quit(ctx);
-               return Ok(());
+                let _ = ggez::event::quit(ctx);
+                return Ok(());
             }
             _ => {} // all others handled below
         }
@@ -534,8 +525,8 @@ impl EventHandler for MainState {
 
         let mouse_action = self.inputs.mouse_info.action;
 
-        let left_mouse_click = mouse_action == Some(MouseAction::Click) &&
-            self.inputs.mouse_info.mousebutton == MouseButton::Left;
+        let left_mouse_click =
+            mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
 
         let mut game_area_has_keyboard_focus = false;
         let game_area_id = self.ui_layout.game_area_id.clone();
@@ -554,9 +545,11 @@ impl EventHandler for MainState {
         let mut game_area_should_ignore_input = false;
         if let Some(layer) = self.ui_layout.get_screen_layering(screen) {
             let update = Event::new_update();
-            layer.emit(&update, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
-                error!("Error from layer.emit on update: {:?}", e);
-            });
+            layer
+                .emit(&update, ctx, &mut self.config, &mut self.screen_stack)
+                .unwrap_or_else(|e| {
+                    error!("Error from layer.emit on update: {:?}", e);
+                });
 
             if self.inputs.mouse_info.prev_position != self.inputs.mouse_info.position {
                 let mouse_move = Event::new_mouse_move(
@@ -565,9 +558,11 @@ impl EventHandler for MainState {
                     self.inputs.mouse_info.mousebutton,
                     is_shift,
                 );
-                layer.emit(&mouse_move, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
-                    error!("Error from layer.emit on mouse move: {:?}", e);
-                });
+                layer
+                    .emit(&mouse_move, ctx, &mut self.config, &mut self.screen_stack)
+                    .unwrap_or_else(|e| {
+                        error!("Error from layer.emit on mouse move: {:?}", e);
+                    });
                 self.inputs.mouse_info.prev_position = self.inputs.mouse_info.position;
             }
 
@@ -580,17 +575,21 @@ impl EventHandler for MainState {
 
             if left_mouse_click {
                 let click_event = Event::new_click(mouse_point, self.inputs.mouse_info.mousebutton, is_shift);
-                layer.emit(&click_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
-                    error!("Error from layer.emit on left click: {:?}", e);
-                });
+                layer
+                    .emit(&click_event, ctx, &mut self.config, &mut self.screen_stack)
+                    .unwrap_or_else(|e| {
+                        error!("Error from layer.emit on left click: {:?}", e);
+                    });
             }
 
             if !game_area_has_keyboard_focus {
                 if let Some(key) = key {
                     let key_event = Event::new_key_press(mouse_point, key, is_shift);
-                    layer.emit(&key_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
-                        error!("Error from layer.emit on key press: {:?}", e);
-                    });
+                    layer
+                        .emit(&key_event, ctx, &mut self.config, &mut self.screen_stack)
+                        .unwrap_or_else(|e| {
+                            error!("Error from layer.emit on key press: {:?}", e);
+                        });
                     game_area_should_ignore_input = true;
                 }
             }
@@ -599,9 +598,11 @@ impl EventHandler for MainState {
             std::mem::swap(&mut self.inputs.text_input, &mut text_input);
             for character in text_input {
                 let key_event = Event::new_char_press(mouse_point, character, is_shift);
-                layer.emit(&key_event, ctx, &mut self.config, &mut self.screen_stack).unwrap_or_else(|e| {
-                    error!("Error from layer.emit on key press (text input): {:?}", e);
-                });
+                layer
+                    .emit(&key_event, ctx, &mut self.config, &mut self.screen_stack)
+                    .unwrap_or_else(|e| {
+                        error!("Error from layer.emit on key press (text input): {:?}", e);
+                    });
             }
         }
 
@@ -614,10 +615,9 @@ impl EventHandler for MainState {
                 else => |e| {
                     error!("Received unexpected error from process_running_inputs(). {:?}", e);
                 }
-            ).unwrap(); // OK to call unwrap here because there is an else match arm (all errors handled)
-
+            )
+            .unwrap(); // OK to call unwrap here because there is an else match arm (all errors handled)
         }
-
 
         if screen == Screen::Run {
             if self.single_step {
@@ -625,7 +625,7 @@ impl EventHandler for MainState {
             }
 
             if self.first_gen_was_drawn && (self.running || self.single_step) {
-                self.uni.next();     // next generation
+                self.uni.next(); // next generation
                 self.single_step = false;
             }
 
@@ -673,7 +673,13 @@ impl EventHandler for MainState {
                 });
             }
             Screen::Menu => {
-                ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("Main Menu"), &Point2::new(500.0, 100.0))?;
+                ui::draw_text(
+                    ctx,
+                    self.system_font.clone(),
+                    *MENU_TEXT_COLOR,
+                    String::from("Main Menu"),
+                    &Point2::new(500.0, 100.0),
+                )?;
             }
             Screen::Run => {
                 self.draw_universe(ctx).unwrap_or_else(|e| {
@@ -681,14 +687,32 @@ impl EventHandler for MainState {
                 });
             }
             Screen::InRoom => {
-                ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("In Room"), &Point2::new(100.0, 100.0))?;
+                ui::draw_text(
+                    ctx,
+                    self.system_font.clone(),
+                    *MENU_TEXT_COLOR,
+                    String::from("In Room"),
+                    &Point2::new(100.0, 100.0),
+                )?;
             }
             Screen::ServerList => {
-                ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("Server List"), &Point2::new(100.0, 100.0))?;
-             },
+                ui::draw_text(
+                    ctx,
+                    self.system_font.clone(),
+                    *MENU_TEXT_COLOR,
+                    String::from("Server List"),
+                    &Point2::new(100.0, 100.0),
+                )?;
+            }
             Screen::Options => {
-                ui::draw_text(ctx, self.system_font.clone(), *MENU_TEXT_COLOR, String::from("Options"), &Point2::new(100.0, 100.0))?;
-             },
+                ui::draw_text(
+                    ctx,
+                    self.system_font.clone(),
+                    *MENU_TEXT_COLOR,
+                    String::from("Options"),
+                    &Point2::new(100.0, 100.0),
+                )?;
+            }
             Screen::Exit => {}
         }
 
@@ -710,8 +734,8 @@ impl EventHandler for MainState {
             self.inputs.mouse_info.mousebutton = button;
             self.inputs.mouse_info.down_timestamp = Some(Instant::now());
             self.inputs.mouse_info.action = Some(MouseAction::Held);
-            self.inputs.mouse_info.position = Point2::new(x,y);
-            self.inputs.mouse_info.down_position = Point2::new(x,y);
+            self.inputs.mouse_info.position = Point2::new(x, y);
+            self.inputs.mouse_info.down_position = Point2::new(x, y);
 
             if self.inputs.mouse_info.debug_print {
                 debug!("{:?} Down", button);
@@ -726,14 +750,18 @@ impl EventHandler for MainState {
         // dragging the mouse. If either case is true, update the action to reflect that the mouse
         // is being dragged around
         if self.inputs.mouse_info.mousebutton != MouseButton::Other(0)
-            && (self.inputs.mouse_info.action == Some(MouseAction::Held) || self.inputs.mouse_info.action == Some(MouseAction::Drag)) {
+            && (self.inputs.mouse_info.action == Some(MouseAction::Held)
+                || self.inputs.mouse_info.action == Some(MouseAction::Drag))
+        {
             self.inputs.mouse_info.action = Some(MouseAction::Drag);
 
             if self.inputs.mouse_info.debug_print {
-                debug!("Dragging {:?}, Current Position {:?}, Time Held: {:?}",
+                debug!(
+                    "Dragging {:?}, Current Position {:?}, Time Held: {:?}",
                     self.inputs.mouse_info.mousebutton,
                     self.inputs.mouse_info.position,
-                    self.inputs.mouse_info.down_timestamp.unwrap().elapsed());
+                    self.inputs.mouse_info.down_timestamp.unwrap().elapsed()
+                );
             }
         }
     }
@@ -745,33 +773,35 @@ impl EventHandler for MainState {
             self.inputs.mouse_info.position = Point2::new(x, y);
 
             if self.inputs.mouse_info.debug_print {
-                debug!("Clicked {:?}, Current Position {:?}, Time Held: {:?}",
+                debug!(
+                    "Clicked {:?}, Current Position {:?}, Time Held: {:?}",
                     button,
                     (x, y),
-                    self.inputs.mouse_info.down_timestamp.unwrap().elapsed());
+                    self.inputs.mouse_info.down_timestamp.unwrap().elapsed()
+                );
             }
         }
 
-        self.drag_draw = None;   // probably unnecessary because of state.left() check in mouse_motion_event
+        self.drag_draw = None; // probably unnecessary because of state.left() check in mouse_motion_event
     }
 
     /// Vertical scroll:   (y, positive away from and negative toward the user)
     /// Horizontal scroll: (x, positive to the right and negative to the left)
     fn mouse_wheel_event(&mut self, _ctx: &mut Context, _x: f32, y: f32) {
         self.inputs.mouse_info.scroll_event = if y > 0.0 {
-                Some(ScrollEvent::ScrollUp)
-            } else if y < 0.0 {
-                Some(ScrollEvent::ScrollDown)
-            } else {
-                None
-            };
+            Some(ScrollEvent::ScrollUp)
+        } else if y < 0.0 {
+            Some(ScrollEvent::ScrollDown)
+        } else {
+            None
+        };
 
         if self.inputs.mouse_info.debug_print {
             debug!("Wheel Event {:?}", self.inputs.mouse_info.scroll_event);
         }
     }
 
-    fn key_down_event(&mut self, _ctx: &mut Context, keycode: KeyCode, keymod: KeyMods, repeat: bool ) {
+    fn key_down_event(&mut self, _ctx: &mut Context, keycode: KeyCode, keymod: KeyMods, repeat: bool) {
         let key_as_int32 = keycode as i32;
 
         // Winit's KeyCode definition has no perceptible ordering so I'm selectively defining what keys we'll accept...
@@ -779,9 +809,10 @@ impl EventHandler for MainState {
         if key_as_int32 < (KeyCode::Numlock as i32)
             || (key_as_int32 >= KeyCode::LAlt as i32 && key_as_int32 <= KeyCode::LWin as i32)
             || (key_as_int32 >= KeyCode::RAlt as i32 && key_as_int32 <= KeyCode::RWin as i32)
-            || (key_as_int32 == KeyCode::Equals as i32 || key_as_int32 == KeyCode::Subtract as i32
-            ||  key_as_int32 == KeyCode::Tab as i32) {
-
+            || (key_as_int32 == KeyCode::Equals as i32
+                || key_as_int32 == KeyCode::Subtract as i32
+                || key_as_int32 == KeyCode::Tab as i32)
+        {
             // NOTE: we need to exclude modifiers we are using below.
             let is_modifier_key = keycode == KeyCode::LShift || keycode == KeyCode::RShift;
             if self.inputs.key_info.key.is_none() && !is_modifier_key {
@@ -796,18 +827,24 @@ impl EventHandler for MainState {
         }
 
         if self.inputs.key_info.debug_print {
-            debug!("Key_Down K: {:?}, M: {:?}, R: {}", self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating);
+            debug!(
+                "Key_Down K: {:?}, M: {:?}, R: {}",
+                self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating
+            );
         }
     }
 
     fn key_up_event(&mut self, _ctx: &mut Context, _keycode: KeyCode, keymod: KeyMods) {
         // TODO: should probably only clear key if keycode matches key_info.key
-        self.inputs.key_info.modifier &= !keymod;  // clear whatever modifier key was released
+        self.inputs.key_info.modifier &= !keymod; // clear whatever modifier key was released
         self.inputs.key_info.key = None;
         self.inputs.key_info.repeating = false;
 
         if self.inputs.key_info.debug_print {
-            debug!("Key_Up K: {:?}, M: {:?}, R: {}", self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating);
+            debug!(
+                "Key_Up K: {:?}, M: {:?}, R: {}",
+                self.inputs.key_info.key, self.inputs.key_info.modifier, self.inputs.key_info.repeating
+            );
         }
     }
 
@@ -828,12 +865,7 @@ impl EventHandler for MainState {
             return;
         }
         debug!("resize_event: {}, {}", width, height);
-        let new_rect = graphics::Rect::new(
-            0.0,
-            0.0,
-            width,
-            height,
-        );
+        let new_rect = graphics::Rect::new(0.0, 0.0, width, height);
         if self.uni_draw_params.player_id < 0 {
             self.intro_viewport.set_size(width, height);
             self.center_intro_viewport(width, height);
@@ -845,7 +877,9 @@ impl EventHandler for MainState {
         } else {
             self.config.set_resolution(width, height);
         }
-        self.video_settings.set_resolution(ctx, video::Resolution{w: width, h: height}, false).unwrap();
+        self.video_settings
+            .set_resolution(ctx, video::Resolution { w: width, h: height }, false)
+            .unwrap();
     }
 
     /// Called when the user requests that the window be closed (ggez gets a
@@ -882,21 +916,17 @@ impl EventHandler for MainState {
         !quit
         */
     }
-
 }
 
-
 struct UniDrawParams {
-    bg_color: Color,
-    fg_color: Color,
-    player_id: isize, // Player color >=0, Playerless < 0  // TODO: use Option<usize> instead
+    bg_color:     Color,
+    fg_color:     Color,
+    player_id:    isize, // Player color >=0, Playerless < 0  // TODO: use Option<usize> instead
     draw_counter: bool,
 }
 
 impl MainState {
-
     fn draw_game_of_life(&self, ctx: &mut Context, universe: &Universe) -> Result<(), Box<dyn Error>> {
-
         let viewport = if self.uni_draw_params.player_id >= 0 {
             &self.viewport
         } else {
@@ -906,10 +936,12 @@ impl MainState {
         let viewport_rect = viewport.get_rect();
 
         // grid background
-        let rectangle = graphics::Mesh::new_rectangle(ctx,
+        let rectangle = graphics::Mesh::new_rectangle(
+            ctx,
             GRID_DRAW_STYLE.to_draw_mode(),
             graphics::Rect::new(0.0, 0.0, viewport_rect.w, viewport_rect.h),
-            self.uni_draw_params.bg_color)?;
+            self.uni_draw_params.bg_color,
+        )?;
         graphics::draw(ctx, &rectangle, DrawParam::new().dest(viewport_rect.point()))?;
 
         // grid foreground (dead cells)
@@ -948,7 +980,7 @@ impl MainState {
         // TODO: truncate if outside of writable region
         // TODO: move to new function
         if let Some((ref grid, width, height)) = self.insert_mode {
-            let unwritable_flash_on =  timer::time_since_start(ctx).subsec_millis() % 250 < 125;  // 50% duty cycle, 250ms period
+            let unwritable_flash_on = timer::time_since_start(ctx).subsec_millis() % 250 < 125; // 50% duty cycle, 250ms period
 
             if self.uni_draw_params.player_id < 0 {
                 return Err(format!("Unexpected player ID {}", self.uni_draw_params.player_id).into());
@@ -958,8 +990,8 @@ impl MainState {
             if let Some(cursor_cell) = viewport.game_coords_from_window(self.inputs.mouse_info.position) {
                 let (cursor_col, cursor_row) = (cursor_cell.col, cursor_cell.row);
                 grid.each_set(|grid_col, grid_row| {
-                    let col = (grid_col + cursor_col) as isize - width as isize/2;
-                    let row = (grid_row + cursor_row) as isize - height as isize/2;
+                    let col = (grid_col + cursor_col) as isize - width as isize / 2;
+                    let row = (grid_row + cursor_row) as isize - height as isize / 2;
                     if col < 0 || row < 0 {
                         // out of range
                         return;
@@ -968,7 +1000,11 @@ impl MainState {
                     if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col, row)) {
                         let mut color = player_color;
                         // only error is due to player_id out of range, so unwrap OK here
-                        if !self.uni.writable(col, row, self.uni_draw_params.player_id as usize).unwrap() {
+                        if !self
+                            .uni
+                            .writable(col, row, self.uni_draw_params.player_id as usize)
+                            .unwrap()
+                        {
                             // not writable, so draw flashing red cells
                             if unwritable_flash_on {
                                 color = *constants::colors::INSERT_PATTERN_UNWRITABLE;
@@ -976,7 +1012,7 @@ impl MainState {
                                 return;
                             }
                         }
-                        color.a = 0.5;  // semi-transparent since this is an overlay
+                        color.a = 0.5; // semi-transparent since this is an overlay
                         let p = graphics::DrawParam::new()
                             .dest(Point2::new(rect.x, rect.y))
                             .scale(Vector2::new(rect.w, rect.h))
@@ -990,8 +1026,12 @@ impl MainState {
 
         if let Some(clipped_rect) = ui::intersection(full_rect, viewport_rect) {
             let origin = graphics::DrawParam::new().dest(Point2::new(0.0, 0.0));
-            let rectangle = graphics::Mesh::new_rectangle(ctx, GRID_DRAW_STYLE.to_draw_mode(), clipped_rect,
-                                                          self.uni_draw_params.fg_color)?;
+            let rectangle = graphics::Mesh::new_rectangle(
+                ctx,
+                GRID_DRAW_STYLE.to_draw_mode(),
+                clipped_rect,
+                self.uni_draw_params.fg_color,
+            )?;
 
             graphics::draw(ctx, &rectangle, origin)?;
             graphics::draw(ctx, &main_spritebatch, origin)?;
@@ -1005,7 +1045,13 @@ impl MainState {
         ////////// draw generation counter
         if self.uni_draw_params.draw_counter {
             let gen_counter = universe.latest_gen().to_string();
-            ui::draw_text(ctx, self.system_font.clone(), *GEN_COUNTER_COLOR, gen_counter, &Point2::new(0.0, 0.0))?;
+            ui::draw_text(
+                ctx,
+                self.system_font.clone(),
+                *GEN_COUNTER_COLOR,
+                gen_counter,
+                &Point2::new(0.0, 0.0),
+            )?;
         }
 
         Ok(())
@@ -1014,9 +1060,10 @@ impl MainState {
     fn center_intro_viewport(&mut self, win_width: f32, win_height: f32) {
         let grid_width = self.intro_viewport.grid_width();
         let grid_height = self.intro_viewport.grid_height();
-        let target_center_x = win_width/2.0 - grid_width/2.0;
-        let target_center_y = win_height/2.0 - grid_height/2.0;
-        self.intro_viewport.set_origin(Point2::new(target_center_x, target_center_y));
+        let target_center_x = win_width / 2.0 - grid_width / 2.0;
+        let target_center_y = win_height / 2.0 - grid_height / 2.0;
+        self.intro_viewport
+            .set_origin(Point2::new(target_center_x, target_center_y));
     }
 
     fn draw_intro(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
@@ -1028,7 +1075,12 @@ impl MainState {
         self.draw_game_of_life(ctx, &self.uni)
     }
 
-    fn transition_screen(&mut self, ggez_ctx: &mut Context, old_screen: Screen, new_screen: Screen) -> Result<(), Box<dyn Error>> {
+    fn transition_screen(
+        &mut self,
+        ggez_ctx: &mut Context,
+        old_screen: Screen,
+        new_screen: Screen,
+    ) -> Result<(), Box<dyn Error>> {
         match old_screen {
             Screen::Menu => {
                 if new_screen == Screen::Run {
@@ -1065,7 +1117,7 @@ impl MainState {
                 k if k >= KeyCode::Key2 && k <= KeyCode::Key0 => {
                     // select a pattern
                     let grid_info_result = self.bit_pattern_from_char(keycode);
-                    let grid_info = handle_error!{grid_info_result -> (BitGrid, usize, usize),
+                    let grid_info = handle_error! {grid_info_result -> (BitGrid, usize, usize),
                         ConwayError => |e| {
                             return Err(format!("Invalid pattern bound to keycode {:?}: {}", keycode, e).into())
                         }
@@ -1121,7 +1173,7 @@ impl MainState {
                 }
                 KeyCode::D => {
                     // TODO: do something with this debug code
-                    let visibility = None;  // can also do Some(player_id)
+                    let visibility = None; // can also do Some(player_id)
                     let pat = self.uni.to_pattern(visibility);
                     println!("PATTERN DUMP:\n{}", pat.0);
                 }
@@ -1138,8 +1190,8 @@ impl MainState {
                 // inserting a pattern
                 if self.inputs.mouse_info.action == Some(MouseAction::Click) {
                     if let Some(cell) = self.viewport.get_cell(mouse_pos) {
-                        let insert_col = cell.col as isize - (width/2) as isize;
-                        let insert_row = cell.row as isize - (height/2) as isize;
+                        let insert_col = cell.col as isize - (width / 2) as isize;
+                        let insert_row = cell.row as isize - (height / 2) as isize;
                         let dst_region = Region::new(insert_col, insert_row, width, height);
                         self.uni.copy_from_bit_grid(grid, dst_region, Some(CURRENT_PLAYER_ID));
                     }
@@ -1175,9 +1227,9 @@ impl MainState {
             if let Some((ref mut grid, ref mut width, ref mut height)) = self.insert_mode {
                 let rotation = match self.arrow_input {
                     (-1, 0) => Some(Rotation::CCW),
-                    ( 1, 0) => Some(Rotation::CW),
+                    (1, 0) => Some(Rotation::CW),
                     (0, 0) => unreachable!(),
-                    _ => None,   // do nothing in this case
+                    _ => None, // do nothing in this case
                 };
                 if let Some(rotation) = rotation {
                     grid.rotate(*width, *height, rotation).unwrap_or_else(|e| {
@@ -1210,7 +1262,7 @@ impl MainState {
                 NetwaysteEvent::LoggedIn(server_version) => {
                     info!("Logged in! Server version: v{}", server_version);
                     self.screen_stack.push(Screen::ServerList); // XXX
-                    // do other stuff
+                                                                // do other stuff
                     net_worker.try_send(NetwaysteEvent::List);
                     net_worker.try_send(NetwaysteEvent::JoinRoom("general".to_owned()));
                 }
@@ -1219,10 +1271,10 @@ impl MainState {
                     self.screen_stack.push(Screen::InRoom); // XXX
                 }
                 NetwaysteEvent::PlayerList(list) => {
-                    println!("PlayerList: {:?}",list);
+                    println!("PlayerList: {:?}", list);
                 }
                 NetwaysteEvent::RoomList(list) => {
-                    println!("RoomList: {:?}",list);
+                    println!("RoomList: {:?}", list);
                 }
                 NetwaysteEvent::UniverseUpdate => {
                     println!("Universe update");
@@ -1245,7 +1297,10 @@ impl MainState {
                     println!("Server encountered an error: {:?}", error);
                 }
                 _ => {
-                    panic!("Development panic: Unexpected NetwaysteEvent during netwayste receive update: {:?}", e);
+                    panic!(
+                        "Development panic: Unexpected NetwaysteEvent during netwayste receive update: {:?}",
+                        e
+                    );
                 }
             }
         }
@@ -1254,7 +1309,7 @@ impl MainState {
         for msg in incoming_messages {
             match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
                 Ok(cb) => cb.add_message(msg),
-                Err(e) => error!("Could not add message to Chatbox on network message receive: {:?}", e)
+                Err(e) => error!("Could not add message to Chatbox on network message receive: {:?}", e),
             }
         }
 
@@ -1282,9 +1337,9 @@ impl MainState {
         self.arrow_input = (0, 0);
 
         // Flush config
-        self.config.flush().map_err(|e| {
-            GameError::FilesystemError(format!("Error while flushing config: {:?}", e))
-        })?;
+        self.config
+            .flush()
+            .map_err(|e| GameError::FilesystemError(format!("Error while flushing config: {:?}", e)))?;
 
         Ok(())
     }
@@ -1326,42 +1381,48 @@ impl MainState {
             _ => "", // unexpected
         };
         let pat = Pattern(rle_str.to_owned());
-        let (width, height) = pat.calc_size()?;  // calc_size will fail on invalid RLE -- return it
+        let (width, height) = pat.calc_size()?; // calc_size will fail on invalid RLE -- return it
         let grid = pat.to_new_bit_grid(width, height)?;
         Ok((grid, width, height))
     }
-
 }
 
 enum Orientation {
     Vertical,
     Horizontal,
-    Diagonal
+    Diagonal,
 }
 
 // Toggle a horizontal, vertical, or diagonal line, as player with index 0. This is only used for
 // the intro currently. Part or all of the line can be outside of the Universe; if this is the
 // case, only the parts inside the Universe are toggled.
 fn toggle_line(s: &mut MainState, orientation: Orientation, col: isize, row: isize, width: isize, height: isize) {
-    let player_id = 0;   // hardcode player ID, since this is just for the intro
+    let player_id = 0; // hardcode player ID, since this is just for the intro
     match orientation {
         Orientation::Vertical => {
             for r in row..(height + row) {
-                if col < 0 || r < 0 { continue }
-                let _ = s.intro_uni.toggle(col as usize, r as usize, player_id);  // `let _ =`, because we don't care about errors
+                if col < 0 || r < 0 {
+                    continue;
+                }
+                let _ = s.intro_uni.toggle(col as usize, r as usize, player_id);
+                // `let _ =`, because we don't care about errors
             }
         }
         Orientation::Horizontal => {
             for c in col..(width + col) {
-                if c < 0 || row < 0 { continue }
+                if c < 0 || row < 0 {
+                    continue;
+                }
                 let _ = s.intro_uni.toggle(c as usize, row as usize, player_id);
             }
         }
         Orientation::Diagonal => {
             for x in 0..(width - 1) {
-                let c: isize = col+x;
-                let r: isize = row+x;
-                if c < 0 || r < 0 { continue; }
+                let c: isize = col + x;
+                let r: isize = row + x;
+                if c < 0 || r < 0 {
+                    continue;
+                }
                 let _ = s.intro_uni.toggle(c as usize, r as usize, player_id);
             }
         }
@@ -1370,26 +1431,25 @@ fn toggle_line(s: &mut MainState, orientation: Orientation, col: isize, row: isi
 
 // TODO: this should really have "intro" in its name!
 fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
-
     // 1) Calculate width and height of rectangle which represents the intro logo
     // 2) Determine height and width of the window
     // 3) Center it
     // 4) get offset for row and column to draw at
 
-    let player_id = 0;   // hardcoded for this intro
+    let player_id = 0; // hardcoded for this intro
 
     let letter_width = 5;
     let letter_height = 6;
 
     // 9 letters; account for width and spacing
-    let logo_width = 9*5 + 9*5;
+    let logo_width = 9 * 5 + 9 * 5;
     let logo_height = letter_height;
 
     let uni_width = s.intro_uni.width() as isize;
     let uni_height = s.intro_uni.height() as isize;
 
-    let mut offset_col = uni_width/2  - logo_width/2;
-    let     offset_row = uni_height/2 - logo_height/2;
+    let mut offset_col = uni_width / 2 - logo_width / 2;
+    let offset_row = uni_height / 2 - logo_height / 2;
 
     let toggle = |s_: &mut MainState, col: isize, row: isize| {
         if col >= 0 || row >= 0 {
@@ -1398,85 +1458,279 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
     };
 
     // C
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col,
+        offset_row,
+        letter_width,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Vertical,
+        offset_col,
+        offset_row + 1,
+        letter_width,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col + 1,
+        offset_row + letter_height,
+        letter_width - 1,
+        letter_height,
+    );
 
-    offset_col += 2*letter_width;
+    offset_col += 2 * letter_width;
 
     // O
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col+letter_width-1, offset_row+1, letter_width,letter_height-1);
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col,
+        offset_row,
+        letter_width,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Vertical,
+        offset_col,
+        offset_row + 1,
+        letter_width,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col + 1,
+        offset_row + letter_height,
+        letter_width - 1,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Vertical,
+        offset_col + letter_width - 1,
+        offset_row + 1,
+        letter_width,
+        letter_height - 1,
+    );
 
-    offset_col += 2*letter_width;
+    offset_col += 2 * letter_width;
 
     // N
-    toggle_line(s, Orientation::Vertical, offset_col, offset_row, letter_width,letter_height+1);
-    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
-    toggle_line(s, Orientation::Diagonal, offset_col+1, offset_row+1, letter_width,letter_height);
+    toggle_line(
+        s,
+        Orientation::Vertical,
+        offset_col,
+        offset_row,
+        letter_width,
+        letter_height + 1,
+    );
+    toggle_line(
+        s,
+        Orientation::Vertical,
+        offset_col + letter_width,
+        offset_row,
+        letter_width,
+        letter_height + 1,
+    );
+    toggle_line(
+        s,
+        Orientation::Diagonal,
+        offset_col + 1,
+        offset_row + 1,
+        letter_width,
+        letter_height,
+    );
 
-    offset_col += 2*letter_width;
+    offset_col += 2 * letter_width;
 
     // W
-    toggle_line(s, Orientation::Vertical, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height, letter_width,letter_height);
-    toggle(s, offset_col+letter_width/2, offset_row+letter_height-1);
-    toggle(s, offset_col+letter_width/2, offset_row+letter_height-2);
-    toggle(s, offset_col+letter_width/2+1, offset_row+letter_height-1);
-    toggle(s, offset_col+letter_width/2+1, offset_row+letter_height-2);
+    toggle_line(
+        s,
+        Orientation::Vertical,
+        offset_col,
+        offset_row,
+        letter_width,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Vertical,
+        offset_col + letter_width,
+        offset_row,
+        letter_width,
+        letter_height + 1,
+    );
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col,
+        offset_row + letter_height,
+        letter_width,
+        letter_height,
+    );
+    toggle(s, offset_col + letter_width / 2, offset_row + letter_height - 1);
+    toggle(s, offset_col + letter_width / 2, offset_row + letter_height - 2);
+    toggle(s, offset_col + letter_width / 2 + 1, offset_row + letter_height - 1);
+    toggle(s, offset_col + letter_width / 2 + 1, offset_row + letter_height - 2);
 
-    offset_col += 2*letter_width;
+    offset_col += 2 * letter_width;
 
     // A
-    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col+letter_width, offset_row, letter_width,letter_height+1);
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height/2, letter_width-1,letter_height);
+    toggle_line(
+        s,
+        Orientation::Vertical,
+        offset_col,
+        offset_row + 1,
+        letter_width,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Vertical,
+        offset_col + letter_width,
+        offset_row,
+        letter_width,
+        letter_height + 1,
+    );
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col,
+        offset_row,
+        letter_width,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col + 1,
+        offset_row + letter_height / 2,
+        letter_width - 1,
+        letter_height,
+    );
 
-    offset_col += 2*letter_width;
+    offset_col += 2 * letter_width;
 
     // Y
     toggle(s, offset_col, offset_row);
-    toggle(s, offset_col, offset_row+1);
-    toggle(s, offset_col, offset_row+2);
-    toggle(s, offset_col+letter_height, offset_row);
-    toggle(s, offset_col+letter_height, offset_row+1);
-    toggle(s, offset_col+letter_height, offset_row+2);
-    toggle_line(s, Orientation::Vertical, offset_col+letter_height/2, offset_row+letter_width/2+2, letter_width,letter_height-3);
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height/2, letter_width+2,letter_height-1);
+    toggle(s, offset_col, offset_row + 1);
+    toggle(s, offset_col, offset_row + 2);
+    toggle(s, offset_col + letter_height, offset_row);
+    toggle(s, offset_col + letter_height, offset_row + 1);
+    toggle(s, offset_col + letter_height, offset_row + 2);
+    toggle_line(
+        s,
+        Orientation::Vertical,
+        offset_col + letter_height / 2,
+        offset_row + letter_width / 2 + 2,
+        letter_width,
+        letter_height - 3,
+    );
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col,
+        offset_row + letter_height / 2,
+        letter_width + 2,
+        letter_height - 1,
+    );
 
-    offset_col += 2*letter_width;
+    offset_col += 2 * letter_width;
 
     // S
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height, letter_width,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row+letter_height/2, letter_width,letter_height);
-    toggle(s, offset_col, offset_row+1);
-    toggle(s, offset_col, offset_row+2);
-    toggle(s, offset_col+letter_width-1, offset_row+4);
-    toggle(s, offset_col+letter_width-1, offset_row+5);
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col,
+        offset_row,
+        letter_width,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col,
+        offset_row + letter_height,
+        letter_width,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col,
+        offset_row + letter_height / 2,
+        letter_width,
+        letter_height,
+    );
+    toggle(s, offset_col, offset_row + 1);
+    toggle(s, offset_col, offset_row + 2);
+    toggle(s, offset_col + letter_width - 1, offset_row + 4);
+    toggle(s, offset_col + letter_width - 1, offset_row + 5);
 
-    offset_col += 2*letter_width;
+    offset_col += 2 * letter_width;
 
     // T
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col+letter_width/2, offset_row+1, letter_width,letter_height);
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col,
+        offset_row,
+        letter_width,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Vertical,
+        offset_col + letter_width / 2,
+        offset_row + 1,
+        letter_width,
+        letter_height,
+    );
 
-    offset_col += 2*letter_width;
+    offset_col += 2 * letter_width;
 
     // E
-    toggle_line(s, Orientation::Horizontal, offset_col, offset_row, letter_width,letter_height);
-    toggle_line(s, Orientation::Vertical, offset_col, offset_row+1, letter_width,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height, letter_width-1,letter_height);
-    toggle_line(s, Orientation::Horizontal, offset_col+1, offset_row+letter_height/2, letter_width-2,letter_height);
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col,
+        offset_row,
+        letter_width,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Vertical,
+        offset_col,
+        offset_row + 1,
+        letter_width,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col + 1,
+        offset_row + letter_height,
+        letter_width - 1,
+        letter_height,
+    );
+    toggle_line(
+        s,
+        Orientation::Horizontal,
+        offset_col + 1,
+        offset_row + letter_height / 2,
+        letter_width - 2,
+        letter_height,
+    );
 
     Ok(())
 }
-
-
 
 // Now our main function, which does three things:
 //
@@ -1489,7 +1743,8 @@ fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
 pub fn main() {
     env_logger::Builder::new()
         .format(|buf, record| {
-            writeln!(buf,
+            writeln!(
+                buf,
                 "{} [{:5}] - {}",
                 Local::now().format("%H:%M:%S%.6f"),
                 record.level(),
@@ -1508,20 +1763,25 @@ pub fn main() {
     color_backtrace::install();
 
     let mut cb = ContextBuilder::new("conwayste", "Aaronm04|Manghi")
-        .window_setup(conf::WindowSetup::default()
-                      .title(format!("{} {} {}", "💥 conwayste", version!().to_owned(),"💥").as_str())
-                      .icon("//conwayste.ico")
-                      .vsync(true)
-                      )
-        .window_mode(conf::WindowMode::default()
-                      .dimensions(DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT)
-                      .resizable(false)
-                     );
+        .window_setup(
+            conf::WindowSetup::default()
+                .title(format!("{} {} {}", "💥 conwayste", version!().to_owned(), "💥").as_str())
+                .icon("//conwayste.ico")
+                .vsync(true),
+        )
+        .window_mode(
+            conf::WindowMode::default()
+                .dimensions(DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT)
+                .resizable(false),
+        );
 
     if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
         let mut path = path::PathBuf::from(manifest_dir);
         path.push("resources");
-        info!("Found CARGO_MANIFEST_DIR; Adding ${{CARGO_MANIFEST_DIR}}/resources path: {:?}", path);
+        info!(
+            "Found CARGO_MANIFEST_DIR; Adding ${{CARGO_MANIFEST_DIR}}/resources path: {:?}",
+            path
+        );
         cb = cb.add_resource_path(path);
     }
 

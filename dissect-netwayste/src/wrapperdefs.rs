@@ -28,36 +28,37 @@ use crate::ws;
 // https://doc.rust-lang.org/stable/nomicon/send-and-sync.html
 #[repr(C)]
 pub struct StaticCString(pub *const u8);
-unsafe impl Sync for StaticCString {}
+unsafe impl Sync for StaticCString {
+}
 
 #[repr(u32)]
 pub enum FieldDisplay {
-    NoDisplay = ws::field_display_e_BASE_NONE,
-    Decimal = ws::field_display_e_BASE_DEC,
+    NoDisplay   = ws::field_display_e_BASE_NONE,
+    Decimal     = ws::field_display_e_BASE_DEC,
     Hexadecimal = ws::field_display_e_BASE_HEX,
-    Oct = ws::field_display_e_BASE_OCT,
-    DecHex = ws::field_display_e_BASE_DEC_HEX,
-    HexDec = ws::field_display_e_BASE_HEX_DEC,
-    Str = ws::field_display_e_STR_UNICODE,
+    Oct         = ws::field_display_e_BASE_OCT,
+    DecHex      = ws::field_display_e_BASE_DEC_HEX,
+    HexDec      = ws::field_display_e_BASE_HEX_DEC,
+    Str         = ws::field_display_e_STR_UNICODE,
 }
 
 #[derive(Debug)]
 #[repr(u32)]
 pub enum FieldType {
     NoType = ws::ftenum_FT_NONE,
-    Char = ws::ftenum_FT_CHAR,
-    U8 = ws::ftenum_FT_UINT8,
-    U16 = ws::ftenum_FT_UINT16,
-    U32 = ws::ftenum_FT_UINT32,
-    U64 = ws::ftenum_FT_UINT64,
-    I8 = ws::ftenum_FT_INT8,
-    I16 = ws::ftenum_FT_INT16,
-    I32 = ws::ftenum_FT_INT32,
-    I64 = ws::ftenum_FT_INT64,
-    F32 = ws::ftenum_FT_FLOAT,
-    F64 = ws::ftenum_FT_DOUBLE,
-    Str = ws::ftenum_FT_STRING,
-    Str_z = ws::ftenum_FT_STRINGZ,
+    Char   = ws::ftenum_FT_CHAR,
+    U8     = ws::ftenum_FT_UINT8,
+    U16    = ws::ftenum_FT_UINT16,
+    U32    = ws::ftenum_FT_UINT32,
+    U64    = ws::ftenum_FT_UINT64,
+    I8     = ws::ftenum_FT_INT8,
+    I16    = ws::ftenum_FT_INT16,
+    I32    = ws::ftenum_FT_INT32,
+    I64    = ws::ftenum_FT_INT64,
+    F32    = ws::ftenum_FT_FLOAT,
+    F64    = ws::ftenum_FT_DOUBLE,
+    Str    = ws::ftenum_FT_STRING,
+    Str_z  = ws::ftenum_FT_STRINGZ,
 }
 
 impl From<String> for FieldType {
@@ -92,7 +93,7 @@ impl From<&str> for FieldType {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct sync_hf_register_info {
-    pub p_id: *mut c_int, // Pointer to an identifier that is updated by wireshark on plugin init
+    pub p_id:   *mut c_int, // Pointer to an identifier that is updated by wireshark on plugin init
     pub hfinfo: ws::header_field_info, // Header field information structure
 }
 
@@ -100,24 +101,26 @@ pub struct sync_hf_register_info {
 // that by doing that they become safe to Sync and Send. Therefore we need to mark them Sync and Send
 // here. They are natively !Sync and !Send due to containing a raw pointer.
 // https://doc.rust-lang.org/stable/nomicon/send-and-sync.html
-unsafe impl Sync for sync_hf_register_info {}
-unsafe impl Send for sync_hf_register_info {}
+unsafe impl Sync for sync_hf_register_info {
+}
+unsafe impl Send for sync_hf_register_info {
+}
 
 impl Default for ws::header_field_info {
     fn default() -> Self {
         ws::header_field_info {
-            name: ptr::null(),                       // < [FIELDNAME] full name of this field
-            abbrev: ptr::null(), // < [FIELDABBREV] abbreviated name of this field
-            type_: FieldType::NoType as u32, // < [FIELDTYPE] field type
-            display: FieldDisplay::NoDisplay as i32, // < [FIELDDISPLAY] Base representation on display
-            strings: ptr::null(),
-            bitmask: 0,                      // < [BITMASK] bitmask of interesting bits
-            blurb: ptr::null(),              // < [FIELDDESCR] Brief description of field
-            id: -1,                          // < Field ID
-            parent: -1,                      // < parent protocol tree
-            ref_type: 0,                     // < is this field referenced by a filter
-            same_name_prev_id: -1,           // < ID of previous hfinfo with same abbrev
-            same_name_next: ptr::null_mut(), // < Link to next hfinfo with same abbrev
+            name:              ptr::null(),                    // < [FIELDNAME] full name of this field
+            abbrev:            ptr::null(),                    // < [FIELDABBREV] abbreviated name of this field
+            type_:             FieldType::NoType as u32,       // < [FIELDTYPE] field type
+            display:           FieldDisplay::NoDisplay as i32, // < [FIELDDISPLAY] Base representation on display
+            strings:           ptr::null(),
+            bitmask:           0,               // < [BITMASK] bitmask of interesting bits
+            blurb:             ptr::null(),     // < [FIELDDESCR] Brief description of field
+            id:                -1,              // < Field ID
+            parent:            -1,              // < parent protocol tree
+            ref_type:          0,               // < is this field referenced by a filter
+            same_name_prev_id: -1,              // < ID of previous hfinfo with same abbrev
+            same_name_next:    ptr::null_mut(), // < Link to next hfinfo with same abbrev
         }
     }
 }
@@ -126,25 +129,26 @@ impl Default for ws::header_field_info {
 #[derive(Debug, Clone)]
 pub struct sync_named_packet_types {
     pub index: c_int,
-    pub name: *const i8,
+    pub name:  *const i8,
 }
 
-unsafe impl Sync for sync_named_packet_types {}
+unsafe impl Sync for sync_named_packet_types {
+}
 
 #[repr(u32)]
 pub enum WSColumn {
     Protocol = ws::COL_PROTOCOL,
-    Info = ws::COL_INFO,
+    Info     = ws::COL_INFO,
 }
 
 #[repr(u32)]
 #[derive(Debug, Copy, Clone)]
 pub enum WSEncoding {
-    BigEndian = ws::ENC_BIG_ENDIAN,
+    BigEndian    = ws::ENC_BIG_ENDIAN,
     LittleEndian = ws::ENC_LITTLE_ENDIAN,
-    UTF8 = ws::ENC_UTF_8,
-    UTF16 = ws::ENC_UTF_16,
-    UTF8String = ws::ENC_LITTLE_ENDIAN + ws::ENC_UTF_8,
+    UTF8         = ws::ENC_UTF_8,
+    UTF16        = ws::ENC_UTF_16,
+    UTF8String   = ws::ENC_LITTLE_ENDIAN + ws::ENC_UTF_8,
 }
 
 /// A safe wrapper for `col_add_str`, which copies the provided string to the target column.

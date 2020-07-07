@@ -152,18 +152,18 @@ macro_rules! handle_error {
    };
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::error::Error;
-    use std::io; // io::Error is used as a placeholder for an unknown error
     use std::fmt;
+    use std::io; // io::Error is used as a placeholder for an unknown error
 
     #[derive(Debug)]
-    struct SuperError{
-        x: i64
+    struct SuperError {
+        x: i64,
     }
-    impl Error for SuperError {}
+    impl Error for SuperError {
+    }
     impl fmt::Display for SuperError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             write!(f, "{:?}", self)
@@ -172,7 +172,8 @@ mod tests {
 
     #[derive(Debug)]
     struct SuperSideKickError;
-    impl Error for SuperSideKickError {}
+    impl Error for SuperSideKickError {
+    }
     impl fmt::Display for SuperSideKickError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             write!(f, "{:?}", self)
@@ -180,7 +181,7 @@ mod tests {
     }
 
     fn give_me_a_super_result() -> Result<(), Box<dyn Error>> {
-        Err(Box::new(SuperError{x: 3}))
+        Err(Box::new(SuperError { x: 3 }))
     }
 
     fn give_me_a_sidekick_result() -> Result<(), Box<dyn Error>> {
@@ -196,7 +197,7 @@ mod tests {
     }
 
     fn give_me_a_custom_result_i32_super_err() -> Result<i32, Box<dyn Error>> {
-        Err(Box::new(SuperError{x: 3}))
+        Err(Box::new(SuperError { x: 3 }))
     }
 
     #[test]
@@ -271,7 +272,7 @@ mod tests {
                 sidekick_arm_executed = true;
             }
         );
-        assert!(res.unwrap_err().downcast::<io::Error>().is_ok());  // pass through original error unmodified
+        assert!(res.unwrap_err().downcast::<io::Error>().is_ok()); // pass through original error unmodified
         assert_eq!(super_x, None);
         assert_eq!(sidekick_arm_executed, false);
     }
@@ -330,5 +331,4 @@ mod tests {
 
         assert_eq!(res.unwrap(), 10);
     }
-
 }

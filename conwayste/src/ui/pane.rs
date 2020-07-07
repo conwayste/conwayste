@@ -41,14 +41,14 @@ use context::{EmitEvent, Event, EventType, Handled, UIContext};
 use crate::constants::colors::*;
 
 pub struct Pane {
-    id: Option<NodeId>,
-    z_index: usize,
-    pub dimensions: Rect,
-    pub floating: bool, // can the window be dragged around?
+    id:               Option<NodeId>,
+    z_index:          usize,
+    pub dimensions:   Rect,
+    pub floating:     bool, // can the window be dragged around?
     pub previous_pos: Option<Point2<f32>>,
-    pub border: f32,
-    pub bg_color: Option<Color>,
-    pub focus_cycle: FocusCycle,
+    pub border:       f32,
+    pub bg_color:     Option<Color>,
+    pub focus_cycle:  FocusCycle,
     pub handler_data: context::HandlerData, // required for impl_emit_event!
 
                                             // might need something to track mouse state to see if
@@ -89,7 +89,6 @@ impl Pane {
                                uictx: &mut context::UIContext,
                                evt: &context::Event|
                  -> Result<Handled, Box<dyn Error>> {
-
                     for child_id in uictx.widget_view.children_ids() {
                         let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK because 1) valid ID, 2) in view
 
@@ -99,14 +98,17 @@ impl Pane {
                                 emittable_ref.emit(evt, &mut subuictx)?;
                                 let pane_events = subuictx.collect_child_events();
                                 if pane_events.len() != 0 {
-                                    warn!("expected no mouse child events to be collected from Pane; got {:?}",
-                                        pane_events);
+                                    warn!(
+                                        "expected no mouse child events to be collected from Pane; got {:?}",
+                                        pane_events
+                                    );
                                 }
                                 return Ok(Handled::Handled);
                             } else {
                                 warn!(
                                     "Widget at point of click ({:?}) does not implement EmitEvent: {:?}",
-                                    evt.point, widget_ref.id(),
+                                    evt.point,
+                                    widget_ref.id(),
                                 );
                             }
                         }
@@ -116,33 +118,30 @@ impl Pane {
                 pane.on(event_type, Box::new(handler)).unwrap(); // unwrap OK because we aren't calling from within a handler
             } else if event_type.is_key_event() {
                 // unwrap OK because we aren't calling from within a handler
-                pane.on(event_type, Box::new(Pane::key_press_handler))
-                    .unwrap();
+                pane.on(event_type, Box::new(Pane::key_press_handler)).unwrap();
             } else {
                 // nothing to do if this is not a key or a mouse event
             }
 
             pane.on(EventType::Update, Box::new(Pane::broadcast_handler)).unwrap(); // unwrap OK because not called w/in handler
-            pane.on(EventType::MouseMove, Box::new(Pane::broadcast_handler)).unwrap(); // unwrap OK because not called w/in handler
+            pane.on(EventType::MouseMove, Box::new(Pane::broadcast_handler))
+                .unwrap(); // unwrap OK because not called w/in handler
         }
 
         // Set handler for focusing first widget in focus cycle when focus is gained
-        let gain_focus_handler = move |obj: &mut dyn EmitEvent,
-                                       uictx: &mut UIContext,
-                                       _evt: &Event|
-              -> Result<Handled, Box<dyn Error>> {
-            let pane = obj.downcast_mut::<Pane>().unwrap(); // unwrap OK
-            if pane.focus_cycle.focused_widget_id().is_none() {
-                pane.focus_cycle.focus_next();
-            }
-            if let Some(focused_widget_id) = pane.focus_cycle.focused_widget_id() {
-                let focused_widget_id = focused_widget_id.clone();
-                pane.emit_focus_change(EventType::GainFocus, uictx, &focused_widget_id)?;
-            }
-            Ok(Handled::NotHandled)
-        };
-        pane.on(EventType::GainFocus, Box::new(gain_focus_handler))
-            .unwrap(); // unwrap OK
+        let gain_focus_handler =
+            move |obj: &mut dyn EmitEvent, uictx: &mut UIContext, _evt: &Event| -> Result<Handled, Box<dyn Error>> {
+                let pane = obj.downcast_mut::<Pane>().unwrap(); // unwrap OK
+                if pane.focus_cycle.focused_widget_id().is_none() {
+                    pane.focus_cycle.focus_next();
+                }
+                if let Some(focused_widget_id) = pane.focus_cycle.focused_widget_id() {
+                    let focused_widget_id = focused_widget_id.clone();
+                    pane.emit_focus_change(EventType::GainFocus, uictx, &focused_widget_id)?;
+                }
+                Ok(Handled::NotHandled)
+            };
+        pane.on(EventType::GainFocus, Box::new(gain_focus_handler)).unwrap(); // unwrap OK
 
         pane
     }
@@ -161,8 +160,10 @@ impl Pane {
                 emittable.emit(event, &mut subuictx)?;
                 let pane_events = subuictx.collect_child_events();
                 if pane_events.len() != 0 {
-                    warn!("[Pane] expected no {:?} child events to be collected from child widget; got {:?}",
-                        event.what, pane_events);
+                    warn!(
+                        "[Pane] expected no {:?} child events to be collected from child widget; got {:?}",
+                        event.what, pane_events
+                    );
                 }
             }
         }
@@ -174,9 +175,9 @@ impl Pane {
         uictx: &mut UIContext,
         event: &Event,
     ) -> Result<Handled, Box<dyn Error>> {
-        let key = event.key.ok_or_else(|| -> Box<dyn Error> {
-            format!("pane event of type {:?} has no key", event.what).into()
-        })?;
+        let key = event
+            .key
+            .ok_or_else(|| -> Box<dyn Error> { format!("pane event of type {:?} has no key", event.what).into() })?;
 
         let pane = obj.downcast_mut::<Pane>().unwrap();
 
@@ -258,7 +259,9 @@ impl Pane {
                     let newly_focused_id = newly_focused_id.clone();
                     self.emit_focus_change(EventType::GainFocus, uictx, &newly_focused_id)?;
                     let more_child_events = uictx.collect_child_events();
-                    if more_child_events.len() > 0 && more_child_events[0].what == context::EventType::ChildReleasedFocus {
+                    if more_child_events.len() > 0
+                        && more_child_events[0].what == context::EventType::ChildReleasedFocus
+                    {
                         error!("[Pane] handle_events_from_child: refusing to recursively handle gain focus / child release focus event loop");
                     }
                 }
@@ -396,10 +399,7 @@ impl Widget for Pane {
     fn set_size(&mut self, w: f32, h: f32) -> UIResult<()> {
         if w == 0.0 || h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions {
-                reason: format!(
-                    "Cannot set the width or height of Pane {:?} to zero",
-                    self.id()
-                ),
+                reason: format!("Cannot set the width or height of Pane {:?} to zero", self.id()),
             }));
         }
 
@@ -464,18 +464,12 @@ impl Widget for Pane {
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         if let Some(bg_color) = self.bg_color {
-            let mesh =
-                graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), self.dimensions, bg_color)?;
+            let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), self.dimensions, bg_color)?;
             graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
 
         if self.border > 0.0 {
-            let mesh = graphics::Mesh::new_rectangle(
-                ctx,
-                DrawMode::stroke(1.0),
-                self.dimensions,
-                *PANE_BORDER_COLOR,
-            )?;
+            let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(1.0), self.dimensions, *PANE_BORDER_COLOR)?;
             graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
 

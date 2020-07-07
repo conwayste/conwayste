@@ -26,15 +26,25 @@ impl PartialEq for ConwayError {
     fn eq(&self, other: &ConwayError) -> bool {
         use ConwayError::*;
         match *self {
-            InvalidData{reason: ref self_reason} => {
-                if let InvalidData{reason: ref other_reason} = *other {
+            InvalidData {
+                reason: ref self_reason,
+            } => {
+                if let InvalidData {
+                    reason: ref other_reason,
+                } = *other
+                {
                     self_reason == other_reason
                 } else {
                     false
                 }
             }
-            AccessDenied{reason: ref self_reason} => {
-                if let AccessDenied{reason: ref other_reason} = *other {
+            AccessDenied {
+                reason: ref self_reason,
+            } => {
+                if let AccessDenied {
+                    reason: ref other_reason,
+                } = *other
+                {
                     self_reason == other_reason
                 } else {
                     false
