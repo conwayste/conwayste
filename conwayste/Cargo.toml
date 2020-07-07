@@ -11,7 +11,7 @@ chrono       = "0.4.11"
 color-backtrace = "0.1"
 conway       = { path = "../libconway" }
 custom_error = "1.7"
-downcast-rs  = "1.1.1"
+downcast-rs  = "1.2.0"
 enum-iterator = "0.5"
 env_logger   = "0.7.1"
 futures      = "0.1.17"
