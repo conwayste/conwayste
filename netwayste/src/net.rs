@@ -24,13 +24,9 @@ use std::net::{self, SocketAddr};
 use std::collections::VecDeque;
 
 use bincode::{serialize, deserialize, Infinite};
-use bytes::{BytesMut};
-use futures::channel::mpsc;
-use futures::prelude::*;
+use bytes::BytesMut;
 use semver::{Version, SemVerError};
 use serde::{Serialize, Deserialize};
-use tokio::io::Result as tokResult;
-use tokio::prelude::*;
 use tokio::net::UdpSocket;
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -409,7 +405,7 @@ impl Encoder<Packet> for NetwaystePacketCodec {
 
 //////////////// Network interface ////////////////
 #[allow(dead_code)]
-pub async fn bind(opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket, io::Error> {
+pub async fn bind(opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket, NetError> {
     let host = if let Some(host) = opt_host { host } else { DEFAULT_HOST };
     let port = if let Some(port) = opt_port { port } else { DEFAULT_PORT };
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
@@ -916,17 +912,17 @@ impl NetworkManager {
 
     #[allow(unused)]
     pub fn retransmit_expired_tx_packets(&mut self,
-         udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>,
          addr: SocketAddr,
          confirmed_ack: Option<u64>,
-         indices: &Vec<usize>) {
+         indices: &Vec<usize>) -> Vec<(Packet, SocketAddr)> {
 
         let mut error_occurred = false;
         let mut failed_index = 0;
 
+        let mut expired_packets = vec![];
+
         // Retransmit all packets after that are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
         for &index in indices.iter() {
-
             let mut send_counter = 1;
 
             if let Some(ts) = self.tx_packets.attempts.get_mut(index) {
@@ -941,20 +937,19 @@ impl NetworkManager {
                 }
             }
 
+            // this is garbage please redesign me kthxbai
             if let Some(pkt) = self.tx_packets.queue.get_mut(index) {
                 // `response_sequence` may have advanced since this was last queued
                 pkt.set_response_sequence(confirmed_ack);
                 trace!("[Retransmitting (Times={})] {:?}", send_counter, pkt);
                 for _ in 0..send_counter {
-                    netwayste_send!(udp_tx, (addr, (*pkt).clone()),
-                                ("Could not retransmit packet to server: {:?}", pkt));
+                    expired_packets.push( ((*pkt).clone(), addr) );
                 }
             } else {
                 error_occurred = true;
                 failed_index = index;
                 break;
             }
-
         }
 
         if error_occurred {
@@ -963,6 +958,8 @@ impl NetworkManager {
                             or perhaps `None`?:\n\t {:?}\n{:?}\n{:?}",
                     failed_index, indices, self.tx_packets.queue.len(), self.tx_packets.attempts.len());
         }
+
+        return expired_packets;
     }
 
     #[allow(unused)]
