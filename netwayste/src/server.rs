@@ -21,8 +21,10 @@
 
 #[macro_use]
 extern crate log;
+
 #[macro_use]
 mod net;
+mod utils;
 
 #[cfg(test)]
 #[macro_use]
@@ -33,6 +35,7 @@ use netwayste::net::{
     NetworkManager, NetworkQueue, Packet, RequestAction, ResponseCode, RoomList, UniUpdateType,
     DEFAULT_HOST, DEFAULT_PORT, VERSION,
 };
+use netwayste::utils::{PingPong, LatencyFilter};
 
 use std::collections::{HashMap, VecDeque};
 use std::error::Error;
@@ -81,20 +84,21 @@ impl fmt::Display for RoomID {
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Player {
-    pub player_id: PlayerID,
-    pub cookie: String,
-    pub addr: SocketAddr,
-    pub name: String,
-    pub request_ack: Option<u64>, // The next number we expect is request_ack + 1
-    pub next_resp_seq: u64, // This is the sequence number for the Response packet the Server sends to the Client
-    pub game_info: Option<PlayerInGameInfo>, // none means in lobby
-    pub last_received: time::Instant, // Time of last message received from player
+    pub player_id:      PlayerID,
+    pub cookie:         String,
+    pub addr:           SocketAddr,
+    pub name:           String,
+    pub request_ack:    Option<u64>, // The next number we expect is request_ack + 1
+    pub next_resp_seq:  u64, // This is the sequence number for the Response packet the Server sends to the Client
+    pub game_info:      Option<PlayerInGameInfo>, // none means in lobby
+    pub last_received:  time::Instant, // Time of last message received from player
+    pub latency_filter: LatencyFilter, // Latency information
 }
 
 // info for a player as it relates to a game/room
 #[derive(PartialEq, Debug, Clone)]
 pub struct PlayerInGameInfo {
-    room_id: RoomID,
+    room_id:          RoomID,
     chat_msg_seq_num: Option<u64>, // Server has confirmed the client has received messages up to this value.
                                    //XXX PlayerGenState ID within Universe
                                    //XXX update statuses
@@ -152,8 +156,8 @@ impl Player {
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct ServerChatMessage {
-    pub seq_num: u64, // sequence number
-    pub player_id: PlayerID,
+    pub seq_num:     u64, // sequence number
+    pub player_id:   PlayerID,
     pub player_name: String,
     pub message: String,
     pub timestamp: Instant,
@@ -161,21 +165,21 @@ pub struct ServerChatMessage {
 
 #[derive(Clone, PartialEq)]
 pub struct Room {
-    pub room_id: RoomID,
-    pub name: String,
-    pub player_ids: Vec<PlayerID>,
-    pub game_running: bool,
-    pub universe: u64, // Temp until we integrate
+    pub room_id:        RoomID,
+    pub name:           String,
+    pub player_ids:     Vec<PlayerID>,
+    pub game_running:   bool,
+    pub universe:       u64, // Temp until we integrate
     pub latest_seq_num: u64,
-    pub messages: VecDeque<ServerChatMessage>, // Front == Oldest, Back == Newest
+    pub messages:       VecDeque<ServerChatMessage>, // Front == Oldest, Back == Newest
 }
 
 pub struct ServerState {
-    pub tick: usize,
-    pub players: HashMap<PlayerID, Player>,
-    pub player_map: HashMap<String, PlayerID>, // map cookie to player ID
-    pub rooms: HashMap<RoomID, Room>,
-    pub room_map: HashMap<String, RoomID>, // map room name to room ID
+    pub tick:        usize,
+    pub players:     HashMap<PlayerID, Player>,
+    pub player_map:  HashMap<String, PlayerID>, // map cookie to player ID
+    pub rooms:       HashMap<RoomID, Room>,
+    pub room_map:    HashMap<String, RoomID>, // map room name to room ID
     pub network_map: HashMap<PlayerID, NetworkManager>, // map Player ID to Player's network data
 }
 
@@ -222,11 +226,11 @@ pub fn validate_client_version(client_version: String) -> bool {
 impl ServerChatMessage {
     pub fn new(id: PlayerID, name: String, msg: String, seq_num: u64) -> Self {
         ServerChatMessage {
-            player_id: id,
+            player_id:   id,
             player_name: name,
-            message: msg,
-            seq_num: seq_num,
-            timestamp: time::Instant::now(),
+            message:     msg,
+            seq_num:     seq_num,
+            timestamp:   time::Instant::now(),
         }
     }
 }
@@ -236,12 +240,12 @@ impl Room {
     /// the players (via `player_ids`) immediately to it.
     pub fn new(name: String, player_ids: Vec<PlayerID>) -> Self {
         Room {
-            room_id: RoomID(new_uuid()),
-            name: name,
-            player_ids: player_ids,
-            game_running: false,
-            universe: 0,
-            messages: VecDeque::<ServerChatMessage>::with_capacity(MAX_NUM_CHAT_MESSAGES),
+            room_id:        RoomID(new_uuid()),
+            name:           name,
+            player_ids:     player_ids,
+            game_running:   false,
+            universe:       0,
+            messages:       VecDeque::<ServerChatMessage>::with_capacity(MAX_NUM_CHAT_MESSAGES),
             latest_seq_num: 0,
         }
     }
@@ -301,8 +305,7 @@ impl Room {
         // Skip over these messages since we've already acked them
         let amount_to_consume: u64 = if chat_msg_seq_num >= oldest_msg.seq_num {
             ((chat_msg_seq_num - oldest_msg.seq_num) + 1) % (MAX_NUM_CHAT_MESSAGES as u64)
-        } else if chat_msg_seq_num < oldest_msg.seq_num && oldest_msg.seq_num != newest_msg.seq_num
-        {
+        } else if chat_msg_seq_num < oldest_msg.seq_num && oldest_msg.seq_num != newest_msg.seq_num {
             // Sequence number has wrapped
             (<u64>::max_value() - oldest_msg.seq_num) + chat_msg_seq_num + 1
         } else {
@@ -429,9 +432,9 @@ impl ServerState {
         let mut rooms = vec![];
         self.rooms.values().for_each(|gs| {
             let room_details = RoomList {
-                room_name: gs.name.clone(),
+                room_name:    gs.name.clone(),
                 player_count: gs.player_ids.len() as u8,
-                in_progress: gs.game_running,
+                in_progress:  gs.game_running,
             };
             rooms.push(room_details);
         });
@@ -495,7 +498,7 @@ impl ServerState {
             if gs.name == room_name {
                 gs.player_ids.push(player_id);
                 player.game_info = Some(PlayerInGameInfo {
-                    room_id: gs.room_id.clone(),
+                    room_id:          gs.room_id.clone(),
                     chat_msg_seq_num: None,
                 });
                 return ResponseCode::JoinedRoom {
@@ -562,9 +565,7 @@ impl ServerState {
             RequestAction::Disconnect => {
                 return self.handle_disconnect(player_id);
             }
-            RequestAction::KeepAlive {
-                latest_response_ack: _,
-            } => {
+            RequestAction::KeepAlive { latest_response_ack: _ } => {
                 return ResponseCode::OK;
             }
             RequestAction::ListPlayers => {
@@ -592,7 +593,7 @@ impl ServerState {
             }
             RequestAction::None => {
                 return ResponseCode::BadRequest {
-                    error_msg: "Invalid request".to_owned(),
+                    error_msg: format!("Invalid request: {:?}", action),
                 };
             }
         }
@@ -654,7 +655,7 @@ impl ServerState {
         }
     }
 
-    /// Processes a player's request action for all non Connect requests. If necessary, a response is buffered
+    /// Processes a player's request action for all non-logged in requests. If necessary, a response is buffered
     /// for later transmission
     pub fn process_player_request_action(
         &mut self,
@@ -739,9 +740,7 @@ impl ServerState {
                     assert!(sequence == latest_processed_seq_num);
                     let _response_packet = self.process_player_request_action(player_id, action);
                 }
-                _ => {
-                    panic!("Development bug: Non-response packet found in client buffered RX queue")
-                }
+                _ => panic!("Development bug: Non-response packet found in client buffered RX queue"),
             }
         }
     }
@@ -882,17 +881,10 @@ impl ServerState {
     ///  3. Client should notified if version requires updating
     ///  4. Ignore if already received or processed
     /// Always returns either Ok(Some(Packet::Response{...})), Ok(None), or error.
-    pub fn decode_packet(
-        &mut self,
-        addr: SocketAddr,
-        packet: Packet,
-    ) -> Result<Option<Packet>, Box<dyn Error>> {
+    pub fn decode_packet(&mut self, addr: SocketAddr, packet: Packet) -> Result<Option<Packet>, Box<dyn Error>> {
         match packet.clone() {
-            _pkt @ Packet::Response { .. } | _pkt @ Packet::Update { .. } => {
-                return Err(Box::new(io::Error::new(
-                    ErrorKind::InvalidData,
-                    "invalid packet type",
-                )));
+            Packet::Response { .. } | Packet::Update { .. } | Packet::Status { .. } => {
+                return Err(Box::new(io::Error::new(ErrorKind::InvalidData, "invalid packet type")));
             }
             Packet::Request {
                 sequence,
@@ -902,9 +894,7 @@ impl ServerState {
             } => {
                 match action {
                     RequestAction::Connect { .. } => (),
-                    RequestAction::KeepAlive {
-                        latest_response_ack: _,
-                    } => (),
+                    RequestAction::KeepAlive { latest_response_ack: _ } => (),
                     _ => {
                         if cookie == None {
                             return Err(Box::new(io::Error::new(
@@ -923,11 +913,7 @@ impl ServerState {
                     }
                 }
                 // handle connect (create user, and save cookie)
-                if let RequestAction::Connect {
-                    name,
-                    client_version,
-                } = action
-                {
+                if let RequestAction::Connect { name, client_version } = action {
                     if validate_client_version(client_version) {
                         let response = self.handle_new_connection(name, addr);
                         return Ok(Some(response));
@@ -961,9 +947,7 @@ impl ServerState {
                     let mut player: &mut Player = self.get_player_mut(player_id);
                     player.last_received = time::Instant::now(); // reset time of last received packet from player
                     match action.clone() {
-                        RequestAction::KeepAlive {
-                            latest_response_ack,
-                        } => {
+                        RequestAction::KeepAlive { latest_response_ack } => {
                             // If the client does not send new requests, the Server will never get a reply for
                             // the set of responses it may have sent. This will result in the transmission queue contents
                             // flooding the Client on retranmission.
@@ -1008,6 +992,7 @@ impl ServerState {
                 last_chat_seq,
                 last_game_update_seq: _,
                 last_gen: _,
+                pong: _,
             } => {
                 let opt_player_id = self.get_player_id_by_cookie(cookie.as_str());
 
@@ -1033,8 +1018,22 @@ impl ServerState {
                 if player.game_info.is_some() {
                     player.update_chat_seq_num(last_chat_seq);
                 }
+
+                player.latency_filter.update();
+
                 Ok(None)
             }
+            Packet::GetStatus { ping } => Ok(Some(self.get_status(ping.nonce))),
+        }
+    }
+
+    fn get_status(&self, nonce: u64) -> Packet {
+        Packet::Status {
+            pong:           PingPong { nonce },
+            player_count:   self.player_map.len() as u64,
+            room_count:     self.room_map.len() as u64,
+            server_name:    "Leto II".to_owned(),
+            server_version: VERSION.to_owned(),
         }
     }
 
@@ -1049,9 +1048,7 @@ impl ServerState {
 
         match action {
             // Filtered away at the decoding packet layer
-            RequestAction::KeepAlive {
-                latest_response_ack: _,
-            } => unreachable!(),
+            RequestAction::KeepAlive { latest_response_ack: _ } => unreachable!(),
             // Prepare a response for all other requests
             _ => {
                 let opt_player: Option<&mut Player> = self.players.get_mut(&player_id);
@@ -1076,7 +1073,7 @@ impl ServerState {
         }
 
         Some(Packet::Response {
-            sequence: sequence,
+            sequence:    sequence,
             request_ack: request_ack,
             code: response_code,
         })
@@ -1089,9 +1086,9 @@ impl ServerState {
 
             // Sequence is assumed to start at 0 for all new connections
             let response = Packet::Response {
-                sequence: 0,
+                sequence:    0,
                 request_ack: Some(0), // Should start at seq_num 0 unless client's network state was not properly reset
-                code: ResponseCode::LoggedIn {
+                code:        ResponseCode::LoggedIn {
                     cookie,
                     server_version: VERSION.to_owned(),
                 },
@@ -1100,9 +1097,9 @@ impl ServerState {
         } else {
             // not a unique name
             let response = Packet::Response {
-                sequence: 0,
+                sequence:    0,
                 request_ack: None,
-                code: ResponseCode::Unauthorized {
+                code:        ResponseCode::Unauthorized {
                     error_msg: "not a unique name".to_owned(),
                 },
             };
@@ -1150,6 +1147,7 @@ impl ServerState {
                     chats: unsent_messages,
                     game_updates: vec![],
                     universe_update: UniUpdateType::NoChange,
+                    ping:            PingPong::ping(),
                 };
 
                 if messages_available || game_updates_available || universe_updates_available {
@@ -1212,9 +1210,7 @@ impl ServerState {
 
         let unsent_messages: Vec<BroadcastChatMessage> = raw_unsent_messages
             .iter()
-            .map(|msg| {
-                BroadcastChatMessage::new(msg.seq_num, msg.player_name.clone(), msg.message.clone())
-            })
+            .map(|msg| BroadcastChatMessage::new(msg.seq_num, msg.player_name.clone(), msg.message.clone()))
             .collect();
 
         return Some(unsent_messages);
@@ -1225,8 +1221,7 @@ impl ServerState {
             for room in self.rooms.values_mut() {
                 if room.has_players() && !room.messages.is_empty() {
                     room.messages.retain(|ref m| {
-                        current_timestamp - m.timestamp
-                            < Duration::from_secs(MAX_AGE_CHAT_MESSAGES as u64)
+                        current_timestamp - m.timestamp < Duration::from_secs(MAX_AGE_CHAT_MESSAGES as u64)
                     });
                 }
             }
@@ -1237,14 +1232,15 @@ impl ServerState {
         let cookie = new_cookie();
         let player_id = PlayerID(new_uuid());
         let player = Player {
-            player_id: player_id.clone(),
-            cookie: cookie.clone(),
-            addr: addr,
-            name: name,
-            request_ack: None,
-            next_resp_seq: 0,
-            game_info: None,
-            last_received: Instant::now(),
+            player_id:      player_id.clone(),
+            cookie:         cookie.clone(),
+            addr:           addr,
+            name:           name,
+            request_ack:    None,
+            next_resp_seq:  0,
+            game_info:      None,
+            last_received:  Instant::now(),
+            latency_filter: LatencyFilter::new(),
         };
 
         // save player into players hash map, and save player ID into hash map using cookie
@@ -1278,11 +1274,11 @@ impl ServerState {
     /// room -- "general".
     pub fn new() -> Self {
         let mut server_state = ServerState {
-            tick: 0,
-            players: HashMap::<PlayerID, Player>::new(),
-            rooms: HashMap::<RoomID, Room>::new(),
-            player_map: HashMap::<String, PlayerID>::new(),
-            room_map: HashMap::<String, RoomID>::new(),
+            tick:        0,
+            players:     HashMap::<PlayerID, Player>::new(),
+            rooms:       HashMap::<RoomID, Room>::new(),
+            player_map:  HashMap::<String, PlayerID>::new(),
+            room_map:    HashMap::<String, RoomID>::new(),
             network_map: HashMap::<PlayerID, NetworkManager>::new(),
         };
         server_state.new_room("general".to_owned());
@@ -1386,10 +1382,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             Arg::with_name("port")
                 .short("p")
                 .long("port")
-                .help(&format!(
-                    "port to listen for connections on [default {}]",
-                    DEFAULT_PORT
-                ))
+                .help(&format!("port to listen for connections on [default {}]", DEFAULT_PORT))
                 .takes_value(true),
         )
         .get_matches();
@@ -1534,10 +1527,11 @@ mod netwayste_server_tests {
             .decode_packet(
                 fake_socket_addr(),
                 Packet::UpdateReply {
-                    cookie: player_cookie.clone(),
-                    last_chat_seq: Some(1),
+                    cookie:               player_cookie.clone(),
+                    last_chat_seq:        Some(1),
                     last_game_update_seq: None,
-                    last_gen: None,
+                    last_gen:             None,
+                    pong:                 PingPong::pong(0),
                 },
             )
             .unwrap();
@@ -1552,10 +1546,11 @@ mod netwayste_server_tests {
             .decode_packet(
                 fake_socket_addr(),
                 Packet::UpdateReply {
-                    cookie: player_cookie.clone(),
-                    last_chat_seq: Some(0),
+                    cookie:               player_cookie.clone(),
+                    last_chat_seq:        Some(0),
                     last_game_update_seq: None,
-                    last_gen: None,
+                    last_gen:             None,
+                    pong:                 PingPong::pong(0),
                 },
             )
             .unwrap();
@@ -1570,10 +1565,11 @@ mod netwayste_server_tests {
             .decode_packet(
                 fake_socket_addr(),
                 Packet::UpdateReply {
-                    cookie: player_cookie,
-                    last_chat_seq: None,
+                    cookie:               player_cookie,
+                    last_chat_seq:        None,
                     last_game_update_seq: None,
-                    last_gen: None,
+                    last_gen:             None,
+                    pong:                 PingPong::pong(0),
                 },
             )
             .unwrap();
@@ -1854,7 +1850,7 @@ mod netwayste_server_tests {
         assert_eq!(
             response,
             ResponseCode::BadRequest {
-                error_msg: format!("Player {} has not joined a game.", player_id)
+                error_msg: format!("Player {} has not joined a game.", player_id),
             }
         );
     }
@@ -1932,7 +1928,7 @@ mod netwayste_server_tests {
         assert_eq!(
             server.create_new_room(None, room_name),
             ResponseCode::BadRequest {
-                error_msg: "room name too long; max 16 characters".to_owned()
+                error_msg: "room name too long; max 16 characters".to_owned(),
             }
         );
     }
@@ -1941,14 +1937,11 @@ mod netwayste_server_tests {
     fn create_new_room_name_taken() {
         let mut server = ServerState::new();
         let room_name = "some room".to_owned();
-        assert_eq!(
-            server.create_new_room(None, room_name.clone()),
-            ResponseCode::OK
-        );
+        assert_eq!(server.create_new_room(None, room_name.clone()), ResponseCode::OK);
         assert_eq!(
             server.create_new_room(None, room_name),
             ResponseCode::BadRequest {
-                error_msg: "room name already in use".to_owned()
+                error_msg: "room name already in use".to_owned(),
             }
         );
     }
@@ -1974,7 +1967,7 @@ mod netwayste_server_tests {
         assert_eq!(
             server.create_new_room(Some(player_id), other_room_name),
             ResponseCode::BadRequest {
-                error_msg: "cannot create room because in-game".to_owned()
+                error_msg: "cannot create room because in-game".to_owned(),
             }
         );
     }
@@ -1997,7 +1990,7 @@ mod netwayste_server_tests {
         assert_eq!(
             server.join_room(player_id, room_name),
             ResponseCode::JoinedRoom {
-                room_name: "some room".to_owned()
+                room_name: "some room".to_owned(),
             }
         );
     }
@@ -2020,13 +2013,13 @@ mod netwayste_server_tests {
         assert_eq!(
             server.join_room(player_id, room_name),
             ResponseCode::JoinedRoom {
-                room_name: "some room".to_owned()
+                room_name: "some room".to_owned(),
             }
         );
         assert_eq!(
             server.join_room(player_id, room_name),
             ResponseCode::BadRequest {
-                error_msg: "cannot join game because in-game".to_owned()
+                error_msg: "cannot join game because in-game".to_owned(),
             }
         );
     }
@@ -2044,7 +2037,7 @@ mod netwayste_server_tests {
         assert_eq!(
             server.join_room(player_id, "some room"),
             ResponseCode::BadRequest {
-                error_msg: "no room named \"some room\"".to_owned()
+                error_msg: "no room named \"some room\"".to_owned(),
             }
         );
     }
@@ -2086,7 +2079,7 @@ mod netwayste_server_tests {
         assert_eq!(
             server.leave_room(player_id),
             ResponseCode::BadRequest {
-                error_msg: "cannot leave game because in lobby".to_owned()
+                error_msg: "cannot leave game because in lobby".to_owned(),
             }
         );
     }
@@ -2096,15 +2089,12 @@ mod netwayste_server_tests {
         let mut server = ServerState::new();
         let room_name = "some room".to_owned();
         let rand_player_id = PlayerID(0x2457); //RUST
-        assert_eq!(
-            server.create_new_room(None, room_name.clone()),
-            ResponseCode::OK
-        );
+        assert_eq!(server.create_new_room(None, room_name.clone()), ResponseCode::OK);
 
         assert_eq!(
             server.leave_room(rand_player_id),
             ResponseCode::BadRequest {
-                error_msg: "cannot leave game because in lobby".to_owned()
+                error_msg: "cannot leave game because in lobby".to_owned(),
             }
         );
     }
@@ -2239,8 +2229,7 @@ mod netwayste_server_tests {
         server.handle_chat_message(player_id, "What's not to love?".to_owned());
 
         let current_timestamp = Instant::now();
-        let travel_to_the_past =
-            current_timestamp.checked_sub(Duration::from_secs((MAX_AGE_CHAT_MESSAGES + 1) as u64));
+        let travel_to_the_past = current_timestamp.checked_sub(Duration::from_secs((MAX_AGE_CHAT_MESSAGES + 1) as u64));
         if travel_to_the_past.is_none() {
             warn!("skipping rest of test; cannot travel to the past :(");
             return;
@@ -2295,8 +2284,7 @@ mod netwayste_server_tests {
         server.handle_chat_message(player_id2, "What's not to love?".to_owned());
 
         let current_timestamp = Instant::now();
-        let travel_to_the_past =
-            current_timestamp.checked_sub(Duration::from_secs((MAX_AGE_CHAT_MESSAGES + 1) as u64));
+        let travel_to_the_past = current_timestamp.checked_sub(Duration::from_secs((MAX_AGE_CHAT_MESSAGES + 1) as u64));
         if travel_to_the_past.is_none() {
             warn!("skipping rest of test; cannot travel to the past :(");
             return;
@@ -2400,7 +2388,7 @@ mod netwayste_server_tests {
             ("([A-Z]{1,4} [0-9]{1,2}){3}").prop_map(|a| RequestAction::JoinRoom { room_name: a }),
             ("([A-Z]{1,4} [0-9]{1,2}){3}", "[0-9].[0-9].[0-9]").prop_map(|(a, b)| {
                 RequestAction::Connect {
-                    name: a,
+                    name:           a,
                     client_version: b,
                 }
             })
@@ -2446,14 +2434,14 @@ mod netwayste_server_tests {
         let result = server.process_request_action(
             player_id,
             RequestAction::Connect {
-                name: player_name,
+                name:           player_name,
                 client_version: "0.1.0".to_owned(),
             },
         );
         assert_eq!(
             result,
             ResponseCode::BadRequest {
-                error_msg: "Already connected".to_owned()
+                error_msg: "Already connected".to_owned(),
             }
         );
     }
@@ -2471,7 +2459,7 @@ mod netwayste_server_tests {
         assert_eq!(
             result,
             ResponseCode::BadRequest {
-                error_msg: "Invalid request".to_owned()
+                error_msg: "Invalid request: None".to_owned(),
             }
         );
     }
@@ -2510,10 +2498,7 @@ mod netwayste_server_tests {
 
     #[test]
     fn validate_client_version_client_is_up_to_date() {
-        assert_eq!(
-            validate_client_version(env!("CARGO_PKG_VERSION").to_owned()),
-            true
-        );
+        assert_eq!(validate_client_version(env!("CARGO_PKG_VERSION").to_owned()), true);
     }
 
     #[test]
@@ -2525,13 +2510,7 @@ mod netwayste_server_tests {
     fn validate_client_version_client_is_from_the_future() {
         assert_eq!(
             validate_client_version(
-                format!(
-                    "{}.{}.{}",
-                    <i32>::max_value(),
-                    <i32>::max_value(),
-                    <i32>::max_value()
-                )
-                .to_owned()
+                format!("{}.{}.{}", <i32>::max_value(), <i32>::max_value(), <i32>::max_value()).to_owned()
             ),
             false
         );
@@ -2546,11 +2525,13 @@ mod netwayste_server_tests {
             player.cookie.clone()
         };
 
+        // TODO: Move this into a private helper
         let update_reply_packet = Packet::UpdateReply {
-            cookie: cookie,
-            last_chat_seq: Some(0),
+            cookie:               cookie,
+            last_chat_seq:        Some(0),
             last_game_update_seq: None,
-            last_gen: None,
+            last_gen:             None,
+            pong:                 PingPong::pong(0),
         };
 
         let result = server.decode_packet(fake_socket_addr(), update_reply_packet);
@@ -2570,10 +2551,11 @@ mod netwayste_server_tests {
         let cookie = "CookieMonster".to_owned();
 
         let update_reply_packet = Packet::UpdateReply {
-            cookie: cookie,
-            last_chat_seq: Some(0),
+            cookie:               cookie,
+            last_chat_seq:        Some(0),
             last_game_update_seq: None,
-            last_gen: None,
+            last_gen:             None,
+            pong:                 PingPong::pong(0),
         };
 
         let result = server.decode_packet(fake_socket_addr(), update_reply_packet);
@@ -2630,6 +2612,7 @@ mod netwayste_server_tests {
                 chats,
                 game_updates,
                 universe_update,
+                ping: _,
             } => {
                 assert!(game_updates.is_empty());
                 assert_eq!(universe_update, UniUpdateType::NoChange);
@@ -2691,6 +2674,7 @@ mod netwayste_server_tests {
                 mut chats,
                 game_updates,
                 universe_update,
+                ping: _,
             } => {
                 assert!(game_updates.is_empty());
                 assert_eq!(universe_update, UniUpdateType::NoChange);
@@ -2872,9 +2856,9 @@ mod netwayste_server_tests {
 
         for i in 0..5 {
             let pkt = Packet::Response {
-                sequence: i,
+                sequence:    i,
                 request_ack: None,
-                code: ResponseCode::OK,
+                code:        ResponseCode::OK,
             };
 
             let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
@@ -2926,9 +2910,9 @@ mod netwayste_server_tests {
 
         for i in 0..5 {
             let pkt = Packet::Response {
-                sequence: i,
+                sequence:    i,
                 request_ack: None,
-                code: ResponseCode::OK,
+                code:        ResponseCode::OK,
             };
 
             let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
@@ -2961,18 +2945,17 @@ mod netwayste_server_tests {
         let player_name = "some player".to_owned();
 
         let (player_id, player_cookie): (PlayerID, String) = {
-            let player: &mut Player =
-                server.add_new_player(player_name.clone(), fake_socket_addr());
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
             player.request_ack = Some(1); // Player connected and we've confirmed the first transaction
             (player.player_id, player.cookie.clone())
         };
 
         {
             let pkt = Packet::Request {
-                cookie: Some(player_cookie),
-                sequence: 2,
+                cookie:       Some(player_cookie),
+                sequence:     2,
                 response_ack: None,
-                action: RequestAction::ListPlayers,
+                action:       RequestAction::ListPlayers,
             };
 
             let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
@@ -2995,18 +2978,17 @@ mod netwayste_server_tests {
         let player_name = "some player".to_owned();
 
         let (player_id, player_cookie): (PlayerID, String) = {
-            let player: &mut Player =
-                server.add_new_player(player_name.clone(), fake_socket_addr());
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
             player.request_ack = Some(1); // Player connected and we've confirmed the first transaction
             (player.player_id, player.cookie.clone())
         };
 
         for i in 2..10 {
             let pkt = Packet::Request {
-                cookie: Some(player_cookie.clone()),
-                sequence: i,
+                cookie:       Some(player_cookie.clone()),
+                sequence:     i,
                 response_ack: None,
-                action: RequestAction::ListPlayers,
+                action:       RequestAction::ListPlayers,
             };
 
             let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
@@ -3029,18 +3011,17 @@ mod netwayste_server_tests {
         let player_name = "some player".to_owned();
 
         let (player_id, player_cookie): (PlayerID, String) = {
-            let player: &mut Player =
-                server.add_new_player(player_name.clone(), fake_socket_addr());
+            let player: &mut Player = server.add_new_player(player_name.clone(), fake_socket_addr());
             player.request_ack = Some(1); // Player connected and we've confirmed the first transaction
             (player.player_id, player.cookie.clone())
         };
 
         for i in [2, 3, 4, 6, 8, 9, 10].iter() {
             let pkt = Packet::Request {
-                cookie: Some(player_cookie.clone()),
-                sequence: *i,
+                cookie:       Some(player_cookie.clone()),
+                sequence:     *i,
                 response_ack: None,
-                action: RequestAction::ListPlayers,
+                action:       RequestAction::ListPlayers,
             };
 
             let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();

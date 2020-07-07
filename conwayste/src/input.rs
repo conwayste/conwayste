@@ -16,13 +16,13 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use std::time::{Instant};
 use ggez::event::{KeyCode, KeyMods, MouseButton};
 use ggez::nalgebra::Point2;
+use std::time::Instant;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum ScrollEvent {
-    ScrollUp, // Away from the user
+    ScrollUp,   // Away from the user
     ScrollDown, // Towards the user
 }
 
@@ -35,25 +35,27 @@ pub enum MouseAction {
 }
 
 pub struct MouseInfo {
-    pub mousebutton: MouseButton,
-    pub action: Option<MouseAction>,
-    pub scroll_event: Option<ScrollEvent>,
+    pub mousebutton:    MouseButton,
+    pub action:         Option<MouseAction>,
+    pub scroll_event:   Option<ScrollEvent>,
     pub down_timestamp: Option<Instant>,
-    pub down_position: Point2<f32>,
-    pub position: Point2<f32>,
-    pub debug_print: bool
+    pub down_position:  Point2<f32>,
+    pub prev_position:  Point2<f32>, // Position change since the last update()
+    pub position:       Point2<f32>,
+    pub debug_print:    bool,
 }
 
 impl MouseInfo {
     fn new() -> Self {
         MouseInfo {
-            mousebutton: MouseButton::Other(0),
-            action: None,
-            scroll_event: None,
+            mousebutton:    MouseButton::Other(0),
+            action:         None,
+            scroll_event:   None,
             down_timestamp: None,
-            down_position: Point2::new(0.0, 0.0),
-            position: Point2::new(0.0, 0.0),
-            debug_print: false,
+            down_position:  Point2::new(0.0, 0.0),
+            prev_position:  Point2::new(0.0, 0.0),
+            position:       Point2::new(0.0, 0.0),
+            debug_print:    false,
         }
     }
 
@@ -71,18 +73,18 @@ impl MouseInfo {
 }
 
 pub struct KeyInfo {
-    pub key: Option<KeyCode>,
-    pub repeating: bool,
-    pub modifier: KeyMods,
+    pub key:         Option<KeyCode>,
+    pub repeating:   bool,
+    pub modifier:    KeyMods,
     pub debug_print: bool,
 }
 
 impl KeyInfo {
     fn new() -> Self {
         KeyInfo {
-            key: None,
-            repeating: false,
-            modifier: KeyMods::NONE,
+            key:         None,
+            repeating:   false,
+            modifier:    KeyMods::NONE,
             debug_print: false,
         }
     }
@@ -100,14 +102,16 @@ impl KeyInfo {
 /// InputManager maps input from devices to in-game events.
 pub struct InputManager {
     pub mouse_info: MouseInfo,
-    pub key_info: KeyInfo,
+    pub key_info:   KeyInfo,
+    pub text_input: Vec<char>,
 }
 
 impl InputManager {
     pub fn new() -> InputManager {
         InputManager {
             mouse_info: MouseInfo::new(),
-            key_info: KeyInfo::new(),
+            key_info:   KeyInfo::new(),
+            text_input: vec![],
         }
     }
 }

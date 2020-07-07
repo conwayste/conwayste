@@ -22,14 +22,15 @@ extern crate env_logger;
 extern crate futures;
 #[macro_use]
 extern crate log;
+extern crate clap;
 extern crate rand;
 extern crate semver;
 extern crate serde;
-extern crate clap;
 
 #[macro_use]
 pub mod net;
 //pub mod client; XXX
+pub mod utils;
 
 #[cfg(test)]
 pub mod tests;

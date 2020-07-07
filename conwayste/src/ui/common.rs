@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{self, Font, Rect, Text, TextFragment, DrawParam, Color, Scale};
+use ggez::graphics::{self, Color, DrawParam, Font, Rect, Scale, Text, TextFragment};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -28,29 +28,26 @@ macro_rules! widget_from_id {
         use super::layer::Layering;
 
         impl $type {
-            pub fn widget_from_id<'a, 'b>(layer: &'b mut Layering, id: &'a NodeId) -> UIResult<&'b mut $type>
-            {
+            pub fn widget_from_id<'a, 'b>(layer: &'b mut Layering, id: &'a NodeId) -> UIResult<&'b mut $type> {
                 let widget_result = layer.get_widget_mut(id);
                 match widget_result {
-                    Ok(widget) => {
-                        match widget.downcast_mut::<$type>() {
-                            Some(downcasted_widget) => {
-                                return Ok(downcasted_widget);
-                            }
-                            None => {
-                                return Err(Box::new(UIError::WidgetNotFound {
-                                    reason: format!("{:?} could not be downcasted to type $type", id)
-                                }));
-                            }
+                    Ok(widget) => match widget.downcast_mut::<$type>() {
+                        Some(downcasted_widget) => {
+                            return Ok(downcasted_widget);
                         }
-                    }
+                        None => {
+                            return Err(Box::new(UIError::WidgetNotFound {
+                                reason: format!("{:?} could not be downcasted to type $type", id),
+                            }));
+                        }
+                    },
                     Err(e) => {
                         return Err(e);
                     }
                 }
             }
         }
-    }
+    };
 }
 
 /// A macro to downcast a `dyn Widget` to a concrete type; added for readability.
@@ -120,9 +117,9 @@ pub fn draw_text(
 pub struct FontInfo {
     /// ID of the font.
     #[cfg(not(test))]
-    pub font: Font,
+    pub font:            Font,
     /// Scale at which to draw this font.
-    pub scale: Scale,
+    pub scale:           Scale,
     /// Use the `x` and `y` fields for the width and height of a single character.
     pub char_dimensions: Vector2<f32>,
 
@@ -138,13 +135,11 @@ impl FontInfo {
         #[cfg(not(test))]
         {
             let text = "xxxxxxxxxx"; // 10 arbitrary characters
-            let text_fragment = TextFragment::new(text)
-                .scale(scale)
-                .font(font);
+            let text_fragment = TextFragment::new(text).scale(scale).font(font);
             let graphics_text = Text::new(text_fragment);
             let char_dimensions = Vector2::new(
                 graphics_text.width(ctx) as f32 / text.len() as f32,
-                graphics_text.height(ctx) as f32
+                graphics_text.height(ctx) as f32,
             );
             FontInfo {
                 font,
@@ -178,7 +173,6 @@ impl FontInfo {
 /// will return `Some` rectangle which spans that overlap.
 /// This is a clone of the SDL2 intersection API.
 pub fn intersection(a: Rect, b: Rect) -> Option<Rect> {
-
     fn empty_rect(r: Rect) -> bool {
         r.w <= 0.0 || r.h <= 0.0
     }
@@ -245,7 +239,7 @@ pub fn within_widget(point: &Point2<f32>, bounds: &Rect) -> bool {
 
 /// Include a transparency channel to the color. Intended to be used with the `chromatica` crate.
 pub fn color_with_alpha((r, g, b): (u8, u8, u8), alpha: f32) -> Color {
-    Color::from( (r, g, b, (alpha * 255.0) as u8) )
+    Color::from((r, g, b, (alpha * 255.0) as u8))
 }
 
 #[cfg(test)]
