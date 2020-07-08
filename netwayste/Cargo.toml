@@ -23,7 +23,7 @@ semver               = "0.10.0"
 tokio-dns-unofficial = "0.4"
 regex                = "1"
 clap                 = "2"
-color-backtrace      = "0.1"
+color-backtrace      = "0.4"
 
 [dev-dependencies]
 proptest             = "0.10"
