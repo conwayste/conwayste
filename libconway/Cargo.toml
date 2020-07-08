@@ -9,5 +9,5 @@ edition = "2018"
 [dependencies]
 env_logger = "0.7"
 log        = "0.4"
-rand       = "0.3"
+rand       = "0.7"
 custom_error = "1.7"
