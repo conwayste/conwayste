@@ -71,6 +71,8 @@ use ggez::nalgebra::{Point2, Vector2};
 use ggez::timer;
 use ggez::{Context, ContextBuilder, GameError, GameResult};
 
+use rand::Rng;
+
 use std::collections::BTreeMap;
 use std::env;
 use std::error::Error;
@@ -147,13 +149,12 @@ impl ColorSettings {
     }
 
     fn get_random_color(&self) -> Color {
-        use rand::distributions::{IndependentSample, Range};
-        let range = Range::new(0.0, 1.0);
+
         let mut colors = vec![1.0, 2.0, 3.0];
         let mut rng = rand::thread_rng();
 
         for x in colors.iter_mut() {
-            *x = range.ind_sample(&mut rng);
+            *x = rng.gen_range(0.0, 1.0);
         }
         let mut iter = colors.into_iter();
         Color::new(iter.next().unwrap(), iter.next().unwrap(), iter.next().unwrap(), 1.0)
