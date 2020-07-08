@@ -17,24 +17,23 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-extern crate netwayste;
 extern crate futures;
-extern crate tokio_core;
 extern crate ggez;
+extern crate netwayste;
+extern crate tokio_core;
 
 use futures::sync::mpsc as futures_channel;
 
-use netwayste::net::NetwaysteEvent;
 use netwayste::client::{ClientNetState, CLIENT_VERSION};
+use netwayste::net::NetwaysteEvent;
 
 use std::process;
-use std::thread;
 use std::sync::mpsc as std_channel;
+use std::thread;
 use std_channel::TryRecvError;
 
-
 pub struct ConwaysteNetWorker {
-    sender: futures_channel::UnboundedSender<NetwaysteEvent>,
+    sender:   futures_channel::UnboundedSender<NetwaysteEvent>,
     receiver: std_channel::Receiver<NetwaysteEvent>,
 }
 
@@ -48,8 +47,8 @@ impl ConwaysteNetWorker {
         });
 
         ConwaysteNetWorker {
-            sender: netwayste_request_sender,
-            receiver: netwayste_response_receiver
+            sender:   netwayste_request_sender,
+            receiver: netwayste_response_receiver,
         }
     }
 
@@ -61,8 +60,8 @@ impl ConwaysteNetWorker {
 
     pub fn try_send(&mut self, nw_event: NetwaysteEvent) {
         match self.sender.unbounded_send(nw_event) {
-            Ok(_) => { },
-            Err(e) => error!("Error occurred during send to the netwayste receiver: {:?}", e)
+            Ok(_) => {}
+            Err(e) => error!("Error occurred during send to the netwayste receiver: {:?}", e),
         }
     }
 
@@ -76,7 +75,7 @@ impl ConwaysteNetWorker {
             match self.receiver.try_recv() {
                 Ok(response) => {
                     new_events.push(response);
-                },
+                }
                 Err(TryRecvError::Empty) => {
                     // Nothing to do in the empty case
                     break;
@@ -89,5 +88,4 @@ impl ConwaysteNetWorker {
         }
         new_events
     }
-
 }

@@ -65,7 +65,7 @@ fn parse_stdin(mut input: String) -> UserInput {
         };
 
         UserInput::Command {
-            cmd: command,
+            cmd:  command,
             args: words,
         }
     } else {
@@ -120,7 +120,7 @@ fn build_command_request_action(cmd: String, args: Vec<String>) -> NetwaysteEven
             print_help();
         }
         "status" | "s" => {
-            let ping= PingPong::ping();
+            let ping = PingPong::ping();
             new_event = NetwaysteEvent::GetStatus(ping);
         }
         "connect" | "c" => {
@@ -259,8 +259,8 @@ mod tests {
         assert_eq!(
             cmd,
             UserInput::Command {
-                cmd: "helpusobi".to_owned(),
-                args: vec![]
+                cmd:  "helpusobi".to_owned(),
+                args: vec![],
             }
         );
     }
@@ -271,8 +271,8 @@ mod tests {
         assert_eq!(
             cmd,
             UserInput::Command {
-                cmd: "helpusobi".to_owned(),
-                args: vec!["1".to_owned()]
+                cmd:  "helpusobi".to_owned(),
+                args: vec!["1".to_owned()],
             }
         );
 
@@ -280,8 +280,8 @@ mod tests {
         assert_eq!(
             cmd,
             UserInput::Command {
-                cmd: "helpusobi".to_owned(),
-                args: vec!["1".to_owned(), "you".to_owned()]
+                cmd:  "helpusobi".to_owned(),
+                args: vec!["1".to_owned(), "you".to_owned()],
             }
         );
 
@@ -289,7 +289,7 @@ mod tests {
         assert_eq!(
             cmd,
             UserInput::Command {
-                cmd: "helpusobi".to_owned(),
+                cmd:  "helpusobi".to_owned(),
                 args: vec![
                     "1".to_owned(),
                     "you".to_owned(),
@@ -297,7 +297,7 @@ mod tests {
                     "our".to_owned(),
                     "only".to_owned(),
                     "hope".to_owned()
-                ]
+                ],
             }
         );
     }

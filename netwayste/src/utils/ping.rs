@@ -14,13 +14,13 @@
  * You should have received a copy of the GNU General Public License along with
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#![allow(dead_code)]    // Because this file is pub for server.rs. TODO: Refactor server into crate
+#![allow(dead_code)] // Because this file is pub for server.rs. TODO: Refactor server into crate
 
 use std::collections::VecDeque;
 use std::time::Instant;
 
-use serde::{Deserialize, Serialize};
 use rand::random;
+use serde::{Deserialize, Serialize};
 
 /// This indicates the number of samples needed by the latency filter to calculate a statistically
 /// meaningful average.
@@ -28,41 +28,37 @@ const LATENCY_FILTER_DEPTH: usize = 12;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct PingPong {
-    pub nonce: u64
+    pub nonce: u64,
 }
 
 impl PingPong {
     pub fn ping() -> PingPong {
-        PingPong {
-            nonce: random::<u64>()
-        }
+        PingPong { nonce: random::<u64>() }
     }
 
     pub fn pong(nonce: u64) -> PingPong {
-        PingPong {
-            nonce
-        }
+        PingPong { nonce }
     }
 }
 
 /// A moving-average filter used to level out the latencies calculated from network request/response times.
-#[derive(PartialEq,Eq,Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct LatencyFilter {
     pub average_latency_ms: Option<u64>,
-    running_sum: u64,
-    history: VecDeque<u64>,
-    start_timestamp: Instant,
-    in_progress: bool,
+    running_sum:            u64,
+    history:                VecDeque<u64>,
+    start_timestamp:        Instant,
+    in_progress:            bool,
 }
 
 impl LatencyFilter {
     pub fn new() -> LatencyFilter {
         LatencyFilter {
             average_latency_ms: None,
-            running_sum: 0,
-            history: VecDeque::with_capacity(LATENCY_FILTER_DEPTH),
-            start_timestamp: Instant::now(),
-            in_progress: false,
+            running_sum:        0,
+            history:            VecDeque::with_capacity(LATENCY_FILTER_DEPTH),
+            start_timestamp:    Instant::now(),
+            in_progress:        false,
         }
     }
 
@@ -174,13 +170,10 @@ mod tests {
     fn test_latency_filter_filled_sets_latency_with_varying_pings() {
         let mut pf = LatencyFilter::new();
 
-        (0..=LATENCY_FILTER_DEPTH * 100)
-            .step_by(100)
-            .into_iter()
-            .for_each(|i| {
-                pf.set_start_time(i as u64);
-                pf.update();
-            });
+        (0..=LATENCY_FILTER_DEPTH * 100).step_by(100).into_iter().for_each(|i| {
+            pf.set_start_time(i as u64);
+            pf.update();
+        });
 
         assert_eq!(pf.average_latency_ms, Some(325));
     }

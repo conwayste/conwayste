@@ -20,7 +20,7 @@ use id_tree::NodeId;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum CycleType {
-    Circular, // used at the top level (Layering)
+    Circular,  // used at the top level (Layering)
     OpenEnded, // used below the top level (Pane)
 }
 
@@ -28,8 +28,8 @@ pub enum CycleType {
 /// clicking on a widget, or pressing Tab, Ctrl-Tab, or Esc.
 #[derive(Clone, Debug)]
 pub struct FocusCycle {
-    index: Option<usize>,
-    ids: Vec<NodeId>,
+    index:          Option<usize>,
+    ids:            Vec<NodeId>,
     pub cycle_type: CycleType,
 }
 

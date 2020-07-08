@@ -29,11 +29,11 @@ use std::error::Error;
 
 #[derive(Debug)]
 pub struct GameArea {
-    id: Option<NodeId>,
+    id:                     Option<NodeId>,
     pub has_keyboard_focus: bool,
-    z_index: usize,
-    dimensions: Rect,
-    handler_data: HandlerData,
+    z_index:                usize,
+    dimensions:             Rect,
+    handler_data:           HandlerData,
 }
 
 /// For now, this is a dummy widget to represent the actual game area. It may not always be a dummy
@@ -41,31 +41,27 @@ pub struct GameArea {
 impl GameArea {
     pub fn new() -> Self {
         let mut game_area = GameArea {
-            id: None,
+            id:                 None,
             has_keyboard_focus: false,
-            z_index: 0,
-            dimensions: Rect::default(),
-            handler_data: HandlerData::new(),
+            z_index:            0,
+            dimensions:         Rect::default(),
+            handler_data:       HandlerData::new(),
         };
 
         // Set handlers for toggling has_keyboard_focus
-        let gain_focus_handler = move |obj: &mut dyn EmitEvent,
-                                       _uictx: &mut UIContext,
-                                       _evt: &Event|
-              -> Result<Handled, Box<dyn Error>> {
-            let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
-            game_area.has_keyboard_focus = true;
-            Ok(Handled::NotHandled)
-        };
+        let gain_focus_handler =
+            move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event| -> Result<Handled, Box<dyn Error>> {
+                let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
+                game_area.has_keyboard_focus = true;
+                Ok(Handled::NotHandled)
+            };
 
-        let lose_focus_handler = move |obj: &mut dyn EmitEvent,
-                                       _uictx: &mut UIContext,
-                                       _evt: &Event|
-              -> Result<Handled, Box<dyn Error>> {
-            let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
-            game_area.has_keyboard_focus = false;
-            Ok(Handled::NotHandled)
-        };
+        let lose_focus_handler =
+            move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event| -> Result<Handled, Box<dyn Error>> {
+                let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
+                game_area.has_keyboard_focus = false;
+                Ok(Handled::NotHandled)
+            };
 
         game_area
             .on(EventType::GainFocus, Box::new(gain_focus_handler))
@@ -129,10 +125,7 @@ impl Widget for GameArea {
     fn set_size(&mut self, w: f32, h: f32) -> UIResult<()> {
         if w == 0.0 || h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions {
-                reason: format!(
-                    "Cannot set the width or height of GameArea {:?} to zero",
-                    self.id()
-                ),
+                reason: format!("Cannot set the width or height of GameArea {:?} to zero", self.id()),
             }));
         }
 

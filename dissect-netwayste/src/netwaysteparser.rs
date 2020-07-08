@@ -54,7 +54,7 @@ pub enum Sizing {
 #[derive(Debug, Clone)]
 /// Describes one item belonging to a container data type
 pub struct FieldDescriptor {
-    pub name: CString,       // If None, then the member is unnamed. Like `MyEnum(u8)`
+    pub name:   CString,     // If None, then the member is unnamed. Like `MyEnum(u8)`
     pub format: Vec<Sizing>, // Size of associated member type. List is used when type nests
 }
 
@@ -201,7 +201,7 @@ fn create_field_descriptor(f: &syn::Field, variant_name: String, count: usize) -
 
     let descriptions = parse_size_from_type(ty.clone());
     FieldDescriptor {
-        name: CString::new(ident).unwrap(),
+        name:   CString::new(ident).unwrap(),
         format: descriptions,
     }
 }
@@ -262,11 +262,8 @@ pub fn collect_netwayste_source_files() -> Vec<PathBuf> {
             if entry.file_type().is_dir() {
                 true
             } else {
-                entry
-                    .file_name()
-                    .to_str()
-                    .map(|s| s.ends_with(".rs"))
-                    .unwrap_or(false) // Not a rust source file
+                entry.file_name().to_str().map(|s| s.ends_with(".rs")).unwrap_or(false)
+                // Not a rust source file
             }
         })
         .flatten()
@@ -310,10 +307,7 @@ pub fn parse_netwayste_format() -> HashMap<CString, NetwaysteDataFormat> {
                 Struct(ref s) => {
                     let structure = parse_struct(&s);
                     let name = s.ident.to_string();
-                    map.insert(
-                        CString::new(name).unwrap(),
-                        NetwaysteDataFormat::Structure(structure),
-                    );
+                    map.insert(CString::new(name).unwrap(), NetwaysteDataFormat::Structure(structure));
                 }
                 _ => {}
             }
@@ -485,10 +479,7 @@ mod test {
     #[test]
     fn test_parse_size_from_type_for_option() {
         let string = "Option<usize>".to_owned();
-        let expected_sizing = vec![
-            Sizing::Variable(VariableContainer::Optional),
-            Sizing::Fixed(8),
-        ];
+        let expected_sizing = vec![Sizing::Variable(VariableContainer::Optional), Sizing::Fixed(8)];
 
         let parsed_sizing = parse_size_from_type(string);
         assert_eq!(compare_sizing(expected_sizing, parsed_sizing), 0);

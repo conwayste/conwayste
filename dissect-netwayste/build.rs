@@ -25,9 +25,7 @@ fn main() {
         }
     }
 
-    let bindings = bindings_builder
-        .generate()
-        .expect("Unable to generate bindings");
+    let bindings = bindings_builder.generate().expect("Unable to generate bindings");
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
