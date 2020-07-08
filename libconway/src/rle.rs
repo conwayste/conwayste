@@ -18,12 +18,11 @@
 const MAX_NUMBER: usize = 50000;
 pub const NO_OP_CHAR: char = '"';
 
-use std::collections::BTreeMap;
-use std::str::FromStr;
 use crate::error::{ConwayError, ConwayResult};
 use crate::grids::{BitGrid, CharGrid};
 use serde::{Deserialize, Serialize};
-
+use std::collections::BTreeMap;
+use std::str::FromStr;
 
 /// This contains just the RLE pattern string. For example: "4bobo$7b3o!"
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -33,19 +32,18 @@ pub struct Pattern(pub String);
 #[derive(Debug, PartialEq, Clone)]
 pub struct PatternFile {
     pub comment_lines: Vec<String>,
-    pub header_line: HeaderLine,
-    pub pattern: Pattern,
+    pub header_line:   HeaderLine,
+    pub pattern:       Pattern,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct HeaderLine {
-    pub x: usize, // width (cols)
-    pub y: usize, // height (rows)
+    pub x:    usize, // width (cols)
+    pub y:    usize, // height (rows)
     pub rule: Option<String>,
 }
 
 //TODO: module doc examples
-
 
 impl PatternFile {
     #[inline]
@@ -80,7 +78,9 @@ impl FromStr for PatternFile {
         for line in file_contents.lines() {
             if line.starts_with("#") {
                 if comments_ended {
-                    return Err(InvalidData{reason: "Found a comment line after a non-comment line".to_owned()});
+                    return Err(InvalidData {
+                        reason: "Found a comment line after a non-comment line".to_owned(),
+                    });
                 }
                 comment_lines.push(line.to_owned());
                 continue;
@@ -101,10 +101,14 @@ impl FromStr for PatternFile {
             };
         }
         if opt_header_line.is_none() {
-            return Err(InvalidData{reason: "missing header line".to_owned()});
+            return Err(InvalidData {
+                reason: "missing header line".to_owned(),
+            });
         }
         if pattern_lines.is_empty() {
-            return Err(InvalidData{reason: "missing pattern lines".to_owned()});
+            return Err(InvalidData {
+                reason: "missing pattern lines".to_owned(),
+            });
         }
         let mut pattern = "".to_owned();
         for line in pattern_lines {
@@ -118,7 +122,6 @@ impl FromStr for PatternFile {
     }
 }
 
-
 impl FromStr for HeaderLine {
     type Err = ConwayError;
 
@@ -126,29 +129,29 @@ impl FromStr for HeaderLine {
         use ConwayError::*;
         let mut map = BTreeMap::new();
         for term in line.split(",") {
-            let parts = term
-                .split("=")
-                .map(|part| part.trim())
-                .collect::<Vec<&str>>();
+            let parts = term.split("=").map(|part| part.trim()).collect::<Vec<&str>>();
             if parts.len() != 2 {
-                return Err(InvalidData{reason: format!("unexpected term in header line: {:?}", term)});
+                return Err(InvalidData {
+                    reason: format!("unexpected term in header line: {:?}", term),
+                });
             }
             map.insert(parts[0], parts[1]);
         }
         if !map.contains_key("x") || !map.contains_key("y") {
-            return Err(InvalidData{reason: format!("header line missing `x` and/or `y`: {:?}", line)});
+            return Err(InvalidData {
+                reason: format!("header line missing `x` and/or `y`: {:?}", line),
+            });
         }
-        let x = usize::from_str(map.get("x").unwrap()).map_err(|e| {
-            InvalidData{reason: format!("Error while parsing x: {}", e)}
+        let x = usize::from_str(map.get("x").unwrap()).map_err(|e| InvalidData {
+            reason: format!("Error while parsing x: {}", e),
         })?;
-        let y = usize::from_str(map.get("y").unwrap()).map_err(|e| {
-            InvalidData{reason: format!("Error while parsing y: {}", e)}
+        let y = usize::from_str(map.get("y").unwrap()).map_err(|e| InvalidData {
+            reason: format!("Error while parsing y: {}", e),
         })?;
-        let rule =  map.get("rule").map(|s: &&str| (*s).to_owned());
+        let rule = map.get("rule").map(|s: &&str| (*s).to_owned());
         Ok(HeaderLine { x, y, rule })
     }
 }
-
 
 fn digits_to_number(digits: &Vec<char>) -> ConwayResult<usize> {
     use ConwayError::*;
@@ -157,13 +160,13 @@ fn digits_to_number(digits: &Vec<char>) -> ConwayResult<usize> {
         let d = ch.to_digit(10).unwrap();
         result = result * 10 + d as usize;
         if result > MAX_NUMBER {
-            return Err(InvalidData{reason: format!("Could not parse digits {:?} because larger than {}",
-                                                   digits, MAX_NUMBER)});
+            return Err(InvalidData {
+                reason: format!("Could not parse digits {:?} because larger than {}", digits, MAX_NUMBER),
+            });
         }
     }
     Ok(result)
 }
-
 
 /// Dummy implementation of the `CharGrid` trait that is only used to get the size of a pattern
 /// using `Pattern::to_grid`.
@@ -185,25 +188,30 @@ impl CharGrid for PatternSize {
     }
 
     /// Is `ch` a valid character?
-    fn is_valid(_ch: char) -> bool { true }
+    fn is_valid(_ch: char) -> bool {
+        true
+    }
 
     /// Width in cells
-    fn width(&self) -> usize { self.col + 1 }
+    fn width(&self) -> usize {
+        self.col + 1
+    }
 
     /// Height in cells
-    fn height(&self) -> usize { self.row + 1 }
+    fn height(&self) -> usize {
+        self.row + 1
+    }
 
     fn get_run(&self, _col: usize, _row: usize, _visibility: Option<usize>) -> (usize, char) {
         unimplemented!("PatternSize is write-only");
     }
 }
 
-
 impl Pattern {
     /// Creates a BitGrid out of this pattern. If there are no parse errors, the result contains
     /// the smallest BitGrid that fits a pattern `width` cells wide and `height` cells high.
     pub fn to_new_bit_grid(&self, width: usize, height: usize) -> ConwayResult<BitGrid> {
-        let word_width = (width - 1)/64 + 1;
+        let word_width = (width - 1) / 64 + 1;
         let mut grid = BitGrid::new(word_width, height);
         self.to_grid(&mut grid, None)?;
         Ok(grid)
@@ -243,10 +251,12 @@ impl Pattern {
                     ch = _ch;
                     i = Some(_i);
                 }
-                None => break
+                None => break,
             };
             if digits.len() > 0 && ch == '!' {
-                return Err(InvalidData{reason: format!("Cannot have {} after number at {}", ch, i.unwrap())});
+                return Err(InvalidData {
+                    reason: format!("Cannot have {} after number at {}", ch, i.unwrap()),
+                });
             }
             match ch {
                 '!' => {
@@ -258,7 +268,9 @@ impl Pattern {
                     // new line
                     let number = if digits.len() > 0 {
                         digits_to_number(&digits)?
-                    } else { 1 };
+                    } else {
+                        1
+                    };
                     digits.clear();
                     col = 0;
                     row += number;
@@ -274,7 +286,9 @@ impl Pattern {
                     let number = if digits.len() > 0 {
                         //TODO: wrap errors from digits_to_number rather than just forwarding
                         digits_to_number(&digits)?
-                    } else { 1 };
+                    } else {
+                        1
+                    };
                     digits.clear();
                     if ch != NO_OP_CHAR {
                         for _ in 0..number {
@@ -286,12 +300,16 @@ impl Pattern {
                     }
                 }
                 _ => {
-                    return Err(InvalidData{reason: format!("Unrecognized character {} at {}", ch, i.unwrap())});
+                    return Err(InvalidData {
+                        reason: format!("Unrecognized character {} at {}", ch, i.unwrap()),
+                    });
                 }
             }
         }
         if !complete {
-            return Err(InvalidData{reason: format!("Premature termination at {:?}", i)});
+            return Err(InvalidData {
+                reason: format!("Premature termination at {:?}", i),
+            });
         }
         Ok(())
     }
