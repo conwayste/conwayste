@@ -48,10 +48,10 @@ mod netwayste_net_tests {
     fn test_discard_older_packets_under_limit_keeps_all_messages() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
-            sequence: 0,
+            sequence:     0,
             response_ack: None,
-            cookie: None,
-            action: RequestAction::None,
+            cookie:       None,
+            action:       RequestAction::None,
         };
 
         nm.tx_packets.push_back(pkt.clone());
@@ -74,10 +74,10 @@ mod netwayste_net_tests {
     fn test_discard_older_packets_equal_to_limit() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
-            sequence: 0,
+            sequence:     0,
             response_ack: None,
-            cookie: None,
-            action: RequestAction::None,
+            cookie:       None,
+            action:       RequestAction::None,
         };
 
         for _ in 0..NETWORK_QUEUE_LENGTH {
@@ -100,10 +100,10 @@ mod netwayste_net_tests {
     fn test_discard_older_packets_exceeds_limit_retains_max() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
-            sequence: 0,
+            sequence:     0,
             response_ack: None,
-            cookie: None,
-            action: RequestAction::None,
+            cookie:       None,
+            action:       RequestAction::None,
         };
 
         for _ in 0..NETWORK_QUEUE_LENGTH + 10 {
@@ -125,10 +125,10 @@ mod netwayste_net_tests {
     fn test_buffer_item_queue_is_empty() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
-            sequence: 0,
+            sequence:     0,
             response_ack: None,
-            cookie: None,
-            action: RequestAction::None,
+            cookie:       None,
+            action:       RequestAction::None,
         };
 
         nm.tx_packets.buffer_item(pkt);
@@ -139,18 +139,18 @@ mod netwayste_net_tests {
     fn test_buffer_item_sequence_number_reused() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
-            sequence: 0,
+            sequence:     0,
             response_ack: None,
-            cookie: None,
-            action: RequestAction::None,
+            cookie:       None,
+            action:       RequestAction::None,
         };
 
         nm.tx_packets.buffer_item(pkt);
         let pkt = Packet::Request {
-            sequence: 0,
+            sequence:     0,
             response_ack: None,
-            cookie: None,
-            action: RequestAction::LeaveRoom,
+            cookie:       None,
+            action:       RequestAction::LeaveRoom,
         };
 
         nm.tx_packets.buffer_item(pkt);
@@ -170,18 +170,18 @@ mod netwayste_net_tests {
     fn test_buffer_item_basic_sequencing() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
-            sequence: 0,
+            sequence:     0,
             response_ack: None,
-            cookie: None,
-            action: RequestAction::None,
+            cookie:       None,
+            action:       RequestAction::None,
         };
 
         nm.tx_packets.buffer_item(pkt);
         let pkt = Packet::Request {
-            sequence: 1,
+            sequence:     1,
             response_ack: None,
-            cookie: None,
-            action: RequestAction::LeaveRoom,
+            cookie:       None,
+            action:       RequestAction::LeaveRoom,
         };
         nm.tx_packets.buffer_item(pkt);
         assert_eq!(nm.tx_packets.len(), 2);
@@ -191,18 +191,18 @@ mod netwayste_net_tests {
     fn test_buffer_item_newer_packet_has_smaller_sequence_number() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
-            sequence: 1,
+            sequence:     1,
             response_ack: None,
-            cookie: None,
-            action: RequestAction::None,
+            cookie:       None,
+            action:       RequestAction::None,
         };
 
         nm.tx_packets.buffer_item(pkt);
         let pkt = Packet::Request {
-            sequence: 0,
+            sequence:     0,
             response_ack: None,
-            cookie: None,
-            action: RequestAction::LeaveRoom,
+            cookie:       None,
+            action:       RequestAction::LeaveRoom,
         };
         nm.tx_packets.buffer_item(pkt);
         assert_eq!(nm.tx_packets.len(), 2);
@@ -226,10 +226,10 @@ mod netwayste_net_tests {
         let mut nm = NetworkManager::new();
         for index in 0..NETWORK_QUEUE_LENGTH + 5 {
             let pkt = Packet::Request {
-                sequence: index as u64,
+                sequence:     index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.tx_packets.buffer_item(pkt);
         }
@@ -254,10 +254,10 @@ mod netwayste_net_tests {
         let mut nm = NetworkManager::new();
         for index in 0..5 {
             let pkt = Packet::Request {
-                sequence: index as u64,
+                sequence:     index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -274,10 +274,10 @@ mod netwayste_net_tests {
         let mut nm = NetworkManager::new();
         for index in (0..5).rev() {
             let pkt = Packet::Request {
-                sequence: index as u64,
+                sequence:     index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -295,10 +295,10 @@ mod netwayste_net_tests {
         // TODO Replace with (x,y).step_by(z) once stable
         for index in [0, 2, 4, 6, 8, 10].iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -315,10 +315,10 @@ mod netwayste_net_tests {
         let mut nm = NetworkManager::new();
         for index in [0, 2, 4, 6, 8, 10].iter().rev() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -335,10 +335,10 @@ mod netwayste_net_tests {
         let mut nm = NetworkManager::new();
         for index in [5, 2, 9, 1, 0, 8, 6].iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -356,10 +356,10 @@ mod netwayste_net_tests {
         // This one is fun because it tests the internal edges of (front_slice and back_slice)
         for index in [0, 10, 1, 9, 2, 8, 3, 7, 4, 6, 5].iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -376,10 +376,10 @@ mod netwayste_net_tests {
         let mut nm = NetworkManager::new();
         for index in [0, 0, 0, 0, 1, 2, 2, 2, 5].iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -397,30 +397,30 @@ mod netwayste_net_tests {
 
         for index in 0..5 {
             let pkt = Packet::Request {
-                sequence: index as u64,
+                sequence:     index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
 
         for index in [10, 7, 11, 9, 12, 8, 99, 6].iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
 
         for index in 13..20 {
             let pkt = Packet::Request {
-                sequence: index as u64,
+                sequence:     index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -441,30 +441,30 @@ mod netwayste_net_tests {
 
         for index in (0..5).rev() {
             let pkt = Packet::Request {
-                sequence: index as u64,
+                sequence:     index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
 
         for index in [10, 7, 11, 9, 12, 8, 99, 6].iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
 
         for index in (13..20).rev() {
             let pkt = Packet::Request {
-                sequence: index as u64,
+                sequence:     index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -487,30 +487,30 @@ mod netwayste_net_tests {
 
         for index in start..(start + 5) {
             let pkt = Packet::Request {
-                sequence: index as u64,
+                sequence:     index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
 
         {
             let pkt = Packet::Request {
-                sequence: u64_max,
+                sequence:     u64_max,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
 
         for index in 0..5 {
             let pkt = Packet::Request {
-                sequence: index as u64,
+                sequence:     index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -532,30 +532,30 @@ mod netwayste_net_tests {
 
         for index in start..(start + 5) {
             let pkt = Packet::Request {
-                sequence: index as u64,
+                sequence:     index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
 
         {
             let pkt = Packet::Request {
-                sequence: u64_max,
+                sequence:     u64_max,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
 
         for index in [5, 0, 4, 1, 3, 2].iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -598,10 +598,10 @@ mod netwayste_net_tests {
 
         for index in input_order.iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -644,21 +644,17 @@ mod netwayste_net_tests {
 
         for index in input_order.iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
 
         let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
-        range.extend(
-            [max_minus_2, max_minus_1, u64_max, two, three]
-                .iter()
-                .cloned(),
-        ); // Add in u64 max value plus others
+        range.extend([max_minus_2, max_minus_1, u64_max, two, three].iter().cloned()); // Add in u64 max value plus others
         for index in range.iter() {
             let pkt = iter.next().unwrap();
             assert_eq!(*index, pkt.sequence_number());
@@ -677,23 +673,14 @@ mod netwayste_net_tests {
         let two = 2;
         let three = 3;
 
-        let input_order = [
-            max_minus_1,
-            max_minus_2,
-            three,
-            u64_max,
-            two,
-            one,
-            zero,
-            max_minus_3,
-        ];
+        let input_order = [max_minus_1, max_minus_2, three, u64_max, two, one, zero, max_minus_3];
 
         for index in input_order.iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -701,18 +688,9 @@ mod netwayste_net_tests {
         let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
         range.extend(
-            [
-                max_minus_3,
-                max_minus_2,
-                max_minus_1,
-                u64_max,
-                zero,
-                one,
-                two,
-                three,
-            ]
-            .iter()
-            .cloned(),
+            [max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three]
+                .iter()
+                .cloned(),
         );
 
         for index in range.iter() {
@@ -734,23 +712,14 @@ mod netwayste_net_tests {
         let three = 3;
 
         // Forward wrap occurs non-contiguously (aka [254, 0, ...] for bytes)
-        let input_order = [
-            max_minus_1,
-            zero,
-            three,
-            u64_max,
-            max_minus_2,
-            one,
-            two,
-            max_minus_3,
-        ];
+        let input_order = [max_minus_1, zero, three, u64_max, max_minus_2, one, two, max_minus_3];
 
         for index in input_order.iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -758,18 +727,9 @@ mod netwayste_net_tests {
         let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
         range.extend(
-            [
-                max_minus_3,
-                max_minus_2,
-                max_minus_1,
-                u64_max,
-                zero,
-                one,
-                two,
-                three,
-            ]
-            .iter()
-            .cloned(),
+            [max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three]
+                .iter()
+                .cloned(),
         );
 
         for index in range.iter() {
@@ -791,23 +751,14 @@ mod netwayste_net_tests {
         let three = 3;
 
         // Wrap takes place in reverse order ( aka [0, 254, ...] for bytes)
-        let input_order = [
-            zero,
-            max_minus_1,
-            three,
-            u64_max,
-            max_minus_2,
-            one,
-            two,
-            max_minus_3,
-        ];
+        let input_order = [zero, max_minus_1, three, u64_max, max_minus_2, one, two, max_minus_3];
 
         for index in input_order.iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -815,18 +766,9 @@ mod netwayste_net_tests {
         let mut iter = nm.rx_packets.queue.iter();
         let mut range = vec![];
         range.extend(
-            [
-                max_minus_3,
-                max_minus_2,
-                max_minus_1,
-                u64_max,
-                zero,
-                one,
-                two,
-                three,
-            ]
-            .iter()
-            .cloned(),
+            [max_minus_3, max_minus_2, max_minus_1, u64_max, zero, one, two, three]
+                .iter()
+                .cloned(),
         );
 
         for index in range.iter() {
@@ -864,10 +806,10 @@ mod netwayste_net_tests {
 
         for index in input_order.iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -926,10 +868,10 @@ mod netwayste_net_tests {
 
         for index in input_order.iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -988,10 +930,10 @@ mod netwayste_net_tests {
 
         for index in input_order.iter() {
             let pkt = Packet::Request {
-                sequence: *index as u64,
+                sequence:     *index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -1025,10 +967,10 @@ mod netwayste_net_tests {
     fn test_reinitialize_all_queues_cleared() {
         let mut nm = NetworkManager::new();
         let pkt = Packet::Request {
-            sequence: 0,
+            sequence:     0,
             response_ack: None,
-            cookie: None,
-            action: RequestAction::None,
+            cookie:       None,
+            action:       RequestAction::None,
         };
 
         for _ in 0..NETWORK_QUEUE_LENGTH {
@@ -1044,19 +986,19 @@ mod netwayste_net_tests {
         let mut nm = NetworkManager::new();
         for index in 0..5 {
             let pkt = Packet::Request {
-                sequence: index as u64,
+                sequence:     index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
         for index in 8..10 {
             let pkt = Packet::Request {
-                sequence: index as u64,
+                sequence:     index as u64,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
             nm.rx_packets.buffer_item(pkt);
         }
@@ -1070,11 +1012,7 @@ mod netwayste_net_tests {
             // Verify that the packet is not dequeued
             assert_eq!(
                 index,
-                nm.rx_packets
-                    .as_queue_type()
-                    .get(index)
-                    .unwrap()
-                    .sequence_number() as usize
+                nm.rx_packets.as_queue_type().get(index).unwrap().sequence_number() as usize
             );
         }
     }
@@ -1084,10 +1022,10 @@ mod netwayste_net_tests {
         let mut nm = NetworkManager::new();
         for i in 0..5 {
             let pkt = Packet::Request {
-                sequence: i,
+                sequence:     i,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
 
             nm.tx_packets.buffer_item(pkt.clone());
@@ -1108,10 +1046,10 @@ mod netwayste_net_tests {
 
         for i in 0..5 {
             let pkt = Packet::Request {
-                sequence: i,
+                sequence:     i,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
 
             nm.tx_packets.buffer_item(pkt.clone());
@@ -1134,10 +1072,10 @@ mod netwayste_net_tests {
 
         for i in 0..5 {
             let pkt = Packet::Request {
-                sequence: i,
+                sequence:     i,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
 
             nm.tx_packets.buffer_item(pkt.clone());
@@ -1168,10 +1106,10 @@ mod netwayste_net_tests {
 
         for i in 0..5 {
             let pkt = Packet::Request {
-                sequence: i,
+                sequence:     i,
                 response_ack: None,
-                cookie: None,
-                action: RequestAction::None,
+                cookie:       None,
+                action:       RequestAction::None,
             };
 
             nm.tx_packets.buffer_item(pkt.clone());
@@ -1257,11 +1195,7 @@ mod netwayste_client_tests {
 
         let mut incoming_messages = vec![];
         for x in 0..10 {
-            let new_msg = BroadcastChatMessage::new(
-                x as u64,
-                "a player".to_owned(),
-                format!("message {}", x),
-            );
+            let new_msg = BroadcastChatMessage::new(x as u64, "a player".to_owned(), format!("message {}", x));
             incoming_messages.push(new_msg);
         }
 
@@ -1308,11 +1242,7 @@ mod netwayste_client_tests {
 
         let mut incoming_messages = vec![];
         for x in 0..20 {
-            let new_msg = BroadcastChatMessage::new(
-                x as u64,
-                "a player".to_owned(),
-                format!("message {}", x),
-            );
+            let new_msg = BroadcastChatMessage::new(x as u64, "a player".to_owned(), format!("message {}", x));
             incoming_messages.push(new_msg);
         }
 
@@ -1320,12 +1250,7 @@ mod netwayste_client_tests {
         assert_eq!(client_state.chat_msg_seq_num, 19);
 
         let mut seq_num = starting_chat_seq_num + 1;
-        let chat_queue = &client_state
-            .network
-            .rx_chat_messages
-            .as_ref()
-            .unwrap()
-            .queue;
+        let chat_queue = &client_state.network.rx_chat_messages.as_ref().unwrap().queue;
         for msg in chat_queue {
             assert_eq!(msg.chat_seq.unwrap(), seq_num);
             seq_num += 1;

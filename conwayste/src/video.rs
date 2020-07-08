@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::{Context, graphics, conf::FullscreenType, GameResult};
+use ggez::{conf::FullscreenType, graphics, Context, GameResult};
 
 #[derive(Debug, Clone, PartialEq, Copy, Default)]
 pub struct Resolution {
@@ -26,7 +26,7 @@ pub struct Resolution {
 
 impl From<(f32, f32)> for Resolution {
     fn from(src: (f32, f32)) -> Resolution {
-        Resolution{ w: src.0, h: src.1 }
+        Resolution { w: src.0, h: src.1 }
     }
 }
 
@@ -49,7 +49,7 @@ pub struct VideoSettings {
 impl VideoSettings {
     pub fn new() -> VideoSettings {
         VideoSettings {
-            resolution: Resolution::default(),
+            resolution:    Resolution::default(),
             is_fullscreen: false,
         }
     }

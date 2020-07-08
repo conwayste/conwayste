@@ -101,8 +101,15 @@ before_install:
 install:
   - sh ci/install.sh
   - source ~/.cargo/env || true
+  - rustup +nightly component add rustfmt
 
 script:
+    # Run the nightly rustfmt on all .rs files, but only check and output file
+    # names of files that are not rustfmted, returning 0 only if all files are
+    # rustfmted.
+  - cargo +nightly fmt -- -l --check
+
+    # This is our test phase
   - bash ci/script.sh
 
 after_script: set +e
@@ -129,10 +136,12 @@ deploy:
   provider: releases
   skip_cleanup: true
 
-cache: cargo
-before_cache:
-  # Travis can't cache files that are not readable by "others"
-  - chmod -R a+r $HOME/.cargo
+# Removed this to fix a timeout for Windows: refer to the following issue:
+# https://travis-ci.community/t/builds-timeout-during-or-shortly-after-creating-directory-home-travis-cache-sccache/5001/5
+#cache: cargo
+#before_cache:
+#  # Travis can't cache files that are not readable by "others"
+#  - chmod -R a+r $HOME/.cargo
 
 branches:
   only:

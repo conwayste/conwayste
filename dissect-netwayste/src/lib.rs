@@ -81,25 +81,25 @@ pub static plugin_want_minor: c_int = 2;
 
 static mut plug_conwayste: ws::proto_plugin = ws::proto_plugin {
     register_protoinfo: None,
-    register_handoff: None,
+    register_handoff:   None,
 };
 
 static mut proto_conwayste: c_int = -1;
 
 struct ConwaysteProtocolStrings {
-    proto_full_name: CString,
+    proto_full_name:  CString,
     proto_short_name: CString,
-    proto_abbrev: CString,
-    invalid_packet: CString,
+    proto_abbrev:     CString,
+    invalid_packet:   CString,
 }
 
 impl ConwaysteProtocolStrings {
     fn new() -> Self {
         ConwaysteProtocolStrings {
-            proto_full_name: CString::new("Conwayste Protocol").unwrap(),
+            proto_full_name:  CString::new("Conwayste Protocol").unwrap(),
             proto_short_name: CString::new("CWTE").unwrap(),
-            proto_abbrev: CString::new("udp.cw").unwrap(),
-            invalid_packet: CString::new("[INVALID PACKET]").unwrap(),
+            proto_abbrev:     CString::new("udp.cw").unwrap(),
+            invalid_packet:   CString::new("[INVALID PACKET]").unwrap(),
         }
     }
 }
@@ -184,9 +184,7 @@ fn tvb_peek_four_bytes(tvb: *mut ws::tvbuff_t, offset: i32) -> u32 {
 
     //print_hex(&packet_vec.as_slice());
 
-    let discr_vec: Vec<u8> = packet_vec
-        .drain((offset as usize)..(offset as usize + 4))
-        .collect();
+    let discr_vec: Vec<u8> = packet_vec.drain((offset as usize)..(offset as usize + 4)).collect();
     LittleEndian::read_u32(&discr_vec.as_slice())
 }
 
@@ -203,17 +201,9 @@ impl ConwaysteTree {
         const tvb_data_length: c_int = -1; // until the end
         const no_encoding: u32 = ws::ENC_NA;
         unsafe {
-            let ti = ws::proto_tree_add_item(
-                tree,
-                proto_conwayste,
-                tvb,
-                tvb_data_start,
-                tvb_data_length,
-                no_encoding,
-            );
+            let ti = ws::proto_tree_add_item(tree, proto_conwayste, tvb, tvb_data_start, tvb_data_length, no_encoding);
 
-            let tree =
-                ws::proto_item_add_subtree(ti, ett_get_address(&*ett_info, &*ett_conwayste_name));
+            let tree = ws::proto_item_add_subtree(ti, ett_get_address(&*ett_info, &*ett_conwayste_name));
             ConwaysteTree { tree }
         }
     }
@@ -222,12 +212,7 @@ impl ConwaysteTree {
     fn decode(&self, tvb: *mut ws::tvbuff_t) {
         let mut bytes_examined: i32 = 0;
 
-        self.decode_nw_data_format(
-            self.tree,
-            tvb,
-            &mut bytes_examined,
-            CString::new("Packet").unwrap(),
-        );
+        self.decode_nw_data_format(self.tree, tvb, &mut bytes_examined, CString::new("Packet").unwrap());
     }
 
     /// Decodes a `NetwaysteDataFormat` as specified by the name; all of its sub fields are added
@@ -314,13 +299,8 @@ impl ConwaysteTree {
                         VariableContainer::Vector => {
                             // Bincode encodes length of list as 8 bytes
                             let len = std::mem::size_of::<u64>();
-                            let data = unsafe {
-                                ws::tvb_get_guint64(
-                                    tvb,
-                                    *bytes_examined,
-                                    WSEncoding::LittleEndian as u32,
-                                )
-                            };
+                            let data =
+                                unsafe { ws::tvb_get_guint64(tvb, *bytes_examined, WSEncoding::LittleEndian as u32) };
 
                             // List turned out to be empty. Skip it and continue to next field descriptor
                             if data == 0 {
@@ -379,7 +359,7 @@ impl ConwaysteTree {
                             tree,
                             tvb,
                             *bytes_examined,
-                            1, /*Can we get the size of inner struct?*/
+                            1,                                 /*Can we get the size of inner struct?*/
                             ett_get_address(&*ett_info, name), /* Index in ett corresponding to this item */
                             ptr::null_mut(),
                             field_name.as_ptr() as *const i8,
@@ -394,7 +374,7 @@ impl ConwaysteTree {
                                     subtree,
                                     tvb,
                                     *bytes_examined,
-                                    1, /*Can we get the size of inner struct?*/
+                                    1,                                 /*Can we get the size of inner struct?*/
                                     ett_get_address(&*ett_info, name), /* Index in ett corresponding to this item */
                                     ptr::null_mut(),
                                     indexes_as_strings[i as usize].as_ptr(),
@@ -425,14 +405,7 @@ impl ConwaysteTree {
         if add_field {
             unsafe {
                 // Attach stuff under "Conwayste Protocol" tree
-                ws::proto_tree_add_item(
-                    tree,
-                    *hf_field,
-                    tvb,
-                    *bytes_examined,
-                    field_length,
-                    encoding as u32,
-                );
+                ws::proto_tree_add_item(tree, *hf_field, tvb, *bytes_examined, field_length, encoding as u32);
             }
             *bytes_examined += field_length;
         }
@@ -447,8 +420,10 @@ fn get_cwte_packet(tvb: *mut ws::tvbuff_t) -> Result<NetwaystePacket, std::io::E
     let tvblen = tvb_reported_length(tvb) as usize;
 
     if tvblen > ETH_MTU_PAYLOAD_LIMIT {
-        println!("Packet exceeds UDP MTU payload limit! {} (exceeds {})",
-            tvblen, ETH_MTU_PAYLOAD_LIMIT);
+        println!(
+            "Packet exceeds UDP MTU payload limit! {} (exceeds {})",
+            tvblen, ETH_MTU_PAYLOAD_LIMIT
+        );
     }
 
     let mut packet_vec = Vec::<u8>::with_capacity(tvblen);
@@ -477,11 +452,7 @@ extern "C" fn dissect_conwayste(
     _data: *mut c_void,
 ) -> c_int {
     /* Identify these packets as CWTE */
-    column_set_str(
-        pinfo,
-        WSColumn::Protocol,
-        &protocol_strings.proto_short_name,
-    );
+    column_set_str(pinfo, WSColumn::Protocol, &protocol_strings.proto_short_name);
 
     /* Clear out stuff in the info column */
     column_clear(pinfo, WSColumn::Info);
@@ -533,7 +504,7 @@ extern "C" fn proto_register_conwayste() {
         proto_conwayste = ws::proto_register_protocol(
             protocol_strings.proto_full_name.as_ptr(), // Full name, used in various places in Wireshark GUI
             protocol_strings.proto_short_name.as_ptr(), // Short name, used in various places in Wireshark GUI
-            protocol_strings.proto_abbrev.as_ptr(),     // Abbreviation, for filter
+            protocol_strings.proto_abbrev.as_ptr(),    // Abbreviation, for filter
         );
 
         ws::proto_register_field_array(
@@ -544,10 +515,7 @@ extern "C" fn proto_register_conwayste() {
 
         let ptr_to_ett_addrs = ett_get_addresses(&*ett_info);
         let ett_addrs_count = ett_get_addresses_count(&*ett_info);
-        ws::proto_register_subtree_array(
-            ptr_to_ett_addrs as *const *mut i32,
-            ett_addrs_count as i32,
-        );
+        ws::proto_register_subtree_array(ptr_to_ett_addrs as *const *mut i32, ett_addrs_count as i32);
     }
 }
 
@@ -559,13 +527,8 @@ extern "C" fn proto_register_conwayste() {
 extern "C" fn proto_reg_handoff_conwayste() {
     println!("called proto_reg_handoff_conwayste()");
     unsafe {
-        let conwayste_handle =
-            ws::create_dissector_handle(Some(dissect_conwayste), proto_conwayste);
-        ws::dissector_add_uint(
-            handoff_match_name.as_ptr(),
-            ws::CONWAYSTE_PORT,
-            conwayste_handle,
-        );
+        let conwayste_handle = ws::create_dissector_handle(Some(dissect_conwayste), proto_conwayste);
+        ws::dissector_add_uint(handoff_match_name.as_ptr(), ws::CONWAYSTE_PORT, conwayste_handle);
     }
 }
 
@@ -578,7 +541,7 @@ pub extern "C" fn plugin_register() {
     unsafe {
         plug_conwayste = ws::proto_plugin {
             register_protoinfo: Some(proto_register_conwayste),
-            register_handoff: Some(proto_reg_handoff_conwayste),
+            register_handoff:   Some(proto_reg_handoff_conwayste),
         };
         ws::proto_register_plugin((&plug_conwayste) as *const ws::proto_plugin);
     }

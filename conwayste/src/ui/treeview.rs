@@ -71,16 +71,16 @@ impl Restriction {
 /// mutable Node reference and a TreeView on the Nodes under that Node; in other words, it supports
 /// multiple non-overlapping mutable references to Nodes in a Tree.
 pub struct TreeView<'a, T: 'a> {
-    tree: NonNull<Tree<T>>,
-    lifetime: PhantomData<&'a mut T>,
+    tree:        NonNull<Tree<T>>,
+    lifetime:    PhantomData<&'a mut T>,
     restriction: Restriction,
 }
 
 impl<'a, T> TreeView<'a, T> {
     pub fn new(tree: &'a mut Tree<T>) -> Self {
         return TreeView::<'a> {
-            tree: NonNull::new(tree).unwrap(), // unwrap OK because the tree reference will never be null
-            lifetime: PhantomData,
+            tree:        NonNull::new(tree).unwrap(), // unwrap OK because the tree reference will never be null
+            lifetime:    PhantomData,
             restriction: Restriction::None,
         };
     }
@@ -145,17 +145,14 @@ impl<'a, T> TreeView<'a, T> {
     /// let alias2 = copy2.get_mut(&child_node_id).unwrap();
     /// drop((alias1, alias2));
     /// ```
-    pub fn sub_tree(
-        &mut self,
-        node_id: &NodeId,
-    ) -> Result<(&mut Node<T>, TreeView<'_, T>), Box<dyn Error>> {
+    pub fn sub_tree(&mut self, node_id: &NodeId) -> Result<(&mut Node<T>, TreeView<'_, T>), Box<dyn Error>> {
         if !self.can_access(node_id)? {
             return Err("the TreeView does not have access to the specified Node".into());
         }
 
         let subtree = TreeView {
-            tree: self.tree,
-            lifetime: PhantomData,
+            tree:        self.tree,
+            lifetime:    PhantomData,
             restriction: Restriction::SubTree(node_id.clone()),
         };
         let tree_mut_ref = unsafe { self.tree.as_mut() };
@@ -171,8 +168,7 @@ impl<'a, T> TreeView<'a, T> {
         if let Some(root_id) = self.restriction.root() {
             Some(tree.children(root_id).unwrap())
         } else {
-            tree.root_node_id()
-                .map(|root_id| tree.children(root_id).unwrap())
+            tree.root_node_id().map(|root_id| tree.children(root_id).unwrap())
         }
     }
 
@@ -223,11 +219,7 @@ impl<'a, T> TreeView<'a, T> {
     /// In addition to errors from Tree.insert, an error is returned when the TreeView is
     /// sharing the Tree.
     #[allow(unused)]
-    pub fn insert(
-        &mut self,
-        node: Node<T>,
-        behavior: InsertBehavior,
-    ) -> Result<NodeId, Box<dyn Error>> {
+    pub fn insert(&mut self, node: Node<T>, behavior: InsertBehavior) -> Result<NodeId, Box<dyn Error>> {
         if !self.restriction.is_none() {
             return Err("the TreeView must have full access to the Tree to insert a node".into());
         }
@@ -244,11 +236,7 @@ impl<'a, T> TreeView<'a, T> {
     /// In addition to errors from Tree.remove_node, an error is returned when the TreeView is
     /// sharing the Tree.
     #[allow(unused)]
-    pub fn remove(
-        &mut self,
-        node_id: NodeId,
-        behavior: RemoveBehavior,
-    ) -> Result<Node<T>, Box<dyn Error>> {
+    pub fn remove(&mut self, node_id: NodeId, behavior: RemoveBehavior) -> Result<Node<T>, Box<dyn Error>> {
         if !self.restriction.is_none() {
             return Err("the TreeView must have full access to the Tree to remove a node".into());
         }
@@ -273,8 +261,7 @@ mod tests {
         let child_nodes = vec![Node::new(1), Node::new(2), Node::new(3)];
 
         for c in child_nodes.into_iter() {
-            tree.insert(c, InsertBehavior::UnderNode(&root_node_id))
-                .unwrap();
+            tree.insert(c, InsertBehavior::UnderNode(&root_node_id)).unwrap();
         }
 
         let mut view = TreeView::new(&mut tree);

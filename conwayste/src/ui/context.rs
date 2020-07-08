@@ -18,8 +18,8 @@
 
 use std::collections::HashMap;
 use std::error::Error;
-use std::mem;
 use std::fmt;
+use std::mem;
 
 use downcast_rs::Downcast;
 use enum_iterator::IntoEnumIterator;
@@ -43,10 +43,10 @@ use crate::Screen;
 /// * `screen_stack` - the layers of `Screen`s in the UI. Handlers are able to push or pop this stack.
 pub struct UIContext<'a> {
     pub ggez_context: &'a mut ggez::Context,
-    pub config: &'a mut config::Config,
-    pub widget_view: TreeView<'a, BoxedWidget>,
+    pub config:       &'a mut config::Config,
+    pub widget_view:  TreeView<'a, BoxedWidget>,
     pub screen_stack: &'a mut Vec<Screen>,
-    child_events: Vec<Event>,
+    child_events:     Vec<Event>,
 }
 
 impl<'a> UIContext<'a> {
@@ -77,18 +77,15 @@ impl<'a> UIContext<'a> {
     ///
     /// * NodeId is invalid for the underlying Tree.
     /// * NodeId refers to a Node that is outside of this TreeView.
-    pub fn derive(
-        &mut self,
-        node_id: &NodeId,
-    ) -> Result<(&mut BoxedWidget, UIContext), Box<dyn Error>> {
+    pub fn derive(&mut self, node_id: &NodeId) -> Result<(&mut BoxedWidget, UIContext), Box<dyn Error>> {
         let (node_ref, subtree) = self.widget_view.sub_tree(node_id)?;
         let widget_ref = node_ref.data_mut();
         Ok((
             widget_ref,
             UIContext {
                 ggez_context: self.ggez_context,
-                config: self.config,
-                widget_view: subtree,
+                config:       self.config,
+                widget_view:  subtree,
                 screen_stack: self.screen_stack,
                 child_events: vec![],
             },
@@ -161,7 +158,7 @@ impl<'a> UIContext<'a> {
     #[allow(unused)]
     pub fn replace_screen(&mut self, screen: Screen) -> Screen {
         let old_screen = *self.screen_stack.last().unwrap();
-        let last_index = self.screen_stack.len()-1;
+        let last_index = self.screen_stack.len() - 1;
         self.screen_stack[last_index] = screen;
         old_screen
     }
@@ -213,13 +210,13 @@ pub enum MoveCross {
 /// (for example, `Event::new_key_press`).
 #[derive(Debug, Clone)]
 pub struct Event {
-    pub what: EventType,
-    pub point: Option<Point2<f32>>, // Must not be None if this is a mouse event type
-    pub prev_point: Option<Point2<f32>>, // MouseMove / Drag
-    pub button: Option<MouseButton>, // Click
-    pub key: Option<KeyCodeOrChar>,
+    pub what:          EventType,
+    pub point:         Option<Point2<f32>>, // Must not be None if this is a mouse event type
+    pub prev_point:    Option<Point2<f32>>, // MouseMove / Drag
+    pub button:        Option<MouseButton>, // Click
+    pub key:           Option<KeyCodeOrChar>,
     pub shift_pressed: bool,
-    pub text: Option<String>,
+    pub text:          Option<String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -261,49 +258,54 @@ impl EventType {
 impl Event {
     pub fn new_char_press(mouse_point: Point2<f32>, character: char, is_shift: bool) -> Self {
         Event {
-            what: EventType::KeyPress,
-            point: Some(mouse_point),
-            prev_point: None,
-            button: None,
-            key: Some(KeyCodeOrChar::Char(character)),
+            what:          EventType::KeyPress,
+            point:         Some(mouse_point),
+            prev_point:    None,
+            button:        None,
+            key:           Some(KeyCodeOrChar::Char(character)),
             shift_pressed: is_shift,
-            text: None,
+            text:          None,
         }
     }
 
     pub fn new_key_press(mouse_point: Point2<f32>, key_code: KeyCode, is_shift: bool) -> Self {
         Event {
-            what: EventType::KeyPress,
-            point: Some(mouse_point),
-            prev_point: None,
-            button: None,
-            key: Some(KeyCodeOrChar::KeyCode(key_code)),
+            what:          EventType::KeyPress,
+            point:         Some(mouse_point),
+            prev_point:    None,
+            button:        None,
+            key:           Some(KeyCodeOrChar::KeyCode(key_code)),
             shift_pressed: is_shift,
-            text: None,
+            text:          None,
         }
     }
 
     pub fn new_click(mouse_point: Point2<f32>, mouse_button: MouseButton, is_shift: bool) -> Self {
         Event {
-            what: EventType::Click,
-            point: Some(mouse_point),
-            prev_point: None,
-            button: Some(mouse_button),
-            key: None,
+            what:          EventType::Click,
+            point:         Some(mouse_point),
+            prev_point:    None,
+            button:        Some(mouse_button),
+            key:           None,
             shift_pressed: is_shift,
-            text: None,
+            text:          None,
         }
     }
 
-    pub fn new_mouse_move(prev_point: Point2<f32>, point: Point2<f32>, mouse_button: MouseButton, is_shift: bool) -> Self {
+    pub fn new_mouse_move(
+        prev_point: Point2<f32>,
+        point: Point2<f32>,
+        mouse_button: MouseButton,
+        is_shift: bool,
+    ) -> Self {
         Event {
-            what: EventType::MouseMove,
-            point: Some(point),
-            prev_point: Some(prev_point),
-            button: Some(mouse_button),
-            key: None,
+            what:          EventType::MouseMove,
+            point:         Some(point),
+            prev_point:    Some(prev_point),
+            button:        Some(mouse_button),
+            key:           None,
             shift_pressed: is_shift,
-            text: None,
+            text:          None,
         }
     }
 
@@ -328,25 +330,25 @@ impl Event {
 
     pub fn new_child_released_focus() -> Self {
         Event {
-            what: EventType::ChildReleasedFocus,
-            point: None,
-            prev_point: None,
-            button: None,
-            key: None,
+            what:          EventType::ChildReleasedFocus,
+            point:         None,
+            prev_point:    None,
+            button:        None,
+            key:           None,
             shift_pressed: false,
-            text: None,
+            text:          None,
         }
     }
 
     pub fn new_text_entered(text: String) -> Self {
         Event {
-            what: EventType::TextEntered,
-            point: None,
-            prev_point: None,
-            button: None,
-            key: None,
+            what:          EventType::TextEntered,
+            point:         None,
+            prev_point:    None,
+            button:        None,
+            key:           None,
             shift_pressed: false,
-            text: Some(text),
+            text:          Some(text),
         }
     }
 
@@ -370,13 +372,13 @@ impl Event {
 
     pub fn new_update() -> Self {
         Event {
-            what: EventType::Update,
-            point: None,
-            prev_point: None,
-            button: None,
-            key: None,
+            what:          EventType::Update,
+            point:         None,
+            prev_point:    None,
+            button:        None,
+            key:           None,
             shift_pressed: false,
-            text: None,
+            text:          None,
         }
     }
 
@@ -403,14 +405,12 @@ pub enum Handled {
     NotHandled, // continue calling handlers
 }
 
-pub type Handler = Box<
-    dyn FnMut(&mut dyn EmitEvent, &mut UIContext, &Event) -> Result<Handled, Box<dyn Error>> + Send,
->;
+pub type Handler = Box<dyn FnMut(&mut dyn EmitEvent, &mut UIContext, &Event) -> Result<Handled, Box<dyn Error>> + Send>;
 
 pub type HandlerMap = HashMap<EventType, Vec<Handler>>;
 
 pub struct HandlerData {
-    pub handlers: Option<HandlerMap>,
+    pub handlers:         Option<HandlerMap>,
     pub forwarded_events: Vec<Event>,
 }
 
@@ -432,7 +432,7 @@ impl fmt::Debug for HandlerData {
 impl HandlerData {
     pub fn new() -> Self {
         HandlerData {
-            handlers: Some(HandlerMap::new()),
+            handlers:         Some(HandlerMap::new()),
             forwarded_events: vec![],
         }
     }
@@ -509,14 +509,23 @@ macro_rules! impl_emit_event {
     ($widget_name:ty, self.$handler_data_field:ident) => {
         impl crate::ui::context::EmitEvent for $widget_name {
             /// Setup a handler for an event type
-            fn on(&mut self, what: crate::ui::context::EventType, hdlr: crate::ui::context::Handler) -> Result<(), Box<dyn std::error::Error>> {
-                let handlers = self.$handler_data_field.handlers
-                    .as_mut()
-                    .ok_or_else(|| -> Box<dyn std::error::Error> {
-                        format!(".on({:?}, ...) was called while .emit call was in progress for {} widget",
-                        what,
-                        stringify!($widget_name)).into()
-                    })?;
+            fn on(
+                &mut self,
+                what: crate::ui::context::EventType,
+                hdlr: crate::ui::context::Handler,
+            ) -> Result<(), Box<dyn std::error::Error>> {
+                let handlers =
+                    self.$handler_data_field
+                        .handlers
+                        .as_mut()
+                        .ok_or_else(|| -> Box<dyn std::error::Error> {
+                            format!(
+                                ".on({:?}, ...) was called while .emit call was in progress for {} widget",
+                                what,
+                                stringify!($widget_name)
+                            )
+                            .into()
+                        })?;
 
                 let handler_vec: &mut Vec<crate::ui::context::Handler>;
                 if let Some(vref) = handlers.get_mut(&what) {
@@ -530,7 +539,11 @@ macro_rules! impl_emit_event {
             }
 
             /// Emit an event -- call all handlers for this event's type (as long as they return NotHandled)
-            fn emit(&mut self, event: &crate::ui::context::Event, uictx: &mut crate::ui::context::UIContext) -> Result<(), Box<dyn std::error::Error>> {
+            fn emit(
+                &mut self,
+                event: &crate::ui::context::Event,
+                uictx: &mut crate::ui::context::UIContext,
+            ) -> Result<(), Box<dyn std::error::Error>> {
                 use crate::ui::context::Handled::*;
                 if self.$handler_data_field.handlers.is_none() {
                     // save event into forwarded_events for later forwarding

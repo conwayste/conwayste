@@ -18,34 +18,38 @@
 
 use std::fmt;
 
-use ggez::{Context, GameResult};
-use ggez::graphics::{self, Color, Rect, Text, TextFragment, DrawParam, Drawable};
-use ggez::nalgebra::{Point2, Vector2};
 #[cfg(test)]
 use ggez::graphics::Font;
+use ggez::graphics::{self, Color, DrawParam, Drawable, Rect, Text, TextFragment};
+use ggez::nalgebra::{Point2, Vector2};
+use ggez::{Context, GameResult};
 
 use id_tree::NodeId;
 
 use super::{
     common::FontInfo,
+    context::{EmitEvent, HandlerData},
     widget::Widget,
     UIError, UIResult,
-    context::{EmitEvent, HandlerData},
 };
 
 pub struct Label {
-    id: Option<NodeId>,
-    font_info: FontInfo,
-    color: Color,
-    z_index: usize,
-    pub textfrag: TextFragment,
+    id:             Option<NodeId>,
+    font_info:      FontInfo,
+    color:          Color,
+    z_index:        usize,
+    pub textfrag:   TextFragment,
     pub dimensions: Rect,
-    handler_data: HandlerData,
+    handler_data:   HandlerData,
 }
 
 impl fmt::Debug for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Label {{ id: {:?}, z-index: {}, Dimensions: {:?} }}", self.id, self.z_index, self.dimensions)
+        write!(
+            f,
+            "Label {{ id: {:?}, z-index: {}, Dimensions: {:?} }}",
+            self.id, self.z_index, self.dimensions
+        )
     }
 }
 
@@ -79,13 +83,7 @@ impl Label {
     /// label.draw(ctx);
     /// ```
     ///
-    pub fn new(
-        ctx: &mut Context,
-        font_info: FontInfo,
-        string: String,
-        color: Color,
-        dest: Point2<f32>
-    ) -> Self {
+    pub fn new(ctx: &mut Context, font_info: FontInfo, string: String, color: Color, dest: Point2<f32>) -> Self {
         let text_fragment;
         #[cfg(not(test))]
         {
@@ -178,7 +176,7 @@ impl Widget for Label {
     fn set_rect(&mut self, new_dims: Rect) -> UIResult<()> {
         if new_dims.w == 0.0 || new_dims.h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions {
-                reason: format!("Cannot set the width or height of Label {:?} to zero", self.id())
+                reason: format!("Cannot set the width or height of Label {:?} to zero", self.id()),
             }));
         }
 
@@ -202,7 +200,7 @@ impl Widget for Label {
     fn set_size(&mut self, w: f32, h: f32) -> UIResult<()> {
         if w == 0.0 || h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions {
-                reason: format!("Cannot set the width or height of Label {:?} to zero", self.id())
+                reason: format!("Cannot set the width or height of Label {:?} to zero", self.id()),
             }));
         }
 
@@ -218,13 +216,12 @@ impl Widget for Label {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-
         let text = Text::new(self.textfrag.clone());
 
         // If the text is updated, we need to refresh the dimensions of the virtual rectangle bounding it.
         // unwrap safe b/c if this fails then the game is fundamentally broken and is not in a usable state
         let recalculated = <Text as Drawable>::dimensions(&text, ctx).unwrap();
-        if recalculated.w != self.dimensions.w  || recalculated.h != self.dimensions.h {
+        if recalculated.w != self.dimensions.w || recalculated.h != self.dimensions.h {
             self.dimensions.w = recalculated.w;
             self.dimensions.h = recalculated.h;
         }

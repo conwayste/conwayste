@@ -31,9 +31,9 @@ use std::sync::Mutex;
 /// during plugin-registration. Every sub-heading word is unique. Wireshark will update the word
 /// (4-bytes) after plugin registration.
 pub struct EttInfo {
-    ett_items: Vec<c_int>,      // 4-byte word list where values are managed by Wireshark
-    pub addresses: Vec<usize>,  // Parallel vector to ett_items containing the address of each element
-    map: HashMap<CString, usize>,    // Maps a field name (ex: "cookie") to its index into `ett_items`
+    ett_items:     Vec<c_int>, // 4-byte word list where values are managed by Wireshark
+    pub addresses: Vec<usize>, // Parallel vector to ett_items containing the address of each element
+    map:           HashMap<CString, usize>, // Maps a field name (ex: "cookie") to its index into `ett_items`
 }
 
 impl EttInfo {
@@ -41,7 +41,7 @@ impl EttInfo {
         EttInfo {
             ett_items: Vec::new(),
             addresses: Vec::new(),
-            map: HashMap::new(),
+            map:       HashMap::new(),
         }
     }
 
@@ -81,9 +81,8 @@ impl EttInfo {
             // still get the address.
 
             let base_addr = self.ett_items.as_ptr();
-            self.addresses.push(unsafe {
-                mem::transmute::<*const c_int, usize>(base_addr.add(offset) as *const c_int)
-            });
+            self.addresses
+                .push(unsafe { mem::transmute::<*const c_int, usize>(base_addr.add(offset) as *const c_int) });
         }
     }
 }

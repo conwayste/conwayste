@@ -6,11 +6,9 @@ set -ex
 main() {
     # XXX run in docker: sudo apt-get -yq --no-install-suggests --no-install-recommends install libudev-dev libasound2-dev
     if [[ "$TARGET" = *linux* ]]; then
-        cross build --target $TARGET
         cross build --target $TARGET --release
     else
         # don't attempt to build the dissector for windows/darwin (missing dependencies)
-        cross build --target $TARGET --workspace --exclude dissect-netwayste
         cross build --target $TARGET --release --workspace --exclude dissect-netwayste
     fi
 
@@ -19,11 +17,9 @@ main() {
     fi
 
     if [[ "$TARGET" = *linux* ]]; then
-        cross test --target $TARGET
         cross test --target $TARGET --release
     else
         # don't attempt to build the dissector for windows/darwin (missing dependencies)
-        cross test --target $TARGET --workspace --exclude dissect-netwayste
         cross test --target $TARGET --release --workspace --exclude dissect-netwayste
     fi
 }

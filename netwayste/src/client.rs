@@ -31,12 +31,11 @@ use regex::Regex;
 use tokio_core::reactor::{Core, Timeout};
 
 use crate::net::{
-    bind, has_connection_timed_out, BroadcastChatMessage, LineCodec, NetwaysteEvent,
-    NetworkManager, NetworkQueue, Packet, RequestAction, ResponseCode, RoomList, DEFAULT_PORT,
-    VERSION,
+    bind, has_connection_timed_out, BroadcastChatMessage, LineCodec, NetwaysteEvent, NetworkManager, NetworkQueue,
+    Packet, RequestAction, ResponseCode, RoomList, DEFAULT_PORT, VERSION,
 };
 
-use crate::utils::{PingPong, LatencyFilter};
+use crate::utils::{LatencyFilter, PingPong};
 
 const TICK_INTERVAL_IN_MS: u64 = 1000;
 const NETWORK_INTERVAL_IN_MS: u64 = 1000;
@@ -52,38 +51,38 @@ enum Event {
 }
 
 pub struct ClientNetState {
-    pub sequence: u64,          // Sequence number of requests
-    pub response_sequence: u64, // Value of the next expected sequence number from the server,
+    pub sequence:             u64, // Sequence number of requests
+    pub response_sequence:    u64, // Value of the next expected sequence number from the server,
     // and indicates the sequence number of the next process-able rx packet
-    pub name: Option<String>,
-    pub room: Option<String>,
-    pub cookie: Option<String>,
-    pub chat_msg_seq_num: u64,
-    pub tick: usize,
-    pub network: NetworkManager,
-    pub last_received: Option<Instant>,
+    pub name:                 Option<String>,
+    pub room:                 Option<String>,
+    pub cookie:               Option<String>,
+    pub chat_msg_seq_num:     u64,
+    pub tick:                 usize,
+    pub network:              NetworkManager,
+    pub last_received:        Option<Instant>,
     pub disconnect_initiated: bool,
-    pub server_address: Option<SocketAddr>,
+    pub server_address:       Option<SocketAddr>,
     pub channel_to_conwayste: std::sync::mpsc::Sender<NetwaysteEvent>,
-    latency_filter: LatencyFilter,
+    latency_filter:           LatencyFilter,
 }
 
 impl ClientNetState {
     pub fn new(channel_to_conwayste: std::sync::mpsc::Sender<NetwaysteEvent>) -> Self {
         ClientNetState {
-            sequence: 0,
-            response_sequence: 0,
-            name: None,
-            room: None,
-            cookie: None,
-            chat_msg_seq_num: 0,
-            tick: 0,
-            network: NetworkManager::new().with_message_buffering(),
-            last_received: None,
+            sequence:             0,
+            response_sequence:    0,
+            name:                 None,
+            room:                 None,
+            cookie:               None,
+            chat_msg_seq_num:     0,
+            tick:                 0,
+            network:              NetworkManager::new().with_message_buffering(),
+            last_received:        None,
             disconnect_initiated: false,
-            server_address: None,
+            server_address:       None,
             channel_to_conwayste: channel_to_conwayste,
-            latency_filter: LatencyFilter::new(),
+            latency_filter:       LatencyFilter::new(),
         }
     }
 
@@ -129,9 +128,15 @@ impl ClientNetState {
     fn check_for_upgrade(&self, server_version: &String) {
         let client_version = &VERSION.to_owned();
         if client_version < server_version {
-            warn!("\tClient Version: {}\n\tServer Version: {}\nnWarning: Client out-of-date. Please upgrade.", client_version, server_version);
+            warn!(
+                "\tClient Version: {}\n\tServer Version: {}\nnWarning: Client out-of-date. Please upgrade.",
+                client_version, server_version
+            );
         } else if client_version > server_version {
-            warn!("\tClient Version: {}\n\tServer Version: {}\nWarning: Client Version greater than Server Version.", client_version, server_version);
+            warn!(
+                "\tClient Version: {}\n\tServer Version: {}\nWarning: Client Version greater than Server Version.",
+                client_version, server_version
+            );
         }
     }
 
@@ -144,12 +149,7 @@ impl ClientNetState {
             .rx_packets
             .get_contiguous_packets_count(self.response_sequence);
         while dequeue_count < rx_queue_count {
-            let packet = self
-                .network
-                .rx_packets
-                .as_queue_type_mut()
-                .pop_front()
-                .unwrap();
+            let packet = self.network.rx_packets.as_queue_type_mut().pop_front().unwrap();
             trace!("{:?}", packet);
             match packet {
                 Packet::Response {
@@ -192,9 +192,7 @@ impl ClientNetState {
             }
             ResponseCode::KeepAlive => {}
             // errors
-            ResponseCode::Unauthorized {
-                error_msg: opt_error,
-            } => {
+            ResponseCode::Unauthorized { error_msg: opt_error } => {
                 info!("Unauthorized action attempted by client: {:?}", opt_error);
             }
             _ => {
@@ -203,13 +201,9 @@ impl ClientNetState {
         }
 
         if code != ResponseCode::OK && code != ResponseCode::KeepAlive {
-            let nw_response: NetwaysteEvent =
-                NetwaysteEvent::build_netwayste_event_from_response_code(code);
+            let nw_response: NetwaysteEvent = NetwaysteEvent::build_netwayste_event_from_response_code(code);
             match self.channel_to_conwayste.send(nw_response) {
-                Err(e) => error!(
-                    "Could not send a netwayste response via channel_to_conwayste: {:?}",
-                    e
-                ),
+                Err(e) => error!("Could not send a netwayste response via channel_to_conwayste: {:?}", e),
                 Ok(_) => (),
             }
         }
@@ -239,11 +233,7 @@ impl ClientNetState {
 
                     // Only process responses we haven't seen
                     if self.response_sequence <= sequence {
-                        trace!(
-                            "RX Buffering: Resp.Seq.: {}, {:?}",
-                            self.response_sequence,
-                            packet
-                        );
+                        trace!("RX Buffering: Resp.Seq.: {}, {:?}", self.response_sequence, packet);
                         // println!("TX packets: {:?}", self.network.tx_packets);
                         // None means the packet was not found so we've probably already removed it.
                         if let Some(_) = self.network.tx_packets.remove(&packet) {
@@ -259,7 +249,7 @@ impl ClientNetState {
                 chats,
                 game_updates: _,
                 universe_update: _,
-                ping
+                ping,
             } => {
                 if chats.len() != 0 {
                     self.handle_incoming_chats(chats);
@@ -267,27 +257,21 @@ impl ClientNetState {
 
                 // Reply to the update
                 let packet = Packet::UpdateReply {
-                    cookie: self.cookie.clone().unwrap(),
-                    last_chat_seq: Some(self.chat_msg_seq_num),
+                    cookie:               self.cookie.clone().unwrap(),
+                    last_chat_seq:        Some(self.chat_msg_seq_num),
                     last_game_update_seq: None,
-                    last_gen: None,
-                    pong: PingPong::pong(ping.nonce),
+                    last_gen:             None,
+                    pong:                 PingPong::pong(ping.nonce),
                 };
 
                 netwayste_send!(
                     udp_tx,
                     (self.server_address.unwrap().clone(), packet),
-                    (
-                        "Could not send UpdateReply{{ {} }} to server",
-                        self.chat_msg_seq_num
-                    )
+                    ("Could not send UpdateReply{{ {} }} to server", self.chat_msg_seq_num)
                 );
             }
             Packet::Request { .. } | Packet::UpdateReply { .. } | Packet::GetStatus { .. } => {
-                warn!(
-                    "Ignoring packet from server normally sent by clients: {:?}",
-                    packet
-                );
+                warn!("Ignoring packet from server normally sent by clients: {:?}", packet);
             }
             Packet::Status { .. } => {
                 self.latency_filter.update();
@@ -295,10 +279,7 @@ impl ClientNetState {
                 self.channel_to_conwayste
                     .send(NetwaysteEvent::Status(packet, self.latency_filter.average_latency_ms))
                     .unwrap_or_else(|e| {
-                        error!(
-                            "Could not send a netwayste response via channel_to_conwayste: {:?}",
-                            e
-                        );
+                        error!("Could not send a netwayste response via channel_to_conwayste: {:?}", e);
                     });
             }
         }
@@ -327,10 +308,10 @@ impl ClientNetState {
         if self.cookie.is_some() {
             // Send a keep alive if the connection is live
             let keep_alive = Packet::Request {
-                cookie: self.cookie.clone(),
-                sequence: self.sequence,
+                cookie:       self.cookie.clone(),
+                sequence:     self.sequence,
                 response_ack: None,
-                action: RequestAction::KeepAlive {
+                action:       RequestAction::KeepAlive {
                     latest_response_ack: self.response_sequence,
                 },
             };
@@ -405,8 +386,7 @@ impl ClientNetState {
     }
 
     pub fn handle_incoming_chats(&mut self, mut chat_messages: Vec<BroadcastChatMessage>) {
-        chat_messages
-            .retain(|ref chat_message| self.chat_msg_seq_num < chat_message.chat_seq.unwrap());
+        chat_messages.retain(|ref chat_message| self.chat_msg_seq_num < chat_message.chat_seq.unwrap());
 
         let mut to_conwayste_msgs = vec![];
 
@@ -433,10 +413,7 @@ impl ClientNetState {
 
         let nw_response = NetwaysteEvent::ChatMessages(to_conwayste_msgs);
         match self.channel_to_conwayste.send(nw_response) {
-            Err(e) => error!(
-                "Could not send a netwayste response via channel_to_conwayste: {:?}",
-                e
-            ),
+            Err(e) => error!("Could not send a netwayste response via channel_to_conwayste: {:?}", e),
             Ok(_) => (),
         }
     }
@@ -462,10 +439,10 @@ impl ClientNetState {
             }
 
             let packet = Packet::Request {
-                sequence: self.sequence,
+                sequence:     self.sequence,
                 response_ack: Some(self.response_sequence),
-                cookie: self.cookie.clone(),
-                action: action,
+                cookie:       self.cookie.clone(),
+                action:       action,
             };
 
             trace!("{:?}", packet);
@@ -551,8 +528,7 @@ impl ClientNetState {
                                                                              // .and_then is like .map except that it processes returned Futures
         let tick_stream = iter_stream
             .and_then(|_| {
-                let timeout =
-                    Timeout::new(Duration::from_millis(TICK_INTERVAL_IN_MS), &handle).unwrap();
+                let timeout = Timeout::new(Duration::from_millis(TICK_INTERVAL_IN_MS), &handle).unwrap();
                 timeout.and_then(move |_| ok(Event::TickEvent))
             })
             .map_err(|e| {
@@ -571,8 +547,7 @@ impl ClientNetState {
         let network_stream = stream::iter_ok::<_, io::Error>(iter::repeat(()));
         let network_stream = network_stream
             .and_then(|_| {
-                let timeout =
-                    Timeout::new(Duration::from_millis(NETWORK_INTERVAL_IN_MS), &handle).unwrap();
+                let timeout = Timeout::new(Duration::from_millis(NETWORK_INTERVAL_IN_MS), &handle).unwrap();
                 timeout.and_then(move |_| ok(Event::NetworkEvent))
             })
             .map_err(|e| {
@@ -593,53 +568,49 @@ impl ClientNetState {
             .select(packet_stream)
             .select(network_stream)
             .select(conwayste_stream)
-            .fold(
-                initial_client_state,
-                move |mut client_state: ClientNetState, event| {
-                    match event {
-                        Event::Incoming((_addr, opt_packet)) => {
-                            client_state.handle_incoming_event(&udp_tx, opt_packet);
-                        }
-                        Event::TickEvent => {
-                            client_state.handle_tick_event(&udp_tx);
-                        }
-                        Event::NetworkEvent => {
-                            client_state.handle_network_event(&udp_tx);
-                        }
-                        Event::ConwaysteEvent(netwayste_request) => {
-                            if let NetwaysteEvent::GetStatus(ping) = netwayste_request {
-                                let server_address = client_state.server_address.unwrap().clone();
+            .fold(initial_client_state, move |mut client_state: ClientNetState, event| {
+                match event {
+                    Event::Incoming((_addr, opt_packet)) => {
+                        client_state.handle_incoming_event(&udp_tx, opt_packet);
+                    }
+                    Event::TickEvent => {
+                        client_state.handle_tick_event(&udp_tx);
+                    }
+                    Event::NetworkEvent => {
+                        client_state.handle_network_event(&udp_tx);
+                    }
+                    Event::ConwaysteEvent(netwayste_request) => {
+                        if let NetwaysteEvent::GetStatus(ping) = netwayste_request {
+                            let server_address = client_state.server_address.unwrap().clone();
 
-                                client_state.latency_filter.start();
+                            client_state.latency_filter.start();
 
-                                netwayste_send!(
-                                    udp_tx,
-                                    (server_address, Packet::GetStatus { ping }),
-                                    ("Could not send user input cmd to server")
-                                );
-                            } else {
-                                let action: RequestAction =
-                                    NetwaysteEvent::build_request_action_from_netwayste_event(
-                                        netwayste_request,
-                                        client_state.in_game(),
-                                    );
-                                match action {
-                                    RequestAction::Connect { ref name, .. } => {
-                                        // TODO: do not store the name on client_state since that's the wrong
-                                        // place for it.
-                                        client_state.name = Some(name.to_owned());
-                                    }
-                                    _ => {}
+                            netwayste_send!(
+                                udp_tx,
+                                (server_address, Packet::GetStatus { ping }),
+                                ("Could not send user input cmd to server")
+                            );
+                        } else {
+                            let action: RequestAction = NetwaysteEvent::build_request_action_from_netwayste_event(
+                                netwayste_request,
+                                client_state.in_game(),
+                            );
+                            match action {
+                                RequestAction::Connect { ref name, .. } => {
+                                    // TODO: do not store the name on client_state since that's the wrong
+                                    // place for it.
+                                    client_state.name = Some(name.to_owned());
                                 }
-                                client_state.try_server_send(&udp_tx, &exit_tx, action);
+                                _ => {}
                             }
+                            client_state.try_server_send(&udp_tx, &exit_tx, action);
                         }
                     }
+                }
 
-                    // finally, return the updated client state for the next iteration
-                    ok(client_state)
-                },
-            )
+                // finally, return the updated client state for the next iteration
+                ok(client_state)
+            })
             .map(|_| ())
             .map_err(|_| ());
 
