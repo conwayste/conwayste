@@ -149,7 +149,6 @@ impl ColorSettings {
     }
 
     fn get_random_color(&self) -> Color {
-
         let mut colors = vec![1.0, 2.0, 3.0];
         let mut rng = rand::thread_rng();
 
