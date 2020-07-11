@@ -30,6 +30,8 @@ use futures::{future::ok, stream, sync::mpsc, Future, Sink, Stream};
 use regex::Regex;
 use tokio_core::reactor::{Core, Timeout};
 
+use tokio as TT;
+
 use crate::net::{
     bind, has_connection_timed_out, BroadcastChatMessage, LineCodec, NetwaysteEvent, NetworkManager, NetworkQueue,
     Packet, RequestAction, ResponseCode, RoomList, DEFAULT_PORT, VERSION,
@@ -473,13 +475,7 @@ impl ClientNetState {
 
         /// XXX
         // synchronously resolve DNS because... why not?
-        trace!("Resolving {:?}...", server_str);
-        let addr_vec = tokio_dns::resolve_sock_addr(&server_str[..])
-            .wait() // wait() is synchronous!!!
-            .unwrap_or_else(|e| {
-                error!("failed to resolve: {:?}", e);
-                exit(1);
-            });
+        let addr_vec = TT::net::lookup_host(server_str).await?;
         if addr_vec.len() == 0 {
             error!("resolution found 0 addresses");
             exit(1);
