@@ -30,7 +30,7 @@ extern crate proptest;
 
 use netwayste::net::{
     bind, get_version, has_connection_timed_out, BroadcastChatMessage, LineCodec, NetworkManager, NetworkQueue, Packet,
-    RequestAction, ResponseCode, RoomList, UniUpdateType, DEFAULT_HOST, DEFAULT_PORT, VERSION,
+    RequestAction, ResponseCode, RoomList, UniUpdate, DEFAULT_HOST, DEFAULT_PORT, VERSION,
 };
 
 use netwayste::utils::{LatencyFilter, PingPong};
@@ -951,7 +951,8 @@ impl ServerState {
                 cookie,
                 last_chat_seq,
                 last_game_update_seq: _,
-                last_gen: _,
+                last_full_gen: _,
+                partial_gen: _,
                 pong: _,
             } => {
                 let opt_player_id = self.get_player_id_by_cookie(cookie.as_str());
@@ -1096,7 +1097,7 @@ impl ServerState {
                 let update_packet = Packet::Update {
                     chats:           unsent_messages,
                     game_updates:    vec![],
-                    universe_update: UniUpdateType::NoChange,
+                    universe_update: UniUpdate::NoChange,
                     ping:            PingPong::ping(),
                 };
 

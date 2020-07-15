@@ -260,7 +260,8 @@ impl ClientNetState {
                     cookie:               self.cookie.clone().unwrap(),
                     last_chat_seq:        Some(self.chat_msg_seq_num),
                     last_game_update_seq: None,
-                    last_gen:             None,
+                    last_full_gen:        None,
+                    partial_gen:          None,
                     pong:                 PingPong::pong(ping.nonce),
                 };
 

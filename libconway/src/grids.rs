@@ -17,7 +17,6 @@
 
 use crate::rle::Pattern;
 use crate::universe::Region;
-use serde::{Deserialize, Serialize};
 use std::cmp;
 use std::error::Error;
 use std::ops::{Index, IndexMut};
@@ -36,7 +35,7 @@ pub enum Rotation {
     CCW, // counter-clockwise
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct BitGrid(pub Vec<Vec<u64>>);
 
 impl BitGrid {

@@ -51,9 +51,6 @@ const RETRANSMISSION_COUNT: usize = 32; // Testing some ideas out:. Resend lengt
 // (110 is the avg weight of an amino acid in daltons :] Much larger than our current queue size)
 const MATCH_FOUND_SENTINEL: usize = 110;
 
-extern crate conway;
-use conway as C;
-
 //////////////// Public Macros /////////////////
 
 #[macro_export]
@@ -276,10 +273,27 @@ pub struct GameUpdate {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub enum UniUpdateType {
-    State { state: C::universe::GenState },
-    Diff { diff: C::universe::GenStateDiff },
+pub enum UniUpdate {
+    Diff { diff: GenStateDiffPart },
     NoChange,
+}
+
+/// One or more of these can be recombined into a GenStateDiff from the conway crate.
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct GenStateDiffPart {
+    pub part_number:  u8,  // zero-based but less than 32
+    pub total_parts:  u8,  // must be at least 1 but at most 32
+    pub gen0:         u32, // zero means diff is based off the beginning of time
+    pub gen1:         u32,
+    pub pattern_part: String, // concatenated together to form a Pattern
+}
+
+/// GenPartInfo is sent in the UpdateReply to indicate which GenStateDiffParts are needed.
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct GenPartInfo {
+    pub gen0:         u32, // zero means diff is based off the beginning of time
+    pub gen1:         u32,
+    pub have_bitmask: u32, // bitmask indicating which parts for the specified diff are present
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -309,7 +323,7 @@ pub enum Packet {
         // in-game: sent by server
         chats:           Vec<BroadcastChatMessage>, // All non-acknowledged chats are sent each update
         game_updates:    Vec<GameUpdate>,           // Information pertaining to a game tick update
-        universe_update: UniUpdateType,             //
+        universe_update: UniUpdate,                 //
         ping:            PingPong,                  // Used for server-to-client latency measurement
     },
     UpdateReply {
@@ -317,7 +331,8 @@ pub enum Packet {
         cookie:               String,
         last_chat_seq:        Option<u64>, // sequence number of latest chat msg. received from server
         last_game_update_seq: Option<u64>, // seq. number of latest game update from server
-        last_gen:             Option<u64>, // generation number client is currently at
+        last_full_gen:        Option<u64>, // generation number client is currently at
+        partial_gen:          Option<GenPartInfo>, // partial gen info, if some but not all GenStateDiffParts recv'd
         pong:                 PingPong,    // Used for server-to-client latency measurement
     },
     GetStatus {
@@ -333,7 +348,6 @@ pub enum Packet {
 }
 
 impl Packet {
-    /* XXX do we need this?
     pub fn sequence_number(&self) -> u64 {
         if let Packet::Request {
             sequence,
@@ -359,15 +373,13 @@ impl Packet {
         {
             // TODO revisit once mechanics are fleshed out
             match universe_update {
-                UniUpdateType::State(gs) => gs.gen,
-                UniUpdateType::Diff(gd) => gd.new_gen,
-                UniUpdateType::NoChange => 0,
+                UniUpdate::Diff{diff: part} => ((part.gen1 as u64) << 32) | (part.gen0 as u64),
+                UniUpdate::NoChange => 0,
             }
         } else {
             unimplemented!(); // UpdateReply is not saved
         }
     }
-    */
 
     #[allow(unused)]
     pub fn set_response_sequence(&mut self, new_ack: Option<u64>) {
@@ -447,12 +459,13 @@ impl fmt::Debug for Packet {
                 cookie,
                 last_chat_seq,
                 last_game_update_seq,
-                last_gen,
+                last_full_gen,
+                partial_gen,
                 pong: _,
             } => write!(
                 f,
-                "[UpdateReply] cookie: {:?} last_chat_seq: {:?} last_game_update_seq: {:?} last_game: {:?}",
-                cookie, last_chat_seq, last_game_update_seq, last_gen
+                "[UpdateReply] cookie: {:?} last_chat_seq: {:?} last_game_update_seq: {:?} last_full_gen: {:?} partial_gen: {:?}",
+                cookie, last_chat_seq, last_game_update_seq, last_full_gen, partial_gen
             ),
             Packet::GetStatus { ping } => write!(f, "[GetStatus] nonce: {}", ping.nonce),
             Packet::Status {
