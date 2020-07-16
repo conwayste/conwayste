@@ -101,6 +101,7 @@ before_install:
 install:
   - sh ci/install.sh
   - source ~/.cargo/env || true
+  - rustup install nightly-2020-05-15     # <================== update this!!
   - rustup +nightly component add rustfmt
 
 script:
