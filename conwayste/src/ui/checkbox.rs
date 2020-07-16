@@ -223,7 +223,10 @@ impl Widget for Checkbox {
 
         if self.dimensions.x != new_dims.x || self.dimensions.y != new_dims.y {
             // also move the label
-            self.label.translate(Vector2::<f32>::new(new_dims.x - self.dimensions.x, new_dims.y - self.dimensions.y))
+            self.label.translate(Vector2::<f32>::new(
+                new_dims.x - self.dimensions.x,
+                new_dims.y - self.dimensions.y,
+            ))
         }
 
         self.dimensions = new_dims;
