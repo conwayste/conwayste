@@ -1512,7 +1512,8 @@ mod netwayste_server_tests {
                     cookie:               player_cookie.clone(),
                     last_chat_seq:        Some(1),
                     last_game_update_seq: None,
-                    last_gen:             None,
+                    last_full_gen:        None,
+                    partial_gen:          None,
                     pong:                 PingPong::pong(0),
                 },
             )
@@ -1531,7 +1532,8 @@ mod netwayste_server_tests {
                     cookie:               player_cookie.clone(),
                     last_chat_seq:        Some(0),
                     last_game_update_seq: None,
-                    last_gen:             None,
+                    last_full_gen:        None,
+                    partial_gen:          None,
                     pong:                 PingPong::pong(0),
                 },
             )
@@ -1550,7 +1552,8 @@ mod netwayste_server_tests {
                     cookie:               player_cookie,
                     last_chat_seq:        None,
                     last_game_update_seq: None,
-                    last_gen:             None,
+                    last_full_gen:        None,
+                    partial_gen:          None,
                     pong:                 PingPong::pong(0),
                 },
             )
@@ -2465,7 +2468,8 @@ mod netwayste_server_tests {
             cookie:               cookie,
             last_chat_seq:        Some(0),
             last_game_update_seq: None,
-            last_gen:             None,
+            last_full_gen:        None,
+            partial_gen:          None,
             pong:                 PingPong::pong(0),
         };
 
@@ -2488,7 +2492,8 @@ mod netwayste_server_tests {
             cookie:               cookie,
             last_chat_seq:        Some(0),
             last_game_update_seq: None,
-            last_gen:             None,
+            last_full_gen:        None,
+            partial_gen:          None,
             pong:                 PingPong::pong(0),
         };
 
@@ -2548,7 +2553,7 @@ mod netwayste_server_tests {
                 ping: _,
             } => {
                 assert!(game_updates.is_empty());
-                assert_eq!(universe_update, UniUpdateType::NoChange);
+                assert_eq!(universe_update, UniUpdate::NoChange);
                 assert!(!chats.is_empty());
 
                 // All client chat sequence numbers start counting at 1
@@ -2609,7 +2614,7 @@ mod netwayste_server_tests {
                 ping: _,
             } => {
                 assert!(game_updates.is_empty());
-                assert_eq!(universe_update, UniUpdateType::NoChange);
+                assert_eq!(universe_update, UniUpdate::NoChange);
                 assert!(!chats.is_empty());
 
                 assert_eq!(chats.len(), 1);
