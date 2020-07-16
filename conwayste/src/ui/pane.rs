@@ -16,39 +16,53 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::error::Error;
 use std::fmt;
 
-use ggez::graphics::{self, Color, Rect, DrawMode, DrawParam};
+use ggez::graphics::{self, Color, DrawMode, DrawParam, Rect};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
+use enum_iterator::IntoEnumIterator;
 use id_tree::NodeId;
 
 use super::{
+    common::within_widget,
+    context,
+    focus::{CycleType, FocusCycle},
     widget::Widget,
-    common::{within_widget},
     UIError, UIResult,
 };
+
+use ggez::input::keyboard::KeyCode;
+
+use context::{EmitEvent, Event, EventType, Handled, UIContext};
 
 use crate::constants::colors::*;
 
 pub struct Pane {
-    id: Option<NodeId>,
-    z_index: usize,
-    pub dimensions: Rect,
-    pub hover: bool,
-    pub floating: bool, // can the window be dragged around?
+    id:               Option<NodeId>,
+    z_index:          usize,
+    pub dimensions:   Rect,
+    pub floating:     bool, // can the window be dragged around?
     pub previous_pos: Option<Point2<f32>>,
-    pub border: f32,
-    pub bg_color: Option<Color>,
+    pub border:       f32,
+    pub bg_color:     Option<Color>,
+    pub focus_cycle:  FocusCycle,
+    pub handler_data: context::HandlerData, // required for impl_emit_event!
 
-    // might need something to track mouse state to see if we are still clicked within the
-    // boundaries of the pane in the dragging case
+                                            // might need something to track mouse state to see if
+                                            // we are still clicked within the boundaries of the
+                                            // pane in the dragging case
 }
 
 impl fmt::Debug for Pane {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Pane {{ id: {:?}, z-index: {}, Dimensions: {:?} }}", self.id, self.z_index, self.dimensions)
+        write!(
+            f,
+            "Pane {{ id: {:?}, z-index: {}, Dimensions: {:?} }}",
+            self.id, self.z_index, self.dimensions
+        )
     }
 }
 
@@ -56,16 +70,261 @@ impl fmt::Debug for Pane {
 impl Pane {
     /// Specify the dimensional bounds of the Pane container
     pub fn new(dimensions: Rect) -> Self {
-        Pane {
+        let mut pane = Pane {
             id: None,
             z_index: std::usize::MAX,
-            dimensions: dimensions,
-            hover: false,
+            dimensions,
             floating: true,
             previous_pos: None,
             border: 1.0,
             bg_color: None,
+            focus_cycle: FocusCycle::new(CycleType::OpenEnded),
+            handler_data: context::HandlerData::new(),
+        };
+
+        // for each event type, define a handler of the appropriate type (mouse or keyboard)
+        for event_type in EventType::into_enum_iter() {
+            if event_type.is_mouse_event() {
+                let handler = |_obj: &mut dyn EmitEvent,
+                               uictx: &mut context::UIContext,
+                               evt: &context::Event|
+                 -> Result<Handled, Box<dyn Error>> {
+                    for child_id in uictx.widget_view.children_ids() {
+                        let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK because 1) valid ID, 2) in view
+
+                        let point = &evt.point.unwrap(); // unwrap OK because a Click event always has a point
+                        if within_widget(&point, &widget_ref.rect()) {
+                            if let Some(emittable_ref) = widget_ref.as_emit_event() {
+                                emittable_ref.emit(evt, &mut subuictx)?;
+                                let pane_events = subuictx.collect_child_events();
+                                if pane_events.len() != 0 {
+                                    warn!(
+                                        "expected no mouse child events to be collected from Pane; got {:?}",
+                                        pane_events
+                                    );
+                                }
+                                return Ok(Handled::Handled);
+                            } else {
+                                warn!(
+                                    "Widget at point of click ({:?}) does not implement EmitEvent: {:?}",
+                                    evt.point,
+                                    widget_ref.id(),
+                                );
+                            }
+                        }
+                    }
+                    Ok(Handled::NotHandled)
+                };
+                pane.on(event_type, Box::new(handler)).unwrap(); // unwrap OK because we aren't calling from within a handler
+            } else if event_type.is_key_event() {
+                // unwrap OK because we aren't calling from within a handler
+                pane.on(event_type, Box::new(Pane::key_press_handler)).unwrap();
+            } else {
+                // nothing to do if this is not a key or a mouse event
+            }
+
+            pane.on(EventType::Update, Box::new(Pane::broadcast_handler)).unwrap(); // unwrap OK because not called w/in handler
+            pane.on(EventType::MouseMove, Box::new(Pane::broadcast_handler))
+                .unwrap(); // unwrap OK because not called w/in handler
         }
+
+        // Set handler for focusing first widget in focus cycle when focus is gained
+        let gain_focus_handler =
+            move |obj: &mut dyn EmitEvent, uictx: &mut UIContext, _evt: &Event| -> Result<Handled, Box<dyn Error>> {
+                let pane = obj.downcast_mut::<Pane>().unwrap(); // unwrap OK
+                if pane.focus_cycle.focused_widget_id().is_none() {
+                    pane.focus_cycle.focus_next();
+                }
+                if let Some(focused_widget_id) = pane.focus_cycle.focused_widget_id() {
+                    let focused_widget_id = focused_widget_id.clone();
+                    pane.emit_focus_change(EventType::GainFocus, uictx, &focused_widget_id)?;
+                }
+                Ok(Handled::NotHandled)
+            };
+        pane.on(EventType::GainFocus, Box::new(gain_focus_handler)).unwrap(); // unwrap OK
+
+        pane
+    }
+
+    fn broadcast_handler(
+        _obj: &mut dyn EmitEvent,
+        uictx: &mut UIContext,
+        event: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        for child_id in uictx.widget_view.children_ids() {
+            // Get a mutable reference to a BoxedWidget, as well as a UIContext with a view on the
+            // widgets in the tree under this widget.
+            let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK b/c NodeId valid & in view
+
+            if let Some(emittable) = widget_ref.as_emit_event() {
+                emittable.emit(event, &mut subuictx)?;
+                let pane_events = subuictx.collect_child_events();
+                if pane_events.len() != 0 {
+                    warn!(
+                        "[Pane] expected no {:?} child events to be collected from child widget; got {:?}",
+                        event.what, pane_events
+                    );
+                }
+            }
+        }
+        Ok(Handled::NotHandled)
+    }
+
+    fn key_press_handler(
+        obj: &mut dyn EmitEvent,
+        uictx: &mut UIContext,
+        event: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        let key = event
+            .key
+            .ok_or_else(|| -> Box<dyn Error> { format!("pane event of type {:?} has no key", event.what).into() })?;
+
+        let pane = obj.downcast_mut::<Pane>().unwrap();
+
+        if key == context::KeyCodeOrChar::KeyCode(KeyCode::Tab) {
+            // special key press logic to handle focus changes
+
+            let opt_child_id = pane
+                .focus_cycle
+                .focused_widget_id()
+                .map(|child_id_ref| child_id_ref.clone());
+
+            // If a widget is focused, this is Some(<referenced to boxed focused widget>).
+            let opt_widget = opt_child_id
+                .as_ref()
+                .map(|child_id| uictx.widget_view.get(child_id).unwrap().data());
+            if opt_child_id.is_some() && opt_widget.unwrap().downcast_ref::<Pane>().is_some() {
+                // there is a focused child pane
+
+                let child_id = opt_child_id.unwrap();
+                let pane_events = Pane::emit_keyboard_event(event, uictx, &child_id)?;
+
+                pane.handle_events_from_child(uictx, &pane_events[..], event.shift_pressed)?;
+            } else {
+                // either no focused child widget, or there is but it's not a Pane
+                if event.shift_pressed {
+                    pane.focus_cycle.focus_previous();
+                } else {
+                    pane.focus_cycle.focus_next();
+                }
+
+                // Only send gain/lose events if the newly focused widget is different from the
+                // previously focused widget.
+                if pane.focus_cycle.focused_widget_id() != opt_child_id.as_ref() {
+                    // send a GainFocus event to the newly focused widget (if any)
+                    if let Some(newly_focused_id) = pane.focus_cycle.focused_widget_id() {
+                        let newly_focused_id = newly_focused_id.clone();
+                        pane.emit_focus_change(EventType::GainFocus, uictx, &newly_focused_id)?;
+                    }
+
+                    // send a LoseFocus event to the previously focused widget (if any)
+                    if let Some(newly_focused_id) = opt_child_id {
+                        pane.emit_focus_change(EventType::LoseFocus, uictx, &newly_focused_id)?;
+                    }
+                }
+            }
+
+            if pane.focus_cycle.focused_widget_id().is_none() {
+                // we lost focus; send ChildReleasedFocus event to parent
+                let event = Event::new_child_released_focus();
+                uictx.child_event(event);
+            }
+        } else {
+            // regular key press logic (no focus changes)
+            let focused_id = pane.focus_cycle.focused_widget_id();
+            if let Some(id) = focused_id {
+                let pane_events = Pane::emit_keyboard_event(event, uictx, id)?;
+                pane.handle_events_from_child(uictx, &pane_events[..], event.shift_pressed)?;
+            }
+        }
+        Ok(Handled::Handled)
+    }
+
+    fn handle_events_from_child(
+        &mut self,
+        uictx: &mut UIContext,
+        child_events: &[Event],
+        shift_pressed: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        for child_event in child_events {
+            // ignore all event types except this one for now
+            if child_event.what == context::EventType::ChildReleasedFocus {
+                if shift_pressed {
+                    self.focus_cycle.focus_previous();
+                } else {
+                    self.focus_cycle.focus_next();
+                }
+                // send a GainFocus event to the newly focused widget (if any)
+                if let Some(newly_focused_id) = self.focus_cycle.focused_widget_id() {
+                    let newly_focused_id = newly_focused_id.clone();
+                    self.emit_focus_change(EventType::GainFocus, uictx, &newly_focused_id)?;
+                    let more_child_events = uictx.collect_child_events();
+                    if more_child_events.len() > 0
+                        && more_child_events[0].what == context::EventType::ChildReleasedFocus
+                    {
+                        error!("[Pane] handle_events_from_child: refusing to recursively handle gain focus / child release focus event loop");
+                    }
+                }
+                break;
+            }
+        }
+        if self.focus_cycle.focused_widget_id().is_none() {
+            // we lost focus; send ChildReleasedFocus event to parent
+            let event = Event::new_child_released_focus();
+            uictx.child_event(event);
+        }
+        Ok(())
+    }
+
+    /// Forward this keyboard event to the specified child widget.
+    fn emit_keyboard_event(
+        event: &context::Event,
+        uictx: &mut UIContext,
+        focused_id: &NodeId,
+    ) -> Result<Vec<Event>, Box<dyn Error>> {
+        let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
+        if let Some(emittable) = widget_ref.as_emit_event() {
+            return emittable
+                .emit(event, &mut subuictx)
+                .map(|_| subuictx.collect_child_events());
+        } else {
+            // We probably won't ever get here due to the FocusCycle only holding widgets that can
+            // receive keyboard events.
+            debug!("nothing to emit on; widget is not an EmitEvent");
+        }
+        Ok(vec![])
+    }
+
+    /// Emit a GainFocus or LoseFocus event on the specified child widget.
+    fn emit_focus_change(
+        &mut self,
+        what: EventType,
+        uictx: &mut UIContext,
+        focused_id: &NodeId,
+    ) -> Result<(), Box<dyn Error>> {
+        if what != EventType::GainFocus && what != EventType::LoseFocus {
+            return Err(format!("Unexpected event type passed to Pane::emit_focus_change: {:?}", what).into());
+        }
+        let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
+        if let Some(emittable) = widget_ref.as_emit_event() {
+            let event = Event::new_gain_or_lose_focus(what);
+            emittable.emit(&event, &mut subuictx)?;
+            let pane_events = subuictx.collect_child_events();
+            self.handle_events_from_child(&mut subuictx, &pane_events[..], false)?;
+            let sub_child_events = subuictx.collect_child_events();
+            drop(subuictx);
+
+            // Pass on any child events from subuictx to uictx
+            for sub_event in sub_child_events {
+                uictx.child_event(sub_event);
+            }
+            return Ok(());
+        } else {
+            // We probably won't ever get here due to the FocusCycle only holding widgets that can
+            // receive keyboard events.
+            debug!("nothing to emit on; widget is not an EmitEvent");
+        }
+        Ok(())
     }
 
     /*
@@ -77,6 +336,16 @@ impl Pane {
         }
     }
     */
+
+    /// Add a widget ID to Pane's focus cycle. Must only be called if the widget accepts keyboard
+    /// events.
+    pub fn add_widget(&mut self, widget_id: NodeId) {
+        self.focus_cycle.push(widget_id);
+    }
+
+    pub fn remove_widget(&mut self, widget_id: &NodeId) {
+        self.focus_cycle.remove(widget_id);
+    }
 }
 
 impl Widget for Pane {
@@ -102,8 +371,11 @@ impl Widget for Pane {
 
     fn set_rect(&mut self, new_dims: Rect) -> UIResult<()> {
         if new_dims.w == 0.0 || new_dims.h == 0.0 {
-            return Err(Box::new(UIError::InvalidDimensions{
-                reason: format!("Cannot set the size of a Pane {:?} to a width or height of zero", self.id())
+            return Err(Box::new(UIError::InvalidDimensions {
+                reason: format!(
+                    "Cannot set the size of a Pane {:?} to a width or height of zero",
+                    self.id()
+                ),
             }));
         }
 
@@ -127,7 +399,7 @@ impl Widget for Pane {
     fn set_size(&mut self, w: f32, h: f32) -> UIResult<()> {
         if w == 0.0 || h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions {
-                reason: format!("Cannot set the width or height of Pane {:?} to zero", self.id())
+                reason: format!("Cannot set the width or height of Pane {:?} to zero", self.id()),
             }));
         }
 
@@ -139,10 +411,6 @@ impl Widget for Pane {
 
     fn translate(&mut self, dest: Vector2<f32>) {
         self.dimensions.translate(dest);
-    }
-
-    fn on_hover(&mut self, point: &Point2<f32>) {
-        self.hover = within_widget(point, &self.dimensions);
     }
 
     /* TODO: fix all the drag issues
@@ -207,6 +475,17 @@ impl Widget for Pane {
 
         Ok(())
     }
+
+    /// convert to EmitEvent
+    fn as_emit_event(&mut self) -> Option<&mut dyn context::EmitEvent> {
+        Some(self)
+    }
+
+    /// Pane can receive keyboard focus because it can contain widgets that can receive focus.
+    fn accepts_keyboard_events(&self) -> bool {
+        true
+    }
 }
 
 widget_from_id!(Pane);
+impl_emit_event!(Pane, self.handler_data);
