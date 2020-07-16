@@ -373,7 +373,7 @@ impl Packet {
         {
             // TODO revisit once mechanics are fleshed out
             match universe_update {
-                UniUpdate::Diff{diff: part} => ((part.gen1 as u64) << 32) | (part.gen0 as u64),
+                UniUpdate::Diff { diff: part } => ((part.gen1 as u64) << 32) | (part.gen0 as u64),
                 UniUpdate::NoChange => 0,
             }
         } else {
