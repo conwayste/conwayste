@@ -15,18 +15,17 @@
  *  You should have received a copy of the GNU General Public License
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
+use crate::rle::Pattern;
+use crate::universe::Region;
+use std::cmp;
 use std::error::Error;
 use std::ops::{Index, IndexMut};
-use std::cmp;
-use crate::universe::Region;
-use crate::rle::Pattern;
-
 
 #[derive(Eq, PartialEq, Debug, Clone, Copy)]
 pub enum BitOperation {
     Clear,
     Set,
-    Toggle
+    Toggle,
 }
 
 /// Defines a rotation.
@@ -35,7 +34,6 @@ pub enum Rotation {
     CW,  // clockwise
     CCW, // counter-clockwise
 }
-
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct BitGrid(pub Vec<Vec<u64>>);
@@ -51,7 +49,7 @@ impl BitGrid {
         assert!(height != 0);
 
         let mut rows: Vec<Vec<u64>> = Vec::with_capacity(height);
-        for _ in 0 .. height {
+        for _ in 0..height {
             let row: Vec<u64> = vec![0; width_in_words];
             rows.push(row);
         }
@@ -69,9 +67,9 @@ impl BitGrid {
     #[inline]
     pub fn modify_bits_in_word(&mut self, row: usize, word_col: usize, mask: u64, op: BitOperation) {
         match op {
-            BitOperation::Set    => self[row][word_col] |=  mask,
-            BitOperation::Clear  => self[row][word_col] &= !mask,
-            BitOperation::Toggle => self[row][word_col] ^=  mask,
+            BitOperation::Set => self[row][word_col] |= mask,
+            BitOperation::Clear => self[row][word_col] &= !mask,
+            BitOperation::Toggle => self[row][word_col] ^= mask,
         }
     }
 
@@ -81,10 +79,10 @@ impl BitGrid {
     ///
     /// This function will panic if `region` is out of range.
     pub fn modify_region(&mut self, region: Region, op: BitOperation) {
-        for y in region.top() .. region.bottom() + 1 {
+        for y in region.top()..region.bottom() + 1 {
             assert!(y >= 0);
-            for word_col in 0 .. self[y as usize].len() {
-                let x_left  = word_col * 64;
+            for word_col in 0..self[y as usize].len() {
+                let x_left = word_col * 64;
                 let x_right = x_left + 63;
 
                 if region.right() >= x_left as isize && region.left() <= x_right as isize {
@@ -142,7 +140,12 @@ impl BitGrid {
         if first_row.is_some() {
             let width = last_col.unwrap() - first_col.unwrap() + 1;
             let height = last_row.unwrap() - first_row.unwrap() + 1;
-            Some(Region::new(first_col.unwrap() as isize, first_row.unwrap() as isize, width, height))
+            Some(Region::new(
+                first_col.unwrap() as isize,
+                first_row.unwrap() as isize,
+                width,
+                height,
+            ))
         } else {
             None
         }
@@ -157,9 +160,9 @@ impl BitGrid {
     /// The bits are copied using an `|=` operation, so 1 bits in the destination will not ever be
     /// cleared.
     pub fn copy(src: &BitGrid, dst: &mut BitGrid, dst_region: Region) {
-        let dst_left   = cmp::max(0, dst_region.left()) as usize;
-        let dst_right  = cmp::min(dst.width() as isize - 1, dst_region.right()) as usize;
-        let dst_top    = cmp::max(0, dst_region.top()) as usize;
+        let dst_left = cmp::max(0, dst_region.left()) as usize;
+        let dst_right = cmp::min(dst.width() as isize - 1, dst_region.right()) as usize;
+        let dst_top = cmp::max(0, dst_region.top()) as usize;
         let dst_bottom = cmp::min(dst.height() as isize - 1, dst_region.bottom()) as usize;
         if dst_left > dst_right || dst_top > dst_bottom {
             // nothing to do because both dimensions aren't positive
@@ -171,23 +174,23 @@ impl BitGrid {
             if dst_row > dst_bottom {
                 break;
             }
-            let mut src_col = 0;   // word-aligned
+            let mut src_col = 0; // word-aligned
             while src_col < src.width() {
-                let dst_col = src_col + dst_left;    // not word-aligned
+                let dst_col = src_col + dst_left; // not word-aligned
                 if dst_col > dst_right {
                     break;
                 }
                 let dst_word_idx = dst_col / 64;
-                let shift = dst_col - dst_word_idx*64;  // right shift amount
-                let mut word = src[src_row][src_col/64];
+                let shift = dst_col - dst_word_idx * 64; // right shift amount
+                let mut word = src[src_row][src_col / 64];
                 // clear bits that would be beyond dst_right
                 if dst_right - dst_col + 1 < 64 {
                     let mask = !((1u64 << (64 - (dst_right - dst_col + 1))) - 1);
                     word &= mask;
                 }
                 dst[dst_row][dst_word_idx] |= word >> shift;
-                if shift > 0 && dst_word_idx+1 < dst.width_in_words() {
-                    dst[dst_row][dst_word_idx+1] |= word << (64 - shift);
+                if shift > 0 && dst_word_idx + 1 < dst.width_in_words() {
+                    dst[dst_row][dst_word_idx + 1] |= word << (64 - shift);
                 }
                 src_col += 64;
             }
@@ -210,12 +213,12 @@ impl BitGrid {
 
     /// Calls callback on each bit that is set (1). Callback receives (col, row).
     pub fn each_set<F: FnMut(usize, usize)>(&self, mut callback: F) {
-        for row in 0 .. self.height() {
+        for row in 0..self.height() {
             let mut col = 0;
-            for col_idx in 0 .. self.width_in_words() {
+            for col_idx in 0..self.width_in_words() {
                 let word = self.0[row][col_idx];
                 for shift in (0..64).rev() {
-                    if (word>>shift)&1 == 1 {
+                    if (word >> shift) & 1 == 1 {
                         callback(col, row);
                     }
                     col += 1;
@@ -233,21 +236,26 @@ impl BitGrid {
     /// An error is returned if the width or height are out of range.
     pub fn rotate(&mut self, width: usize, height: usize, rotation: Rotation) -> Result<(), Box<dyn Error>> {
         if width > self.width() || height > self.height() {
-            return Err(format!("Expected passed-in width={} and height={} to be less than grid width={} and height={}",
-                    width, height, self.width(), self.height()).into());
+            return Err(format!(
+                "Expected passed-in width={} and height={} to be less than grid width={} and height={}",
+                width,
+                height,
+                self.width(),
+                self.height()
+            )
+            .into());
         }
-        let new_width_in_words = (self.height() - 1)/64 + 1;   // number of words needed for this many cells
+        let new_width_in_words = (self.height() - 1) / 64 + 1; // number of words needed for this many cells
         let new_height = self.width();
         let mut new = BitGrid::new(new_width_in_words, new_height);
-        for row in 0 .. height {
+        for row in 0..height {
             let new_col = match rotation {
                 Rotation::CCW => row,
                 Rotation::CW => height - row - 1,
             };
-            let new_col_idx = new_col/64; // the column index in the new grid
+            let new_col_idx = new_col / 64; // the column index in the new grid
             let mut col = 0;
-            'rowloop:
-            for col_idx in 0 .. self.width_in_words() {
+            'rowloop: for col_idx in 0..self.width_in_words() {
                 let word = self.0[row][col_idx];
                 for shift in (0..64).rev() {
                     if col >= width {
@@ -257,10 +265,10 @@ impl BitGrid {
                         Rotation::CCW => width - col - 1,
                         Rotation::CW => col,
                     };
-                    if (word>>shift)&1 == 1 {
-                        let new_shift = 63 - (new_col - new_col_idx*64);
+                    if (word >> shift) & 1 == 1 {
+                        let new_shift = 63 - (new_col - new_col_idx * 64);
                         // copy this bit to new but rotated
-                        new.0[new_row][new_col_idx] |= 1<<new_shift;
+                        new.0[new_row][new_col_idx] |= 1 << new_shift;
                     }
                     col += 1;
                 }
@@ -271,7 +279,6 @@ impl BitGrid {
         Ok(())
     }
 }
-
 
 impl Index<usize> for BitGrid {
     type Output = Vec<u64>;
@@ -287,12 +294,11 @@ impl IndexMut<usize> for BitGrid {
     }
 }
 
-
 pub trait CharGrid {
     /// Write a char `ch` to (`col`, `row`).
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if:
     /// * `col` or `row` are out of range
     /// * `char` is invalid for this type. Use `is_valid` to check first.
@@ -311,13 +317,14 @@ pub trait CharGrid {
     /// Returns a Pattern that describes this `CharGrid` as viewed by specified player if
     /// `visibility.is_some()`, or a fog-less view if `visibility.is_none()`.
     fn to_pattern(&self, visibility: Option<usize>) -> Pattern {
-
         fn push(result: &mut String, output_col: &mut usize, rle_len: usize, ch: char) {
             let what_to_add = if rle_len == 1 {
                 let mut s = String::with_capacity(1);
                 s.push(ch);
                 s
-            } else { format!("{}{}", rle_len, ch) };
+            } else {
+                format!("{}{}", rle_len, ch)
+            };
             if *output_col + what_to_add.len() > 70 {
                 result.push_str("\r\n");
                 *output_col = 0;
@@ -385,7 +392,6 @@ pub trait CharGrid {
     fn get_run(&self, col: usize, row: usize, visibility: Option<usize>) -> (usize, char);
 }
 
-
 const VALID_BIT_GRID_CHARS: [char; 2] = ['b', 'o'];
 
 impl CharGrid for BitGrid {
@@ -401,16 +407,12 @@ impl CharGrid for BitGrid {
 
     /// _visibility is ignored, since BitGrids have no concept of a player.
     fn write_at_position(&mut self, col: usize, row: usize, ch: char, _visibility: Option<usize>) {
-        let word_col = col/64;
+        let word_col = col / 64;
         let shift = 63 - (col & (64 - 1));
         match ch {
-            'b' => {
-                self.modify_bits_in_word(row, word_col, 1 << shift, BitOperation::Clear)
-            }
-            'o' => {
-                self.modify_bits_in_word(row, word_col, 1 << shift, BitOperation::Set)
-            }
-            _ => panic!("invalid character: {:?}", ch)
+            'b' => self.modify_bits_in_word(row, word_col, 1 << shift, BitOperation::Clear),
+            'o' => self.modify_bits_in_word(row, word_col, 1 << shift, BitOperation::Set),
+            _ => panic!("invalid character: {:?}", ch),
         }
     }
 
@@ -432,7 +434,7 @@ impl CharGrid for BitGrid {
     ///
     /// This function will panic if `col` or `row` are out of bounds.
     fn get_run(&self, col: usize, row: usize, _visibility: Option<usize>) -> (usize, char) {
-        let word_col = col/64;
+        let word_col = col / 64;
         let shift = 63 - (col & (64 - 1));
         let mut word = self.0[row][word_col];
         let mut mask = 1 << shift;

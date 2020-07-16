@@ -1,4 +1,4 @@
-/*  Copyright 2019 the Conwayste Developers.
+/*  Copyright 2019-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -16,17 +16,15 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::{Context, GameResult};
-use ggez::graphics::{Rect};
+use ggez::graphics::Rect;
 use ggez::nalgebra::{Point2, Vector2};
+use ggez::{Context, GameResult};
 
 use downcast_rs::Downcast;
 
-use super::{
-    UIAction,
-    UIResult,
-    WidgetID
-};
+use id_tree::NodeId;
+
+use super::{context, UIResult};
 
 /// A user interface element trait that defines graphical, interactive behavior to be specified.
 /// Relies on the `downcast_rs` crate to be able to transform widgets into their specific
@@ -34,27 +32,18 @@ use super::{
 ///
 /// When defining your own Widget, be sure to call the widget_from_id!(T) macro where T is your
 /// custom widget type.
-pub trait Widget: Downcast {
+pub trait Widget: Downcast + std::fmt::Debug {
     /// Retrieves the widget's unique identifer
-    fn id(&self) -> WidgetID;
+    fn id(&self) -> Option<&NodeId>;
 
-    /// Action to be taken when the widget is given the provided point
-    fn on_hover(&mut self, _point: &Point2<f32>) {
-        ()
-    }
+    fn set_id(&mut self, new_id: NodeId);
 
-    /// Action to be taken when the widget is given the provided point, and a mouse click occurs
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        None
-    }
+    /// Retreives the widget's draw stack order
+    fn z_index(&self) -> usize;
 
-    /// Action to be taken when the widget is interacted with while the mouse is clicked-and-held
-    /// and dragged around the screen.
-    ///
-    /// # Arguments
-    /// * `original_point` - the point at which the dragging began
-    /// * `point` - the current position of the mouse cursor
-    fn on_drag(&mut self, _original_point: &Point2<f32>, _point: &Point2<f32>) {
+    /// Sets the widget's draw stack order. Normally this is set when this widget is provided
+    /// to Layering::add_widget.
+    fn set_z_index(&mut self, _new_z_index: usize) {
         ()
     }
 
@@ -63,12 +52,7 @@ pub trait Widget: Downcast {
         Ok(())
     }
 
-    /// Called upon each logic update tick. This should be where the widget's logic takes place.
-    fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        Ok(())
-    }
-
-    /// Get the size of the widget.
+    /// Get the rectangle describing the widget.
     fn rect(&self) -> Rect;
 
     /// Get the origin point of the widget in screen coordinates.
@@ -93,6 +77,17 @@ pub trait Widget: Downcast {
 
     /// Translate the widget from one location to another.
     fn translate(&mut self, _dest: Vector2<f32>);
+
+    /// If the widget implements EmitEvent, implementors should have this return Some(self) here.
+    /// NOTE: we wouldn't need this if our downcasting crate was smarter.
+    fn as_emit_event(&mut self) -> Option<&mut dyn context::EmitEvent> {
+        None
+    }
+
+    /// Whether this widget accepts keyboard events
+    fn accepts_keyboard_events(&self) -> bool {
+        false
+    }
 }
 
 impl_downcast!(Widget);

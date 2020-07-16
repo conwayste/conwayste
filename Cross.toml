@@ -1,0 +1,3 @@
+# Use this file to specify custom Docker images which are needed to install dependencies (ALSA, etc.)
+[target.x86_64-unknown-linux-gnu]
+image = "aaronm04/cross:x86_64-unknown-linux-gnu"

@@ -1,12 +1,12 @@
 extern crate conway;
 extern crate rand;
 
+use conway::universe::*;
 use rand::Rng;
 use std::{thread, time};
-use conway::universe::*;
 
 fn main() {
-    let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));   // used for the glider gun and predefined patterns
+    let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16)); // used for the glider gun and predefined patterns
     let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
     let players = vec![player0, player1];
 

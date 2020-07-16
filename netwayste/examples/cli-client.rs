@@ -17,7 +17,8 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 extern crate color_backtrace;
 extern crate env_logger;
 extern crate futures;
@@ -37,10 +38,11 @@ use futures::sync::mpsc;
 use log::LevelFilter;
 use netwayste::{
     client::{ClientNetState, CLIENT_VERSION},
-    net::{NetwaysteEvent, RequestAction, Packet, ResponseCode},
+    net::NetwaysteEvent,
+    utils::PingPong,
 };
 
-const SLEEP: Duration = Duration::from_millis(33);  // 30 "frames" per second
+const SLEEP: Duration = Duration::from_millis(33); // 30 "frames" per second
 
 #[derive(PartialEq, Debug, Clone)]
 enum UserInput {
@@ -63,7 +65,7 @@ fn parse_stdin(mut input: String) -> UserInput {
         };
 
         UserInput::Command {
-            cmd: command,
+            cmd:  command,
             args: words,
         }
     } else {
@@ -98,6 +100,7 @@ fn read_stdin(channel_to_netwayste: mpsc::UnboundedSender<NetwaysteEvent>) {
 fn print_help() {
     info!("");
     info!("/help                  - print this text");
+    info!("/status                - get the server's status");
     info!("/connect <player_name> - connect to server");
     info!("/disconnect            - disconnect from server");
     info!("/list                  - list rooms when in lobby, or players when in game");
@@ -115,6 +118,10 @@ fn build_command_request_action(cmd: String, args: Vec<String>) -> NetwaysteEven
     match cmd.as_str() {
         "help" | "?" | "h" => {
             print_help();
+        }
+        "status" | "s" => {
+            let ping = PingPong::ping();
+            new_event = NetwaysteEvent::GetStatus(ping);
         }
         "connect" | "c" => {
             if args.len() == 1 {
@@ -214,8 +221,14 @@ fn main() {
         // This is inefficient -- it would be better not to poll for messages on the channel.
         // However, we are polling in GUI client's update() function so do it here as well.
         match ggez_server_response.try_recv() {
-            Ok(response_code) => {
-                println!("{:?}", response_code);
+            Ok(nw_event_from_server_code) => {
+                println!("{:?}", nw_event_from_server_code);
+
+                if let NetwaysteEvent::Status(_pkt, opt_latency) = nw_event_from_server_code {
+                    if let Some(latency_ms) = opt_latency {
+                        println!("Average Latency: {}", latency_ms);
+                    }
+                }
             }
             Err(TryRecvError::Empty) => {
                 // Nothing to do in the empty case
@@ -246,8 +259,8 @@ mod tests {
         assert_eq!(
             cmd,
             UserInput::Command {
-                cmd: "helpusobi".to_owned(),
-                args: vec![]
+                cmd:  "helpusobi".to_owned(),
+                args: vec![],
             }
         );
     }
@@ -258,8 +271,8 @@ mod tests {
         assert_eq!(
             cmd,
             UserInput::Command {
-                cmd: "helpusobi".to_owned(),
-                args: vec!["1".to_owned()]
+                cmd:  "helpusobi".to_owned(),
+                args: vec!["1".to_owned()],
             }
         );
 
@@ -267,8 +280,8 @@ mod tests {
         assert_eq!(
             cmd,
             UserInput::Command {
-                cmd: "helpusobi".to_owned(),
-                args: vec!["1".to_owned(), "you".to_owned()]
+                cmd:  "helpusobi".to_owned(),
+                args: vec!["1".to_owned(), "you".to_owned()],
             }
         );
 
@@ -276,7 +289,7 @@ mod tests {
         assert_eq!(
             cmd,
             UserInput::Command {
-                cmd: "helpusobi".to_owned(),
+                cmd:  "helpusobi".to_owned(),
                 args: vec![
                     "1".to_owned(),
                     "you".to_owned(),
@@ -284,7 +297,7 @@ mod tests {
                     "our".to_owned(),
                     "only".to_owned(),
                     "hope".to_owned()
-                ]
+                ],
             }
         );
     }
@@ -571,79 +584,79 @@ mod tests {
     */
 
     /* XXX testXXX
-    #[test]
-    fn handle_incoming_event_basic_tx_rx_queueing_cannot_process_all_responses() {
-        let mut client_state = create_client_net_state();
-        let (udp_tx, _) = mpsc::unbounded();
-        let (exit_tx, _) = mpsc::unbounded();
-        let connect_cmd = UserInput::Command {
-            cmd: "connect".to_owned(),
-            args: vec!["name".to_owned()],
-        };
-        let new_room_cmd = UserInput::Command {
-            cmd: "new".to_owned(),
-            args: vec!["room_name".to_owned()],
-        };
-        let join_room_cmd = UserInput::Command {
-            cmd: "join".to_owned(),
-            args: vec!["room_name".to_owned()],
-        };
-        let leave_room_cmd = UserInput::Command {
-            cmd: "leave".to_owned(),
-            args: vec![],
-        };
+        #[test]
+        fn handle_incoming_event_basic_tx_rx_queueing_cannot_process_all_responses() {
+            let mut client_state = create_client_net_state();
+            let (udp_tx, _) = mpsc::unbounded();
+            let (exit_tx, _) = mpsc::unbounded();
+            let connect_cmd = UserInput::Command {
+                cmd: "connect".to_owned(),
+                args: vec!["name".to_owned()],
+            };
+            let new_room_cmd = UserInput::Command {
+                cmd: "new".to_owned(),
+                args: vec!["room_name".to_owned()],
+            };
+            let join_room_cmd = UserInput::Command {
+                cmd: "join".to_owned(),
+                args: vec!["room_name".to_owned()],
+            };
+            let leave_room_cmd = UserInput::Command {
+                cmd: "leave".to_owned(),
+                args: vec![],
+            };
 
-        client_state.sequence = 0;
-        client_state.response_sequence = 1;
-        client_state.handle_user_input_event(&udp_tx, &exit_tx, connect_cmd); // Seq 0
-        client_state.cookie = Some("ThisDoesNotReallyMatterAsLongAsItExists".to_owned());
-        // dequeue connect since we don't actually want to process it later
-        client_state.network.tx_packets.clear();
-        client_state.handle_user_input_event(&udp_tx, &exit_tx, new_room_cmd); // Seq 1
-        client_state.handle_user_input_event(&udp_tx, &exit_tx, join_room_cmd.clone()); // Seq 2
-        client_state.room = Some("room_name".to_owned());
-        client_state.handle_user_input_event(&udp_tx, &exit_tx, leave_room_cmd); // Seq 3
-        client_state.room = None; // Temporarily set to None so we can process the next join
-        client_state.handle_user_input_event(&udp_tx, &exit_tx, join_room_cmd); // Seq 4
-        client_state.room = Some("room_name".to_owned());
-        assert_eq!(client_state.sequence, 4);
-        assert_eq!(client_state.response_sequence, 1);
-        assert_eq!(client_state.network.tx_packets.len(), 4);
-        assert_eq!(client_state.network.rx_packets.len(), 0);
+            client_state.sequence = 0;
+            client_state.response_sequence = 1;
+            client_state.handle_user_input_event(&udp_tx, &exit_tx, connect_cmd); // Seq 0
+            client_state.cookie = Some("ThisDoesNotReallyMatterAsLongAsItExists".to_owned());
+            // dequeue connect since we don't actually want to process it later
+            client_state.network.tx_packets.clear();
+            client_state.handle_user_input_event(&udp_tx, &exit_tx, new_room_cmd); // Seq 1
+            client_state.handle_user_input_event(&udp_tx, &exit_tx, join_room_cmd.clone()); // Seq 2
+            client_state.room = Some("room_name".to_owned());
+            client_state.handle_user_input_event(&udp_tx, &exit_tx, leave_room_cmd); // Seq 3
+            client_state.room = None; // Temporarily set to None so we can process the next join
+            client_state.handle_user_input_event(&udp_tx, &exit_tx, join_room_cmd); // Seq 4
+            client_state.room = Some("room_name".to_owned());
+            assert_eq!(client_state.sequence, 4);
+            assert_eq!(client_state.response_sequence, 1);
+            assert_eq!(client_state.network.tx_packets.len(), 4);
+            assert_eq!(client_state.network.rx_packets.len(), 0);
 
-        let room_response = Packet::Response {
-            sequence: 1,
-            request_ack: Some(1),
-            code: ResponseCode::OK,
-        };
-        let join_response = Packet::Response {
-            sequence: 2,
-            request_ack: Some(2),
-            code: ResponseCode::OK,
-        };
-        let _leave_response = Packet::Response {
-            sequence: 3,
-            request_ack: Some(3),
-            code: ResponseCode::OK,
-        };
-        let join2_response = Packet::Response {
-            sequence: 4,
-            request_ack: Some(4),
-            code: ResponseCode::OK,
-        };
+            let room_response = Packet::Response {
+                sequence: 1,
+                request_ack: Some(1),
+                code: ResponseCode::OK,
+            };
+            let join_response = Packet::Response {
+                sequence: 2,
+                request_ack: Some(2),
+                code: ResponseCode::OK,
+            };
+            let _leave_response = Packet::Response {
+                sequence: 3,
+                request_ack: Some(3),
+                code: ResponseCode::OK,
+            };
+            let join2_response = Packet::Response {
+                sequence: 4,
+                request_ack: Some(4),
+                code: ResponseCode::OK,
+            };
 
-        // The intent is that 3 never arrives
-        client_state.handle_incoming_event(&udp_tx, Some(join2_response)); // 4 arrives
-        assert_eq!(client_state.network.tx_packets.len(), 3);
-        assert_eq!(client_state.network.rx_packets.len(), 1);
-        client_state.handle_incoming_event(&udp_tx, Some(join_response)); // 2 arrives
-        assert_eq!(client_state.network.tx_packets.len(), 2);
-        assert_eq!(client_state.network.rx_packets.len(), 2);
-        client_state.handle_incoming_event(&udp_tx, Some(room_response)); // 1 arrives
-        assert_eq!(client_state.network.tx_packets.len(), 1);
-        assert_eq!(client_state.network.rx_packets.len(), 1);
-    }
-*/
+            // The intent is that 3 never arrives
+            client_state.handle_incoming_event(&udp_tx, Some(join2_response)); // 4 arrives
+            assert_eq!(client_state.network.tx_packets.len(), 3);
+            assert_eq!(client_state.network.rx_packets.len(), 1);
+            client_state.handle_incoming_event(&udp_tx, Some(join_response)); // 2 arrives
+            assert_eq!(client_state.network.tx_packets.len(), 2);
+            assert_eq!(client_state.network.rx_packets.len(), 2);
+            client_state.handle_incoming_event(&udp_tx, Some(room_response)); // 1 arrives
+            assert_eq!(client_state.network.tx_packets.len(), 1);
+            assert_eq!(client_state.network.rx_packets.len(), 1);
+        }
+    */
 
     /* XXX testXXX
     #[test]
@@ -712,5 +725,4 @@ mod tests {
         assert_eq!(client_state.network.rx_packets.len(), 0);
     }
     */
-
 }

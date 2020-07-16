@@ -1,4 +1,4 @@
-/*  Copyright 2019 the Conwayste Developers.
+/*  Copyright 2019-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -16,6 +16,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use std::error::Error;
+use std::fmt;
 use std::time::{Duration, Instant};
 
 use ggez::event::KeyCode;
@@ -23,37 +25,44 @@ use ggez::graphics::{self, Color, DrawMode, DrawParam, Rect};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
+use id_tree::NodeId;
+
 #[cfg(not(test))]
 use super::common::draw_text;
 use super::{
-    common::{within_widget, FontInfo},
+    common::FontInfo,
+    context::{EmitEvent, Event, EventType, Handled, HandlerData, KeyCodeOrChar, UIContext},
     widget::Widget,
-    UIAction, UIError, UIResult, WidgetID,
+    UIError, UIResult,
 };
 
 use crate::constants::{colors::*, CHATBOX_BORDER_PIXELS};
 
 pub const BLINK_RATE_MS: u64 = 500;
 
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub enum TextInputState {
-    EnteringText,
-    TextInputComplete,
+pub struct TextField {
+    id:                     Option<NodeId>,
+    z_index:                usize,
+    focused:                bool,
+    text:                   String,
+    cursor_index:           usize, // Position of the cursor in the text fields' string
+    cursor_blink_timestamp: Option<Instant>, // last time the cursor blinked on/off
+    draw_cursor:            bool,
+    dimensions:             Rect,
+    visible_start_index:    usize, // The index of the first character in `self.text` that is visible.
+    font_info:              FontInfo,
+    pub bg_color:           Option<Color>,
+    pub handler_data:       HandlerData, // required for impl_emit_event!
 }
 
-pub struct TextField {
-    id: WidgetID,
-    action: UIAction,
-    pub input_state: Option<TextInputState>,
-    text: String,
-    cursor_index: usize, // Position of the cursor in the text fields' string
-    cursor_blink_timestamp: Option<Instant>, // last time the cursor blinked on/off
-    draw_cursor: bool,
-    dimensions: Rect,
-    hover: bool,
-    visible_start_index: usize, // The index of the first character in `self.text` that is visible.
-    font_info: FontInfo,
-    pub bg_color: Option<Color>,
+impl fmt::Debug for TextField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "TextField {{ id: {:?}, z_index: {}, dimensions: {:?}, focused: {:?} }}",
+            self.id, self.z_index, self.dimensions, self.focused
+        )
+    }
 }
 
 /// A widget that can accept and display user-inputted text from the Keyboard.
@@ -61,7 +70,6 @@ impl TextField {
     /// Creates a TextField widget.
     ///
     /// # Arguments
-    /// * `widget_id` - Unique widget identifier
     /// * `font_info` - font descriptor to be used when drawing the text
     /// * `dimensions` - rectangle describing the size of the text field
     ///
@@ -75,26 +83,75 @@ impl TextField {
     /// let font_info = common::FontInfo::new(ctx, font, Some(20.0));
     /// let dimensions = Rect::new(0.0, 0.0, 300.0, 20.0);
     ///
-    /// let textfield = TextField::new(ui::ChatboxTextField, font_info, dimensions);
+    /// let textfield = TextField::new(font_info, dimensions);
     ///
     /// textfield.draw(ctx);
     /// ```
     ///
-    pub fn new(widget_id: WidgetID, font_info: FontInfo, dimensions: Rect) -> TextField {
-        TextField {
-            input_state: None,
+    pub fn new(font_info: FontInfo, dimensions: Rect) -> TextField {
+        let mut tf = TextField {
+            id: None,
+            z_index: std::usize::MAX,
+            focused: false,
             text: String::new(),
             cursor_index: 0,
             cursor_blink_timestamp: None,
             draw_cursor: false,
-            dimensions: dimensions,
-            id: widget_id,
-            action: UIAction::EnterText,
-            hover: false,
+            dimensions,
             visible_start_index: 0,
             font_info,
             bg_color: None,
+            handler_data: HandlerData::new(),
+        };
+        tf.on(EventType::KeyPress, Box::new(TextField::key_handler)).unwrap(); // unwrap OK b/c not inside handler now
+
+        // Set handlers for toggling has_keyboard_focus
+        tf.on(EventType::GainFocus, Box::new(TextField::gain_focus_handler))
+            .unwrap(); // unwrap OK
+        tf.on(EventType::LoseFocus, Box::new(TextField::lose_focus_handler))
+            .unwrap(); // unwrap OK
+
+        tf.on(EventType::Update, Box::new(TextField::update_handler)).unwrap(); // unwrap OK because we aren't in handler
+        tf
+    }
+
+    fn update_handler(
+        obj: &mut dyn EmitEvent,
+        _uictx: &mut UIContext,
+        _evt: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK because it's always a TextField
+        if let Some(prev_blink_ms) = tf.cursor_blink_timestamp {
+            if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
+                tf.draw_cursor ^= true;
+                tf.cursor_blink_timestamp = Some(Instant::now());
+            }
         }
+
+        Ok(Handled::NotHandled)
+    }
+
+    fn gain_focus_handler(
+        obj: &mut dyn EmitEvent,
+        _uictx: &mut UIContext,
+        _evt: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
+        tf.focused = true;
+        tf.draw_cursor = true;
+        tf.cursor_blink_timestamp = Some(Instant::now());
+        Ok(Handled::NotHandled)
+    }
+
+    fn lose_focus_handler(
+        obj: &mut dyn EmitEvent,
+        _uictx: &mut UIContext,
+        _evt: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
+        tf.focused = false;
+        tf.draw_cursor = false;
+        Ok(Handled::NotHandled)
     }
 
     /// Maximum number of characters that can be visible at once.
@@ -118,30 +175,49 @@ impl TextField {
         self.cursor_index = 0;
     }
 
-    /// Handle a text character being typed by the user.
-    pub fn on_char(&mut self, character: char) {
-        if self.input_state.is_some() {
-            self.add_char_at_cursor(character);
+    /// Handle a key.
+    fn key_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK because it's always a TextField
+        if evt.key.is_none() {
+            return Err("keyboard event does not have a key!".to_owned().into());
         }
-    }
+        match evt.key.unwrap() {
+            KeyCodeOrChar::KeyCode(keycode) => match keycode {
+                KeyCode::Return => {
+                    let text = tf.text();
+                    if text.is_some() {
+                        tf.clear();
+                        let evt = Event::new_text_entered(text.unwrap());
+                        tf.emit(&evt, uictx).unwrap_or_else(|e| {
+                            error!("Error from TextEntered handler on textfield: {:?}", e);
+                        });
+                    }
 
-    /// Handle a typed keycode that is not a textual key. For example, arrow keys.
-    pub fn on_keycode(&mut self, keycode: KeyCode) {
-        if keycode == KeyCode::Return {
-            self.input_state = Some(TextInputState::TextInputComplete);
-            return;
-        }
-        if let Some(TextInputState::EnteringText) = self.input_state {
-            match keycode {
-                KeyCode::Back => self.remove_left_of_cursor(),
-                KeyCode::Delete => self.remove_right_of_cursor(),
-                KeyCode::Left => self.move_cursor_left(),
-                KeyCode::Right => self.move_cursor_right(),
-                KeyCode::Home => self.cursor_home(),
-                KeyCode::End => self.cursor_end(),
-                _ => ()
+                    tf.release_focus(uictx);
+                }
+                KeyCode::Back => tf.remove_left_of_cursor(),
+                KeyCode::Delete => tf.remove_right_of_cursor(),
+                KeyCode::Left => tf.move_cursor_left(),
+                KeyCode::Right => tf.move_cursor_right(),
+                KeyCode::Home => tf.cursor_home(),
+                KeyCode::End => tf.cursor_end(),
+                KeyCode::Escape => tf.release_focus(uictx),
+                _ => (),
+            },
+            KeyCodeOrChar::Char(ch) => {
+                if tf.focused {
+                    tf.add_char_at_cursor(ch);
+                }
             }
         }
+        Ok(Handled::NotHandled)
+    }
+
+    /// Sends a notification to the parent widget that we have released focus.
+    fn release_focus(&mut self, uictx: &mut UIContext) {
+        self.focused = false;
+        let evt = Event::new_child_released_focus();
+        uictx.child_event(evt);
     }
 
     /// Adds a character at the current cursor position
@@ -242,57 +318,38 @@ impl TextField {
             self.visible_start_index = self.text.len() - self.max_visible_chars();
         }
     }
-
-    /// Textfield gains focus and begins accepting user input
-    pub fn enter_focus(&mut self) {
-        self.input_state = Some(TextInputState::EnteringText);
-        self.draw_cursor = true;
-        self.cursor_blink_timestamp = Some(Instant::now());
-    }
-
-    /// Textfield loses focus and does not accept user input
-    pub fn exit_focus(&mut self) {
-        self.input_state = None;
-        self.draw_cursor = false;
-    }
 }
 
 impl Widget for TextField {
-    fn on_hover(&mut self, point: &Point2<f32>) {
-        self.hover = within_widget(point, &self.dimensions);
+    fn id(&self) -> Option<&NodeId> {
+        self.id.as_ref()
     }
 
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        self.enter_focus();
-        return Some((self.id, self.action));
+    fn set_id(&mut self, new_id: NodeId) {
+        self.id = Some(new_id);
     }
 
-    fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        if Some(TextInputState::EnteringText) == self.input_state {
-            if let Some(prev_blink_ms) = self.cursor_blink_timestamp {
-                if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
-                    self.draw_cursor ^= true;
-                    self.cursor_blink_timestamp = Some(Instant::now());
-                }
-            }
-        }
-        Ok(())
+    fn z_index(&self) -> usize {
+        self.z_index
+    }
+
+    fn set_z_index(&mut self, new_z_index: usize) {
+        self.z_index = new_z_index;
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        if self.input_state.is_none() && self.text.is_empty() {
+        if !self.focused && self.text.is_empty() {
             // textfield is hidden
             return Ok(());
         }
 
         if let Some(bg_color) = self.bg_color {
-            let mesh =
-                graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), self.dimensions, bg_color)?;
+            let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), self.dimensions, bg_color)?;
             graphics::draw(ctx, &mesh, DrawParam::default())?;
         }
 
         let colored_rect;
-        if !self.text.is_empty() && self.input_state.is_none() {
+        if !self.text.is_empty() && !self.focused {
             colored_rect = graphics::Mesh::new_rectangle(
                 ctx,
                 DrawMode::stroke(CHATBOX_BORDER_PIXELS),
@@ -324,13 +381,7 @@ impl Widget for TextField {
 
         #[cfg(not(test))]
         {
-            draw_text(
-                ctx,
-                self.font_info.font,
-                *INPUT_TEXT_COLOR,
-                visible_text,
-                &text_pos,
-            )?;
+            draw_text(ctx, self.font_info.font, *INPUT_TEXT_COLOR, visible_text, &text_pos)?;
         }
         #[cfg(test)]
         {
@@ -340,8 +391,7 @@ impl Widget for TextField {
         if self.draw_cursor {
             let mut cursor_pos = text_pos.clone();
 
-            cursor_pos.x += (self.cursor_index - self.visible_start_index) as f32
-                * self.font_info.char_dimensions.x;
+            cursor_pos.x += (self.cursor_index - self.visible_start_index) as f32 * self.font_info.char_dimensions.x;
 
             // Remove half the width of a character so the pipe character is at the beginning
             // of its area (like a cursor), not the center (like a character).
@@ -369,8 +419,11 @@ impl Widget for TextField {
     fn set_rect(&mut self, new_dims: Rect) -> UIResult<()> {
         if new_dims.w == 0.0 || new_dims.h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions {
-                reason: format!("Cannot set the size of a TextField {:?} to a width or height of
-                    zero", self.id()),
+                reason: format!(
+                    "Cannot set the size of a TextField {:?} to a width or height of
+                    zero",
+                    self.id()
+                ),
             }));
         }
 
@@ -394,7 +447,7 @@ impl Widget for TextField {
     fn set_size(&mut self, w: f32, h: f32) -> UIResult<()> {
         if w == 0.0 || h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions {
-                reason: format!("Cannot set the width or height of Label {:?} to zero", self.id())
+                reason: format!("Cannot set the width or height of Label {:?} to zero", self.id()),
             }));
         }
 
@@ -408,12 +461,19 @@ impl Widget for TextField {
         self.dimensions.translate(dest);
     }
 
-    fn id(&self) -> WidgetID {
-        self.id
+    /// convert to EmitEvent
+    fn as_emit_event(&mut self) -> Option<&mut dyn EmitEvent> {
+        Some(self)
+    }
+
+    /// Text fields can receive keyboard focus.
+    fn accepts_keyboard_events(&self) -> bool {
+        true
     }
 }
 
 widget_from_id!(TextField);
+impl_emit_event!(TextField, self.handler_data);
 
 #[cfg(test)]
 mod test {
@@ -422,11 +482,11 @@ mod test {
 
     fn create_dummy_textfield() -> TextField {
         let font_info = FontInfo {
-            font: (),                   //dummy font because we can't create a real Font without ggez
-            scale: Scale::uniform(1.0), // I don't think this matters
+            font:            (),                  //dummy font because we can't create a real Font without ggez
+            scale:           Scale::uniform(1.0), // I don't think this matters
             char_dimensions: Vector2::<f32>::new(5.0, 5.0), // any positive values will do
         };
-        TextField::new(WidgetID(1), font_info, Rect::new(0.0, 0.0, 100.0, 100.0))
+        TextField::new(font_info, Rect::new(0.0, 0.0, 100.0, 100.0))
     }
 
     #[test]

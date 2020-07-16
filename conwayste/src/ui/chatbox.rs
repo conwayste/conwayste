@@ -1,4 +1,4 @@
-/*  Copyright 2019 the Conwayste Developers.
+/*  Copyright 2019-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -17,38 +17,54 @@
  *  <http://www.gnu.org/licenses/>. */
 
 use std::collections::VecDeque;
+use std::error::Error;
+use std::fmt;
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Rect, Text};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
+use id_tree::NodeId;
+
 use super::{
-    common::{within_widget, FontInfo},
+    common::FontInfo,
+    context::{EmitEvent, Event, EventType, Handled, HandlerData, MoveCross, UIContext},
     widget::Widget,
-    UIAction,
     UIError, UIResult,
-    WidgetID
 };
 
 use crate::constants::{self, colors::*};
 
 pub struct Chatbox {
-    id: WidgetID,
+    id:            Option<NodeId>,
+    z_index:       usize,
     history_lines: usize,
-    color: Color,
-    messages: VecDeque<String>,
-    wrapped: VecDeque<(bool, Text)>,
-    dimensions: Rect,
-    hover: bool,
-    action: UIAction,
-    font_info: FontInfo,
+    color:         Color,
+    messages:      VecDeque<String>,
+    wrapped:       VecDeque<(bool, Text)>,
+    dimensions:    Rect,
+    hover:         bool,
+    font_info:     FontInfo,
+    msg_sender:    Sender<String>,
+    msg_receiver:  Receiver<String>,
+    handler_data:  HandlerData,
+}
+
+impl fmt::Debug for Chatbox {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Chatbox {{ id: {:?}, z_index: {}, dimensions: {:?}, history_lines: {} }}",
+            self.id, self.z_index, self.dimensions, self.history_lines
+        )
+    }
 }
 
 impl Chatbox {
     /// Creates a Chatbox widget.
     ///
     /// # Arguments
-    /// * `widget_id` - Unique widget identifier
     /// * `font_info` - a `FontInfo` struct to represent that chat text's font
     /// * `history_lines` - Number of lines of chat history to maintain
     ///
@@ -60,24 +76,75 @@ impl Chatbox {
     ///
     /// let font = Font::Default;
     /// let chatbox_font_info = common::FontInfo::new(ctx, font, Some(20.0));
-    /// let chatbox = Chatbox::new(ui::TestChatbox, chatbox_font_info, 20);
+    /// let chatbox = Chatbox::new(chatbox_font_info, 20);
     /// checkbox.draw(ctx);
     /// ```
     ///
-    pub fn new(widget_id: WidgetID, font_info: FontInfo, history_lines: usize) -> Self {
+    pub fn new(font_info: FontInfo, history_lines: usize) -> Self {
         // TODO: affix to bottom left corner once "anchoring"/"gravity" is implemented
         let rect = *constants::DEFAULT_CHATBOX_RECT;
-        Chatbox {
-            id: widget_id,
+        let (msg_tx, msg_rx) = channel::<String>();
+        let mut chatbox = Chatbox {
+            id: None,
+            z_index: std::usize::MAX,
             history_lines,
             color: *CHATBOX_BORDER_COLOR,
             messages: VecDeque::with_capacity(history_lines),
             wrapped: VecDeque::new(),
             dimensions: rect,
             hover: false,
-            action: UIAction::EnterText,
             font_info,
+            msg_sender: msg_tx,
+            msg_receiver: msg_rx,
+            handler_data: HandlerData::new(),
+        };
+        chatbox
+            .on(EventType::Update, Box::new(Chatbox::update_handler))
+            .unwrap(); // unwrap OK because we aren't in handler
+        chatbox
+            .on(EventType::MouseMove, Box::new(Chatbox::mouse_move_handler))
+            .unwrap(); // unwrap OK b/c not being called within handler
+        chatbox
+    }
+
+    /// Returns a handle that enables you to asynchronously publish messages to this chatbox.
+    pub fn new_handle(&self) -> ChatboxPublishHandle {
+        ChatboxPublishHandle::new(self.msg_sender.clone())
+    }
+
+    fn update_handler(
+        obj: &mut dyn EmitEvent,
+        _uictx: &mut UIContext,
+        _evt: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        let chatbox = obj.downcast_mut::<Chatbox>().unwrap(); // unwrap OK because it's always a Chatbox
+        loop {
+            if let Ok(msg) = chatbox.msg_receiver.try_recv() {
+                // TODO: maybe we should batch add these? Benchmark!
+                chatbox.add_message(msg);
+            } else {
+                break;
+            }
         }
+        Ok(Handled::NotHandled)
+    }
+
+    fn mouse_move_handler(
+        obj: &mut dyn EmitEvent,
+        _uictx: &mut UIContext,
+        event: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        let chatbox = obj.downcast_mut::<Chatbox>().unwrap(); // unwrap OK because it's always a Chatbox
+        match event.move_did_cross(chatbox.dimensions) {
+            MoveCross::Enter => {
+                chatbox.hover = true;
+            }
+            MoveCross::Exit => {
+                chatbox.hover = false;
+            }
+            MoveCross::None => {}
+        };
+        Ok(Handled::NotHandled)
     }
 
     /// Adds a message to the chatbox
@@ -155,10 +222,7 @@ impl Chatbox {
             let word_chars = Chatbox::count_chars(word);
 
             // If the word can fit on the next line, but not the current line
-            if chars_added != 0
-                && chars_added + word_chars > max_chars_per_line
-                && word_chars <= max_chars_per_line
-            {
+            if chars_added != 0 && chars_added + word_chars > max_chars_per_line && word_chars <= max_chars_per_line {
                 let mut text = Text::new(s.clone());
                 font_info.apply(&mut text);
                 texts.push_back((true, text));
@@ -214,8 +278,20 @@ impl Chatbox {
 }
 
 impl Widget for Chatbox {
-    fn id(&self) -> WidgetID {
-        self.id
+    fn id(&self) -> Option<&NodeId> {
+        self.id.as_ref()
+    }
+
+    fn set_id(&mut self, new_id: NodeId) {
+        self.id = Some(new_id);
+    }
+
+    fn z_index(&self) -> usize {
+        self.z_index
+    }
+
+    fn set_z_index(&mut self, new_z_index: usize) {
+        self.z_index = new_z_index;
     }
 
     fn rect(&self) -> Rect {
@@ -224,8 +300,11 @@ impl Widget for Chatbox {
 
     fn set_rect(&mut self, new_dims: Rect) -> UIResult<()> {
         if new_dims.w == 0.0 || new_dims.h == 0.0 {
-            return Err(Box::new(UIError::InvalidDimensions{
-                reason: format!("Cannot set the size to a width or height of a chatbox, {:?}, to zero", self.id())
+            return Err(Box::new(UIError::InvalidDimensions {
+                reason: format!(
+                    "Cannot set the size to a width or height of a chatbox, {:?}, to zero",
+                    self.id()
+                ),
             }));
         }
 
@@ -254,7 +333,7 @@ impl Widget for Chatbox {
     fn set_size(&mut self, w: f32, h: f32) -> UIResult<()> {
         if w == 0.0 || h == 0.0 {
             return Err(Box::new(UIError::InvalidDimensions {
-                reason: format!("Cannot set the width or height of Chatbox {:?} to zero", self.id())
+                reason: format!("Cannot set the width or height of Chatbox {:?} to zero", self.id()),
             }));
         }
 
@@ -273,14 +352,6 @@ impl Widget for Chatbox {
         self.dimensions.translate(dest);
     }
 
-    fn on_hover(&mut self, point: &Point2<f32>) {
-        self.hover = within_widget(point, &self.dimensions);
-    }
-
-    fn on_click(&mut self, _point: &Point2<f32>) -> Option<(WidgetID, UIAction)> {
-        return Some((self.id, self.action));
-    }
-
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         // TODO: Add support to scroll through history
         if self.hover {
@@ -291,12 +362,8 @@ impl Widget for Chatbox {
                 self.dimensions.w + constants::CHATBOX_BORDER_PIXELS / 2.0 + 2.0,
                 self.dimensions.h + constants::CHATBOX_BORDER_PIXELS / 2.0 + 2.0,
             );
-            let hovered_border = graphics::Mesh::new_rectangle(
-                ctx,
-                DrawMode::stroke(2.0),
-                border_rect,
-                *CHATBOX_BORDER_ON_HOVER_COLOR,
-            )?;
+            let hovered_border =
+                graphics::Mesh::new_rectangle(ctx, DrawMode::stroke(2.0), border_rect, *CHATBOX_BORDER_ON_HOVER_COLOR)?;
             graphics::draw(ctx, &hovered_border, DrawParam::default())?;
         }
 
@@ -304,7 +371,7 @@ impl Widget for Chatbox {
             self.dimensions.x,
             self.dimensions.bottom(),
             self.dimensions.w,
-            constants::TEXTFIELD_HEIGHT
+            constants::CHAT_TEXTFIELD_HEIGHT,
         );
         let border = graphics::Mesh::new_rectangle(
             ctx,
@@ -314,14 +381,14 @@ impl Widget for Chatbox {
         )?;
         graphics::draw(ctx, &border, DrawParam::default())?;
 
-        let mut max_lines = (self.dimensions.h / (self.font_info.char_dimensions.y
-                                                    + constants::CHATBOX_LINE_SPACING)) as u32;
+        let mut max_lines =
+            (self.dimensions.h / (self.font_info.char_dimensions.y + constants::CHATBOX_LINE_SPACING)) as u32;
 
         // Draw as many messages as we can fit in the dimensions of the chatbox, newest at the bottom
         let mut i = 0;
         let bottom_left_corner = Point2::new(
             self.dimensions.x,
-            self.dimensions.y + self.dimensions.h - self.font_info.char_dimensions.y
+            self.dimensions.y + self.dimensions.h - self.font_info.char_dimensions.y,
         );
 
         for (_, wrapped_text) in self.wrapped.iter().rev() {
@@ -330,7 +397,7 @@ impl Widget for Chatbox {
             }
             let point = Point2::new(
                 bottom_left_corner.x + constants::CHATBOX_BORDER_PIXELS + 1.0,
-                bottom_left_corner.y - (i as f32 * self.font_info.char_dimensions.y)
+                bottom_left_corner.y - (i as f32 * self.font_info.char_dimensions.y),
             );
             graphics::queue_text(ctx, wrapped_text, point, Some(*CHATBOX_TEXT_COLOR));
             max_lines -= 1;
@@ -341,9 +408,30 @@ impl Widget for Chatbox {
 
         Ok(())
     }
+
+    fn as_emit_event(&mut self) -> Option<&mut dyn EmitEvent> {
+        Some(self)
+    }
 }
 
 widget_from_id!(Chatbox);
+impl_emit_event!(Chatbox, self.handler_data);
+
+pub struct ChatboxPublishHandle {
+    msg_sender: Sender<String>,
+}
+
+impl ChatboxPublishHandle {
+    pub fn add_message(&mut self, msg: String) {
+        self.msg_sender.send(msg).unwrap_or_else(|_e| {
+            error!("Chatbox has been dropped!");
+        });
+    }
+
+    pub fn new(msg_sender: Sender<String>) -> Self {
+        ChatboxPublishHandle { msg_sender }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -355,15 +443,15 @@ mod tests {
     fn max_chars_chatbox(max_chars_per_line: usize) -> Chatbox {
         let history_lines = 20;
         let font_info = FontInfo {
-            font: (), //dummy font because we can't create a real Font without ggez
-            scale: Scale::uniform(1.0), // I don't think this matters
-            char_dimensions: Vector2::<f32>::new(5.0, 5.0),  // any positive values will do
+            font:            (),                  //dummy font because we can't create a real Font without ggez
+            scale:           Scale::uniform(1.0), // I don't think this matters
+            char_dimensions: Vector2::<f32>::new(5.0, 5.0), // any positive values will do
         };
         let height = 123.0; // doesn't matter
-        // The following must be the reverse of the `max_chars_per_line` calculation in
-        // `reflow_message`, plus 0.01 padding.
+                            // The following must be the reverse of the `max_chars_per_line` calculation in
+                            // `reflow_message`, plus 0.01 padding.
         let width = font_info.char_dimensions.x * (max_chars_per_line as f32) + 0.01;
-        let mut cb = Chatbox::new(WidgetID(0), font_info, history_lines);
+        let mut cb = Chatbox::new(font_info, history_lines);
         let _result = cb.set_rect(Rect::new(0.0, 0.0, width, height));
         cb
     }

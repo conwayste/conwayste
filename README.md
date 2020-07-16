@@ -4,7 +4,7 @@ Multiplayer Conway's Game of Life!
 
 ![build status](https://api.travis-ci.com/conwayste/conwayste.svg?branch=master)
 
-![life in action](https://giant.gfycat.com/BlaringTidyDutchsmoushond.gif)
+![life in action](https://s7.gifyu.com/images/BlaringTidyDutchsmoushond-mobile.gif)
 
 ## Installation
 Clone this repository:
@@ -72,7 +72,7 @@ cargo build
 ## Running the server
 
 ```
-cargo run --bin server 0.0.0.0:9000
+cargo run --bin server
 ```
 
 ## Running the GUI client

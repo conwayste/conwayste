@@ -1,4 +1,4 @@
-/*  Copyright 2019 the Conwayste Developers.
+/*  Copyright 2019-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{self, Font, Rect, Text, TextFragment, DrawParam, Color, Scale};
+use ggez::graphics::{self, Color, DrawParam, Font, Rect, Scale, Text, TextFragment};
 use ggez::nalgebra::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -25,28 +25,62 @@ use crate::constants::DEFAULT_UI_FONT_SCALE;
 #[macro_export]
 macro_rules! widget_from_id {
     ($type:ident) => {
-        use super::layer::Layer;
+        use super::layer::Layering;
 
         impl $type {
-            pub fn widget_from_id(layer: &mut Layer, id: WidgetID) -> Option<&mut $type>
-            {
-                let layer_id = layer.id();
+            pub fn widget_from_id<'a, 'b>(layer: &'b mut Layering, id: &'a NodeId) -> UIResult<&'b mut $type> {
                 let widget_result = layer.get_widget_mut(id);
                 match widget_result {
-                    Ok(widget) => {
-                        return widget.downcast_mut::<$type>();
-                    }
+                    Ok(widget) => match widget.downcast_mut::<$type>() {
+                        Some(downcasted_widget) => {
+                            return Ok(downcasted_widget);
+                        }
+                        None => {
+                            return Err(Box::new(UIError::WidgetNotFound {
+                                reason: format!("{:?} could not be downcasted to type $type", id),
+                            }));
+                        }
+                    },
                     Err(e) => {
-                        info!("Could not find $type widget of {:?} in layer of {:?}! {:?}",
-                        id,
-                        layer_id,
-                        e);
-                        return None;
+                        return Err(e);
                     }
                 }
             }
         }
-    }
+    };
+}
+
+/// A macro to downcast a `dyn Widget` to a concrete type; added for readability.
+///
+/// # Arguments
+/// Two required arguments are the `dyn Widget` object and the destination type.
+/// An variant of this macro exists to return a mutable reference to a widget. See Usage section.
+///
+/// # Usage
+/// ```Rust
+/// downcast_widget!(widget, type)
+/// downcast_widget_mut!(widget, type)
+/// ```
+///
+/// # Examples
+/// ```rust
+/// let widget = layer.get_widget_mut(a_node_id);
+/// let textfield = downcast_widget_mut!(widget, TextField);
+/// textfield.enter_focus()
+/// ```
+///
+#[macro_export]
+macro_rules! downcast_widget {
+    ($widget:ident, $type:ident) => {
+        $widget.downcast_ref::<$type>()
+    };
+}
+
+#[macro_export]
+macro_rules! downcast_widget_mut {
+    ($widget:ident, $type:ident) => {
+        $widget.downcast_mut::<$type>()
+    };
 }
 
 /// Helper function to draw text onto the screen.
@@ -79,13 +113,13 @@ pub fn draw_text(
 /// Represents a font at a particular scale. Besides the ID of the font, it also includes the scale
 /// at which to draw it, and the dimensions of one character at that scale (this is only useful if
 /// the font is fixed width!).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct FontInfo {
     /// ID of the font.
     #[cfg(not(test))]
-    pub font: Font,
+    pub font:            Font,
     /// Scale at which to draw this font.
-    pub scale: Scale,
+    pub scale:           Scale,
     /// Use the `x` and `y` fields for the width and height of a single character.
     pub char_dimensions: Vector2<f32>,
 
@@ -101,13 +135,11 @@ impl FontInfo {
         #[cfg(not(test))]
         {
             let text = "xxxxxxxxxx"; // 10 arbitrary characters
-            let text_fragment = TextFragment::new(text)
-                .scale(scale)
-                .font(font);
+            let text_fragment = TextFragment::new(text).scale(scale).font(font);
             let graphics_text = Text::new(text_fragment);
             let char_dimensions = Vector2::new(
                 graphics_text.width(ctx) as f32 / text.len() as f32,
-                graphics_text.height(ctx) as f32
+                graphics_text.height(ctx) as f32,
             );
             FontInfo {
                 font,
@@ -141,7 +173,6 @@ impl FontInfo {
 /// will return `Some` rectangle which spans that overlap.
 /// This is a clone of the SDL2 intersection API.
 pub fn intersection(a: Rect, b: Rect) -> Option<Rect> {
-
     fn empty_rect(r: Rect) -> bool {
         r.w <= 0.0 || r.h <= 0.0
     }
@@ -208,7 +239,7 @@ pub fn within_widget(point: &Point2<f32>, bounds: &Rect) -> bool {
 
 /// Include a transparency channel to the color. Intended to be used with the `chromatica` crate.
 pub fn color_with_alpha((r, g, b): (u8, u8, u8), alpha: f32) -> Color {
-    Color::from( (r, g, b, (alpha * 255.0) as u8) )
+    Color::from((r, g, b, (alpha * 255.0) as u8))
 }
 
 #[cfg(test)]

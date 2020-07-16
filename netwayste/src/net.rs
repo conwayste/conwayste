@@ -17,29 +17,34 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-use std::cmp::{PartialEq, PartialOrd, Ordering};
-use std::fmt::Debug;
-use std::{io, fmt, str, result, time::{Duration, Instant}};
-use std::net::{self, SocketAddr};
+use std::cmp::{Ordering, PartialEq, PartialOrd};
 use std::collections::VecDeque;
+use std::fmt::Debug;
+use std::net::{self, SocketAddr};
+use std::{
+    fmt, io, result, str,
+    time::{Duration, Instant},
+};
 
+use bincode::{deserialize, serialize, Infinite};
 use futures::sync::mpsc;
-use tokio_core::net::{UdpSocket, UdpCodec};
+use semver::{SemVerError, Version};
+use serde::{Deserialize, Serialize};
+use tokio_core::net::{UdpCodec, UdpSocket};
 use tokio_core::reactor::Handle;
-use bincode::{serialize, deserialize, Infinite};
-use semver::{Version, SemVerError};
-use serde::{Serialize, Deserialize};
+
+use crate::utils::PingPong;
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
 pub const DEFAULT_PORT: u16 = 2016;
-pub const TIMEOUT_IN_SECONDS:    u64   = 5;
-pub const NETWORK_QUEUE_LENGTH: usize = 600;        // spot testing with poor network (~675 cmds) showed a max of ~512 length
-                                                // keep this for now until the performance issues are resolved
+pub const TIMEOUT_IN_SECONDS: u64 = 5;
+pub const NETWORK_QUEUE_LENGTH: usize = 600; // spot testing with poor network (~675 cmds) showed a max of ~512 length
+                                             // keep this for now until the performance issues are resolved
 const RETRANSMISSION_THRESHOLD_IN_MS: Duration = Duration::from_millis(400);
-const RETRY_THRESHOLD_IN_MS: usize = 2;             //
+const RETRY_THRESHOLD_IN_MS: usize = 2; //
 const RETRY_AGGRESSIVE_THRESHOLD_IN_MS: usize = 5;
-const RETRANSMISSION_COUNT: usize = 32;   // Testing some ideas out:. Resend length 16x2, 16=libconway::history_size)
+const RETRANSMISSION_COUNT: usize = 32; // Testing some ideas out:. Resend length 16x2, 16=libconway::history_size)
 
 // For unit testing, I cover duplicate sequence numbers. The search returns Ok(index) on a slice with a matching value.
 // Instead of returning that index, I return this much larger value and avoid insertion into the queues.
@@ -84,19 +89,33 @@ impl From<io::Error> for NetError {
     }
 }
 
-
 ////////////////////// Data model ////////////////////////
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum RequestAction {
-    None,   // never actually sent
-    Connect{name: String, client_version: String},
+    None, // never actually sent
+
+    /* These actions do not require a user to be logged in to the server */
+    Connect {
+        name:           String,
+        client_version: String,
+    },
+
+    /* All actions below require a log-in via a Connect request */
     Disconnect,
-    KeepAlive(u64),     // Send latest response ack on each heartbeat
+    KeepAlive {
+        latest_response_ack: u64,
+    }, // Send latest response ack on each heartbeat
     ListPlayers,
-    ChatMessage(String),
+    ChatMessage {
+        message: String,
+    },
     ListRooms,
-    NewRoom(String),
-    JoinRoom(String),
+    NewRoom {
+        room_name: String,
+    },
+    JoinRoom {
+        room_name: String,
+    },
     LeaveRoom,
 }
 
@@ -104,30 +123,52 @@ pub enum RequestAction {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum ResponseCode {
     // success - these are all 200 in HTTP
-    OK,                              // 200 no data
-    LoggedIn(String, String),        // player is logged in -- (cookie, server version)
-    JoinedRoom(String),              // player has joined the room
-    LeaveRoom,                       // player has left the room
-    PlayerList(Vec<String>),         // list of players in room or lobby
-    RoomList(Vec<(String, u64, bool)>), // (room name, # players, game has started?
+    // TODO: Many of these should contain the sequence number being acknowledged
+    OK, // 200 no data
+    LoggedIn {
+        cookie:         String,
+        server_version: String,
+    }, // player is logged in -- (cookie, server version)
+    JoinedRoom {
+        room_name: String,
+    }, // player has joined the room
+    LeaveRoom, // player has left the room
+    PlayerList {
+        players: Vec<String>,
+    }, // list of players in room or lobby
+    RoomList {
+        rooms: Vec<RoomList>,
+    }, // list of rooms and their statuses
 
     // errors
-    BadRequest(Option<String>),      // 400 unspecified error that is client's fault
-    Unauthorized(Option<String>),    // 401 not logged in
-    TooManyRequests(Option<String>), // 429
-    ServerError(Option<String>),     // 500
-    NotConnected(Option<String>),    // no equivalent in HTTP due to handling at lower (TCP) level
-    KeepAlive,                       // Server's heart is beating
+    BadRequest {
+        error_msg: String,
+    }, // 400 unspecified error that is client's fault
+    Unauthorized {
+        error_msg: String,
+    }, // 401 not logged in
+    TooManyRequests {
+        error_msg: String,
+    }, // 429
+    ServerError {
+        error_msg: String,
+    }, // 500
+    NotConnected {
+        error_msg: String,
+    }, // no equivalent in HTTP due to handling at lower (TCP) level
+
+    // Misc.
+    KeepAlive, // Server's heart is beating
 }
 
 // chat messages sent from server to all clients other than originating client
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BroadcastChatMessage {
-    pub chat_seq:    Option<u64>,   // Some(<number>) when sent to clients (starts at 0 for first
-                                    // chat message sent to this client in this room); None when
-                                    // internal to server
+    pub chat_seq:    Option<u64>, // Some(<number>) when sent to clients (starts at 0 for first
+    // chat message sent to this client in this room); None when
+    // internal to server
     pub player_name: String,
-    pub message:     String,        // should not contain newlines
+    pub message:     String, // should not contain newlines
 }
 
 impl PartialEq for BroadcastChatMessage {
@@ -138,7 +179,8 @@ impl PartialEq for BroadcastChatMessage {
     }
 }
 
-impl Eq for BroadcastChatMessage {}
+impl Eq for BroadcastChatMessage {
+}
 
 impl PartialOrd for BroadcastChatMessage {
     fn partial_cmp(&self, other: &BroadcastChatMessage) -> Option<Ordering> {
@@ -159,16 +201,18 @@ impl BroadcastChatMessage {
     #[allow(unused)]
     pub fn new(sequence: u64, name: String, msg: String) -> BroadcastChatMessage {
         BroadcastChatMessage {
-            chat_seq: Some(sequence),
+            chat_seq:    Some(sequence),
             player_name: name,
-            message: msg
+            message:     msg,
         }
     }
 
     fn sequence_number(&self) -> u64 {
         if let Some(v) = self.chat_seq {
             v
-        } else { 0 }
+        } else {
+            0
+        }
     }
 }
 
@@ -180,7 +224,7 @@ pub struct GenState {
     pub dummy_data: u8,
 }
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct GenDiff  {
+pub struct GenDiff {
     // difference between states of Universe
     pub old_gen:    u64,
     pub new_gen:    u64,
@@ -189,20 +233,20 @@ pub struct GenDiff  {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GameOutcome {
-    pub winner: Option<String>,     // Some(<name>) if winner, or None, meaning it was a tie/forfeit
+    pub winner: Option<String>, // Some(<name>) if winner, or None, meaning it was a tie/forfeit
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum GameUpdateType {
     GameStart,
-    NewUserList(Vec<String>),   // list of names of all users including current user
+    NewUserList(Vec<String>), // list of names of all users including current user
     GameFinish(GameOutcome),
-    GameClose,   // kicks user back to arena
+    GameClose, // kicks user back to arena
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GameUpdate {
-    pub game_update_seq: Option<u64>,  // see BroadcastChatMessage chat_seq field for Some/None meaning
+    pub game_update_seq: Option<u64>, // see BroadcastChatMessage chat_seq field for Some/None meaning
     update_type:         GameUpdateType,
 }
 
@@ -213,27 +257,35 @@ pub enum UniUpdateType {
     NoChange,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct RoomList {
+    pub room_name:    String,
+    pub player_count: u8,
+    pub in_progress:  bool,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Packet {
     Request {
         // sent by client
-        sequence:        u64,
-        response_ack:    Option<u64>,    // Next expected  sequence number the Server responds with to the Client.
-                                         // Stated differently, the client has seen Server responses from 0 to response_ack-1.
-        cookie:          Option<String>, // present if and only if action != connect
-        action:          RequestAction,
+        sequence:     u64,
+        response_ack: Option<u64>, // Next expected  sequence number the Server responds with to the Client.
+        // Stated differently, the client has seen Server responses from 0 to response_ack-1.
+        cookie:       Option<String>, // present if and only if action != connect
+        action:       RequestAction,
     },
     Response {
         // sent by server in reply to client
-        sequence:        u64,
-        request_ack:     Option<u64>,     // most recent request sequence number received
-        code:            ResponseCode,
+        sequence:    u64,
+        request_ack: Option<u64>, // most recent request sequence number received
+        code:        ResponseCode,
     },
     Update {
         // in-game: sent by server
-        chats:           Option<Vec<BroadcastChatMessage>>, // All non-acknowledged chats are sent each update
-        game_updates:    Option<Vec<GameUpdate>>,           //
-        universe_update: UniUpdateType,                     //
+        chats:           Vec<BroadcastChatMessage>, // All non-acknowledged chats are sent each update
+        game_updates:    Vec<GameUpdate>,           // Information pertaining to a game tick update
+        universe_update: UniUpdateType,             //
+        ping:            PingPong,                  // Used for server-to-client latency measurement
     },
     UpdateReply {
         // in-game: sent by client in reply to server
@@ -241,22 +293,50 @@ pub enum Packet {
         last_chat_seq:        Option<u64>, // sequence number of latest chat msg. received from server
         last_game_update_seq: Option<u64>, // seq. number of latest game update from server
         last_gen:             Option<u64>, // generation number client is currently at
-    }
+        pong:                 PingPong,    // Used for server-to-client latency measurement
+    },
+    GetStatus {
+        ping: PingPong, // Used for client-to-server latency measurement
+    },
+    Status {
+        pong:           PingPong, // used for client-to-server latency measurement
+        server_version: String,
+        player_count:   u64,
+        room_count:     u64,
+        server_name:    String,
+    }, // Provide basic server information to the requester
 }
 
 impl Packet {
     #[allow(unused)]
     pub fn sequence_number(&self) -> u64 {
-        if let Packet::Request{ sequence, response_ack: _, cookie: _, action: _ } = self {
+        if let Packet::Request {
+            sequence,
+            response_ack: _,
+            cookie: _,
+            action: _,
+        } = self
+        {
             *sequence
-        } else if let Packet::Response{ sequence, request_ack: _, code: _ } = self {
+        } else if let Packet::Response {
+            sequence,
+            request_ack: _,
+            code: _,
+        } = self
+        {
             *sequence
-        } else if let Packet::Update{ chats: _, game_updates: _, universe_update } = self {
+        } else if let Packet::Update {
+            chats: _,
+            game_updates: _,
+            universe_update,
+            ping: _,
+        } = self
+        {
             // TODO revisit once mechanics are fleshed out
             match universe_update {
-                UniUpdateType::State(gs) => { gs.gen },
-                UniUpdateType::Diff(gd) => { gd.new_gen },
-                UniUpdateType::NoChange => 0
+                UniUpdateType::State(gs) => gs.gen,
+                UniUpdateType::Diff(gd) => gd.new_gen,
+                UniUpdateType::NoChange => 0,
             }
         } else {
             unimplemented!(); // UpdateReply is not saved
@@ -265,22 +345,36 @@ impl Packet {
 
     #[allow(unused)]
     pub fn set_response_sequence(&mut self, new_ack: Option<u64>) {
-        if let Packet::Request{ sequence: _, ref mut response_ack, cookie: _, action: _ } = *self {
+        if let Packet::Request {
+            sequence: _,
+            ref mut response_ack,
+            cookie: _,
+            action: _,
+        } = *self
+        {
             *response_ack = new_ack;
-        }
-        else if let Packet::Response{ sequence: _, ref mut request_ack, code: _ } = *self {
+        } else if let Packet::Response {
+            sequence: _,
+            ref mut request_ack,
+            code: _,
+        } = *self
+        {
             *request_ack = new_ack;
-        }
-        else {
+        } else {
             unimplemented!();
         }
     }
 
     #[allow(unused)]
     pub fn response_sequence(&self) -> u64 {
-        if let Packet::Request{sequence: _, ref response_ack, cookie: _, action: _} = *self {
-            if let Some(response_ack) = response_ack
-            {
+        if let Packet::Request {
+            sequence: _,
+            ref response_ack,
+            cookie: _,
+            action: _,
+        } = *self
+        {
+            if let Some(response_ack) = response_ack {
                 *response_ack
             } else {
                 0
@@ -294,19 +388,58 @@ impl Packet {
 impl fmt::Debug for Packet {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Packet::Request{ sequence, response_ack, cookie, action } => {
-                write!(f, "[Request] cookie: {:?} sequence: {} resp_ack: {:?} event: {:?}", cookie, sequence, response_ack, action)
-            }
-            Packet::Response{ sequence, request_ack, code } => {
-                write!(f, "[Response] sequence: {} req_ack: {:?} event: {:?}", sequence, request_ack, code)
-            }
-            Packet::Update{ chats: _, game_updates, universe_update } => {
-                write!(f, "[Update] game_updates: {:?} universe_update: {:?}", game_updates, universe_update)
-            }
-            #[cfg(not(test))]
-            _ => {unimplemented!()}
-            #[cfg(test)]
-            _ => {Result::Ok(())}
+            Packet::Request {
+                sequence,
+                response_ack,
+                cookie,
+                action,
+            } => write!(
+                f,
+                "[Request] cookie: {:?} sequence: {} resp_ack: {:?} event: {:?}",
+                cookie, sequence, response_ack, action
+            ),
+            Packet::Response {
+                sequence,
+                request_ack,
+                code,
+            } => write!(
+                f,
+                "[Response] sequence: {} req_ack: {:?} event: {:?}",
+                sequence, request_ack, code
+            ),
+            Packet::Update {
+                chats: _,
+                game_updates,
+                universe_update,
+                ping: _,
+            } => write!(
+                f,
+                "[Update] game_updates: {:?} universe_update: {:?}",
+                game_updates, universe_update
+            ),
+            Packet::UpdateReply {
+                cookie,
+                last_chat_seq,
+                last_game_update_seq,
+                last_gen,
+                pong: _,
+            } => write!(
+                f,
+                "[UpdateReply] cookie: {:?} last_chat_seq: {:?} last_game_update_seq: {:?} last_game: {:?}",
+                cookie, last_chat_seq, last_game_update_seq, last_gen
+            ),
+            Packet::GetStatus { ping } => write!(f, "[GetStatus] nonce: {}", ping.nonce),
+            Packet::Status {
+                pong,
+                player_count,
+                room_count,
+                server_name,
+                server_version,
+            } => write!(
+                f,
+                "[Status] nonce: {} player_count: {} room_count: {} server_version: {:?} server_name: {:?}",
+                pong.nonce, player_count, room_count, server_version, server_name
+            ),
         }
     }
 }
@@ -319,7 +452,8 @@ impl PartialEq for Packet {
     }
 }
 
-impl Eq for Packet {}
+impl Eq for Packet {
+}
 
 impl PartialOrd for Packet {
     fn partial_cmp(&self, other: &Packet) -> Option<Ordering> {
@@ -340,7 +474,7 @@ impl Ord for Packet {
 #[allow(dead_code)]
 pub struct LineCodec;
 impl UdpCodec for LineCodec {
-    type In = (SocketAddr, Option<Packet>);   // if 2nd element is None, it means deserialization failure
+    type In = (SocketAddr, Option<Packet>); // if 2nd element is None, it means deserialization failure
     type Out = (SocketAddr, Packet);
 
     fn decode(&mut self, addr: &SocketAddr, buf: &[u8]) -> io::Result<Self::In> {
@@ -371,7 +505,6 @@ impl UdpCodec for LineCodec {
 //////////////// Network interface ////////////////
 #[allow(dead_code)]
 pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket, NetError> {
-
     let host = if let Some(host) = opt_host { host } else { DEFAULT_HOST };
     let port = if let Some(port) = opt_port { port } else { DEFAULT_PORT };
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
@@ -390,14 +523,14 @@ pub fn has_connection_timed_out(last_received: Instant) -> bool {
 }
 
 pub struct NetworkStatistics {
-    pub tx_packets_failed: u64,     // From the perspective of the Network OSI layer
-    pub tx_packets_success: u64,    // From the perspective of the Network OSI layer
+    pub tx_packets_failed:  u64, // From the perspective of the Network OSI layer
+    pub tx_packets_success: u64, // From the perspective of the Network OSI layer
 }
 
 impl NetworkStatistics {
     fn new() -> Self {
         NetworkStatistics {
-            tx_packets_failed: 0,
+            tx_packets_failed:  0,
             tx_packets_success: 0,
         }
     }
@@ -408,11 +541,10 @@ impl NetworkStatistics {
             ref mut tx_packets_failed,
             ref mut tx_packets_success,
         } = *self;
-        *tx_packets_failed     = 0;
-        *tx_packets_success    = 0;
+        *tx_packets_failed = 0;
+        *tx_packets_success = 0;
     }
 }
-
 
 pub trait Sequenced: Ord {
     fn sequence_number(&self) -> u64;
@@ -430,7 +562,7 @@ impl Sequenced for BroadcastChatMessage {
     }
 }
 
-pub trait NetworkQueue<T: Ord+Sequenced+Debug+Clone> {
+pub trait NetworkQueue<T: Ord + Sequenced + Debug + Clone> {
     fn new() -> Self;
 
     fn head_of_queue(&self) -> Option<&T> {
@@ -447,7 +579,9 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug+Clone> {
         if opt_newest_packet.is_some() {
             let newest_packet: &T = opt_newest_packet.unwrap();
             Some(newest_packet.sequence_number())
-        } else { None }
+        } else {
+            None
+        }
     }
 
     fn oldest_seq_num(&self) -> Option<u64> {
@@ -456,7 +590,9 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug+Clone> {
         if opt_oldest_packet.is_some() {
             let oldest_packet: &T = opt_oldest_packet.unwrap();
             Some(oldest_packet.sequence_number())
-        } else { None }
+        } else {
+            None
+        }
     }
 
     fn push_back(&mut self, item: T) {
@@ -477,7 +613,7 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug+Clone> {
 
     /// I've deemed 'far away' to mean the half of the max value of the type.
     fn is_seq_sufficiently_far_away(&self, a: u64, b: u64) -> bool {
-        static HALFWAYPOINT: u64 = u64::max_value()/2;
+        static HALFWAYPOINT: u64 = u64::max_value() / 2;
         if a > b {
             a - b > HALFWAYPOINT
         } else {
@@ -487,14 +623,16 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug+Clone> {
 
     /// Checks if the insertion of `sequence` induces a newly wrapped queue state.
     /// If we have already wrapped in the buffer, then it shouldn't cause another wrap due to the nature of the problem.
-    fn will_seq_cause_a_wrap(&self,
-                            buffer_wrap_index: Option<usize>,
-                            sequence: u64,
-                            oldest_seq_num: u64,
-                            newest_seq_num: u64) -> bool {
+    fn will_seq_cause_a_wrap(
+        &self,
+        buffer_wrap_index: Option<usize>,
+        sequence: u64,
+        oldest_seq_num: u64,
+        newest_seq_num: u64,
+    ) -> bool {
         if buffer_wrap_index.is_none() {
             self.is_seq_sufficiently_far_away(sequence, oldest_seq_num)
-            && self.is_seq_sufficiently_far_away(sequence, newest_seq_num)
+                && self.is_seq_sufficiently_far_away(sequence, newest_seq_num)
         } else {
             false
         }
@@ -513,7 +651,7 @@ pub trait NetworkQueue<T: Ord+Sequenced+Debug+Clone> {
 }
 
 pub struct NetAttempt {
-    pub time: Instant,
+    pub time:    Instant,
     pub retries: usize,
 }
 
@@ -521,7 +659,7 @@ impl NetAttempt {
     #[allow(unused)]
     pub fn new() -> Self {
         Self {
-            time: Instant::now(),
+            time:    Instant::now(),
             retries: 0,
         }
     }
@@ -536,8 +674,8 @@ impl NetAttempt {
 type ItemQueue<T> = VecDeque<T>;
 
 pub struct NetQueue<T> {
-    pub queue: ItemQueue<T>,
-    pub attempts: VecDeque<NetAttempt>,
+    pub queue:             ItemQueue<T>,
+    pub attempts:          VecDeque<NetAttempt>,
     pub buffer_wrap_index: Option<usize>,
 }
 
@@ -546,27 +684,26 @@ impl NetQueue<Packet> {
     pub fn get_retransmit_indices(&self) -> Vec<usize> {
         let iter = self.attempts.iter();
         iter.enumerate()
-            .filter(|(_, ts)|
-                (
-                    (Instant::now() - ts.time) >= RETRANSMISSION_THRESHOLD_IN_MS)
+            .filter(|(_, ts)| {
+                ((Instant::now() - ts.time) >= RETRANSMISSION_THRESHOLD_IN_MS)
                     || (ts.retries >= RETRY_THRESHOLD_IN_MS)
                     || (ts.retries >= RETRY_AGGRESSIVE_THRESHOLD_IN_MS)
-                )
+            })
             .map(|(i, _)| i)
             .take(RETRANSMISSION_COUNT)
             .collect::<Vec<usize>>()
     }
-
 }
 
 impl<T> NetworkQueue<T> for NetQueue<T>
-        where T: Sequenced+Debug+Clone {
-
+where
+    T: Sequenced + Debug + Clone,
+{
     fn new() -> Self {
         NetQueue {
-            queue:          ItemQueue::<T>::with_capacity(NETWORK_QUEUE_LENGTH),
-            attempts:     VecDeque::<NetAttempt>::with_capacity(NETWORK_QUEUE_LENGTH),
-            buffer_wrap_index: None
+            queue:             ItemQueue::<T>::with_capacity(NETWORK_QUEUE_LENGTH),
+            attempts:          VecDeque::<NetAttempt>::with_capacity(NETWORK_QUEUE_LENGTH),
+            buffer_wrap_index: None,
         }
     }
 
@@ -582,7 +719,7 @@ impl<T> NetworkQueue<T> for NetQueue<T>
         let queue = self.as_queue_type_mut();
         let queue_size = queue.len();
         if queue_size >= NETWORK_QUEUE_LENGTH {
-            for _ in 0..(queue_size-NETWORK_QUEUE_LENGTH) {
+            for _ in 0..(queue_size - NETWORK_QUEUE_LENGTH) {
                 queue.pop_front();
             }
         }
@@ -607,7 +744,10 @@ impl<T> NetworkQueue<T> for NetQueue<T>
         };
         match result {
             Err(_) => {
-                warn!("Packet (Seq: {}) not present in queue! Was it removed already?", pkt.sequence_number());
+                warn!(
+                    "Packet (Seq: {}) not present in queue! Was it removed already?",
+                    pkt.sequence_number()
+                );
                 return None;
             }
             Ok(index) => {
@@ -705,7 +845,8 @@ impl<T> NetworkQueue<T> for NetQueue<T>
                 }
                 panic!("Previously thought to be dead code. Prove us wrong!");
             }
-        } else { // Sequence >= oldest_seq_num
+        } else {
+            // Sequence >= oldest_seq_num
             let insertion_index: Option<usize>;
             if sequence < newest_seq_num {
                 insertion_index = self.find_rx_insertion_index(&item);
@@ -734,8 +875,10 @@ impl<T> NetworkQueue<T> for NetQueue<T>
     }
 }
 
-impl<T> NetQueue<T> where T: Sequenced+Debug+Clone {
-
+impl<T> NetQueue<T>
+where
+    T: Sequenced + Debug + Clone,
+{
     /// Searching within the queue, but when we have no idea where to insert.
     /// We accomplish this by splitting the VecDequeue into a slice tuple and then binary searching on each slice.
     /// Small note: The splitting of VecDequeue is into its 'front' and 'back' halves, based on how 'push_front'
@@ -765,11 +908,11 @@ impl<T> NetQueue<T> where T: Sequenced+Debug+Clone {
                     // Could not find a place to insert
                     (_, _) => None,
                 }
-            },
+            }
             #[cfg(test)]
-            (_,_) => Some(MATCH_FOUND_SENTINEL),
+            (_, _) => Some(MATCH_FOUND_SENTINEL),
             #[cfg(not(test))]
-            (_,_) => None,
+            (_, _) => None,
         }
     }
 
@@ -800,7 +943,9 @@ impl<T> NetQueue<T> where T: Sequenced+Debug+Clone {
                 self.as_queue_type_mut().insert(insertion_index, item);
                 self.attempts.push_back(NetAttempt::new());
             }
-        } else { exists = true; } // Packet is present in queue, hence None.
+        } else {
+            exists = true;
+        } // Packet is present in queue, hence None.
         return exists;
     }
 
@@ -823,20 +968,20 @@ impl<T> NetQueue<T> where T: Sequenced+Debug+Clone {
 
 pub struct NetworkManager {
     pub statistics:       NetworkStatistics,
-    pub tx_packets:       NetQueue<Packet>,                       // Back = Newest, Front = Oldest
-    pub rx_packets:       NetQueue<Packet>,                       // Back = Newest, Front = Oldest
+    pub tx_packets:       NetQueue<Packet>, // Back = Newest, Front = Oldest
+    pub rx_packets:       NetQueue<Packet>, // Back = Newest, Front = Oldest
     pub rx_chat_messages: Option<NetQueue<BroadcastChatMessage>>, // Back = Newest, Front = Oldest;
-                                                                 //     Messages are drained into the Client;
-                                                                 //     Server does not use this structure.
+                                            //     Messages are drained into the Client;
+                                            //     Server does not use this structure.
 }
 
 impl NetworkManager {
     #[allow(unused)]
     pub fn new() -> Self {
         NetworkManager {
-            statistics: NetworkStatistics::new(),
-            tx_packets:  NetQueue::<Packet>::new(),
-            rx_packets:  NetQueue::<Packet>::new(),
+            statistics:       NetworkStatistics::new(),
+            tx_packets:       NetQueue::<Packet>::new(),
+            rx_packets:       NetQueue::<Packet>::new(),
             rx_chat_messages: None,
         }
     }
@@ -844,10 +989,10 @@ impl NetworkManager {
     #[allow(unused)]
     pub fn with_message_buffering(self) -> NetworkManager {
         NetworkManager {
-            statistics: self.statistics,
-            tx_packets: self.tx_packets,
-            rx_packets: self.rx_packets,
-            rx_chat_messages:  Some(NetQueue::<BroadcastChatMessage>::new()),
+            statistics:       self.statistics,
+            tx_packets:       self.tx_packets,
+            rx_packets:       self.rx_packets,
+            rx_chat_messages: Some(NetQueue::<BroadcastChatMessage>::new()),
         }
     }
 
@@ -876,18 +1021,18 @@ impl NetworkManager {
     }
 
     #[allow(unused)]
-    pub fn retransmit_expired_tx_packets(&mut self,
-         udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>,
-         addr: SocketAddr,
-         confirmed_ack: Option<u64>,
-         indices: &Vec<usize>) {
-
+    pub fn retransmit_expired_tx_packets(
+        &mut self,
+        udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>,
+        addr: SocketAddr,
+        confirmed_ack: Option<u64>,
+        indices: &Vec<usize>,
+    ) {
         let mut error_occurred = false;
         let mut failed_index = 0;
 
         // Retransmit all packets after that are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
         for &index in indices.iter() {
-
             let mut send_counter = 1;
 
             if let Some(ts) = self.tx_packets.attempts.get_mut(index) {
@@ -907,22 +1052,29 @@ impl NetworkManager {
                 pkt.set_response_sequence(confirmed_ack);
                 trace!("[Retransmitting (Times={})] {:?}", send_counter, pkt);
                 for _ in 0..send_counter {
-                    netwayste_send!(udp_tx, (addr, (*pkt).clone()),
-                                ("Could not retransmit packet to server: {:?}", pkt));
+                    netwayste_send!(
+                        udp_tx,
+                        (addr, (*pkt).clone()),
+                        ("Could not retransmit packet to server: {:?}", pkt)
+                    );
                 }
             } else {
                 error_occurred = true;
                 failed_index = index;
                 break;
             }
-
         }
 
         if error_occurred {
             // Panic during development, probably want to make this error later on
-            panic!("ERROR: Index ({}) in attempt queue out-of-bounds in tx packets queue,
+            panic!(
+                "ERROR: Index ({}) in attempt queue out-of-bounds in tx packets queue,
                             or perhaps `None`?:\n\t {:?}\n{:?}\n{:?}",
-                    failed_index, indices, self.tx_packets.queue.len(), self.tx_packets.attempts.len());
+                failed_index,
+                indices,
+                self.tx_packets.queue.len(),
+                self.tx_packets.attempts.len()
+            );
         }
     }
 
@@ -938,7 +1090,6 @@ impl NetworkManager {
             num_to_remove -= 1;
         }
     }
-
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -947,43 +1098,42 @@ pub enum NetwaysteEvent {
     None,
 
     // Requests
-    Connect(String, String),            // Player name, version
+    Connect(String, String), // Player name, version
     Disconnect,
     List,
-    ChatMessage(String),                // chat message
-    NewRoom(String),                    // room name
-    JoinRoom(String),                   // room name
+    ChatMessage(String), // chat message
+    NewRoom(String),     // room name
+    JoinRoom(String),    // room name
     LeaveRoom,
 
     // Responses
-    LoggedIn(String),                   // player is logged in -- (version)
-    JoinedRoom(String),                 // player has joined the room
-    PlayerList(Vec<String>),     // list of players in room or lobby with ping (ms)
-    RoomList(Vec<(String, u64, bool)>), // (room name, # players, game has started?)
+    LoggedIn(String),        // player is logged in -- (version)
+    JoinedRoom(String),      // player has joined the room
+    PlayerList(Vec<String>), // list of players in room or lobby with ping (ms)
+    RoomList(Vec<RoomList>), // (room name, # players, game has started?)
     LeftRoom,
-    BadRequest(Option<String>),
-    ServerError(Option<String>),
+    BadRequest(String),
+    ServerError(String),
 
     // Updates
     ChatMessages(Vec<(String, String)>), // (player name, message)
-    UniverseUpdate,                       // TODO add libconway stuff for current universe gen
+    UniverseUpdate,                      // TODO add libconway stuff for current universe gen
 
+    // Server Status
+    GetStatus(PingPong),
+    Status(Packet, Option<u64>), // `Packet::Status` variant only; u64 is latency. None if not yet calculated.
 }
 
 impl NetwaysteEvent {
-
     #[allow(unused)]
     pub fn build_request_action_from_netwayste_event(nw_event: NetwaysteEvent, is_in_game: bool) -> RequestAction {
         match nw_event {
-            NetwaysteEvent::None => {
-                RequestAction::None
-            }
-            NetwaysteEvent::Connect(name, version) => {
-                RequestAction::Connect{name: name, client_version: version}
-            }
-            NetwaysteEvent::Disconnect => {
-                RequestAction::Disconnect
-            }
+            NetwaysteEvent::None => RequestAction::None,
+            NetwaysteEvent::Connect(name, version) => RequestAction::Connect {
+                name:           name,
+                client_version: version,
+            },
+            NetwaysteEvent::Disconnect => RequestAction::Disconnect,
             NetwaysteEvent::List => {
                 // players or rooms
                 if is_in_game {
@@ -993,12 +1143,10 @@ impl NetwaysteEvent {
                     RequestAction::ListRooms
                 }
             }
-            NetwaysteEvent::ChatMessage(msg) => {
-                RequestAction::ChatMessage(msg)
-            }
+            NetwaysteEvent::ChatMessage(msg) => RequestAction::ChatMessage { message: msg },
             NetwaysteEvent::NewRoom(name) => {
                 if !is_in_game {
-                    RequestAction::NewRoom(name)
+                    RequestAction::NewRoom { room_name: name }
                 } else {
                     debug!("Command failed: You are in a game");
                     RequestAction::None
@@ -1006,7 +1154,7 @@ impl NetwaysteEvent {
             }
             NetwaysteEvent::JoinRoom(name) => {
                 if !is_in_game {
-                    RequestAction::JoinRoom(name)
+                    RequestAction::JoinRoom { room_name: name }
                 } else {
                     debug!("Command failed: You are already in a game");
                     RequestAction::None
@@ -1021,7 +1169,10 @@ impl NetwaysteEvent {
                 }
             }
             _ => {
-                panic!("Unexpected netwayste event during request action construction! {:?}", nw_event);
+                panic!(
+                    "Unexpected netwayste event during request action construction! {:?}",
+                    nw_event
+                );
             }
         }
     }
@@ -1029,34 +1180,23 @@ impl NetwaysteEvent {
     #[allow(unused)]
     pub fn build_netwayste_event_from_response_code(code: ResponseCode) -> NetwaysteEvent {
         match code {
-            ResponseCode::LoggedIn(_cookie, server_version) => {
-                NetwaysteEvent::LoggedIn(server_version)
-            }
-            ResponseCode::JoinedRoom(name) => {
-                NetwaysteEvent::JoinedRoom(name)
-            }
-            ResponseCode::PlayerList(list) => {
-                NetwaysteEvent::PlayerList(list)
-            }
-            ResponseCode::RoomList(list) => {
-                NetwaysteEvent::RoomList(list)
-            }
-            ResponseCode::LeaveRoom => {
-                NetwaysteEvent::LeftRoom
-            }
-            ResponseCode::BadRequest(opt_error) => {
-                NetwaysteEvent::BadRequest(opt_error)
-            }
-            ResponseCode::ServerError( opt_error) => {
-                NetwaysteEvent::ServerError(opt_error)
-            }
-            ResponseCode::Unauthorized(opt_error) => {
-                NetwaysteEvent::BadRequest(opt_error)
-            }
+            ResponseCode::LoggedIn {
+                cookie: _,
+                server_version,
+            } => NetwaysteEvent::LoggedIn(server_version),
+            ResponseCode::JoinedRoom { room_name } => NetwaysteEvent::JoinedRoom(room_name),
+            ResponseCode::PlayerList { players } => NetwaysteEvent::PlayerList(players),
+            ResponseCode::RoomList { rooms } => NetwaysteEvent::RoomList(rooms),
+            ResponseCode::LeaveRoom => NetwaysteEvent::LeftRoom,
+            ResponseCode::BadRequest { error_msg } => NetwaysteEvent::BadRequest(error_msg),
+            ResponseCode::ServerError { error_msg } => NetwaysteEvent::ServerError(error_msg),
+            ResponseCode::Unauthorized { error_msg } => NetwaysteEvent::BadRequest(error_msg),
             _ => {
-                panic!("Unexpected response code during netwayste event construction: {:?}", code);
+                panic!(
+                    "Unexpected response code during netwayste event construction: {:?}",
+                    code
+                );
             }
         }
     }
-
 }

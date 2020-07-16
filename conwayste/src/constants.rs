@@ -1,4 +1,4 @@
-/*  Copyright 2018 the Conwayste Developers.
+/*  Copyright 2018-2020 the Conwayste Developers.
  *
  *  This file is part of conwayste.
  *
@@ -16,8 +16,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use ggez::graphics::{self, Rect, Scale};
 use std::time::Duration;
-use ggez::graphics::{self, Scale, Rect};
 
 // game play
 pub const CURRENT_PLAYER_ID: usize = 1; // TODO:  get the player ID from server rather than hardcoding
@@ -26,9 +26,9 @@ pub const HISTORY_SIZE: usize = 16;
 
 // Colors
 pub mod colors {
-    use ggez::graphics::Color;
-    use chromatica::css;
     use crate::ui::common::color_with_alpha;
+    use chromatica::css;
+    use ggez::graphics::Color;
 
     lazy_static! {
         // To see what the colors look like: https://developer.mozilla.org/en-US/docs/Web/CSS/color_value#Color_keywords
@@ -61,16 +61,16 @@ pub mod colors {
     }
 }
 
-pub const DEFAULT_SCREEN_HEIGHT: f32     =  800.0; // pixels
-pub const DEFAULT_SCREEN_WIDTH: f32      = 1200.0; // pixels
-pub const DEFAULT_ZOOM_LEVEL: f32        =    5.0; // default cell size in pixels
-//pub const FPS: u32 = 25;
-pub const GRID_DRAW_STYLE: DrawStyle     = DrawStyle::Fill;
-pub const INTRO_DURATION: f64            =  8.0;   // seconds
-pub const INTRO_PAUSE_DURATION: f64      =  3.0;   // seconds
-pub const MAX_CELL_SIZE: f32             = 40.0;   // pixels
-pub const MIN_CELL_SIZE: f32             =  5.0;   // pixels
-pub const PIXELS_SCROLLED_PER_FRAME: f32 = 50.0;   // pixels
+pub const DEFAULT_SCREEN_HEIGHT: f32 = 800.0; // pixels
+pub const DEFAULT_SCREEN_WIDTH: f32 = 1200.0; // pixels
+pub const DEFAULT_ZOOM_LEVEL: f32 = 5.0; // default cell size in pixels
+                                         //pub const FPS: u32 = 25;
+pub const GRID_DRAW_STYLE: DrawStyle = DrawStyle::Fill;
+pub const INTRO_DURATION: f64 = 8.0; // seconds
+pub const INTRO_PAUSE_DURATION: f64 = 3.0; // seconds
+pub const MAX_CELL_SIZE: f32 = 40.0; // pixels
+pub const MIN_CELL_SIZE: f32 = 5.0; // pixels
+pub const PIXELS_SCROLLED_PER_FRAME: f32 = 50.0; // pixels
 
 // persistent configuration
 pub const CONFIG_FILE_PATH: &str = "conwayste.toml";
@@ -90,39 +90,11 @@ lazy_static! {
 pub const CHATBOX_BORDER_PIXELS: f32 = 1.0;
 pub const CHATBOX_LINE_SPACING: f32 = 2.0;
 pub const CHATBOX_HISTORY: usize = 20;
+pub const CHAT_TEXTFIELD_HEIGHT: f32 = 25.0;
 
-// Height of text fields.
-pub const TEXTFIELD_HEIGHT: f32 = 25.0; // pixels
-
-// Padding used on menu screens.
-pub const MENU_PADDING: f32 = 5.0; // pixels
-
-// Width of labels and input widgets on menu screens.
-pub const MENU_LABEL_WIDTH: f32 = 250.0; // pixels; TODO: remove constant and use maximum width of the text in all the labels on a given screen
-pub const MENU_INPUT_WIDTH: f32 = 250.0; // pixels
-
-pub mod widget_ids {
-    use crate::ui::WidgetID;
-    pub const MAINMENU_LAYER1: WidgetID = WidgetID(1000);
-    pub const MAINMENU_PANE1: WidgetID  = WidgetID(1100);
-    pub const MAINMENU_PANE1_BUTTONSERVLST: WidgetID      = WidgetID(1101);
-    pub const MAINMENU_PANE1_BUTTONSERVLSTLABEL: WidgetID = WidgetID(1102);
-    pub const MAINMENU_PANE1_BUTTONINROOM: WidgetID       = WidgetID(1103);
-    pub const MAINMENU_PANE1_BUTTONINROOMLABEL: WidgetID  = WidgetID(1104);
-    pub const MAINMENU_PANE1_BUTTONSTART: WidgetID        = WidgetID(1105);
-    pub const MAINMENU_PANE1_BUTTONSTARTLABEL: WidgetID   = WidgetID(1106);
-    pub const MAINMENU_PANE1_BUTTONOPTIONS: WidgetID      = WidgetID(1107);
-    pub const MAINMENU_PANE1_BUTTONOPTIONSLABEL: WidgetID = WidgetID(1108);
-    pub const INGAME_LAYER1: WidgetID                     = WidgetID(2000);
-    pub const INGAME_PANE1: WidgetID                      = WidgetID(2100);
-    pub const INGAME_PANE1_CHATBOX: WidgetID              = WidgetID(2101);
-    pub const INGAME_PANE1_CHATBOXTEXTFIELD: WidgetID     = WidgetID(2102);
-    pub const OPTIONS_LAYER1: WidgetID                    = WidgetID(3000);
-    pub const OPTIONS_PANE1: WidgetID                     = WidgetID(3100);
-    pub const OPTIONS_PANE1_LABEL: WidgetID               = WidgetID(3101);
-    pub const OPTIONS_PANE1_TEXTFIELD: WidgetID           = WidgetID(3102);
-    pub const OPTIONS_PANE1_FULLSCREEN_CHECKBOX: WidgetID = WidgetID(3103);
-}
+// Layering's tree data structure capacities. Arbitrarily chosen.
+pub const LAYERING_NODE_CAPACITY: usize = 100;
+pub const LAYERING_SWAP_CAPACITY: usize = 10;
 
 //////////////////////////////////////////////////////////////////////
 
