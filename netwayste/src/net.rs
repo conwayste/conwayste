@@ -119,7 +119,7 @@ pub enum RequestAction {
     LeaveRoom,
     // TODO: add support ("auto_match" bool key, see issue #101)
     SetClientOptions {
-        key: String,
+        key:   String,
         value: Option<ClientOptionValue>,
     },
 }
@@ -354,7 +354,7 @@ pub struct RoomList {
     pub room_name:    String,
     pub player_count: u8,
     // TODO: add support
-    pub in_progress: bool,
+    pub in_progress:  bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
