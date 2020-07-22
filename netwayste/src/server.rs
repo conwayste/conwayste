@@ -576,6 +576,9 @@ impl ServerState {
                     error_msg: "Already connected".to_owned(),
                 };
             }
+            RequestAction::SetClientOptions { .. } => {
+                unimplemented!(); // TODO: add support ("auto_match" bool key, see issue #101)
+            }
             RequestAction::None => {
                 return ResponseCode::BadRequest {
                     error_msg: format!("Invalid request: {:?}", action),

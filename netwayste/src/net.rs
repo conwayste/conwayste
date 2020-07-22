@@ -117,6 +117,26 @@ pub enum RequestAction {
         room_name: String,
     },
     LeaveRoom,
+    // TODO: add support ("auto_match" bool key, see issue #101)
+    SetClientOptions {
+        key: String,
+        value: Option<ClientOptionValue>,
+    },
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum ClientOptionValue {
+    Bool { value: bool },
+    U8 { value: u8 },
+    U16 { value: u16 },
+    U32 { value: u32 },
+    U64 { value: u64 },
+    I8 { value: i8 },
+    I16 { value: i16 },
+    I32 { value: i32 },
+    I64 { value: i64 },
+    Str { value: String },
+    List { value: Vec<ClientOptionValue> },
 }
 
 // server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
@@ -216,11 +236,13 @@ impl BroadcastChatMessage {
     }
 }
 
+// TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GameOutcome {
     pub winner: Option<String>, // Some(<name>) if winner, or None, meaning it was a tie/forfeit
 }
 
+// TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum GameUpdateType {
     GameNotification {
@@ -251,13 +273,37 @@ pub enum GameUpdateType {
     },
     /// Kicks user back to lobby.
     RoomDeleted,
+    /// New match. Server suggests we join this room.
+    /// NOTE: this is the only variant that can happen in a lobby.
+    Match {
+        room:        String,
+        expire_secs: u32,
+    },
 }
 
+/// All options needed to initialize a Universe. Notably, num_players is absent, because it can be
+/// inferred from the index values of the latest list of PlayerInfos received from the server.
+/// Also, is_server is absent.
+// TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GameOptions {
-    //XXX writable region and other Universe params
+    width:           u32,
+    height:          u32,
+    history:         u16,
+    player_writable: Vec<NetRegion>,
+    fog_radius:      u32,
 }
 
+/// Net-safe version of a libconway Region
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct NetRegion {
+    left:   i32,
+    top:    i32,
+    width:  u32,
+    height: u32,
+}
+
+// TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct PlayerInfo {
     /// Name of the player.
@@ -266,18 +312,24 @@ pub struct PlayerInfo {
     index: Option<u64>,
 }
 
+// TODO: add support
+// The server doesn't have to send all GameUpdates to all clients because that would entail keeping
+// them all for the lifetime of the room, and sending that arbitrarily large list to clients upon
+// joining.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GameUpdate {
     pub game_update_seq: Option<u64>, // see BroadcastChatMessage chat_seq field for Some/None meaning
     update_type:         GameUpdateType,
 }
 
+// TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum UniUpdate {
     Diff { diff: GenStateDiffPart },
     NoChange,
 }
 
+// TODO: add support
 /// One or more of these can be recombined into a GenStateDiff from the conway crate.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GenStateDiffPart {
@@ -288,6 +340,7 @@ pub struct GenStateDiffPart {
     pub pattern_part: String, // concatenated together to form a Pattern
 }
 
+// TODO: add support
 /// GenPartInfo is sent in the UpdateReply to indicate which GenStateDiffParts are needed.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GenPartInfo {
@@ -300,7 +353,8 @@ pub struct GenPartInfo {
 pub struct RoomList {
     pub room_name:    String,
     pub player_count: u8,
-    pub in_progress:  bool,
+    // TODO: add support
+    pub in_progress: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -320,11 +374,15 @@ pub enum Packet {
         code:        ResponseCode,
     },
     Update {
-        // in-game: sent by server
+        // Usually in-game: sent by server.
+        // All of these except ping are reset to new values upon joining a room and cleared upon
+        // leaving. Also note that the server may not send all GameUpdates or BroadcastChatMessages
+        // in a single packet, since it could exceed the MTU.
+        // TODO: limit chats and game_updates based on MTU!
         chats:           Vec<BroadcastChatMessage>, // All non-acknowledged chats are sent each update
-        game_updates:    Vec<GameUpdate>,           // Information pertaining to a game tick update
-        universe_update: UniUpdate,                 //
-        ping:            PingPong,                  // Used for server-to-client latency measurement
+        game_updates:    Vec<GameUpdate>,           // Information pertaining to a game tick update.
+        universe_update: UniUpdate,                 // TODO: add support
+        ping:            PingPong,                  // Used for server-to-client latency measurement (no room needed)
     },
     UpdateReply {
         // in-game: sent by client in reply to server
@@ -344,6 +402,7 @@ pub enum Packet {
         player_count:   u64,
         room_count:     u64,
         server_name:    String,
+        // TODO: max players?
     }, // Provide basic server information to the requester
 }
 
