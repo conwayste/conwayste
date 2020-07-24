@@ -244,10 +244,11 @@ impl ClientNetState {
                     }
                 }
             }
-            // TODO game_updates, universe_update
+            // TODO game_updates, game_update_seq, universe_update,
             Packet::Update {
                 chats,
                 game_updates: _,
+                game_update_seq: _,
                 universe_update: _,
                 ping,
             } => {
