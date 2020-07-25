@@ -581,7 +581,7 @@ impl ServerState {
             RequestAction::DropPattern { .. } => {
                 unimplemented!(); // TODO: add support
             }
-            RequestAction::ClearPattern { .. } => {
+            RequestAction::ClearArea { .. } => {
                 unimplemented!(); // TODO: add support
             }
             RequestAction::None => {

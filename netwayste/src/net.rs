@@ -132,7 +132,7 @@ pub enum RequestAction {
     // TODO: add support (also need it in the ggez client)
     // Clear all cells in the specified region not belonging to other players. No part of this
     // region may be outside the player's writable region.
-    ClearPattern {
+    ClearArea {
         x: i32,
         y: i32,
         w: u32,
