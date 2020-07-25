@@ -123,10 +123,20 @@ pub enum RequestAction {
         value: Option<ClientOptionValue>,
     },
     // TODO: add support
+    // Draw the specified RLE Pattern with upper-left cell at position x, y.
     DropPattern {
         x:       i32,
         y:       i32,
         pattern: String,
+    },
+    // TODO: add support (also need it in the ggez client)
+    // Clear all cells in the specified region not belonging to other players. No part of this
+    // region may be outside the player's writable region.
+    ClearPattern {
+        x: i32,
+        y: i32,
+        w: u32,
+        h: u32,
     },
 }
 
@@ -317,7 +327,7 @@ pub enum GameUpdate {
     /// NOTE: this is the only variant that can happen in a lobby.
     Match {
         room:        String,
-        expire_secs: u32, //XXX think about this
+        expire_secs: u32, // TODO: think about this
     },
 }
 

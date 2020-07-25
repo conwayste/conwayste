@@ -98,8 +98,7 @@ pub struct Player {
 pub struct PlayerInGameInfo {
     room_id:          RoomID,
     chat_msg_seq_num: Option<u64>, // Server has confirmed the client has received messages up to this value.
-                                   //XXX PlayerGenState ID within Universe
-                                   //XXX update statuses
+                                   // TODO: add support
 }
 
 impl Player {
@@ -578,6 +577,12 @@ impl ServerState {
             }
             RequestAction::SetClientOptions { .. } => {
                 unimplemented!(); // TODO: add support ("auto_match" bool key, see issue #101)
+            }
+            RequestAction::DropPattern { .. } => {
+                unimplemented!(); // TODO: add support
+            }
+            RequestAction::ClearPattern { .. } => {
+                unimplemented!(); // TODO: add support
             }
             RequestAction::None => {
                 return ResponseCode::BadRequest {
@@ -1093,13 +1098,14 @@ impl ServerState {
                 }
 
                 let messages_available = unsent_messages.len() != 0;
-                // XXX Requires implementation
+                // TODO: add support
                 let game_updates_available = false;
                 let universe_updates_available = false;
 
                 let update_packet = Packet::Update {
                     chats:           unsent_messages,
                     game_updates:    vec![],
+                    game_update_seq: None,
                     universe_update: UniUpdate::NoChange,
                     ping:            PingPong::ping(),
                 };
