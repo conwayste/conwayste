@@ -2558,10 +2558,12 @@ mod netwayste_server_tests {
             Packet::Update {
                 chats,
                 game_updates,
+                game_update_seq,
                 universe_update,
                 ping: _,
             } => {
                 assert!(game_updates.is_empty());
+                assert!(game_update_seq.is_none());
                 assert_eq!(universe_update, UniUpdate::NoChange);
                 assert!(!chats.is_empty());
 
@@ -2619,10 +2621,12 @@ mod netwayste_server_tests {
             Packet::Update {
                 mut chats,
                 game_updates,
+                game_update_seq,
                 universe_update,
                 ping: _,
             } => {
                 assert!(game_updates.is_empty());
+                assert!(game_update_seq.is_none());
                 assert_eq!(universe_update, UniUpdate::NoChange);
                 assert!(!chats.is_empty());
 
