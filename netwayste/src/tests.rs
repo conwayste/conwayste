@@ -15,7 +15,6 @@
  *  You should have received a copy of the GNU General Public License
  *  along with netwayste.  If not, see <http://www.gnu.org/licenses/>. */
 
-use crate::futures::sync::mpsc;
 use crate::net::*;
 use std::net::SocketAddr;
 use std::{
@@ -1057,9 +1056,8 @@ mod netwayste_net_tests {
 
         let indices = nm.tx_packets.get_retransmit_indices();
 
-        let (udp_tx, _) = mpsc::unbounded();
         let addr = fake_socket_addr();
-        nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
+        nm.retransmit_expired_tx_packets(addr, None, &indices);
 
         for i in 0..5 {
             assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 0);
@@ -1088,9 +1086,8 @@ mod netwayste_net_tests {
 
         let indices = nm.tx_packets.get_retransmit_indices();
 
-        let (udp_tx, _) = mpsc::unbounded();
         let addr = fake_socket_addr();
-        nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
+        nm.retransmit_expired_tx_packets(addr, None, &indices);
 
         for i in 0..3 {
             assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 1);
@@ -1126,9 +1123,8 @@ mod netwayste_net_tests {
 
             println!("{:?}", indices);
 
-            let (udp_tx, _) = mpsc::unbounded();
             let addr = fake_socket_addr();
-            nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
+            nm.retransmit_expired_tx_packets(addr, None, &indices);
 
             for j in 0..indices.len() {
                 let attempt: &mut NetAttempt = nm.tx_packets.attempts.get_mut(j).unwrap();
