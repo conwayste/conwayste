@@ -12,7 +12,7 @@ color-backtrace = "0.4"
 conway       = { path = "../libconway" }
 custom_error = "1.7"
 downcast-rs  = "1.2.0"
-enum-iterator = "0.5"
+enum-iterator = "0.6"
 env_logger   = "0.7.1"
 futures      = "0.1.17"
 ggez         = "0.5"
