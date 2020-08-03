@@ -1040,7 +1040,7 @@ mod netwayste_net_tests {
     }
 
     #[test]
-    fn test_retransmit_expired_tx_packets_no_expirations() {
+    fn test_get_expired_tx_packets_no_expirations() {
         let mut nm = NetworkManager::new();
 
         for i in 0..5 {
@@ -1057,7 +1057,7 @@ mod netwayste_net_tests {
         let indices = nm.tx_packets.get_retransmit_indices();
 
         let addr = fake_socket_addr();
-        nm.retransmit_expired_tx_packets(addr, None, &indices);
+        nm.get_expired_tx_packets(addr, None, &indices);
 
         for i in 0..5 {
             assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 0);
@@ -1065,7 +1065,7 @@ mod netwayste_net_tests {
     }
 
     #[test]
-    fn test_retransmit_expired_tx_packets_basic_retries() {
+    fn test_get_expired_tx_packets_basic_retries() {
         let mut nm = NetworkManager::new();
 
         for i in 0..5 {
@@ -1087,7 +1087,7 @@ mod netwayste_net_tests {
         let indices = nm.tx_packets.get_retransmit_indices();
 
         let addr = fake_socket_addr();
-        nm.retransmit_expired_tx_packets(addr, None, &indices);
+        nm.get_expired_tx_packets(addr, None, &indices);
 
         for i in 0..3 {
             assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 1);
@@ -1098,7 +1098,7 @@ mod netwayste_net_tests {
     }
 
     #[test]
-    fn test_retransmit_expired_tx_packets_aggressive_retries() {
+    fn test_get_expired_tx_packets_aggressive_retries() {
         let mut nm = NetworkManager::new();
 
         for i in 0..5 {
@@ -1124,7 +1124,7 @@ mod netwayste_net_tests {
             println!("{:?}", indices);
 
             let addr = fake_socket_addr();
-            nm.retransmit_expired_tx_packets(addr, None, &indices);
+            nm.get_expired_tx_packets(addr, None, &indices);
 
             for j in 0..indices.len() {
                 let attempt: &mut NetAttempt = nm.tx_packets.attempts.get_mut(j).unwrap();

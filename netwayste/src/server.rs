@@ -46,14 +46,14 @@ use std::time::{self, Duration, Instant};
 
 use chrono::Local;
 use clap::{App, Arg};
-use futures as F;
+use futures as Fut;
 use log::LevelFilter;
 use rand::RngCore;
 use semver::Version;
-use tokio::time as TT;
+use tokio::time as TokioTime;
 use tokio_util::udp::UdpFramed;
-use F::prelude::*;
-use F::select;
+use Fut::prelude::*;
+use Fut::select;
 
 pub const TICK_INTERVAL_IN_MS: u64 = 10;
 pub const NETWORK_INTERVAL_IN_MS: u64 = 100; // Arbitrarily chosen
@@ -780,7 +780,7 @@ impl ServerState {
                         player_id,
                         indices.len()
                     );
-                    let retransmissions = player_net.retransmit_expired_tx_packets(player_addr, ack, &indices);
+                    let retransmissions = player_net.get_expired_tx_packets(player_addr, ack, &indices);
                     expired_responses.extend_from_slice(retransmissions.as_slice());
                 } else {
                     error!("I haven't found a NetworkManager for Player: {}", player_id);
@@ -1353,9 +1353,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let mut server_state = ServerState::new();
 
-    let mut tick_interval = TT::interval(Duration::from_millis(TICK_INTERVAL_IN_MS)).fuse();
-    let mut network_interval = TT::interval(Duration::from_millis(NETWORK_INTERVAL_IN_MS)).fuse();
-    let mut heartbeat_interval = TT::interval(Duration::from_millis(HEARTBEAT_INTERVAL_IN_MS)).fuse();
+    let mut tick_interval = TokioTime::interval(Duration::from_millis(TICK_INTERVAL_IN_MS)).fuse();
+    let mut network_interval = TokioTime::interval(Duration::from_millis(NETWORK_INTERVAL_IN_MS)).fuse();
+    let mut heartbeat_interval = TokioTime::interval(Duration::from_millis(HEARTBEAT_INTERVAL_IN_MS)).fuse();
 
     loop {
         select! {
@@ -1366,8 +1366,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 }
             },
             (_) = network_interval.select_next_some() => {
-                let retranmissions = server_state.maintain_network_state();
-                for packet_addr_tuple in retranmissions {
+                let retransmissions = server_state.maintain_network_state();
+                for packet_addr_tuple in retransmissions {
                     udp_sink.send(packet_addr_tuple).await?;
                 }
             },

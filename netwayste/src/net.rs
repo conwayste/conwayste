@@ -42,8 +42,8 @@ pub const TIMEOUT_IN_SECONDS: u64 = 5;
 pub const NETWORK_QUEUE_LENGTH: usize = 600; // spot testing with poor network (~675 cmds) showed a max of ~512 length
                                              // keep this for now until the performance issues are resolved
 const RETRANSMISSION_THRESHOLD_IN_MS: Duration = Duration::from_millis(400);
-const RETRY_THRESHOLD_IN_MS: usize = 2; //
-const RETRY_AGGRESSIVE_THRESHOLD_IN_MS: usize = 5;
+const RETRY_THRESHOLD: usize = 2; //
+const RETRY_AGGRESSIVE_THRESHOLD: usize = 5;
 const RETRANSMISSION_COUNT: usize = 32; // Testing some ideas out:. Resend length 16x2, 16=libconway::history_size)
 
 // For unit testing, I cover duplicate sequence numbers. The search returns Ok(index) on a slice with a matching value.
@@ -681,8 +681,8 @@ impl NetQueue<Packet> {
         iter.enumerate()
             .filter(|(_, ts)| {
                 ((Instant::now() - ts.time) >= RETRANSMISSION_THRESHOLD_IN_MS)
-                    || (ts.retries >= RETRY_THRESHOLD_IN_MS)
-                    || (ts.retries >= RETRY_AGGRESSIVE_THRESHOLD_IN_MS)
+                    || (ts.retries >= RETRY_THRESHOLD)
+                    || (ts.retries >= RETRY_AGGRESSIVE_THRESHOLD)
             })
             .map(|(i, _)| i)
             .take(RETRANSMISSION_COUNT)
@@ -1016,7 +1016,7 @@ impl NetworkManager {
     }
 
     #[allow(unused)]
-    pub fn retransmit_expired_tx_packets(
+    pub fn get_expired_tx_packets(
         &mut self,
         addr: SocketAddr,
         confirmed_ack: Option<u64>,
@@ -1024,26 +1024,22 @@ impl NetworkManager {
     ) -> Vec<(Packet, SocketAddr)> {
         let mut error_occurred = false;
         let mut failed_index = 0;
-
         let mut expired_packets = vec![];
 
-        // Retransmit all packets after that are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
+        // Determine which packets are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
         for &index in indices.iter() {
             let mut send_counter = 1;
 
             if let Some(ts) = self.tx_packets.attempts.get_mut(index) {
                 ts.increment_retries();
-                if ts.retries >= RETRY_AGGRESSIVE_THRESHOLD_IN_MS {
+                if ts.retries >= RETRY_AGGRESSIVE_THRESHOLD {
+                    // If the packet is truly late, send it twice
+                    send_counter += 2;
+                } else if ts.retries >= RETRY_THRESHOLD {
                     send_counter += 1;
-                    ts.increment_retries()
-                }
-                if ts.retries >= RETRY_THRESHOLD_IN_MS {
-                    send_counter += 1;
-                    ts.increment_retries()
                 }
             }
 
-            // this is garbage please redesign me kthxbai
             if let Some(pkt) = self.tx_packets.queue.get_mut(index) {
                 // `response_sequence` may have advanced since this was last queued
                 pkt.set_response_sequence(confirmed_ack);
@@ -1059,9 +1055,8 @@ impl NetworkManager {
         }
 
         if error_occurred {
-            // Panic during development, probably want to make this error later on
-            panic!(
-                "ERROR: Index ({}) in attempt queue out-of-bounds in tx packets queue,
+            error!(
+                "Index ({}) in attempt queue out-of-bounds in tx packets queue,
                             or perhaps `None`?:\n\t {:?}\n{:?}\n{:?}",
                 failed_index,
                 indices,

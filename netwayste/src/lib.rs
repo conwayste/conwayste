@@ -29,7 +29,7 @@ extern crate serde;
 
 #[macro_use]
 pub mod net;
-//pub mod client; XXX
+pub mod client;
 pub mod utils;
 
 #[cfg(test)]
