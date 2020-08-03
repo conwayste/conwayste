@@ -11,7 +11,7 @@ path = "src/server.rs"
 [dependencies]
 futures              = "0.1.17"
 tokio-core           = "0.1.9"
-log                  = "0.4.8"
+log                  = "0.4.11"
 chrono               = "0.4.11"
 conway               = { path = "../libconway" }
 env_logger           = "0.7.1"
