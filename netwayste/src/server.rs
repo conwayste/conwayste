@@ -2456,16 +2456,16 @@ mod netwayste_server_tests {
     #[test]
     fn construct_client_updates_no_rooms() {
         let mut server = ServerState::new();
-        let opt_updates = server.construct_client_updates();
-        assert!(opt_updates.is_none());
+        let updates = server.construct_client_updates();
+        assert!(updates.is_empty());
     }
 
     #[test]
     fn construct_client_updates_empty_rooms() {
         let mut server = ServerState::new();
         server.create_new_room(None, "some room".to_owned().clone());
-        let opt_updates = server.construct_client_updates();
-        assert!(opt_updates.is_none());
+        let updates = server.construct_client_updates();
+        assert!(updates.is_empty());
     }
 
     #[test]
@@ -2486,15 +2486,12 @@ mod netwayste_server_tests {
         server.handle_chat_message(player_id, message_text.clone());
         server.handle_chat_message(player_id, message_text.clone());
 
-        let opt_updates = server.construct_client_updates();
-        assert!(opt_updates.is_some());
-
-        let mut output: Vec<(SocketAddr, Packet)> = opt_updates.unwrap();
+        let mut updates = server.construct_client_updates();
 
         // Vector should contain a single item for this test
-        assert_eq!(output.len(), 1);
+        assert_eq!(updates.len(), 1);
 
-        let (addr, pkt) = output.pop().unwrap();
+        let (addr, pkt) = updates.pop().unwrap();
         assert_eq!(addr, fake_socket_addr());
 
         match pkt {
@@ -2547,15 +2544,12 @@ mod netwayste_server_tests {
         }
 
         // We should then only return the last chat
-        let opt_updates = server.construct_client_updates();
-
-        assert!(opt_updates.is_some());
-        let mut output: Vec<(SocketAddr, Packet)> = opt_updates.unwrap();
+        let mut updates = server.construct_client_updates();
 
         // Vector should contain a single item for this test
-        assert_eq!(output.len(), 1);
+        assert_eq!(updates.len(), 1);
 
-        let (addr, pkt) = output.pop().unwrap();
+        let (addr, pkt) = updates.pop().unwrap();
         assert_eq!(addr, fake_socket_addr());
 
         match pkt {
@@ -2747,15 +2741,6 @@ mod netwayste_server_tests {
     }
 
     #[test]
-    fn test_resend_expired_tx_packets_empty_server() {
-        let mut server = ServerState::new();
-
-        let (udp_tx, _) = mpsc::unbounded();
-        #[cfg(not(should_panic))]
-        server.resend_expired_tx_packets(&udp_tx);
-    }
-
-    #[test]
     fn test_resend_expired_tx_packets() {
         let mut server = ServerState::new();
         let player_name = "some player".to_owned();
@@ -2782,8 +2767,7 @@ mod netwayste_server_tests {
             }
         }
 
-        let (udp_tx, _) = mpsc::unbounded();
-        server.resend_expired_tx_packets(&udp_tx);
+        let _expired_packets_vec = server.collect_expired_tx_packets();
 
         for i in 0..5 {
             let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();
