@@ -98,6 +98,9 @@ impl Pane {
                                 emittable_ref.emit(evt, &mut subuictx)?;
                                 let pane_events = subuictx.collect_child_events();
                                 if pane_events.len() != 0 {
+                                    for event in pane_events {
+                                        uictx.child_event(event);
+                                    }
                                     warn!(
                                         "expected no mouse child events to be collected from Pane; got {:?}",
                                         pane_events

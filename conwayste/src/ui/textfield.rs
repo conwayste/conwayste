@@ -103,15 +103,21 @@ impl TextField {
             bg_color: None,
             handler_data: HandlerData::new(),
         };
-        tf.on(EventType::KeyPress, Box::new(TextField::key_handler)).unwrap(); // unwrap OK b/c not inside handler now
+
+        // The following unwraps are okay b/c we are not within a handler execution
+
+        // Handler for accepting keyboard input
+        tf.on(EventType::KeyPress, Box::new(TextField::key_handler)).unwrap();
 
         // Set handlers for toggling has_keyboard_focus
         tf.on(EventType::GainFocus, Box::new(TextField::gain_focus_handler))
-            .unwrap(); // unwrap OK
+            .unwrap();
         tf.on(EventType::LoseFocus, Box::new(TextField::lose_focus_handler))
-            .unwrap(); // unwrap OK
+            .unwrap();
+        tf.on(EventType::Click, Box::new(TextField::on_click_handler)).unwrap();
 
-        tf.on(EventType::Update, Box::new(TextField::update_handler)).unwrap(); // unwrap OK because we aren't in handler
+        // Handler for graphical updates
+        tf.on(EventType::Update, Box::new(TextField::update_handler)).unwrap();
         tf
     }
 
@@ -151,6 +157,15 @@ impl TextField {
         let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
         tf.focused = false;
         tf.draw_cursor = false;
+        Ok(Handled::NotHandled)
+    }
+
+    fn on_click_handler(
+        obj: &mut dyn EmitEvent,
+        uictx: &mut UIContext,
+        _evt: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        uictx.child_event(Event::new_gain_or_lose_focus(EventType::GainFocus));
         Ok(Handled::NotHandled)
     }
 

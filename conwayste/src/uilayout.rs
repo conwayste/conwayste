@@ -126,6 +126,33 @@ impl UILayout {
             .unwrap();
         layer_options.add_widget(fullscreen_checkbox, InsertLocation::AtCurrentLayer)?;
 
+        let playername_label = Box::new(Label::new(
+            ctx,
+            default_font_info,
+            "Player Name:".to_owned(),
+            name_color,
+            Point2::new(0.0, 0.0),
+        ));
+        let pnlabel_x = playername_label.position().x;
+        let pnlabel_y = playername_label.position().y;
+        let pnlabel_r_edge = playername_label.size().0 + pnlabel_x;
+        let playername_tf = Box::new(TextField::new(
+            default_font_info,
+            Rect::new(pnlabel_r_edge + 20.0, pnlabel_y, 100.0, 30.0),
+        ));
+        let mut playername_pane = Box::new(Pane::new(Rect::new(10.0, 0.0, 0.0, 0.0)));
+        playername_pane.set_rect(Rect::new(
+            10.0,
+            400.0,
+            playername_label.size().0 + playername_tf.size().0,
+            f32::max(playername_label.size().1, playername_tf.size().1),
+        ))?;
+        playername_pane.border = 0.0;
+
+        let playername_pane_id = layer_options.add_widget(playername_pane, InsertLocation::AtCurrentLayer)?;
+        layer_options.add_widget(playername_label, InsertLocation::ToNestedContainer(&playername_pane_id))?;
+        layer_options.add_widget(playername_tf, InsertLocation::ToNestedContainer(&playername_pane_id))?;
+
         Ok(layer_options)
     }
 
