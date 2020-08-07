@@ -161,11 +161,11 @@ impl TextField {
     }
 
     fn on_click_handler(
-        obj: &mut dyn EmitEvent,
+        _obj: &mut dyn EmitEvent,
         uictx: &mut UIContext,
         _evt: &Event,
     ) -> Result<Handled, Box<dyn Error>> {
-        uictx.child_event(Event::new_gain_or_lose_focus(EventType::GainFocus));
+        uictx.child_event(Event::new_child_request_focus());
         Ok(Handled::NotHandled)
     }
 

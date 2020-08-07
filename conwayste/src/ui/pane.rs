@@ -89,6 +89,8 @@ impl Pane {
                                uictx: &mut context::UIContext,
                                evt: &context::Event|
                  -> Result<Handled, Box<dyn Error>> {
+                    let mut child_events = vec![];
+
                     for child_id in uictx.widget_view.children_ids() {
                         let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK because 1) valid ID, 2) in view
 
@@ -99,14 +101,11 @@ impl Pane {
                                 let pane_events = subuictx.collect_child_events();
                                 if pane_events.len() != 0 {
                                     for event in pane_events {
-                                        uictx.child_event(event);
+                                        child_events.push((widget_ref.id().unwrap().clone(), event));
                                     }
-                                    warn!(
-                                        "expected no mouse child events to be collected from Pane; got {:?}",
-                                        pane_events
-                                    );
+                                } else {
+                                    return Ok(Handled::Handled);
                                 }
-                                return Ok(Handled::Handled);
                             } else {
                                 warn!(
                                     "Widget at point of click ({:?}) does not implement EmitEvent: {:?}",
@@ -116,6 +115,15 @@ impl Pane {
                             }
                         }
                     }
+
+                    for (_id, event) in child_events {
+                        // XXX figure out how to get the current focused id to see if even should be propagated
+                        // Ignore other events as this is the only one propgating upward
+                        if event.what == EventType::ChildRequestsFocus {
+                            uictx.child_event(event);
+                        }
+                    }
+
                     Ok(Handled::NotHandled)
                 };
                 pane.on(event_type, Box::new(handler)).unwrap(); // unwrap OK because we aren't calling from within a handler

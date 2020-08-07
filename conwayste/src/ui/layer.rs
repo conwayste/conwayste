@@ -481,7 +481,7 @@ impl Layering {
         if event.what == context::EventType::Update || event.what == context::EventType::MouseMove {
             Layering::broadcast_event(event, &mut uictx)
         } else if event.is_mouse_event() {
-            Layering::emit_mouse_event(event, &mut uictx)
+            Layering::emit_mouse_event(event, &mut uictx, &mut self.focus_cycles[self.highest_z_order])
         } else if event.is_key_event() {
             Layering::handle_keyboard_event(event, &mut uictx, &mut self.focus_cycles[self.highest_z_order])
         } else {
@@ -653,11 +653,18 @@ impl Layering {
         Ok(())
     }
 
-    fn emit_mouse_event(event: &context::Event, uictx: &mut context::UIContext) -> Result<(), Box<dyn Error>> {
+    fn emit_mouse_event(
+        event: &context::Event,
+        uictx: &mut context::UIContext,
+        focus_cycle: &mut FocusCycle,
+    ) -> Result<(), Box<dyn Error>> {
         let point = event
             .point
             .as_ref()
             .ok_or_else(|| -> Box<dyn Error> { format!("event of type {:?} has no point", event.what).into() })?;
+
+        let mut child_events = vec![];
+
         for child_id in uictx.widget_view.children_ids() {
             // Get a mutable reference to a BoxedWidget, as well as a UIContext with a view on the
             // widgets in the tree under this widget.
@@ -668,15 +675,26 @@ impl Layering {
                     emittable.emit(event, &mut subuictx)?;
                     let pane_events = subuictx.collect_child_events();
                     if pane_events.len() != 0 {
-                        warn!(
-                            "[Layering] expected no mouse child events to be collected from Pane; got {:?}",
-                            pane_events
-                        );
+                        for child_event in pane_events {
+                            child_events.push((widget_ref.id().unwrap().clone(), child_event));
+                        }
+                    } else {
+                        return Ok(());
                     }
-                    return Ok(());
                 } else {
                     debug!("nothing to emit on; widget is not an EmitEvent");
                 }
+            }
+        }
+
+        for (child_id, child_event) in child_events {
+            if child_event.what == context::EventType::ChildRequestsFocus {
+                if let Some(current_focused_id) = focus_cycle.focused_widget_id() {
+                    Layering::emit_focus_change(context::EventType::LoseFocus, uictx, current_focused_id)?;
+                }
+                Layering::emit_focus_change(context::EventType::GainFocus, uictx, &child_id)?;
+                focus_cycle.set_focused(&child_id);
+                break;
             }
         }
         Ok(())
