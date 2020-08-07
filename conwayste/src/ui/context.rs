@@ -178,6 +178,7 @@ impl<'a> Drop for UIContext<'a> {
 /// The type of an event.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, IntoEnumIterator)]
 pub enum EventType {
+    None,
     Click,
     KeyPress,
     MouseMove,
@@ -189,6 +190,7 @@ pub enum EventType {
     GainFocus,
     LoseFocus,
     ChildReleasedFocus,
+    ChildRequestsFocus,
     // ChildReleasedFocus goes toward the root of the tree! Emitted by Pane onto its parent via
     // child_event(). Note that a LoseFocus event will not be received after this is sent.
     TextEntered,
@@ -255,40 +257,48 @@ impl EventType {
     }
 }
 
+impl Default for Event {
+    fn default() -> Self {
+        Event {
+            what:          EventType::None,
+            point:         None,
+            prev_point:    None,
+            button:        None,
+            key:           None,
+            shift_pressed: false,
+            text:          None,
+        }
+    }
+}
+
 impl Event {
     pub fn new_char_press(mouse_point: Point2<f32>, character: char, is_shift: bool) -> Self {
         Event {
-            what:          EventType::KeyPress,
-            point:         Some(mouse_point),
-            prev_point:    None,
-            button:        None,
-            key:           Some(KeyCodeOrChar::Char(character)),
+            what: EventType::KeyPress,
+            point: Some(mouse_point),
+            key: Some(KeyCodeOrChar::Char(character)),
             shift_pressed: is_shift,
-            text:          None,
+            ..Default::default()
         }
     }
 
     pub fn new_key_press(mouse_point: Point2<f32>, key_code: KeyCode, is_shift: bool) -> Self {
         Event {
-            what:          EventType::KeyPress,
-            point:         Some(mouse_point),
-            prev_point:    None,
-            button:        None,
-            key:           Some(KeyCodeOrChar::KeyCode(key_code)),
+            what: EventType::KeyPress,
+            point: Some(mouse_point),
+            key: Some(KeyCodeOrChar::KeyCode(key_code)),
             shift_pressed: is_shift,
-            text:          None,
+            ..Default::default()
         }
     }
 
     pub fn new_click(mouse_point: Point2<f32>, mouse_button: MouseButton, is_shift: bool) -> Self {
         Event {
-            what:          EventType::Click,
-            point:         Some(mouse_point),
-            prev_point:    None,
-            button:        Some(mouse_button),
-            key:           None,
+            what: EventType::Click,
+            point: Some(mouse_point),
+            button: Some(mouse_button),
             shift_pressed: is_shift,
-            text:          None,
+            ..Default::default()
         }
     }
 
@@ -299,13 +309,12 @@ impl Event {
         is_shift: bool,
     ) -> Self {
         Event {
-            what:          EventType::MouseMove,
-            point:         Some(point),
-            prev_point:    Some(prev_point),
-            button:        Some(mouse_button),
-            key:           None,
+            what: EventType::MouseMove,
+            point: Some(point),
+            prev_point: Some(prev_point),
+            button: Some(mouse_button),
             shift_pressed: is_shift,
-            text:          None,
+            ..Default::default()
         }
     }
 
@@ -330,25 +339,16 @@ impl Event {
 
     pub fn new_child_released_focus() -> Self {
         Event {
-            what:          EventType::ChildReleasedFocus,
-            point:         None,
-            prev_point:    None,
-            button:        None,
-            key:           None,
-            shift_pressed: false,
-            text:          None,
+            what: EventType::ChildReleasedFocus,
+            ..Default::default()
         }
     }
 
     pub fn new_text_entered(text: String) -> Self {
         Event {
-            what:          EventType::TextEntered,
-            point:         None,
-            prev_point:    None,
-            button:        None,
-            key:           None,
-            shift_pressed: false,
-            text:          Some(text),
+            what: EventType::TextEntered,
+            text: Some(text),
+            ..Default::default()
         }
     }
 
@@ -361,24 +361,21 @@ impl Event {
         }
         Event {
             what,
-            point: None,
-            prev_point: None,
-            button: None,
-            key: None,
-            shift_pressed: false,
-            text: None,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_child_request_focus() -> Self {
+        Event {
+            what: EventType::ChildRequestsFocus,
+            ..Default::default()
         }
     }
 
     pub fn new_update() -> Self {
         Event {
-            what:          EventType::Update,
-            point:         None,
-            prev_point:    None,
-            button:        None,
-            key:           None,
-            shift_pressed: false,
-            text:          None,
+            what: EventType::Update,
+            ..Default::default()
         }
     }
 
