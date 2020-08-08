@@ -101,8 +101,9 @@ impl Pane {
                                 let pane_events = subuictx.collect_child_events();
                                 if pane_events.len() != 0 {
                                     for event in pane_events {
-                                        child_events.push((widget_ref.id().unwrap().clone(), event));
+                                        child_events.push(event);
                                     }
+                                    break;
                                 } else {
                                     return Ok(Handled::Handled);
                                 }
@@ -116,7 +117,7 @@ impl Pane {
                         }
                     }
 
-                    for (_id, event) in child_events {
+                    for event in child_events {
                         // XXX figure out how to get the current focused id to see if even should be propagated
                         // Ignore other events as this is the only one propgating upward
                         if event.what == EventType::ChildRequestsFocus {
@@ -134,9 +135,11 @@ impl Pane {
                 // nothing to do if this is not a key or a mouse event
             }
 
-            pane.on(EventType::Update, Box::new(Pane::broadcast_handler)).unwrap(); // unwrap OK because not called w/in handler
+            // unwraps OK because not called w/in handler
+
+            pane.on(EventType::Update, Box::new(Pane::broadcast_handler)).unwrap();
             pane.on(EventType::MouseMove, Box::new(Pane::broadcast_handler))
-                .unwrap(); // unwrap OK because not called w/in handler
+                .unwrap();
         }
 
         // Set handler for focusing first widget in focus cycle when focus is gained
@@ -153,6 +156,18 @@ impl Pane {
                 Ok(Handled::NotHandled)
             };
         pane.on(EventType::GainFocus, Box::new(gain_focus_handler)).unwrap(); // unwrap OK
+
+        let lose_focus_handler =
+            move |obj: &mut dyn EmitEvent, uictx: &mut UIContext, _evt: &Event| -> Result<Handled, Box<dyn Error>> {
+                let pane = obj.downcast_mut::<Pane>().unwrap(); // unwrap OK
+                if let Some(focused_widget_id) = pane.focus_cycle.focused_widget_id() {
+                    let focused_widget_id = focused_widget_id.clone();
+                    pane.emit_focus_change(EventType::LoseFocus, uictx, &focused_widget_id)?;
+                    pane.focus_cycle.clear_focus();
+                }
+                Ok(Handled::NotHandled)
+            };
+        pane.on(EventType::LoseFocus, Box::new(lose_focus_handler)).unwrap(); // unwrap OK
 
         pane
     }

@@ -127,10 +127,13 @@ impl TextField {
         _evt: &Event,
     ) -> Result<Handled, Box<dyn Error>> {
         let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK because it's always a TextField
-        if let Some(prev_blink_ms) = tf.cursor_blink_timestamp {
-            if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
-                tf.draw_cursor ^= true;
-                tf.cursor_blink_timestamp = Some(Instant::now());
+
+        if tf.focused {
+            if let Some(prev_blink_ms) = tf.cursor_blink_timestamp {
+                if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
+                    tf.draw_cursor ^= true;
+                    tf.cursor_blink_timestamp = Some(Instant::now());
+                }
             }
         }
 

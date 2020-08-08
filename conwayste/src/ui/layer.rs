@@ -678,6 +678,7 @@ impl Layering {
                         for child_event in pane_events {
                             child_events.push((widget_ref.id().unwrap().clone(), child_event));
                         }
+                        break;
                     } else {
                         return Ok(());
                     }
@@ -687,11 +688,19 @@ impl Layering {
             }
         }
 
+        // Emitted click events clear the previous focus
+        if event.what == context::EventType::Click {
+            if let Some(current_focused_id) = focus_cycle.focused_widget_id() {
+                println!("Clearing due to Click: {:?}", current_focused_id);
+                Layering::emit_focus_change(context::EventType::LoseFocus, uictx, current_focused_id)?;
+                focus_cycle.clear_focus()
+            }
+        }
+
         for (child_id, child_event) in child_events {
+            // Gain a new focus
             if child_event.what == context::EventType::ChildRequestsFocus {
-                if let Some(current_focused_id) = focus_cycle.focused_widget_id() {
-                    Layering::emit_focus_change(context::EventType::LoseFocus, uictx, current_focused_id)?;
-                }
+                println!("Gaining due to Click: {:?}", child_id);
                 Layering::emit_focus_change(context::EventType::GainFocus, uictx, &child_id)?;
                 focus_cycle.set_focused(&child_id);
                 break;
