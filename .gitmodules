@@ -7,3 +7,6 @@
 [submodule "third_party_submods/cpal"]
 	path = third_party_submods/cpal
 	url = https://github.com/conwayste/cpal
+[submodule "third_party_submods/gilrs"]
+	path = third_party_submods/gilrs
+	url = git@github.com:conwayste/gilrs.git
