@@ -546,7 +546,13 @@ impl EventHandler for MainState {
         if let Some(layer) = self.ui_layout.get_screen_layering(screen) {
             let update = Event::new_update();
             layer
-                .emit(&update, ctx, &mut self.config, &mut self.screen_stack)
+                .emit(
+                    &update,
+                    ctx,
+                    &mut self.config,
+                    &mut self.screen_stack,
+                    self.first_gen_was_drawn,
+                )
                 .unwrap_or_else(|e| {
                     error!("Error from layer.emit on update: {:?}", e);
                 });
@@ -559,7 +565,13 @@ impl EventHandler for MainState {
                     is_shift,
                 );
                 layer
-                    .emit(&mouse_move, ctx, &mut self.config, &mut self.screen_stack)
+                    .emit(
+                        &mouse_move,
+                        ctx,
+                        &mut self.config,
+                        &mut self.screen_stack,
+                        self.first_gen_was_drawn,
+                    )
                     .unwrap_or_else(|e| {
                         error!("Error from layer.emit on mouse move: {:?}", e);
                     });
@@ -576,7 +588,13 @@ impl EventHandler for MainState {
             if left_mouse_click {
                 let click_event = Event::new_click(mouse_point, self.inputs.mouse_info.mousebutton, is_shift);
                 layer
-                    .emit(&click_event, ctx, &mut self.config, &mut self.screen_stack)
+                    .emit(
+                        &click_event,
+                        ctx,
+                        &mut self.config,
+                        &mut self.screen_stack,
+                        self.running,
+                    )
                     .unwrap_or_else(|e| {
                         error!("Error from layer.emit on left click: {:?}", e);
                     });
@@ -586,7 +604,13 @@ impl EventHandler for MainState {
                 if let Some(key) = key {
                     let key_event = Event::new_key_press(mouse_point, key, is_shift);
                     layer
-                        .emit(&key_event, ctx, &mut self.config, &mut self.screen_stack)
+                        .emit(
+                            &key_event,
+                            ctx,
+                            &mut self.config,
+                            &mut self.screen_stack,
+                            self.first_gen_was_drawn,
+                        )
                         .unwrap_or_else(|e| {
                             error!("Error from layer.emit on key press: {:?}", e);
                         });
@@ -599,7 +623,13 @@ impl EventHandler for MainState {
             for character in text_input {
                 let key_event = Event::new_char_press(mouse_point, character, is_shift);
                 layer
-                    .emit(&key_event, ctx, &mut self.config, &mut self.screen_stack)
+                    .emit(
+                        &key_event,
+                        ctx,
+                        &mut self.config,
+                        &mut self.screen_stack,
+                        self.first_gen_was_drawn,
+                    )
                     .unwrap_or_else(|e| {
                         error!("Error from layer.emit on key press (text input): {:?}", e);
                     });
@@ -632,15 +662,6 @@ impl EventHandler for MainState {
             if !is_shift {
                 // Arrow keys (but not Shift-<Arrow>!) move the player's view of the universe around
                 self.viewport.update(self.arrow_input);
-            }
-        }
-
-        // Handle Escape, only if screen was not changed above
-        if key == Some(KeyCode::Escape) && screen == self.get_current_screen() {
-            if screen == Screen::Menu {
-                self.screen_stack.push(Screen::Run);
-            } else {
-                self.screen_stack.pop();
             }
         }
 
@@ -1087,7 +1108,13 @@ impl MainState {
                 if new_screen == Screen::Run {
                     let id = self.ui_layout.game_area_id.clone();
                     if let Some(layering) = self.ui_layout.get_screen_layering(Screen::Run) {
-                        layering.enter_focus(ggez_ctx, &mut self.config, &mut self.screen_stack, &id)?;
+                        layering.enter_focus(
+                            ggez_ctx,
+                            &mut self.config,
+                            &mut self.screen_stack,
+                            self.first_gen_was_drawn,
+                            &id,
+                        )?;
                     }
                     self.running = true;
                 }
@@ -1130,7 +1157,13 @@ impl MainState {
                     match Pane::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &chatbox_pane_id) {
                         Ok(_chatbox_pane) => {
                             if let Some(layer) = self.ui_layout.get_screen_layering(Screen::Run) {
-                                layer.enter_focus(ctx, &mut self.config, &mut self.screen_stack, &chatbox_pane_id)?;
+                                layer.enter_focus(
+                                    ctx,
+                                    &mut self.config,
+                                    &mut self.screen_stack,
+                                    self.running,
+                                    &chatbox_pane_id,
+                                )?;
                             }
                         }
                         Err(e) => {

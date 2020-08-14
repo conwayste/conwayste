@@ -42,11 +42,12 @@ use crate::Screen;
 /// * `widget_view` - a `TreeView` on the handler's widget and all widgets beneath it in the widget tree.
 /// * `screen_stack` - the layers of `Screen`s in the UI. Handlers are able to push or pop this stack.
 pub struct UIContext<'a> {
-    pub ggez_context: &'a mut ggez::Context,
-    pub config:       &'a mut config::Config,
-    pub widget_view:  TreeView<'a, BoxedWidget>,
-    pub screen_stack: &'a mut Vec<Screen>,
-    child_events:     Vec<Event>,
+    pub ggez_context:     &'a mut ggez::Context,
+    pub config:           &'a mut config::Config,
+    pub widget_view:      TreeView<'a, BoxedWidget>,
+    pub screen_stack:     &'a mut Vec<Screen>,
+    pub game_in_progress: bool,
+    child_events:         Vec<Event>,
 }
 
 impl<'a> UIContext<'a> {
@@ -55,6 +56,7 @@ impl<'a> UIContext<'a> {
         config: &'a mut config::Config,
         view: TreeView<'a, BoxedWidget>,
         screen_stack: &'a mut Vec<Screen>,
+        game_in_progress: bool,
     ) -> Self {
         UIContext {
             ggez_context,
@@ -62,6 +64,7 @@ impl<'a> UIContext<'a> {
             widget_view: view,
             child_events: vec![],
             screen_stack,
+            game_in_progress,
         }
     }
 
@@ -83,11 +86,12 @@ impl<'a> UIContext<'a> {
         Ok((
             widget_ref,
             UIContext {
-                ggez_context: self.ggez_context,
-                config:       self.config,
-                widget_view:  subtree,
-                screen_stack: self.screen_stack,
-                child_events: vec![],
+                ggez_context:     self.ggez_context,
+                config:           self.config,
+                widget_view:      subtree,
+                screen_stack:     self.screen_stack,
+                child_events:     vec![],
+                game_in_progress: self.game_in_progress,
             },
         ))
     }
@@ -475,7 +479,7 @@ pub trait EmitEvent: Downcast {
     ///   forwarding.
     /// * The first error to be returned by a handler will be returned here, and no other handlers
     ///   will run.
-    fn emit(&mut self, event: &Event, uictx: &mut UIContext) -> Result<(), Box<dyn Error>>;
+    fn emit(&mut self, event: &Event, uictx: &mut UIContext) -> Result<Handled, Box<dyn Error>>;
 }
 
 impl_downcast!(EmitEvent);
@@ -504,6 +508,8 @@ impl_downcast!(EmitEvent);
 #[macro_export]
 macro_rules! impl_emit_event {
     ($widget_name:ty, self.$handler_data_field:ident) => {
+        use crate::ui::context::Handled as H;
+        use H::*;
         impl crate::ui::context::EmitEvent for $widget_name {
             /// Setup a handler for an event type
             fn on(
@@ -540,12 +546,13 @@ macro_rules! impl_emit_event {
                 &mut self,
                 event: &crate::ui::context::Event,
                 uictx: &mut crate::ui::context::UIContext,
-            ) -> Result<(), Box<dyn std::error::Error>> {
-                use crate::ui::context::Handled::*;
+            ) -> Result<H, Box<dyn std::error::Error>> {
+                let mut event_handled = NotHandled;
+
                 if self.$handler_data_field.handlers.is_none() {
                     // save event into forwarded_events for later forwarding
                     self.$handler_data_field.forwarded_events.push(event.clone());
-                    return Ok(());
+                    return Ok(NotHandled);
                 }
 
                 // take the handlers, so we are not mutably borrowing them more than once during
@@ -558,6 +565,7 @@ macro_rules! impl_emit_event {
                     for hdlr in handler_vec {
                         let handled = hdlr(self, uictx, event)?;
                         if handled == Handled {
+                            event_handled = Handled;
                             break;
                         }
                     }
@@ -577,6 +585,7 @@ macro_rules! impl_emit_event {
                             for hdlr in handler_vec {
                                 let handled = hdlr(self, uictx, &event)?;
                                 if handled == Handled {
+                                    event_handled = Handled;
                                     break;
                                 }
                             }
@@ -585,7 +594,7 @@ macro_rules! impl_emit_event {
                 }
 
                 self.$handler_data_field.handlers = Some(handlers); // put it back
-                Ok(())
+                Ok(event_handled)
             }
         }
     };

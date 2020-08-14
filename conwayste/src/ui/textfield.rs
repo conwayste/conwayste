@@ -169,7 +169,7 @@ impl TextField {
         _evt: &Event,
     ) -> Result<Handled, Box<dyn Error>> {
         uictx.child_event(Event::new_child_request_focus());
-        Ok(Handled::NotHandled)
+        Ok(Handled::Handled)
     }
 
     /// Maximum number of characters that can be visible at once.
@@ -208,6 +208,7 @@ impl TextField {
                         let evt = Event::new_text_entered(text.unwrap());
                         tf.emit(&evt, uictx).unwrap_or_else(|e| {
                             error!("Error from TextEntered handler on textfield: {:?}", e);
+                            NotHandled // XXX actually fix the compiler error
                         });
                     }
 
@@ -220,15 +221,17 @@ impl TextField {
                 KeyCode::Home => tf.cursor_home(),
                 KeyCode::End => tf.cursor_end(),
                 KeyCode::Escape => tf.release_focus(uictx),
-                _ => (),
+                _ => return Ok(Handled::NotHandled),
             },
             KeyCodeOrChar::Char(ch) => {
                 if tf.focused {
                     tf.add_char_at_cursor(ch);
+                } else {
+                    return Ok(Handled::NotHandled);
                 }
             }
         }
-        Ok(Handled::NotHandled)
+        Ok(Handled::Handled)
     }
 
     /// Sends a notification to the parent widget that we have released focus.
