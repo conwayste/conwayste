@@ -9,4 +9,4 @@
 	url = https://github.com/conwayste/cpal
 [submodule "third_party_submods/gilrs"]
 	path = third_party_submods/gilrs
-	url = git@github.com:conwayste/gilrs.git
+	url = https://github.com/conwayste/gilrs
