@@ -108,7 +108,8 @@ script:
     # Run the nightly rustfmt on all .rs files, but only check and output file
     # names of files that are not rustfmted, returning 0 only if all files are
     # rustfmted.
-  - cargo +nightly-2020-05-15 fmt -- -l --check
+    # FIXME: once we get rid of third_party_submods, we can remove all these -p.
+  - cargo +nightly-2020-05-15 fmt -p dissect-netwayste -p conway -p conwayste -p netwayste -- -l --check
 
     # This is our test phase
   - bash ci/script.sh
