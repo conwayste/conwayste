@@ -109,7 +109,7 @@ impl TextField {
         // Handler for accepting keyboard input
         tf.on(EventType::KeyPress, Box::new(TextField::key_handler)).unwrap();
 
-        // Set handlers for toggling has_keyboard_focus
+        // Set handlers for toggling focus
         tf.on(EventType::GainFocus, Box::new(TextField::gain_focus_handler))
             .unwrap();
         tf.on(EventType::LoseFocus, Box::new(TextField::lose_focus_handler))

@@ -33,7 +33,7 @@ use super::{
     focus::{CycleType, FocusCycle},
     treeview,
     widget::Widget,
-    BoxedWidget, Pane, UIError, UIResult,
+    BoxedWidget, GameAreaState, Pane, UIError, UIResult,
 };
 
 use crate::config;
@@ -373,7 +373,7 @@ impl Layering {
         ggez_context: &mut ggez::Context,
         cfg: &mut config::Config,
         screen_stack: &mut Vec<Screen>,
-        game_in_progress: bool,
+        game_area_state: GameAreaState,
         id: &NodeId,
     ) -> UIResult<()> {
         let focus_cycle = &mut self.focus_cycles[self.highest_z_order];
@@ -397,7 +397,13 @@ impl Layering {
 
         let widget_view = treeview::TreeView::new(&mut self.widget_tree);
 
-        let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view, screen_stack, game_in_progress);
+        let mut uictx = context::UIContext::new(
+            ggez_context,
+            cfg,
+            widget_view,
+            screen_stack,
+            game_area_state.first_gen_was_drawn,
+        );
 
         let mut needs_gain_focus = true;
         if let Some(old_focused_widget) = old_focused_widget {
@@ -476,10 +482,10 @@ impl Layering {
         ggez_context: &mut ggez::Context,
         cfg: &mut config::Config,
         screen_stack: &mut Vec<Screen>,
-        game_in_progress: bool,
+        game_state: &mut GameAreaState,
     ) -> Result<(), Box<dyn Error>> {
         let widget_view = treeview::TreeView::new(&mut self.widget_tree);
-        let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view, screen_stack, game_in_progress);
+        let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view, screen_stack, game_state.running);
         if event.what == context::EventType::Update || event.what == context::EventType::MouseMove {
             Layering::broadcast_event(event, &mut uictx)
         } else if event.is_mouse_event() {
@@ -560,7 +566,6 @@ impl Layering {
         } else {
             // regular key press logic (no focus changes)
             let focused_id = focus_cycle.focused_widget_id();
-            println!("{:?}", focused_id);
             if let Some(id) = focused_id {
                 let id = id.clone();
                 let pane_events = Layering::emit_keyboard_event(event, uictx, &id)?;
@@ -614,7 +619,6 @@ impl Layering {
         let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
         if let Some(emittable) = widget_ref.as_emit_event() {
             emittable.emit(event, &mut subuictx).map(|handled| {
-                println!("Handled? : {:?}", handled);
                 // Nothing picked up the key event, send it to the Layer itself
                 unhandled_event = handled == context::Handled::NotHandled;
                 let events = subuictx.collect_child_events();

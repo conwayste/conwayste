@@ -19,6 +19,12 @@
 use ggez::graphics::{self, Rect, Scale};
 use std::time::Duration;
 
+// Universe settings
+pub const universe_width_in_cells: usize = 256;
+pub const universe_height_in_cells: usize = 120;
+pub const intro_universe_width_in_cells: usize = 256;
+pub const intro_universe_height_in_cells: usize = 256;
+
 // game play
 pub const CURRENT_PLAYER_ID: usize = 1; // TODO:  get the player ID from server rather than hardcoding
 pub const FOG_RADIUS: usize = 4; // cells

@@ -184,9 +184,11 @@ impl<'a> Drop for UIContext<'a> {
 pub enum EventType {
     None,
     Click,
+    DoubleClick,
     KeyPress,
     MouseMove,
     Drag,
+    MousePressAndHeld,
     Translate,
     Resize,
     ParentTranslate,
@@ -379,6 +381,16 @@ impl Event {
     pub fn new_update() -> Self {
         Event {
             what: EventType::Update,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_drag(mouse_point: Point2<f32>, mouse_button: MouseButton, is_shift: bool) -> Self {
+        Event {
+            what: EventType::Drag,
+            point: Some(mouse_point),
+            button: Some(mouse_button),
+            shift_pressed: is_shift,
             ..Default::default()
         }
     }
