@@ -482,7 +482,7 @@ dependencies = [
  "downcast-rs",
  "enum-iterator",
  "env_logger 0.7.1",
- "futures 0.1.29",
+ "futures 0.3.5",
  "ggez",
  "id_tree",
  "lazy_static",
@@ -490,7 +490,7 @@ dependencies = [
  "netwayste",
  "rand 0.7.3",
  "serde",
- "tokio-core",
+ "tokio 0.2.21",
  "toml",
  "version",
 ]

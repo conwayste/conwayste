@@ -1145,10 +1145,9 @@ mod netwayste_net_tests {
 mod netwayste_client_tests {
     use super::*;
     use crate::client::*;
-    use std::sync::mpsc::channel as std_channel;
 
     fn create_client_net_state() -> ClientNetState {
-        let (nw_server_response, _ggez_server_response) = std_channel::<NetwaysteEvent>();
+        let (nw_server_response, _ggez_server_response) = futures::channel::mpsc::channel::<NetwaysteEvent>(5);
         let mut cns = ClientNetState::new(nw_server_response);
         cns.server_address = Some(fake_socket_addr());
         cns

@@ -1284,16 +1284,6 @@ impl ServerState {
     }
 }
 
-//////////////// Event Handling /////////////////
-#[allow(unused)]
-enum Event {
-    TickEvent,
-    Request((SocketAddr, Option<Packet>)),
-    NetworkTickEvent,
-    HeartBeat,
-    //    Notify((SocketAddr, Option<Packet>)),
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     env_logger::Builder::new()
