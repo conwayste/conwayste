@@ -32,7 +32,7 @@ extern crate proptest;
 
 use netwayste::net::{
     bind, get_version, has_connection_timed_out, BroadcastChatMessage, NetwaystePacketCodec, NetworkManager,
-    NetworkQueue, Packet, RequestAction, ResponseCode, RoomList, UniUpdateType, DEFAULT_HOST, DEFAULT_PORT, VERSION,
+    NetworkQueue, Packet, RequestAction, ResponseCode, RoomList, UniUpdate, DEFAULT_HOST, DEFAULT_PORT, VERSION,
 };
 use netwayste::utils::{LatencyFilter, PingPong};
 
@@ -99,8 +99,7 @@ pub struct Player {
 pub struct PlayerInGameInfo {
     room_id:          RoomID,
     chat_msg_seq_num: Option<u64>, // Server has confirmed the client has received messages up to this value.
-                                   //XXX PlayerGenState ID within Universe
-                                   //XXX update statuses
+                                   // TODO: add support
 }
 
 impl Player {
@@ -577,6 +576,15 @@ impl ServerState {
                     error_msg: "Already connected".to_owned(),
                 };
             }
+            RequestAction::SetClientOptions { .. } => {
+                unimplemented!(); // TODO: add support ("auto_match" bool key, see issue #101)
+            }
+            RequestAction::DropPattern { .. } => {
+                unimplemented!(); // TODO: add support
+            }
+            RequestAction::ClearArea { .. } => {
+                unimplemented!(); // TODO: add support
+            }
             RequestAction::None => {
                 return ResponseCode::BadRequest {
                     error_msg: format!("Invalid request: {:?}", action),
@@ -956,7 +964,8 @@ impl ServerState {
                 cookie,
                 last_chat_seq,
                 last_game_update_seq: _,
-                last_gen: _,
+                last_full_gen: _,
+                partial_gen: _,
                 pong: _,
             } => {
                 let opt_player_id = self.get_player_id_by_cookie(cookie.as_str());
@@ -1094,14 +1103,15 @@ impl ServerState {
                 }
 
                 let messages_available = unsent_messages.len() != 0;
-                // XXX Requires implementation
+                // TODO: add support
                 let game_updates_available = false;
                 let universe_updates_available = false;
 
                 let update_packet = Packet::Update {
                     chats:           unsent_messages,
                     game_updates:    vec![],
-                    universe_update: UniUpdateType::NoChange,
+                    game_update_seq: None,
+                    universe_update: UniUpdate::NoChange,
                     ping:            PingPong::ping(),
                 };
 
@@ -1459,7 +1469,8 @@ mod netwayste_server_tests {
                     cookie:               player_cookie.clone(),
                     last_chat_seq:        Some(1),
                     last_game_update_seq: None,
-                    last_gen:             None,
+                    last_full_gen:        None,
+                    partial_gen:          None,
                     pong:                 PingPong::pong(0),
                 },
             )
@@ -1478,7 +1489,8 @@ mod netwayste_server_tests {
                     cookie:               player_cookie.clone(),
                     last_chat_seq:        Some(0),
                     last_game_update_seq: None,
-                    last_gen:             None,
+                    last_full_gen:        None,
+                    partial_gen:          None,
                     pong:                 PingPong::pong(0),
                 },
             )
@@ -1497,7 +1509,8 @@ mod netwayste_server_tests {
                     cookie:               player_cookie,
                     last_chat_seq:        None,
                     last_game_update_seq: None,
-                    last_gen:             None,
+                    last_full_gen:        None,
+                    partial_gen:          None,
                     pong:                 PingPong::pong(0),
                 },
             )
@@ -2412,7 +2425,8 @@ mod netwayste_server_tests {
             cookie:               cookie,
             last_chat_seq:        Some(0),
             last_game_update_seq: None,
-            last_gen:             None,
+            last_full_gen:        None,
+            partial_gen:          None,
             pong:                 PingPong::pong(0),
         };
 
@@ -2435,7 +2449,8 @@ mod netwayste_server_tests {
             cookie:               cookie,
             last_chat_seq:        Some(0),
             last_game_update_seq: None,
-            last_gen:             None,
+            last_full_gen:        None,
+            partial_gen:          None,
             pong:                 PingPong::pong(0),
         };
 
@@ -2488,11 +2503,13 @@ mod netwayste_server_tests {
             Packet::Update {
                 chats,
                 game_updates,
+                game_update_seq,
                 universe_update,
                 ping: _,
             } => {
                 assert!(game_updates.is_empty());
-                assert_eq!(universe_update, UniUpdateType::NoChange);
+                assert!(game_update_seq.is_none());
+                assert_eq!(universe_update, UniUpdate::NoChange);
                 assert!(!chats.is_empty());
 
                 // All client chat sequence numbers start counting at 1
@@ -2546,11 +2563,13 @@ mod netwayste_server_tests {
             Packet::Update {
                 mut chats,
                 game_updates,
+                game_update_seq,
                 universe_update,
                 ping: _,
             } => {
                 assert!(game_updates.is_empty());
-                assert_eq!(universe_update, UniUpdateType::NoChange);
+                assert!(game_update_seq.is_none());
+                assert_eq!(universe_update, UniUpdate::NoChange);
                 assert!(!chats.is_empty());
 
                 assert_eq!(chats.len(), 1);

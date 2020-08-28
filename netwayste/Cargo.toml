@@ -15,13 +15,15 @@ bytes                = "0.5"
 chrono               = "0.4.11"
 clap                 = "2"
 color-backtrace      = "0.4"
+conway               = { path = "../libconway" }
 env_logger           = "0.7.1"
 futures              = "0.3"
-log                  = "0.4.8"
+log                  = "0.4.11"
 rand                 = "0.7.3"
 regex                = "1"
 semver               = "0.10.0"
 time                 = "0.1"
+tokio-core           = "0.1.9"
 
 [dependencies.serde]
 version = "1.0.90"

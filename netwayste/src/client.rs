@@ -232,10 +232,11 @@ impl ClientNetState {
                 }
                 return vec![];
             }
-            // TODO game_updates, universe_update
+            // TODO game_updates, game_update_seq, universe_update,
             Packet::Update {
                 chats,
                 game_updates: _,
+                game_update_seq: _,
                 universe_update: _,
                 ping,
             } => {
@@ -248,7 +249,8 @@ impl ClientNetState {
                     cookie:               self.cookie.clone().unwrap(),
                     last_chat_seq:        Some(self.chat_msg_seq_num),
                     last_game_update_seq: None,
-                    last_gen:             None,
+                    last_full_gen:        None,
+                    partial_gen:          None,
                     pong:                 PingPong::pong(ping.nonce),
                 };
 

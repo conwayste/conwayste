@@ -22,8 +22,8 @@ features = ["codec"]
 
 
 [build-dependencies]
-bindgen = "0.51.1"
-pkg-config = "0.3.17"
+bindgen = "0.53.1"
+pkg-config = "0.3.18"
 
 [lib]
 crate-type = ["cdylib"]

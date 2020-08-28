@@ -101,13 +101,14 @@ before_install:
 install:
   - sh ci/install.sh
   - source ~/.cargo/env || true
-  - rustup +nightly component add rustfmt
+  - rustup install nightly-2020-05-15     # <================== update this!!
+  - rustup +nightly-2020-05-15 component add rustfmt
 
 script:
     # Run the nightly rustfmt on all .rs files, but only check and output file
     # names of files that are not rustfmted, returning 0 only if all files are
     # rustfmted.
-  - cargo +nightly fmt -- -l --check
+  - cargo +nightly-2020-05-15 fmt -- -l --check
 
     # This is our test phase
   - bash ci/script.sh

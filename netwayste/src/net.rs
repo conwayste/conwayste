@@ -117,6 +117,42 @@ pub enum RequestAction {
         room_name: String,
     },
     LeaveRoom,
+    // TODO: add support ("auto_match" bool key, see issue #101)
+    SetClientOptions {
+        key:   String,
+        value: Option<ClientOptionValue>,
+    },
+    // TODO: add support
+    // Draw the specified RLE Pattern with upper-left cell at position x, y.
+    DropPattern {
+        x:       i32,
+        y:       i32,
+        pattern: String,
+    },
+    // TODO: add support (also need it in the ggez client)
+    // Clear all cells in the specified region not belonging to other players. No part of this
+    // region may be outside the player's writable region.
+    ClearArea {
+        x: i32,
+        y: i32,
+        w: u32,
+        h: u32,
+    },
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum ClientOptionValue {
+    Bool { value: bool },
+    U8 { value: u8 },
+    U16 { value: u16 },
+    U32 { value: u32 },
+    U64 { value: u64 },
+    I8 { value: i8 },
+    I16 { value: i16 },
+    I32 { value: i32 },
+    I64 { value: i64 },
+    Str { value: String },
+    List { value: Vec<ClientOptionValue> },
 }
 
 // server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
@@ -216,51 +252,117 @@ impl BroadcastChatMessage {
     }
 }
 
-// TODO: adapt or import following from libconway
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct GenState {
-    // state of the Universe
-    pub gen:        u64,
-    pub dummy_data: u8,
-}
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct GenDiff {
-    // difference between states of Universe
-    pub old_gen:    u64,
-    pub new_gen:    u64,
-    pub dummy_data: u8,
-}
-
+// TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GameOutcome {
     pub winner: Option<String>, // Some(<name>) if winner, or None, meaning it was a tie/forfeit
 }
 
+/// All options needed to initialize a Universe. Notably, num_players is absent, because it can be
+/// inferred from the index values of the latest list of PlayerInfos received from the server.
+/// Also, is_server is absent.
+// TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub enum GameUpdateType {
-    GameStart,
-    NewUserList(Vec<String>), // list of names of all users including current user
-    GameFinish(GameOutcome),
-    GameClose, // kicks user back to arena
+pub struct GameOptions {
+    width:           u32,
+    height:          u32,
+    history:         u16,
+    player_writable: Vec<NetRegion>,
+    fog_radius:      u32,
 }
 
+/// Net-safe version of a libconway Region
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct GameUpdate {
-    pub game_update_seq: Option<u64>, // see BroadcastChatMessage chat_seq field for Some/None meaning
-    update_type:         GameUpdateType,
+pub struct NetRegion {
+    left:   i32,
+    top:    i32,
+    width:  u32,
+    height: u32,
 }
 
+// TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub enum UniUpdateType {
-    State(GenState),
-    Diff(GenDiff),
+pub struct PlayerInfo {
+    /// Name of the player.
+    name:  String,
+    /// Index of player in Universe; None means this player is a lurker (non-participant)
+    index: Option<u64>,
+}
+
+// TODO: add support
+// The server doesn't have to send all GameUpdates to all clients because that would entail keeping
+// them all for the lifetime of the room, and sending that arbitrarily large list to clients upon
+// joining.
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum GameUpdate {
+    GameNotification {
+        msg: String,
+    },
+    GameStart {
+        options: GameOptions,
+    },
+    PlayerList {
+        /// List of names and other info of all users including current user.
+        players: Vec<PlayerInfo>,
+    },
+    PlayerChange {
+        /// Most up to date player information.
+        player:   PlayerInfo,
+        /// If there was a name change, this is the old name.
+        old_name: Option<String>,
+    },
+    PlayerJoin {
+        player: PlayerInfo,
+    },
+    PlayerLeave {
+        name: String,
+    },
+    /// Game ended but the user is allowed to stay.
+    GameFinish {
+        outcome: GameOutcome,
+    },
+    /// Kicks user back to lobby.
+    RoomDeleted,
+    /// New match. Server suggests we join this room.
+    /// NOTE: this is the only variant that can happen in a lobby.
+    Match {
+        room:        String,
+        expire_secs: u32, // TODO: think about this
+    },
+}
+
+// TODO: add support
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum UniUpdate {
+    Diff { diff: GenStateDiffPart },
     NoChange,
+}
+
+// TODO: add support
+/// One or more of these can be recombined into a GenStateDiff from the conway crate.
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct GenStateDiffPart {
+    pub part_number:  u8,     // zero-based but less than 32
+    pub total_parts:  u8,     // must be at least 1 but at most 32
+    pub gen0:         u32,    // zero means diff is based off the beginning of time
+    pub gen1:         u32,    // This is the generation when this diff has been applied.
+    pub pattern_part: String, // concatenated together to form a Pattern
+}
+
+// TODO: add support
+/// GenPartInfo is sent in the UpdateReply to indicate which GenStateDiffParts are needed.
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct GenPartInfo {
+    pub gen0:         u32, // zero means diff is based off the beginning of time
+    pub gen1:         u32, // must be greater than last_full_gen
+    pub have_bitmask: u32, // bitmask indicating which parts for the specified diff are present; must be less than 1<<total_parts
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct RoomList {
     pub room_name:    String,
     pub player_count: u8,
+    // TODO: add support
     pub in_progress:  bool,
 }
 
@@ -281,18 +383,24 @@ pub enum Packet {
         code:        ResponseCode,
     },
     Update {
-        // in-game: sent by server
+        // Usually in-game: sent by server.
+        // All of these except ping are reset to new values upon joining a room and cleared upon
+        // leaving. Also note that the server may not send all GameUpdates or BroadcastChatMessages
+        // in a single packet, since it could exceed the MTU.
+        // TODO: limit chats and game_updates based on MTU!
         chats:           Vec<BroadcastChatMessage>, // All non-acknowledged chats are sent each update
-        game_updates:    Vec<GameUpdate>,           // Information pertaining to a game tick update
-        universe_update: UniUpdateType,             //
-        ping:            PingPong,                  // Used for server-to-client latency measurement
+        game_update_seq: Option<u64>,
+        game_updates:    Vec<GameUpdate>, // Information pertaining to a game tick update.
+        universe_update: UniUpdate,       // TODO: add support
+        ping:            PingPong,        // Used for server-to-client latency measurement (no room needed)
     },
     UpdateReply {
         // in-game: sent by client in reply to server
         cookie:               String,
         last_chat_seq:        Option<u64>, // sequence number of latest chat msg. received from server
         last_game_update_seq: Option<u64>, // seq. number of latest game update from server
-        last_gen:             Option<u64>, // generation number client is currently at
+        last_full_gen:        Option<u64>, // generation number client is currently at
+        partial_gen:          Option<GenPartInfo>, // partial gen info, if some but not all GenStateDiffParts recv'd
         pong:                 PingPong,    // Used for server-to-client latency measurement
     },
     GetStatus {
@@ -304,11 +412,11 @@ pub enum Packet {
         player_count:   u64,
         room_count:     u64,
         server_name:    String,
+        // TODO: max players?
     }, // Provide basic server information to the requester
 }
 
 impl Packet {
-    #[allow(unused)]
     pub fn sequence_number(&self) -> u64 {
         if let Packet::Request {
             sequence,
@@ -328,15 +436,15 @@ impl Packet {
         } else if let Packet::Update {
             chats: _,
             game_updates: _,
+            game_update_seq: _,
             universe_update,
             ping: _,
         } = self
         {
             // TODO revisit once mechanics are fleshed out
             match universe_update {
-                UniUpdateType::State(gs) => gs.gen,
-                UniUpdateType::Diff(gd) => gd.new_gen,
-                UniUpdateType::NoChange => 0,
+                UniUpdate::Diff { diff: part } => ((part.gen1 as u64) << 32) | (part.gen0 as u64),
+                UniUpdate::NoChange => 0,
             }
         } else {
             unimplemented!(); // UpdateReply is not saved
@@ -410,23 +518,25 @@ impl fmt::Debug for Packet {
             Packet::Update {
                 chats: _,
                 game_updates,
+                game_update_seq,
                 universe_update,
                 ping: _,
             } => write!(
                 f,
-                "[Update] game_updates: {:?} universe_update: {:?}",
-                game_updates, universe_update
+                "[Update] game_updates: {:?} universe_update: {:?}, game_update_seq: {:?}",
+                game_updates, universe_update, game_update_seq
             ),
             Packet::UpdateReply {
                 cookie,
                 last_chat_seq,
                 last_game_update_seq,
-                last_gen,
+                last_full_gen,
+                partial_gen,
                 pong: _,
             } => write!(
                 f,
-                "[UpdateReply] cookie: {:?} last_chat_seq: {:?} last_game_update_seq: {:?} last_game: {:?}",
-                cookie, last_chat_seq, last_game_update_seq, last_gen
+                "[UpdateReply] cookie: {:?} last_chat_seq: {:?} last_game_update_seq: {:?} last_full_gen: {:?} partial_gen: {:?}",
+                cookie, last_chat_seq, last_game_update_seq, last_full_gen, partial_gen
             ),
             Packet::GetStatus { ping } => write!(f, "[GetStatus] nonce: {}", ping.nonce),
             Packet::Status {
