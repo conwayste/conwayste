@@ -207,7 +207,7 @@ async fn main() {
 
     tokio::spawn(async {
         match ClientNetState::start_network(nw_server_response, nw_client_request).await {
-            Ok(k) => {}
+            Ok(()) => {}
             Err(e) => error!("Error during ClientNetState: {}", e),
         }
     });

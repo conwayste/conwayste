@@ -37,3 +37,4 @@ features = ["codec", "udp"]
 
 [dev-dependencies]
 proptest             = "0.10"
+tokio-test = "*"
