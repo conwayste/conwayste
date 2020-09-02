@@ -20,42 +20,36 @@
 extern crate futures;
 extern crate ggez;
 extern crate netwayste;
-extern crate tokio_core;
+extern crate tokio;
 
-use futures::sync::mpsc as futures_channel;
+use futures as Fut;
 
-use netwayste::client::{ClientNetState, CLIENT_VERSION};
+use netwayste::client::ClientNetState;
 use netwayste::net::NetwaysteEvent;
 
-use std::process;
-use std::sync::mpsc as std_channel;
-use std::thread;
-use std_channel::TryRecvError;
-
 pub struct ConwaysteNetWorker {
-    sender:   futures_channel::UnboundedSender<NetwaysteEvent>,
-    receiver: std_channel::Receiver<NetwaysteEvent>,
+    sender:   Fut::channel::mpsc::UnboundedSender<NetwaysteEvent>,
+    receiver: Fut::channel::mpsc::Receiver<NetwaysteEvent>,
 }
 
 impl ConwaysteNetWorker {
-    // TODO: do not connect in new!
+    // TODO: This will likely be refactored after the networking architecture update soon coming
+    #[allow(unused)]
     pub fn new() -> Self {
-        let (netwayste_request_sender, netwayste_request_receiver) = futures_channel::unbounded::<NetwaysteEvent>();
-        let (netwayste_response_sender, netwayste_response_receiver) = std_channel::channel::<NetwaysteEvent>();
-        thread::spawn(move || {
-            ClientNetState::start_network(netwayste_response_sender, netwayste_request_receiver);
+        let (netwayste_request_sender, netwayste_request_receiver) = Fut::channel::mpsc::unbounded::<NetwaysteEvent>();
+        let (netwayste_response_sender, netwayste_response_receiver) = Fut::channel::mpsc::channel::<NetwaysteEvent>(5);
+
+        tokio::spawn(async {
+            match ClientNetState::start_network(netwayste_response_sender, netwayste_request_receiver).await {
+                Ok(()) => {}
+                Err(e) => error!("Error during ClientNetState: {}", e),
+            }
         });
 
         ConwaysteNetWorker {
             sender:   netwayste_request_sender,
             receiver: netwayste_response_receiver,
         }
-    }
-
-    pub fn connect(&mut self, name: String) {
-        self.sender
-            .unbounded_send(NetwaysteEvent::Connect(name, CLIENT_VERSION.to_owned()))
-            .unwrap();
     }
 
     pub fn try_send(&mut self, nw_event: NetwaysteEvent) {
@@ -72,17 +66,20 @@ impl ConwaysteNetWorker {
     pub fn try_receive(&mut self) -> Vec<NetwaysteEvent> {
         let mut new_events = vec![];
         loop {
-            match self.receiver.try_recv() {
-                Ok(response) => {
+            match self.receiver.try_next() {
+                Ok(Some(response)) => {
                     new_events.push(response);
                 }
-                Err(TryRecvError::Empty) => {
-                    // Nothing to do in the empty case
+                Ok(None) => {
+                    // do nothing
                     break;
                 }
-                Err(TryRecvError::Disconnected) => {
-                    println!("Communications channel link with netwayste disconnected unexpectedly. Shutting down...");
-                    process::exit(1);
+                Err(e) => {
+                    error!(
+                        "Communications channel link with netwayste disconnected unexpectedly. {} Shutting down...",
+                        e
+                    );
+                    break;
                 }
             }
         }

@@ -21,28 +21,24 @@
 extern crate log;
 extern crate color_backtrace;
 extern crate env_logger;
+#[macro_use]
 extern crate futures;
 extern crate netwayste;
-extern crate tokio_core;
+extern crate tokio;
 
 use std::io::{self, Read, Write};
-use std::process;
 use std::str::FromStr;
-use std::sync::mpsc::channel as std_channel;
-use std::sync::mpsc::TryRecvError;
 use std::thread;
-use std::time::Duration;
 
 use chrono::Local;
-use futures::sync::mpsc;
+use futures as Fut;
 use log::LevelFilter;
 use netwayste::{
     client::{ClientNetState, CLIENT_VERSION},
     net::NetwaysteEvent,
     utils::PingPong,
 };
-
-const SLEEP: Duration = Duration::from_millis(33); // 30 "frames" per second
+use Fut::{channel::mpsc, StreamExt};
 
 #[derive(PartialEq, Debug, Clone)]
 enum UserInput {
@@ -183,7 +179,8 @@ fn handle_user_input_event(user_input: UserInput) -> NetwaysteEvent {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     color_backtrace::install();
     env_logger::Builder::new()
         .format(|buf, record| {
@@ -206,9 +203,13 @@ fn main() {
         .init();
 
     let (ggez_client_request, nw_client_request) = mpsc::unbounded::<NetwaysteEvent>();
-    let (nw_server_response, ggez_server_response) = std_channel::<NetwaysteEvent>();
-    thread::spawn(move || {
-        ClientNetState::start_network(nw_server_response, nw_client_request);
+    let (nw_server_response, mut ggez_server_response) = mpsc::channel::<NetwaysteEvent>(5);
+
+    tokio::spawn(async {
+        match ClientNetState::start_network(nw_server_response, nw_client_request).await {
+            Ok(()) => {}
+            Err(e) => error!("Error during ClientNetState: {}", e),
+        }
     });
 
     thread::spawn(move || {
@@ -218,28 +219,21 @@ fn main() {
     info!("Type /help for more info...");
 
     loop {
-        // This is inefficient -- it would be better not to poll for messages on the channel.
-        // However, we are polling in GUI client's update() function so do it here as well.
-        match ggez_server_response.try_recv() {
-            Ok(nw_event_from_server_code) => {
-                println!("{:?}", nw_event_from_server_code);
-
-                if let NetwaysteEvent::Status(_pkt, opt_latency) = nw_event_from_server_code {
-                    if let Some(latency_ms) = opt_latency {
-                        println!("Average Latency: {}", latency_ms);
+        select! {
+            response = ggez_server_response.next() => {
+                if let Some(event) = response {
+                    if let NetwaysteEvent::Status(_pkt, opt_latency) = event {
+                        if let Some(latency_ms) = opt_latency {
+                            println!("Average Latency: {}", latency_ms);
+                        }
                     }
                 }
             }
-            Err(TryRecvError::Empty) => {
-                // Nothing to do in the empty case
-            }
-            Err(TryRecvError::Disconnected) => {
-                println!("Communications channel link with netwayste disconnected unexpectedly. Shutting down...");
-                process::exit(1);
+            complete => {
+                // An empty channel returns None and falls into complete. Do nothing to keep
+                // polling the future.
             }
         }
-        // sleep as if we were in ggez and are waiting for the next call to update()
-        thread::sleep(SLEEP);
     }
 }
 
