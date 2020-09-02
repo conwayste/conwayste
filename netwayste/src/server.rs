@@ -1,7 +1,9 @@
+#![recursion_limit = "300"] // The select!{...} macro hits the default 128 limit
+
 /*
  * Herein lies a networking library for the multiplayer game, Conwayste.
  *
- * Copyright (C) 2018-2019 The Conwayste Developers
+ * Copyright (C) 2018-2020 The Conwayste Developers
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -29,30 +31,29 @@ mod utils;
 extern crate proptest;
 
 use netwayste::net::{
-    bind, get_version, has_connection_timed_out, BroadcastChatMessage, LineCodec, NetworkManager, NetworkQueue, Packet,
-    RequestAction, ResponseCode, RoomList, UniUpdate, DEFAULT_HOST, DEFAULT_PORT, VERSION,
+    bind, get_version, has_connection_timed_out, BroadcastChatMessage, NetwaystePacketCodec, NetworkManager,
+    NetworkQueue, Packet, RequestAction, ResponseCode, RoomList, UniUpdate, DEFAULT_HOST, DEFAULT_PORT, VERSION,
 };
-
 use netwayste::utils::{LatencyFilter, PingPong};
 
-use std::collections::HashMap;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 use std::fmt;
 use std::io::{self, ErrorKind, Write};
-use std::iter;
 use std::net::SocketAddr;
 use std::process::exit;
-use std::time;
-use std::time::{Duration, Instant};
+use std::time::{self, Duration, Instant};
 
 use chrono::Local;
 use clap::{App, Arg};
-use futures::{future::ok, stream, sync::mpsc, Future, Sink, Stream};
+use futures as Fut;
 use log::LevelFilter;
 use rand::RngCore;
 use semver::Version;
-use tokio_core::reactor::{Core, Timeout};
+use tokio::time as TokioTime;
+use tokio_util::udp::UdpFramed;
+use Fut::prelude::*;
+use Fut::select;
 
 pub const TICK_INTERVAL_IN_MS: u64 = 10;
 pub const NETWORK_INTERVAL_IN_MS: u64 = 100; // Arbitrarily chosen
@@ -757,17 +758,18 @@ impl ServerState {
         }
     }
 
-    pub fn resend_expired_tx_packets(&mut self, udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>) {
-        let mut players_to_update: Vec<PlayerID> = vec![];
-
+    pub fn collect_expired_tx_packets(&mut self) -> Vec<(Packet, SocketAddr)> {
         if self.players.len() == 0 {
-            return;
+            return vec![];
         }
+
+        let mut players_to_update: Vec<PlayerID> = vec![];
 
         for player in self.players.values() {
             players_to_update.push(player.player_id);
         }
 
+        let mut expired_responses = vec![];
         if players_to_update.len() != 0 {
             for player_id in players_to_update {
                 // If any processed packets result in responses, prepare them below for transmission
@@ -786,13 +788,16 @@ impl ServerState {
                         player_id,
                         indices.len()
                     );
-                    player_net.retransmit_expired_tx_packets(udp_tx, player_addr, ack, &indices);
+                    let retransmissions = player_net.get_expired_tx_packets(player_addr, ack, &indices);
+                    expired_responses.extend_from_slice(retransmissions.as_slice());
                 } else {
                     error!("I haven't found a NetworkManager for Player: {}", player_id);
                     continue;
                 }
             }
         }
+
+        return expired_responses;
     }
 
     pub fn process_buffered_packets_in_rooms(&mut self) {
@@ -1067,11 +1072,11 @@ impl ServerState {
     }
 
     // Right now we'll be constructing all client Update packets for _every_ room.
-    pub fn construct_client_updates(&mut self) -> Option<Vec<(SocketAddr, Packet)>> {
+    pub fn construct_client_updates(&mut self) -> Vec<(SocketAddr, Packet)> {
         let mut client_updates: Vec<(SocketAddr, Packet)> = vec![];
 
         if self.rooms.len() == 0 {
-            return None;
+            return vec![];
         }
 
         // For each room, determine if each player has unread messages based on chat_msg_seq_num
@@ -1116,11 +1121,7 @@ impl ServerState {
             }
         }
 
-        if client_updates.len() > 0 {
-            Some(client_updates)
-        } else {
-            None
-        }
+        return client_updates;
     }
 
     /// Creates a vector of messages that the provided Player has not yet acknowledged.
@@ -1239,19 +1240,62 @@ impl ServerState {
         server_state.new_room("general".to_owned());
         server_state
     }
+
+    fn process_packet(&mut self, packet_tuple: (Packet, SocketAddr)) -> Vec<(Packet, SocketAddr)> {
+        let (packet, addr) = packet_tuple;
+
+        debug!("{:?}", packet);
+
+        // Decode incoming and send a Response to the Requester
+        let decode_result = self.decode_packet(addr, packet.clone());
+        if let Ok(opt_response_packet) = decode_result {
+            if let Some(response_packet) = opt_response_packet {
+                let response = (response_packet, addr.clone());
+                return vec![response];
+            }
+        } else {
+            let err = decode_result.unwrap_err();
+            error!("Decoding packet failed, from {:?}: {:?}", addr, err);
+        }
+
+        vec![]
+    }
+
+    fn send_heartbeats(&mut self) -> Vec<(Packet, SocketAddr)> {
+        let mut heartbeats = vec![];
+        for player in self.players.values() {
+            let keep_alive = Packet::Response {
+                sequence:    0,
+                request_ack: None,
+                code:        ResponseCode::KeepAlive,
+            };
+            heartbeats.push((keep_alive, player.addr));
+        }
+        return heartbeats;
+    }
+
+    fn maintain_network_state(&mut self) -> Vec<(Packet, SocketAddr)> {
+        // Process players in rooms
+        self.process_buffered_packets_in_rooms();
+
+        // Process players in lobby
+        self.process_buffered_packets_in_lobby();
+
+        self.collect_expired_tx_packets()
+    }
+
+    fn garbage_collection(&mut self) -> Vec<(SocketAddr, Packet)> {
+        self.expire_old_messages_in_all_rooms(time::Instant::now());
+        let update_packets_vec = self.construct_client_updates();
+
+        self.remove_timed_out_clients();
+        self.tick = 1usize.wrapping_add(self.tick);
+        return update_packets_vec;
+    }
 }
 
-//////////////// Event Handling /////////////////
-#[allow(unused)]
-enum Event {
-    TickEvent,
-    Request((SocketAddr, Option<Packet>)),
-    NetworkTickEvent,
-    HeartBeat,
-    //    Notify((SocketAddr, Option<Packet>)),
-}
-
-pub fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     env_logger::Builder::new()
         .format(|buf, record| {
             writeln!(
@@ -1289,156 +1333,60 @@ pub fn main() {
         )
         .get_matches();
 
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
-
-    let (tx, rx) = mpsc::unbounded();
-
-    let opt_port = matches.value_of("port").map(|p_str| {
-        p_str.parse::<u16>().unwrap_or_else(|e| {
-            error!("Error while attempting to parse {:?} as port number: {:?}", p_str, e);
+    let opt_host = matches.value_of("address");
+    let opt_port = matches.value_of("port").map(|port_str| {
+        port_str.parse::<u16>().unwrap_or_else(|e| {
+            error!("Error while attempting to parse {:?} as port number: {:?}", port_str, e);
             exit(1);
         })
     });
-    let udp = bind(&handle, matches.value_of("address"), opt_port).unwrap_or_else(|e| {
+
+    let udp = bind(opt_host, opt_port).await.unwrap_or_else(|e| {
         error!("Error while trying to bind UDP socket: {:?}", e);
         exit(1);
     });
 
-    trace!("Listening for connections on {:?}...", udp.local_addr().unwrap());
+    trace!("Listening for connections on {:?}...", udp.local_addr()?);
 
-    let (udp_sink, udp_stream) = udp.framed(LineCodec).split();
+    let (mut udp_sink, udp_stream) = UdpFramed::new(udp, NetwaystePacketCodec).split();
+    let mut udp_stream = udp_stream.fuse();
 
-    let initial_server_state = ServerState::new();
+    let mut server_state = ServerState::new();
 
-    let iter_stream = stream::iter_ok::<_, io::Error>(iter::repeat(()));
-    let tick_stream = iter_stream
-        .and_then(|_| {
-            let timeout = Timeout::new(Duration::from_millis(TICK_INTERVAL_IN_MS), &handle).unwrap();
-            timeout.and_then(move |_| ok(Event::TickEvent))
-        })
-        .map_err(|_| ());
+    let mut tick_interval = TokioTime::interval(Duration::from_millis(TICK_INTERVAL_IN_MS)).fuse();
+    let mut network_interval = TokioTime::interval(Duration::from_millis(NETWORK_INTERVAL_IN_MS)).fuse();
+    let mut heartbeat_interval = TokioTime::interval(Duration::from_millis(HEARTBEAT_INTERVAL_IN_MS)).fuse();
 
-    let packet_stream = udp_stream
-        .filter(|&(_, ref opt_packet)| *opt_packet != None)
-        .map(|packet_tuple| Event::Request(packet_tuple))
-        .map_err(|_| ());
-
-    let network_tick_stream = stream::iter_ok::<_, io::Error>(iter::repeat(()));
-    let network_tick_stream = network_tick_stream
-        .and_then(|_| {
-            let timeout = Timeout::new(Duration::from_millis(NETWORK_INTERVAL_IN_MS), &handle).unwrap();
-            timeout.and_then(move |_| ok(Event::NetworkTickEvent))
-        })
-        .map_err(|_| ());
-
-    let heartbeat_stream = stream::iter_ok::<_, io::Error>(iter::repeat(()));
-    let heartbeat_stream = heartbeat_stream
-        .and_then(|_| {
-            let timeout = Timeout::new(Duration::from_millis(HEARTBEAT_INTERVAL_IN_MS), &handle).unwrap();
-            timeout.and_then(move |_| ok(Event::HeartBeat))
-        })
-        .map_err(|_| ());
-
-    let server_fut = tick_stream
-        .select(packet_stream)
-        .select(network_tick_stream)
-        .select(heartbeat_stream)
-        .fold(
-            initial_server_state,
-            move |mut server_state: ServerState, event: Event| {
-                match event {
-                    Event::Request(packet_tuple) => {
-                        // With the above filter, `packet` should never be None
-                        let (addr, opt_packet) = packet_tuple;
-
-                        // Decode incoming and send a Response to the Requester
-                        if let Some(packet) = opt_packet {
-                            let decode_result = server_state.decode_packet(addr, packet.clone());
-                            if decode_result.is_ok() {
-                                let opt_response_packet = decode_result.unwrap();
-
-                                if let Some(response_packet) = opt_response_packet {
-                                    let response = (addr.clone(), response_packet);
-                                    netwayste_send!(tx, response, ("[EVENT::REQUEST] Immediate response failed."));
-                                }
-                            } else {
-                                let err = decode_result.unwrap_err();
-                                error!("Decoding packet failed, from {:?}: {:?}", addr, err);
-                            }
-                        }
-                    }
-
-                    Event::TickEvent => {
-                        server_state.expire_old_messages_in_all_rooms(time::Instant::now());
-                        if let Some(update_packets) = server_state.construct_client_updates() {
-                            for update in update_packets {
-                                // Start the clock for player latency timing
-                                let (ref player_address, ref packet) = update;
-                                match packet {
-                                    Packet::Update { .. } => {
-                                        for (_player_id, ref mut player) in &mut server_state.players {
-                                            if player.addr == *player_address {
-                                                player.latency_filter.start();
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    _ => { /* do nothing */ }
-                                }
-
-                                netwayste_send!(tx, update, ("[EVENT::TICK] Could not send client update."));
-                            }
-                        }
-
-                        server_state.remove_timed_out_clients();
-                        server_state.tick = 1usize.wrapping_add(server_state.tick);
-                    }
-
-                    Event::NetworkTickEvent => {
-                        // Process players in rooms
-                        server_state.process_buffered_packets_in_rooms();
-
-                        // Process players in lobby
-                        server_state.process_buffered_packets_in_lobby();
-
-                        server_state.resend_expired_tx_packets(&tx);
-                    }
-
-                    Event::HeartBeat => {
-                        for player in server_state.players.values() {
-                            let keep_alive = Packet::Response {
-                                sequence:    0,
-                                request_ack: None,
-                                code:        ResponseCode::KeepAlive,
-                            };
-                            netwayste_send!(
-                                tx,
-                                (player.addr, keep_alive),
-                                ("[EVENT::HEARTBEAT] Could not send to Player: {:?}", player)
-                            );
-                        }
+    loop {
+        select! {
+            (_) = tick_interval.select_next_some() => {
+                let update_packets = server_state.garbage_collection();
+                for (addr, packet) in update_packets {
+                    udp_sink.send((packet, addr)).await?;
+                }
+            },
+            (_) = network_interval.select_next_some() => {
+                let retransmissions = server_state.maintain_network_state();
+                for packet_addr_tuple in retransmissions {
+                    udp_sink.send(packet_addr_tuple).await?;
+                }
+            },
+            (_) = heartbeat_interval.select_next_some() => {
+                let heartbeats = server_state.send_heartbeats();
+                for packet_addr_tuple in heartbeats {
+                    udp_sink.send(packet_addr_tuple).await?;
+                }
+            },
+            (addr_packet_result) = udp_stream.select_next_some() => {
+                if let Ok(addr_packet_tuple) = addr_packet_result {
+                    let responses = server_state.process_packet(addr_packet_tuple);
+                    for response in responses {
+                        udp_sink.send(response).await?;
                     }
                 }
-
-                // return the updated client for the next iteration
-                ok(server_state)
-            },
-        )
-        .map(|_| ())
-        .map_err(|_| ());
-
-    let sink_fut = rx
-        .fold(udp_sink, |udp_sink, outgoing_item| {
-            let udp_sink = udp_sink.send(outgoing_item).map_err(|_| ()); // this method flushes (if too slow, use send_all)
-            udp_sink
-        })
-        .map(|_| ())
-        .map_err(|_| ());
-
-    let combined_fut = server_fut.map(|_| ()).select(sink_fut).map(|_| ()); // wait for either server_fut or sink_fut to complete
-
-    drop(core.run(combined_fut));
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -2513,16 +2461,16 @@ mod netwayste_server_tests {
     #[test]
     fn construct_client_updates_no_rooms() {
         let mut server = ServerState::new();
-        let opt_updates = server.construct_client_updates();
-        assert!(opt_updates.is_none());
+        let updates = server.construct_client_updates();
+        assert!(updates.is_empty());
     }
 
     #[test]
     fn construct_client_updates_empty_rooms() {
         let mut server = ServerState::new();
         server.create_new_room(None, "some room".to_owned().clone());
-        let opt_updates = server.construct_client_updates();
-        assert!(opt_updates.is_none());
+        let updates = server.construct_client_updates();
+        assert!(updates.is_empty());
     }
 
     #[test]
@@ -2543,15 +2491,12 @@ mod netwayste_server_tests {
         server.handle_chat_message(player_id, message_text.clone());
         server.handle_chat_message(player_id, message_text.clone());
 
-        let opt_updates = server.construct_client_updates();
-        assert!(opt_updates.is_some());
-
-        let mut output: Vec<(SocketAddr, Packet)> = opt_updates.unwrap();
+        let mut updates = server.construct_client_updates();
 
         // Vector should contain a single item for this test
-        assert_eq!(output.len(), 1);
+        assert_eq!(updates.len(), 1);
 
-        let (addr, pkt) = output.pop().unwrap();
+        let (addr, pkt) = updates.pop().unwrap();
         assert_eq!(addr, fake_socket_addr());
 
         match pkt {
@@ -2606,15 +2551,12 @@ mod netwayste_server_tests {
         }
 
         // We should then only return the last chat
-        let opt_updates = server.construct_client_updates();
-
-        assert!(opt_updates.is_some());
-        let mut output: Vec<(SocketAddr, Packet)> = opt_updates.unwrap();
+        let mut updates = server.construct_client_updates();
 
         // Vector should contain a single item for this test
-        assert_eq!(output.len(), 1);
+        assert_eq!(updates.len(), 1);
 
-        let (addr, pkt) = output.pop().unwrap();
+        let (addr, pkt) = updates.pop().unwrap();
         assert_eq!(addr, fake_socket_addr());
 
         match pkt {
@@ -2808,15 +2750,6 @@ mod netwayste_server_tests {
     }
 
     #[test]
-    fn test_resend_expired_tx_packets_empty_server() {
-        let mut server = ServerState::new();
-
-        let (udp_tx, _) = mpsc::unbounded();
-        #[cfg(not(should_panic))]
-        server.resend_expired_tx_packets(&udp_tx);
-    }
-
-    #[test]
     fn test_resend_expired_tx_packets() {
         let mut server = ServerState::new();
         let player_name = "some player".to_owned();
@@ -2843,8 +2776,7 @@ mod netwayste_server_tests {
             }
         }
 
-        let (udp_tx, _) = mpsc::unbounded();
-        server.resend_expired_tx_packets(&udp_tx);
+        let _expired_packets_vec = server.collect_expired_tx_packets();
 
         for i in 0..5 {
             let nm: &mut NetworkManager = server.network_map.get_mut(&player_id).unwrap();

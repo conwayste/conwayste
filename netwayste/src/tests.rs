@@ -14,8 +14,8 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with netwayste.  If not, see <http://www.gnu.org/licenses/>. */
+extern crate tokio_test;
 
-use crate::futures::sync::mpsc;
 use crate::net::*;
 use std::net::SocketAddr;
 use std::{
@@ -1041,7 +1041,7 @@ mod netwayste_net_tests {
     }
 
     #[test]
-    fn test_retransmit_expired_tx_packets_no_expirations() {
+    fn test_get_expired_tx_packets_no_expirations() {
         let mut nm = NetworkManager::new();
 
         for i in 0..5 {
@@ -1057,9 +1057,8 @@ mod netwayste_net_tests {
 
         let indices = nm.tx_packets.get_retransmit_indices();
 
-        let (udp_tx, _) = mpsc::unbounded();
         let addr = fake_socket_addr();
-        nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
+        nm.get_expired_tx_packets(addr, None, &indices);
 
         for i in 0..5 {
             assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 0);
@@ -1067,7 +1066,7 @@ mod netwayste_net_tests {
     }
 
     #[test]
-    fn test_retransmit_expired_tx_packets_basic_retries() {
+    fn test_get_expired_tx_packets_basic_retries() {
         let mut nm = NetworkManager::new();
 
         for i in 0..5 {
@@ -1088,9 +1087,8 @@ mod netwayste_net_tests {
 
         let indices = nm.tx_packets.get_retransmit_indices();
 
-        let (udp_tx, _) = mpsc::unbounded();
         let addr = fake_socket_addr();
-        nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
+        nm.get_expired_tx_packets(addr, None, &indices);
 
         for i in 0..3 {
             assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 1);
@@ -1101,7 +1099,7 @@ mod netwayste_net_tests {
     }
 
     #[test]
-    fn test_retransmit_expired_tx_packets_aggressive_retries() {
+    fn test_get_expired_tx_packets_aggressive_retries() {
         let mut nm = NetworkManager::new();
 
         for i in 0..5 {
@@ -1124,11 +1122,8 @@ mod netwayste_net_tests {
         for _ in 0..5 {
             let indices = nm.tx_packets.get_retransmit_indices();
 
-            println!("{:?}", indices);
-
-            let (udp_tx, _) = mpsc::unbounded();
             let addr = fake_socket_addr();
-            nm.retransmit_expired_tx_packets(&udp_tx, addr, None, &indices);
+            nm.get_expired_tx_packets(addr, None, &indices);
 
             for j in 0..indices.len() {
                 let attempt: &mut NetAttempt = nm.tx_packets.attempts.get_mut(j).unwrap();
@@ -1137,8 +1132,7 @@ mod netwayste_net_tests {
         }
 
         for i in 0..3 {
-            // 5 + 2 + 2 + 3
-            assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 11);
+            assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 5);
         }
         for i in 3..5 {
             assert_eq!(nm.tx_packets.attempts.get(i).unwrap().retries, 0);
@@ -1149,10 +1143,9 @@ mod netwayste_net_tests {
 mod netwayste_client_tests {
     use super::*;
     use crate::client::*;
-    use std::sync::mpsc::channel as std_channel;
 
     fn create_client_net_state() -> ClientNetState {
-        let (nw_server_response, _ggez_server_response) = std_channel::<NetwaysteEvent>();
+        let (nw_server_response, _ggez_server_response) = futures::channel::mpsc::channel::<NetwaysteEvent>(5);
         let mut cns = ClientNetState::new(nw_server_response);
         cns.server_address = Some(fake_socket_addr());
         cns
@@ -1179,17 +1172,17 @@ mod netwayste_client_tests {
         assert_eq!(client_state.cookie, Some("cookie monster".to_owned()));
     }
 
-    #[test]
-    fn handle_incoming_chats_no_new_chat_messages() {
+    #[tokio::test]
+    async fn handle_incoming_chats_no_new_chat_messages() {
         let mut client_state = create_client_net_state();
         assert_eq!(client_state.chat_msg_seq_num, 0);
 
-        client_state.handle_incoming_chats(vec![]);
+        client_state.handle_incoming_chats(vec![]).await;
         assert_eq!(client_state.chat_msg_seq_num, 0);
     }
 
-    #[test]
-    fn handle_incoming_chats_new_messages_are_older() {
+    #[tokio::test]
+    async fn handle_incoming_chats_new_messages_are_older() {
         let mut client_state = create_client_net_state();
         client_state.chat_msg_seq_num = 10;
 
@@ -1199,12 +1192,12 @@ mod netwayste_client_tests {
             incoming_messages.push(new_msg);
         }
 
-        client_state.handle_incoming_chats(incoming_messages);
+        client_state.handle_incoming_chats(incoming_messages).await;
         assert_eq!(client_state.chat_msg_seq_num, 10);
     }
 
-    #[test]
-    fn handle_incoming_chats_client_is_up_to_date() {
+    #[tokio::test]
+    async fn handle_incoming_chats_client_is_up_to_date() {
         let mut client_state = create_client_net_state();
         client_state.chat_msg_seq_num = 10;
 
@@ -1214,13 +1207,13 @@ mod netwayste_client_tests {
             format!("message {}", 10),
         )];
 
-        client_state.handle_incoming_chats(incoming_messages);
+        client_state.handle_incoming_chats(incoming_messages).await;
         assert_eq!(client_state.chat_msg_seq_num, 10);
     }
 
-    #[test]
     #[should_panic]
-    fn handle_incoming_chats_new_messages_player_name_not_set_panics() {
+    #[tokio::test]
+    async fn handle_incoming_chats_new_messages_player_name_not_set_panics() {
         let mut client_state = create_client_net_state();
         client_state.chat_msg_seq_num = 10;
 
@@ -1230,11 +1223,11 @@ mod netwayste_client_tests {
             format!("message {}", 11),
         )];
 
-        client_state.handle_incoming_chats(incoming_messages);
+        client_state.handle_incoming_chats(incoming_messages).await;
     }
 
-    #[test]
-    fn handle_incoming_chats_new_messages_are_old_and_new() {
+    #[tokio::test]
+    async fn handle_incoming_chats_new_messages_are_old_and_new() {
         let mut client_state = create_client_net_state();
         let starting_chat_seq_num = 10;
         client_state.name = Some("client name".to_owned());
@@ -1246,7 +1239,8 @@ mod netwayste_client_tests {
             incoming_messages.push(new_msg);
         }
 
-        client_state.handle_incoming_chats(incoming_messages);
+        client_state.handle_incoming_chats(incoming_messages).await;
+
         assert_eq!(client_state.chat_msg_seq_num, 19);
 
         let mut seq_num = starting_chat_seq_num + 1;

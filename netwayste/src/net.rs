@@ -26,14 +26,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::utils::PingPong;
+
 use bincode::{deserialize, serialize, Infinite};
-use futures::sync::mpsc;
+use bytes::BytesMut;
 use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
-use tokio_core::net::{UdpCodec, UdpSocket};
-use tokio_core::reactor::Handle;
-
-use crate::utils::PingPong;
+use tokio::net::UdpSocket;
+use tokio_util::codec::{Decoder, Encoder};
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
@@ -42,8 +42,8 @@ pub const TIMEOUT_IN_SECONDS: u64 = 5;
 pub const NETWORK_QUEUE_LENGTH: usize = 600; // spot testing with poor network (~675 cmds) showed a max of ~512 length
                                              // keep this for now until the performance issues are resolved
 const RETRANSMISSION_THRESHOLD_IN_MS: Duration = Duration::from_millis(400);
-const RETRY_THRESHOLD_IN_MS: usize = 2; //
-const RETRY_AGGRESSIVE_THRESHOLD_IN_MS: usize = 5;
+const RETRY_THRESHOLD: usize = 2; //
+const RETRY_AGGRESSIVE_THRESHOLD: usize = 5;
 const RETRANSMISSION_COUNT: usize = 32; // Testing some ideas out:. Resend length 16x2, 16=libconway::history_size)
 
 // For unit testing, I cover duplicate sequence numbers. The search returns Ok(index) on a slice with a matching value.
@@ -582,43 +582,38 @@ impl Ord for Packet {
 
 //////////////// Packet (de)serialization ////////////////
 #[allow(dead_code)]
-pub struct LineCodec;
-impl UdpCodec for LineCodec {
-    type In = (SocketAddr, Option<Packet>); // if 2nd element is None, it means deserialization failure
-    type Out = (SocketAddr, Packet);
+pub struct NetwaystePacketCodec;
 
-    fn decode(&mut self, addr: &SocketAddr, buf: &[u8]) -> io::Result<Self::In> {
-        match deserialize(buf) {
-            Ok(decoded) => Ok((*addr, Some(decoded))),
-            Err(_) => {
-                /*
-                // TODO: do not create this SocketAddr every time a packet arrives!
-                // TODO: DEFAULT_PORT could be wrong. We need to know the real port
-                let local: SocketAddr = format!("{}:{}", "127.0.0.1", DEFAULT_PORT.to_string()).parse().unwrap();
-                // We only want to warn when the incoming packet is external to the host system
-                if local != *addr {
-                    warn!("WARNING: error during packet deserialization: {:?}", e);
-                }
-                */
-                Ok((*addr, None))
-            }
+impl Decoder for NetwaystePacketCodec {
+    type Item = Packet;
+    type Error = io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        match deserialize(src) {
+            Ok(decoded) => Ok(Some(decoded)),
+            Err(_) => Ok(None),
         }
     }
+}
 
-    fn encode(&mut self, (addr, player_packet): Self::Out, into: &mut Vec<u8>) -> SocketAddr {
-        let encoded: Vec<u8> = serialize(&player_packet, Infinite).unwrap();
-        into.extend(encoded);
-        addr
+impl Encoder<Packet> for NetwaystePacketCodec {
+    type Error = io::Error;
+
+    fn encode(&mut self, packet: Packet, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let encoded: Vec<u8> = serialize(&packet, Infinite).unwrap();
+        dst.extend_from_slice(&encoded[..]);
+        Ok(())
     }
 }
 
 //////////////// Network interface ////////////////
 #[allow(dead_code)]
-pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket, NetError> {
+pub async fn bind(opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket, NetError> {
     let host = if let Some(host) = opt_host { host } else { DEFAULT_HOST };
     let port = if let Some(port) = opt_port { port } else { DEFAULT_PORT };
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
-    let sock = UdpSocket::bind(&addr, &handle).expect("failed to bind socket");
+    info!("Attempting to bind to {}", addr);
+    let sock = UdpSocket::bind(&addr).await?;
     Ok(sock)
 }
 
@@ -796,8 +791,8 @@ impl NetQueue<Packet> {
         iter.enumerate()
             .filter(|(_, ts)| {
                 ((Instant::now() - ts.time) >= RETRANSMISSION_THRESHOLD_IN_MS)
-                    || (ts.retries >= RETRY_THRESHOLD_IN_MS)
-                    || (ts.retries >= RETRY_AGGRESSIVE_THRESHOLD_IN_MS)
+                    || (ts.retries >= RETRY_THRESHOLD)
+                    || (ts.retries >= RETRY_AGGRESSIVE_THRESHOLD)
             })
             .map(|(i, _)| i)
             .take(RETRANSMISSION_COUNT)
@@ -1131,29 +1126,27 @@ impl NetworkManager {
     }
 
     #[allow(unused)]
-    pub fn retransmit_expired_tx_packets(
+    pub fn get_expired_tx_packets(
         &mut self,
-        udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>,
         addr: SocketAddr,
         confirmed_ack: Option<u64>,
         indices: &Vec<usize>,
-    ) {
+    ) -> Vec<(Packet, SocketAddr)> {
         let mut error_occurred = false;
         let mut failed_index = 0;
+        let mut expired_packets = vec![];
 
-        // Retransmit all packets after that are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
+        // Determine which packets are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
         for &index in indices.iter() {
             let mut send_counter = 1;
 
             if let Some(ts) = self.tx_packets.attempts.get_mut(index) {
                 ts.increment_retries();
-                if ts.retries >= RETRY_AGGRESSIVE_THRESHOLD_IN_MS {
+                if ts.retries >= RETRY_AGGRESSIVE_THRESHOLD {
+                    // If the packet is truly late, send it twice
+                    send_counter += 2;
+                } else if ts.retries >= RETRY_THRESHOLD {
                     send_counter += 1;
-                    ts.increment_retries()
-                }
-                if ts.retries >= RETRY_THRESHOLD_IN_MS {
-                    send_counter += 1;
-                    ts.increment_retries()
                 }
             }
 
@@ -1162,11 +1155,7 @@ impl NetworkManager {
                 pkt.set_response_sequence(confirmed_ack);
                 trace!("[Retransmitting (Times={})] {:?}", send_counter, pkt);
                 for _ in 0..send_counter {
-                    netwayste_send!(
-                        udp_tx,
-                        (addr, (*pkt).clone()),
-                        ("Could not retransmit packet to server: {:?}", pkt)
-                    );
+                    expired_packets.push(((*pkt).clone(), addr));
                 }
             } else {
                 error_occurred = true;
@@ -1176,9 +1165,8 @@ impl NetworkManager {
         }
 
         if error_occurred {
-            // Panic during development, probably want to make this error later on
-            panic!(
-                "ERROR: Index ({}) in attempt queue out-of-bounds in tx packets queue,
+            error!(
+                "Index ({}) in attempt queue out-of-bounds in tx packets queue,
                             or perhaps `None`?:\n\t {:?}\n{:?}\n{:?}",
                 failed_index,
                 indices,
@@ -1186,6 +1174,8 @@ impl NetworkManager {
                 self.tx_packets.attempts.len()
             );
         }
+
+        return expired_packets;
     }
 
     #[allow(unused)]

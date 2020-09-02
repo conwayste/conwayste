@@ -421,6 +421,8 @@ impl MainState {
         };
 
         // Add textfield handler
+        // TODO: Chatbox gets a handle to Some(ClientNetWorker) to receive network messages. The
+        // underlying implementation may change.
         let net_worker = Arc::new(Mutex::new(None));
         let chatbox_pub_handle = {
             let chatbox_id = ui_layout.chatbox_id.clone();
