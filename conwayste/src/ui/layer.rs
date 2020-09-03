@@ -38,7 +38,9 @@ use super::{
 
 use crate::config;
 use crate::constants::{colors::*, LAYERING_NODE_CAPACITY, LAYERING_SWAP_CAPACITY};
-use crate::Screen; // for screen stack
+use crate::uilayout::StaticNodeIds;
+use crate::viewport::GridView;
+use crate::Screen;
 
 /// Dummy Widget to serve as a root node in the tree. Serves no other purpose.
 #[derive(Debug)]
@@ -173,6 +175,16 @@ impl Layering {
     pub fn get_widget_mut(&mut self, id: &NodeId) -> UIResult<&mut BoxedWidget> {
         if let Ok(node) = self.widget_tree.get_mut(id) {
             Ok(node.data_mut())
+        } else {
+            Err(Box::new(UIError::WidgetNotFound {
+                reason: format!("{:?} not found in layering's widget list", id).to_owned(),
+            }))
+        }
+    }
+
+    pub fn get_widget(&self, id: &NodeId) -> UIResult<&BoxedWidget> {
+        if let Ok(node) = self.widget_tree.get(id) {
+            Ok(node.data())
         } else {
             Err(Box::new(UIError::WidgetNotFound {
                 reason: format!("{:?} not found in layering's widget list", id).to_owned(),
@@ -373,7 +385,9 @@ impl Layering {
         ggez_context: &mut ggez::Context,
         cfg: &mut config::Config,
         screen_stack: &mut Vec<Screen>,
-        game_area_state: GameAreaState,
+        game_area_state: &mut GameAreaState,
+        static_node_ids: &mut StaticNodeIds,
+        viewport: &mut GridView,
         id: &NodeId,
     ) -> UIResult<()> {
         let focus_cycle = &mut self.focus_cycles[self.highest_z_order];
@@ -403,6 +417,8 @@ impl Layering {
             widget_view,
             screen_stack,
             game_area_state.first_gen_was_drawn,
+            static_node_ids,
+            viewport,
         );
 
         let mut needs_gain_focus = true;
@@ -483,9 +499,19 @@ impl Layering {
         cfg: &mut config::Config,
         screen_stack: &mut Vec<Screen>,
         game_state: &mut GameAreaState,
+        static_node_ids: &mut StaticNodeIds,
+        viewport: &mut GridView,
     ) -> Result<(), Box<dyn Error>> {
         let widget_view = treeview::TreeView::new(&mut self.widget_tree);
-        let mut uictx = context::UIContext::new(ggez_context, cfg, widget_view, screen_stack, game_state.running);
+        let mut uictx = context::UIContext::new(
+            ggez_context,
+            cfg,
+            widget_view,
+            screen_stack,
+            game_state.running,
+            static_node_ids,
+            viewport,
+        );
         if event.what == context::EventType::Update || event.what == context::EventType::MouseMove {
             Layering::broadcast_event(event, &mut uictx)
         } else if event.is_mouse_event() {
@@ -604,6 +630,13 @@ impl Layering {
                     Layering::emit_focus_change(context::EventType::GainFocus, uictx, &newly_focused_id)?;
                 }
                 break;
+            } else if event.what == context::EventType::RequestFocus {
+                if let Some(node_id) = &focus_cycle.focused_widget_id() {
+                    Layering::emit_focus_change(context::EventType::LoseFocus, uictx, node_id)?;
+                }
+                if let Some(node_id) = &event.node_id {
+                    Layering::emit_focus_change(context::EventType::GainFocus, uictx, node_id)?;
+                }
             }
         }
         Ok(())

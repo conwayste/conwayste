@@ -21,7 +21,7 @@ use super::{
     widget::Widget,
     UIError, UIResult,
 };
-use crate::{config::Config, constants::*};
+use crate::{config::Config, constants::*, viewport::ZoomDirection};
 use conway::{
     error::ConwayError,
     grids::{BitGrid, CharGrid, Rotation},
@@ -70,8 +70,8 @@ impl GameArea {
             let players = vec![player0, player1];
 
             BigBang::new()
-                .width(universe_width_in_cells)
-                .height(universe_height_in_cells)
+                .width(UNIVERSE_WIDTH_IN_CELLS)
+                .height(UNIVERSE_HEIGHT_IN_CELLS)
                 .server_mode(true) // TODO will change to false once we get server support up
                 // Currently 'client' is technically both client and server
                 .history(HISTORY_SIZE)
@@ -79,7 +79,7 @@ impl GameArea {
                 .add_players(players)
                 .birth()
         };
-        let uni = bigbang.unwrap();
+        let mut uni = bigbang.unwrap();
 
         init_patterns(&mut uni).unwrap();
 
@@ -223,9 +223,9 @@ fn init_patterns(uni: &mut Universe) -> ConwayResult<()> {
     Ok(())
 }
 
-fn update_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, evt: &Event) -> Result<Handled, Box<dyn Error>> {
+fn update_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
     let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
-    let game_state = &game_area.game_state;
+    let game_state = &mut game_area.game_state;
 
     if game_state.first_gen_was_drawn && (game_state.running || game_state.single_step) {
         game_area.uni.next(); // next generation
@@ -256,12 +256,12 @@ fn keypress_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event)
                 game_area_state.insert_mode = Some(grid_info);
             }
             KeyCode::Return => {
-                let chatbox_pane_id = self.ui_layout.chatbox_pane_id.clone();
-                uictx.child_event(Event::request_focus(chatbox_pane_id));
+                let chatbox_pane_id = uictx.static_node_ids.chatbox_pane_id.clone();
+                uictx.child_event(Event::new_request_focus(chatbox_pane_id));
                 /*
-                match Pane::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &chatbox_pane_id) {
+                match Pane::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &chatbox_pane_id) {
                     Ok(_chatbox_pane) => {
-                        if let Some(layer) = self.ui_layout.get_screen_layering(Screen::Run) {
+                        if let Some(layer) = self.ui_layout.get_screen_layering_mut(Screen::Run) {
                             layer.enter_focus(
                                 ctx,
                                 &mut self.config,
@@ -278,7 +278,7 @@ fn keypress_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event)
                 */
             }
             KeyCode::R => {
-                if !self.inputs.key_info.repeating {
+                if !evt.key_repeating {
                     game_area_state.running = !game_area_state.running;
                 }
             }
@@ -298,15 +298,15 @@ fn keypress_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event)
                 game_area_state.arrow_input = (1, 0);
             }
             KeyCode::Add | KeyCode::Equals => {
-                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
-                let cell_size = self.viewport.get_cell_size();
+                uictx.viewport.adjust_zoom_level(ZoomDirection::ZoomIn);
+                let cell_size = uictx.viewport.get_cell_size();
                 uictx.config.modify(|settings| {
                     settings.gameplay.zoom = cell_size;
                 });
             }
             KeyCode::Minus | KeyCode::Subtract => {
-                self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
-                let cell_size = self.viewport.get_cell_size();
+                uictx.viewport.adjust_zoom_level(ZoomDirection::ZoomOut);
+                let cell_size = uictx.viewport.get_cell_size();
                 uictx.config.modify(|settings| {
                     settings.gameplay.zoom = cell_size;
                 });
@@ -326,18 +326,18 @@ fn keypress_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event)
     Ok(Handled)
 }
 
-fn mouse_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, evt: &Event) -> Result<Handled, Box<dyn Error>> {
+fn mouse_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) -> Result<Handled, Box<dyn Error>> {
     let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
     let game_area_state = &mut game_area.game_state;
     use ggez::input::mouse::MouseButton;
 
     if let Some(MouseButton::Left) = evt.button {
-        let mouse_pos = evt.point;
+        let mouse_pos = evt.point.unwrap(); //unwrap safe b/c mouse clicks must have a point
 
-        if let Some((ref grid, width, height)) = game_area.game_state.insert_mode {
+        if let Some((ref grid, width, height)) = game_area_state.insert_mode {
             // inserting a pattern
             if evt.what == EventType::Click {
-                if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                if let Some(cell) = uictx.viewport.get_cell(mouse_pos) {
                     let insert_col = cell.col as isize - (width / 2) as isize;
                     let insert_row = cell.row as isize - (height / 2) as isize;
                     let dst_region = Region::new(insert_col, insert_row, width, height);
@@ -355,7 +355,7 @@ fn mouse_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, evt: &Event) -
                 }
                 EventType::Drag => {
                     // hold + motion
-                    if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                    if let Some(cell) = uictx.viewport.get_cell(mouse_pos) {
                         // Only make dead cells alive
                         if let Some(cell_state) = game_area_state.drag_draw {
                             game_area.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
@@ -364,7 +364,7 @@ fn mouse_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, evt: &Event) -
                 }
                 EventType::MousePressAndHeld => {
                     // depress, no move yet
-                    if let Some(cell) = self.viewport.get_cell(mouse_pos) {
+                    if let Some(cell) = uictx.viewport.get_cell(mouse_pos) {
                         if game_area_state.drag_draw.is_none() {
                             game_area_state.drag_draw =
                                 game_area.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
@@ -510,14 +510,14 @@ impl_emit_event!(GameArea, self.handler_data);
 widget_from_id!(GameArea);
 
 impl GameArea {
-    pub fn get_game_area_state(self) -> GameAreaState {
+    pub fn get_game_area_state(&self) -> GameAreaState {
         GameAreaState {
             first_gen_was_drawn: self.game_state.first_gen_was_drawn,
             running:             self.game_state.running,
             single_step:         self.game_state.single_step,
             arrow_input:         self.game_state.arrow_input,
             drag_draw:           self.game_state.drag_draw,
-            insert_mode:         self.game_state.insert_mode,
+            insert_mode:         self.insert_mode(),
         }
     }
 
@@ -533,8 +533,12 @@ impl GameArea {
         self.game_state.first_gen_was_drawn = true;
     }
 
-    pub fn insert_mode(&mut self) -> Option<(BitGrid, usize, usize)> {
-        self.game_state.insert_mode
+    pub fn insert_mode(&self) -> Option<(BitGrid, usize, usize)> {
+        if let Some((bitgrid, row, col)) = &self.game_state.insert_mode {
+            Some((bitgrid.clone(), *row, *col))
+        } else {
+            None
+        }
     }
 }
 

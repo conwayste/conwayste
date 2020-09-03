@@ -45,11 +45,44 @@ macro_rules! add_layering_support {
     ($type:ident) => {
         #[allow(unused)]
         impl<'a> $type {
-            pub fn widget_from_screen_and_id(
+            pub fn widget_from_screen_and_id_mut(
                 ui: &'a mut UILayout,
                 screen: Screen,
                 id: &'a NodeId,
             ) -> crate::ui::UIResult<&'a mut $type> {
+                if let Some(layer) = ui.get_screen_layering_mut(screen) {
+                    return $type::widget_from_id_mut(layer, id);
+                }
+                Err(Box::new(crate::ui::UIError::InvalidArgument {
+                    reason: format!("{:?} not found in UI Layout", screen),
+                }))
+            }
+        }
+    };
+}
+
+macro_rules! add_layering_support_with_nonmut {
+    ($type:ident) => {
+        #[allow(unused)]
+        impl<'a> $type {
+            pub fn widget_from_screen_and_id_mut(
+                ui: &'a mut UILayout,
+                screen: Screen,
+                id: &'a NodeId,
+            ) -> crate::ui::UIResult<&'a mut $type> {
+                if let Some(layer) = ui.get_screen_layering_mut(screen) {
+                    return $type::widget_from_id_mut(layer, id);
+                }
+                Err(Box::new(crate::ui::UIError::InvalidArgument {
+                    reason: format!("{:?} not found in UI Layout", screen),
+                }))
+            }
+
+            pub fn widget_from_screen_and_id(
+                ui: &'a UILayout,
+                screen: Screen,
+                id: &'a NodeId,
+            ) -> crate::ui::UIResult<&'a $type> {
                 if let Some(layer) = ui.get_screen_layering(screen) {
                     return $type::widget_from_id(layer, id);
                 }
@@ -63,7 +96,9 @@ macro_rules! add_layering_support {
 
 pub struct UILayout {
     pub layers: HashMap<Screen, Layering>,
+}
 
+pub struct StaticNodeIds {
     // HACK
     // The fields below correspond to static ui elements that the client may need to interact with
     // regardless of what is displayed on screen. For example, new chat messages should always be
@@ -76,8 +111,12 @@ pub struct UILayout {
 
 /// `UILayout` is responsible for the definition and storage of UI elements.
 impl UILayout {
+    pub fn get_screen_layering(&self, screen: Screen) -> Option<&Layering> {
+        self.layers.get(&screen)
+    }
+
     /// Get all layers associated with the specified Screen
-    pub fn get_screen_layering(&mut self, screen: Screen) -> Option<&mut Layering> {
+    pub fn get_screen_layering_mut(&mut self, screen: Screen) -> Option<&mut Layering> {
         self.layers.get_mut(&screen)
     }
 
@@ -196,7 +235,7 @@ impl UILayout {
         Ok(layer_mainmenu)
     }
 
-    pub fn new(ctx: &mut Context, config: &Config, font: Font) -> UIResult<Self> {
+    pub fn new(ctx: &mut Context, config: &Config, font: Font) -> UIResult<(UILayout, StaticNodeIds)> {
         let mut ui_layers = HashMap::new();
 
         let default_font_info = common::FontInfo::new(ctx, font, None);
@@ -248,13 +287,15 @@ impl UILayout {
         layer_ingame.debug_display_widget_tree();
         ui_layers.insert(Screen::Run, layer_ingame);
 
-        Ok(UILayout {
-            layers: ui_layers,
-            chatbox_id,
-            chatbox_pane_id: chatpane_id,
-            chatbox_tf_id,
-            game_area_id,
-        })
+        Ok((
+            UILayout { layers: ui_layers },
+            StaticNodeIds {
+                chatbox_id,
+                chatbox_pane_id: chatpane_id,
+                chatbox_tf_id,
+                game_area_id,
+            },
+        ))
     }
 }
 fn fullscreen_toggle_handler(
@@ -340,4 +381,4 @@ add_layering_support!(Label);
 add_layering_support!(Pane);
 add_layering_support!(TextField);
 add_layering_support!(Chatbox);
-add_layering_support!(GameArea);
+add_layering_support_with_nonmut!(GameArea);

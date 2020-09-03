@@ -32,8 +32,7 @@ use id_tree::NodeId;
 
 use super::treeview::TreeView;
 use super::BoxedWidget;
-use crate::config;
-use crate::Screen;
+use crate::{config, uilayout::StaticNodeIds, viewport::GridView, Screen};
 
 /// Stores references to many things a handler is likely to need:
 ///
@@ -47,6 +46,8 @@ pub struct UIContext<'a> {
     pub widget_view:      TreeView<'a, BoxedWidget>,
     pub screen_stack:     &'a mut Vec<Screen>,
     pub game_in_progress: bool,
+    pub static_node_ids:  &'a mut StaticNodeIds,
+    pub viewport:         &'a mut GridView,
     child_events:         Vec<Event>,
 }
 
@@ -57,6 +58,8 @@ impl<'a> UIContext<'a> {
         view: TreeView<'a, BoxedWidget>,
         screen_stack: &'a mut Vec<Screen>,
         game_in_progress: bool,
+        static_node_ids: &'a mut StaticNodeIds,
+        viewport: &'a mut GridView,
     ) -> Self {
         UIContext {
             ggez_context,
@@ -65,6 +68,8 @@ impl<'a> UIContext<'a> {
             child_events: vec![],
             screen_stack,
             game_in_progress,
+            static_node_ids,
+            viewport,
         }
     }
 
@@ -92,6 +97,8 @@ impl<'a> UIContext<'a> {
                 screen_stack:     self.screen_stack,
                 child_events:     vec![],
                 game_in_progress: self.game_in_progress,
+                static_node_ids:  self.static_node_ids,
+                viewport:         self.viewport,
             },
         ))
     }
@@ -201,6 +208,7 @@ pub enum EventType {
     // child_event(). Note that a LoseFocus event will not be received after this is sent.
     TextEntered,
     Update,
+    RequestFocus,
 }
 
 /// Describes a MouseMove event in relation to a Rect.
@@ -224,7 +232,9 @@ pub struct Event {
     pub button:        Option<MouseButton>, // Click
     pub key:           Option<KeyCodeOrChar>,
     pub shift_pressed: bool,
+    pub key_repeating: bool,
     pub text:          Option<String>,
+    pub node_id:       Option<NodeId>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -272,7 +282,9 @@ impl Default for Event {
             button:        None,
             key:           None,
             shift_pressed: false,
+            key_repeating: false,
             text:          None,
+            node_id:       None,
         }
     }
 }
@@ -288,12 +300,13 @@ impl Event {
         }
     }
 
-    pub fn new_key_press(mouse_point: Point2<f32>, key_code: KeyCode, is_shift: bool) -> Self {
+    pub fn new_key_press(mouse_point: Point2<f32>, key_code: KeyCode, is_shift: bool, is_repeating: bool) -> Self {
         Event {
             what: EventType::KeyPress,
             point: Some(mouse_point),
             key: Some(KeyCodeOrChar::KeyCode(key_code)),
             shift_pressed: is_shift,
+            key_repeating: is_repeating,
             ..Default::default()
         }
     }
@@ -391,6 +404,14 @@ impl Event {
             point: Some(mouse_point),
             button: Some(mouse_button),
             shift_pressed: is_shift,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_request_focus(node_id: NodeId) -> Self {
+        Event {
+            what: EventType::RequestFocus,
+            node_id: Some(node_id),
             ..Default::default()
         }
     }

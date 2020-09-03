@@ -56,13 +56,8 @@ mod viewport;
 use chrono::Local;
 use log::LevelFilter;
 
-use conway::error::ConwayError;
-use conway::grids::{BitGrid, CharGrid};
-use conway::rle::Pattern;
+use conway::grids::CharGrid;
 use conway::universe::{BigBang, CellState, PlayerBuilder, Region, Universe};
-use conway::ConwayResult;
-use conway::Rotation;
-
 use netwayste::net::NetwaysteEvent;
 
 use ggez::conf;
@@ -84,15 +79,15 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use constants::{
-    colors::*, DrawStyle, CURRENT_PLAYER_ID, DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, DEFAULT_ZOOM_LEVEL,
-    FOG_RADIUS, GRID_DRAW_STYLE, HISTORY_SIZE, INTRO_DURATION, INTRO_PAUSE_DURATION,
+    colors::*, DrawStyle, DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, DEFAULT_ZOOM_LEVEL, GRID_DRAW_STYLE,
+    INTRO_DURATION, INTRO_PAUSE_DURATION,
 };
 use input::{MouseAction, ScrollEvent};
 use ui::{
     context::{EmitEvent, Event, Handled, Handler, UIContext},
-    Chatbox, ChatboxPublishHandle, EventType, GameArea, GameAreaState, Pane, TextField, UIError,
+    Chatbox, ChatboxPublishHandle, EventType, GameArea, GameAreaState, TextField, UIError,
 };
-use uilayout::UILayout;
+use uilayout::{StaticNodeIds, UILayout};
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum Screen {
@@ -124,7 +119,8 @@ struct MainState {
     // if Some(...), dragging doesn't draw anything
     current_intro_duration: f64,
 
-    ui_layout: UILayout,
+    ui_layout:       UILayout,
+    static_node_ids: StaticNodeIds,
 }
 
 // Support non-alive/dead/bg colors
@@ -203,14 +199,14 @@ impl MainState {
 
         let intro_viewport = viewport::GridView::new(
             DEFAULT_ZOOM_LEVEL,
-            constants::intro_universe_width_in_cells,
-            constants::intro_universe_height_in_cells,
+            constants::INTRO_UNIVERSE_WIDTH_IN_CELLS,
+            constants::INTRO_UNIVERSE_HEIGHT_IN_CELLS,
         );
 
         let viewport = viewport::GridView::new(
             config.get().gameplay.zoom,
-            constants::universe_width_in_cells,
-            constants::universe_height_in_cells,
+            constants::UNIVERSE_WIDTH_IN_CELLS,
+            constants::UNIVERSE_HEIGHT_IN_CELLS,
         );
 
         let mut color_settings = ColorSettings {
@@ -249,8 +245,8 @@ impl MainState {
         let intro_universe = {
             let player = PlayerBuilder::new(Region::new(0, 0, 256, 256));
             BigBang::new()
-                .width(constants::intro_universe_width_in_cells)
-                .height(constants::intro_universe_height_in_cells)
+                .width(constants::INTRO_UNIVERSE_WIDTH_IN_CELLS)
+                .height(constants::INTRO_UNIVERSE_HEIGHT_IN_CELLS)
                 .fog_radius(100)
                 .add_players(vec![player])
                 .birth()
@@ -262,7 +258,7 @@ impl MainState {
             GameError::ConfigError(msg)
         })?;
 
-        let mut ui_layout = UILayout::new(ctx, &config, font.clone()).unwrap(); // TODO: unwrap not OK!
+        let (mut ui_layout, static_node_ids) = UILayout::new(ctx, &config, font.clone()).unwrap(); // TODO: unwrap not OK!
 
         // Update universe draw parameters for intro
         let intro_uni_draw_params = UniDrawParams {
@@ -277,9 +273,9 @@ impl MainState {
         // underlying implementation may change.
         let net_worker = Arc::new(Mutex::new(None));
         let chatbox_pub_handle = {
-            let chatbox_id = ui_layout.chatbox_id.clone();
+            let chatbox_id = static_node_ids.chatbox_id.clone();
             let w = ui_layout
-                .get_screen_layering(Screen::Run)
+                .get_screen_layering_mut(Screen::Run)
                 .unwrap()
                 .get_widget_mut(&chatbox_id)
                 .unwrap();
@@ -288,9 +284,9 @@ impl MainState {
         };
         let text_entered_handler = get_text_entered_handler(chatbox_pub_handle, net_worker.clone());
         {
-            let textfield_id = ui_layout.chatbox_tf_id.clone();
+            let textfield_id = static_node_ids.chatbox_tf_id.clone();
             let w = ui_layout
-                .get_screen_layering(Screen::Run)
+                .get_screen_layering_mut(Screen::Run)
                 .unwrap()
                 .get_widget_mut(&textfield_id)
                 .unwrap();
@@ -313,6 +309,7 @@ impl MainState {
             recvd_first_resize: false,
             current_intro_duration: 0.0,
             ui_layout: ui_layout,
+            static_node_ids: static_node_ids,
         };
 
         init_title_screen(&mut s).unwrap();
@@ -364,6 +361,7 @@ impl EventHandler for MainState {
         let key = self.inputs.key_info.key;
         let keymods = self.inputs.key_info.modifier;
         let is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
+        let is_repeating = self.inputs.key_info.repeating;
 
         let mouse_point = self.inputs.mouse_info.position;
         //let origin_point = self.inputs.mouse_info.down_position; // TODO: when we need drag support, we'll need this
@@ -374,10 +372,10 @@ impl EventHandler for MainState {
             mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
 
         let mut game_area_has_keyboard_focus = false;
-        let game_area_id = self.ui_layout.game_area_id.clone();
+        let game_area_id = self.static_node_ids.game_area_id.clone();
 
-        let game_area_state;
-        match GameArea::widget_from_screen_and_id(&mut self.ui_layout, screen, &game_area_id) {
+        let mut game_area_state;
+        match GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, screen, &game_area_id) {
             Ok(gamearea) => {
                 game_area_has_keyboard_focus = gamearea.has_keyboard_focus;
                 game_area_state = gamearea.get_game_area_state();
@@ -392,7 +390,7 @@ impl EventHandler for MainState {
 
         // ==== Handle widget events ====
         let mut game_area_should_ignore_input = false;
-        if let Some(layer) = self.ui_layout.get_screen_layering(screen) {
+        if let Some(layer) = self.ui_layout.get_screen_layering_mut(screen) {
             let update = Event::new_update();
             layer
                 .emit(
@@ -401,6 +399,8 @@ impl EventHandler for MainState {
                     &mut self.config,
                     &mut self.screen_stack,
                     &mut game_area_state,
+                    &mut self.static_node_ids,
+                    &mut self.viewport,
                 )
                 .unwrap_or_else(|e| {
                     error!("Error from layer.emit on update: {:?}", e);
@@ -420,6 +420,8 @@ impl EventHandler for MainState {
                         &mut self.config,
                         &mut self.screen_stack,
                         &mut game_area_state,
+                        &mut self.static_node_ids,
+                        &mut self.viewport,
                     )
                     .unwrap_or_else(|e| {
                         error!("Error from layer.emit on mouse move: {:?}", e);
@@ -437,6 +439,8 @@ impl EventHandler for MainState {
                             &mut self.config,
                             &mut self.screen_stack,
                             &mut game_area_state,
+                            &mut self.static_node_ids,
+                            &mut self.viewport,
                         )
                         .unwrap_or_else(|e| {
                             error!("Error from layer.emit on left click: {:?}", e);
@@ -453,6 +457,8 @@ impl EventHandler for MainState {
                         &mut self.config,
                         &mut self.screen_stack,
                         &mut game_area_state,
+                        &mut self.static_node_ids,
+                        &mut self.viewport,
                     )
                     .unwrap_or_else(|e| {
                         error!("Error from layer.emit on left click: {:?}", e);
@@ -460,14 +466,16 @@ impl EventHandler for MainState {
             }
 
             if let Some(key) = key {
-                let key_event = Event::new_key_press(mouse_point, key, is_shift);
-                let result = layer
+                let key_event = Event::new_key_press(mouse_point, key, is_shift, is_repeating);
+                layer
                     .emit(
                         &key_event,
                         ctx,
                         &mut self.config,
                         &mut self.screen_stack,
                         &mut game_area_state,
+                        &mut self.static_node_ids,
+                        &mut self.viewport,
                     )
                     .unwrap_or_else(|e| {
                         error!("Error from layer.emit on key press: {:?}", e);
@@ -486,6 +494,8 @@ impl EventHandler for MainState {
                         &mut self.config,
                         &mut self.screen_stack,
                         &mut game_area_state,
+                        &mut self.static_node_ids,
+                        &mut self.viewport,
                     )
                     .unwrap_or_else(|e| {
                         error!("Error from layer.emit on key press (text input): {:?}", e);
@@ -518,7 +528,7 @@ impl EventHandler for MainState {
         }
 
         let new_screen = self.get_current_screen();
-        self.transition_screen(ctx, screen, new_screen, game_area_state)
+        self.transition_screen(ctx, screen, new_screen, &mut game_area_state)
             .unwrap_or_else(|e| {
                 error!("Failed to transition_screen: {:?}", e);
             });
@@ -591,7 +601,7 @@ impl EventHandler for MainState {
             Screen::Exit => {}
         }
 
-        if let Some(layering) = self.ui_layout.get_screen_layering(current_screen) {
+        if let Some(layering) = self.ui_layout.get_screen_layering_mut(current_screen) {
             layering.draw(ctx).unwrap(); // TODO: unwrap not OK!
         }
 
@@ -855,9 +865,9 @@ impl MainState {
             }
         });
 
-        let game_area_id = self.ui_layout.game_area_id.clone();
-        let insert_mode = None;
-        match GameArea::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &game_area_id) {
+        let game_area_id = self.static_node_ids.game_area_id.clone();
+        let mut insert_mode = None;
+        match GameArea::widget_from_screen_and_id(&self.ui_layout, Screen::Run, &game_area_id) {
             Ok(gamearea) => {
                 insert_mode = gamearea.insert_mode();
             }
@@ -958,16 +968,24 @@ impl MainState {
     }
 
     fn draw_universe(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
-        let game_area_id = self.ui_layout.game_area_id.clone();
-        match GameArea::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &game_area_id) {
+        let game_area_id = self.static_node_ids.game_area_id.clone();
+        match GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &game_area_id) {
             Ok(gamearea) => {
                 gamearea.first_gen_drawn();
+            }
+            Err(e) => {
+                error!("failed to look up GameArea widget: {:?}", e);
+            }
+        }
+        match GameArea::widget_from_screen_and_id(&self.ui_layout, Screen::Run, &game_area_id) {
+            Ok(gamearea) => {
                 self.draw_game_of_life(ctx, &gamearea.uni)?;
             }
             Err(e) => {
                 error!("failed to look up GameArea widget: {:?}", e);
             }
         }
+
         Ok(())
     }
 
@@ -976,18 +994,20 @@ impl MainState {
         ggez_ctx: &mut Context,
         old_screen: Screen,
         new_screen: Screen,
-        game_area_state: GameAreaState,
+        game_area_state: &mut GameAreaState,
     ) -> Result<(), Box<dyn Error>> {
         match old_screen {
             Screen::Menu => {
                 if new_screen == Screen::Run {
-                    let id = self.ui_layout.game_area_id.clone();
-                    if let Some(layering) = self.ui_layout.get_screen_layering(Screen::Run) {
+                    let id = self.static_node_ids.game_area_id.clone();
+                    if let Some(layering) = self.ui_layout.get_screen_layering_mut(Screen::Run) {
                         layering.enter_focus(
                             ggez_ctx,
                             &mut self.config,
                             &mut self.screen_stack,
                             game_area_state,
+                            &mut self.static_node_ids,
+                            &mut self.viewport,
                             &id,
                         )?;
                     }
@@ -1007,9 +1027,9 @@ impl MainState {
     /// Handles keyboard and mouse input stored in `self.inputs` by the ggez callbacks. This is
     /// called from update() when we are in the Run screen, and the focus is not captured by, for
     /// example, a text dialog.
-    fn process_running_inputs(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
+    fn process_running_inputs(&mut self, _ctx: &mut Context) -> Result<(), Box<dyn Error>> {
         let keymods = self.inputs.key_info.modifier;
-        let is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
+        let _is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
 
         Ok(())
     }
@@ -1072,9 +1092,9 @@ impl MainState {
             }
         }
 
-        let id = self.ui_layout.chatbox_id.clone();
+        let id = self.static_node_ids.chatbox_id.clone();
         for msg in incoming_messages {
-            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
+            match Chatbox::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &id) {
                 Ok(cb) => cb.add_message(msg),
                 Err(e) => error!("Could not add message to Chatbox on network message receive: {:?}", e),
             }
@@ -1129,10 +1149,10 @@ impl MainState {
         }
     }
 
-    fn modify_game_area(&self, modification: Box<dyn FnMut(&mut GameArea)>) {
-        let game_area_id = self.ui_layout.game_area_id.clone();
+    fn modify_game_area(&mut self, modification: Box<dyn Fn(&mut GameArea)>) {
+        let game_area_id = self.static_node_ids.game_area_id.clone();
         let screen = self.get_current_screen();
-        match GameArea::widget_from_screen_and_id(&mut self.ui_layout, screen, &game_area_id) {
+        match GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, screen, &game_area_id) {
             Ok(gamearea) => modification(gamearea),
             Err(e) => {
                 if screen == Screen::Run {

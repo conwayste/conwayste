@@ -351,13 +351,12 @@ impl GridView {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::constants::{UNIVERSE_HEIGHT_IN_CELLS, UNIVERSE_WIDTH_IN_CELLS};
 
     fn gen_default_gridview() -> GridView {
         let cell_size = 10.0;
-        let universe_height_in_cells = 128;
-        let universe_width_in_cells = 256;
 
-        GridView::new(cell_size, universe_width_in_cells, universe_height_in_cells)
+        GridView::new(cell_size, UNIVERSE_WIDTH_IN_CELLS, UNIVERSE_HEIGHT_IN_CELLS)
     }
 
     #[test]
