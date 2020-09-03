@@ -26,14 +26,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::utils::PingPong;
+
 use bincode::{deserialize, serialize, Infinite};
-use futures::sync::mpsc;
+use bytes::BytesMut;
 use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
-use tokio_core::net::{UdpCodec, UdpSocket};
-use tokio_core::reactor::Handle;
-
-use crate::utils::PingPong;
+use tokio::net::UdpSocket;
+use tokio_util::codec::{Decoder, Encoder};
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOST: &str = "0.0.0.0";
@@ -42,8 +42,8 @@ pub const TIMEOUT_IN_SECONDS: u64 = 5;
 pub const NETWORK_QUEUE_LENGTH: usize = 600; // spot testing with poor network (~675 cmds) showed a max of ~512 length
                                              // keep this for now until the performance issues are resolved
 const RETRANSMISSION_THRESHOLD_IN_MS: Duration = Duration::from_millis(400);
-const RETRY_THRESHOLD_IN_MS: usize = 2; //
-const RETRY_AGGRESSIVE_THRESHOLD_IN_MS: usize = 5;
+const RETRY_THRESHOLD: usize = 2; //
+const RETRY_AGGRESSIVE_THRESHOLD: usize = 5;
 const RETRANSMISSION_COUNT: usize = 32; // Testing some ideas out:. Resend length 16x2, 16=libconway::history_size)
 
 // For unit testing, I cover duplicate sequence numbers. The search returns Ok(index) on a slice with a matching value.
@@ -117,6 +117,42 @@ pub enum RequestAction {
         room_name: String,
     },
     LeaveRoom,
+    // TODO: add support ("auto_match" bool key, see issue #101)
+    SetClientOptions {
+        key:   String,
+        value: Option<ClientOptionValue>,
+    },
+    // TODO: add support
+    // Draw the specified RLE Pattern with upper-left cell at position x, y.
+    DropPattern {
+        x:       i32,
+        y:       i32,
+        pattern: String,
+    },
+    // TODO: add support (also need it in the ggez client)
+    // Clear all cells in the specified region not belonging to other players. No part of this
+    // region may be outside the player's writable region.
+    ClearArea {
+        x: i32,
+        y: i32,
+        w: u32,
+        h: u32,
+    },
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum ClientOptionValue {
+    Bool { value: bool },
+    U8 { value: u8 },
+    U16 { value: u16 },
+    U32 { value: u32 },
+    U64 { value: u64 },
+    I8 { value: i8 },
+    I16 { value: i16 },
+    I32 { value: i32 },
+    I64 { value: i64 },
+    Str { value: String },
+    List { value: Vec<ClientOptionValue> },
 }
 
 // server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
@@ -216,51 +252,117 @@ impl BroadcastChatMessage {
     }
 }
 
-// TODO: adapt or import following from libconway
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct GenState {
-    // state of the Universe
-    pub gen:        u64,
-    pub dummy_data: u8,
-}
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct GenDiff {
-    // difference between states of Universe
-    pub old_gen:    u64,
-    pub new_gen:    u64,
-    pub dummy_data: u8,
-}
-
+// TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GameOutcome {
     pub winner: Option<String>, // Some(<name>) if winner, or None, meaning it was a tie/forfeit
 }
 
+/// All options needed to initialize a Universe. Notably, num_players is absent, because it can be
+/// inferred from the index values of the latest list of PlayerInfos received from the server.
+/// Also, is_server is absent.
+// TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub enum GameUpdateType {
-    GameStart,
-    NewUserList(Vec<String>), // list of names of all users including current user
-    GameFinish(GameOutcome),
-    GameClose, // kicks user back to arena
+pub struct GameOptions {
+    width:           u32,
+    height:          u32,
+    history:         u16,
+    player_writable: Vec<NetRegion>,
+    fog_radius:      u32,
 }
 
+/// Net-safe version of a libconway Region
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct GameUpdate {
-    pub game_update_seq: Option<u64>, // see BroadcastChatMessage chat_seq field for Some/None meaning
-    update_type:         GameUpdateType,
+pub struct NetRegion {
+    left:   i32,
+    top:    i32,
+    width:  u32,
+    height: u32,
 }
 
+// TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub enum UniUpdateType {
-    State(GenState),
-    Diff(GenDiff),
+pub struct PlayerInfo {
+    /// Name of the player.
+    name:  String,
+    /// Index of player in Universe; None means this player is a lurker (non-participant)
+    index: Option<u64>,
+}
+
+// TODO: add support
+// The server doesn't have to send all GameUpdates to all clients because that would entail keeping
+// them all for the lifetime of the room, and sending that arbitrarily large list to clients upon
+// joining.
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum GameUpdate {
+    GameNotification {
+        msg: String,
+    },
+    GameStart {
+        options: GameOptions,
+    },
+    PlayerList {
+        /// List of names and other info of all users including current user.
+        players: Vec<PlayerInfo>,
+    },
+    PlayerChange {
+        /// Most up to date player information.
+        player:   PlayerInfo,
+        /// If there was a name change, this is the old name.
+        old_name: Option<String>,
+    },
+    PlayerJoin {
+        player: PlayerInfo,
+    },
+    PlayerLeave {
+        name: String,
+    },
+    /// Game ended but the user is allowed to stay.
+    GameFinish {
+        outcome: GameOutcome,
+    },
+    /// Kicks user back to lobby.
+    RoomDeleted,
+    /// New match. Server suggests we join this room.
+    /// NOTE: this is the only variant that can happen in a lobby.
+    Match {
+        room:        String,
+        expire_secs: u32, // TODO: think about this
+    },
+}
+
+// TODO: add support
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum UniUpdate {
+    Diff { diff: GenStateDiffPart },
     NoChange,
+}
+
+// TODO: add support
+/// One or more of these can be recombined into a GenStateDiff from the conway crate.
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct GenStateDiffPart {
+    pub part_number:  u8,     // zero-based but less than 32
+    pub total_parts:  u8,     // must be at least 1 but at most 32
+    pub gen0:         u32,    // zero means diff is based off the beginning of time
+    pub gen1:         u32,    // This is the generation when this diff has been applied.
+    pub pattern_part: String, // concatenated together to form a Pattern
+}
+
+// TODO: add support
+/// GenPartInfo is sent in the UpdateReply to indicate which GenStateDiffParts are needed.
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct GenPartInfo {
+    pub gen0:         u32, // zero means diff is based off the beginning of time
+    pub gen1:         u32, // must be greater than last_full_gen
+    pub have_bitmask: u32, // bitmask indicating which parts for the specified diff are present; must be less than 1<<total_parts
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct RoomList {
     pub room_name:    String,
     pub player_count: u8,
+    // TODO: add support
     pub in_progress:  bool,
 }
 
@@ -281,18 +383,24 @@ pub enum Packet {
         code:        ResponseCode,
     },
     Update {
-        // in-game: sent by server
+        // Usually in-game: sent by server.
+        // All of these except ping are reset to new values upon joining a room and cleared upon
+        // leaving. Also note that the server may not send all GameUpdates or BroadcastChatMessages
+        // in a single packet, since it could exceed the MTU.
+        // TODO: limit chats and game_updates based on MTU!
         chats:           Vec<BroadcastChatMessage>, // All non-acknowledged chats are sent each update
-        game_updates:    Vec<GameUpdate>,           // Information pertaining to a game tick update
-        universe_update: UniUpdateType,             //
-        ping:            PingPong,                  // Used for server-to-client latency measurement
+        game_update_seq: Option<u64>,
+        game_updates:    Vec<GameUpdate>, // Information pertaining to a game tick update.
+        universe_update: UniUpdate,       // TODO: add support
+        ping:            PingPong,        // Used for server-to-client latency measurement (no room needed)
     },
     UpdateReply {
         // in-game: sent by client in reply to server
         cookie:               String,
         last_chat_seq:        Option<u64>, // sequence number of latest chat msg. received from server
         last_game_update_seq: Option<u64>, // seq. number of latest game update from server
-        last_gen:             Option<u64>, // generation number client is currently at
+        last_full_gen:        Option<u64>, // generation number client is currently at
+        partial_gen:          Option<GenPartInfo>, // partial gen info, if some but not all GenStateDiffParts recv'd
         pong:                 PingPong,    // Used for server-to-client latency measurement
     },
     GetStatus {
@@ -304,11 +412,11 @@ pub enum Packet {
         player_count:   u64,
         room_count:     u64,
         server_name:    String,
+        // TODO: max players?
     }, // Provide basic server information to the requester
 }
 
 impl Packet {
-    #[allow(unused)]
     pub fn sequence_number(&self) -> u64 {
         if let Packet::Request {
             sequence,
@@ -328,15 +436,15 @@ impl Packet {
         } else if let Packet::Update {
             chats: _,
             game_updates: _,
+            game_update_seq: _,
             universe_update,
             ping: _,
         } = self
         {
             // TODO revisit once mechanics are fleshed out
             match universe_update {
-                UniUpdateType::State(gs) => gs.gen,
-                UniUpdateType::Diff(gd) => gd.new_gen,
-                UniUpdateType::NoChange => 0,
+                UniUpdate::Diff { diff: part } => ((part.gen1 as u64) << 32) | (part.gen0 as u64),
+                UniUpdate::NoChange => 0,
             }
         } else {
             unimplemented!(); // UpdateReply is not saved
@@ -410,23 +518,25 @@ impl fmt::Debug for Packet {
             Packet::Update {
                 chats: _,
                 game_updates,
+                game_update_seq,
                 universe_update,
                 ping: _,
             } => write!(
                 f,
-                "[Update] game_updates: {:?} universe_update: {:?}",
-                game_updates, universe_update
+                "[Update] game_updates: {:?} universe_update: {:?}, game_update_seq: {:?}",
+                game_updates, universe_update, game_update_seq
             ),
             Packet::UpdateReply {
                 cookie,
                 last_chat_seq,
                 last_game_update_seq,
-                last_gen,
+                last_full_gen,
+                partial_gen,
                 pong: _,
             } => write!(
                 f,
-                "[UpdateReply] cookie: {:?} last_chat_seq: {:?} last_game_update_seq: {:?} last_game: {:?}",
-                cookie, last_chat_seq, last_game_update_seq, last_gen
+                "[UpdateReply] cookie: {:?} last_chat_seq: {:?} last_game_update_seq: {:?} last_full_gen: {:?} partial_gen: {:?}",
+                cookie, last_chat_seq, last_game_update_seq, last_full_gen, partial_gen
             ),
             Packet::GetStatus { ping } => write!(f, "[GetStatus] nonce: {}", ping.nonce),
             Packet::Status {
@@ -472,43 +582,38 @@ impl Ord for Packet {
 
 //////////////// Packet (de)serialization ////////////////
 #[allow(dead_code)]
-pub struct LineCodec;
-impl UdpCodec for LineCodec {
-    type In = (SocketAddr, Option<Packet>); // if 2nd element is None, it means deserialization failure
-    type Out = (SocketAddr, Packet);
+pub struct NetwaystePacketCodec;
 
-    fn decode(&mut self, addr: &SocketAddr, buf: &[u8]) -> io::Result<Self::In> {
-        match deserialize(buf) {
-            Ok(decoded) => Ok((*addr, Some(decoded))),
-            Err(_) => {
-                /*
-                // TODO: do not create this SocketAddr every time a packet arrives!
-                // TODO: DEFAULT_PORT could be wrong. We need to know the real port
-                let local: SocketAddr = format!("{}:{}", "127.0.0.1", DEFAULT_PORT.to_string()).parse().unwrap();
-                // We only want to warn when the incoming packet is external to the host system
-                if local != *addr {
-                    warn!("WARNING: error during packet deserialization: {:?}", e);
-                }
-                */
-                Ok((*addr, None))
-            }
+impl Decoder for NetwaystePacketCodec {
+    type Item = Packet;
+    type Error = io::Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        match deserialize(src) {
+            Ok(decoded) => Ok(Some(decoded)),
+            Err(_) => Ok(None),
         }
     }
+}
 
-    fn encode(&mut self, (addr, player_packet): Self::Out, into: &mut Vec<u8>) -> SocketAddr {
-        let encoded: Vec<u8> = serialize(&player_packet, Infinite).unwrap();
-        into.extend(encoded);
-        addr
+impl Encoder<Packet> for NetwaystePacketCodec {
+    type Error = io::Error;
+
+    fn encode(&mut self, packet: Packet, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let encoded: Vec<u8> = serialize(&packet, Infinite).unwrap();
+        dst.extend_from_slice(&encoded[..]);
+        Ok(())
     }
 }
 
 //////////////// Network interface ////////////////
 #[allow(dead_code)]
-pub fn bind(handle: &Handle, opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket, NetError> {
+pub async fn bind(opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket, NetError> {
     let host = if let Some(host) = opt_host { host } else { DEFAULT_HOST };
     let port = if let Some(port) = opt_port { port } else { DEFAULT_PORT };
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
-    let sock = UdpSocket::bind(&addr, &handle).expect("failed to bind socket");
+    info!("Attempting to bind to {}", addr);
+    let sock = UdpSocket::bind(&addr).await?;
     Ok(sock)
 }
 
@@ -686,8 +791,8 @@ impl NetQueue<Packet> {
         iter.enumerate()
             .filter(|(_, ts)| {
                 ((Instant::now() - ts.time) >= RETRANSMISSION_THRESHOLD_IN_MS)
-                    || (ts.retries >= RETRY_THRESHOLD_IN_MS)
-                    || (ts.retries >= RETRY_AGGRESSIVE_THRESHOLD_IN_MS)
+                    || (ts.retries >= RETRY_THRESHOLD)
+                    || (ts.retries >= RETRY_AGGRESSIVE_THRESHOLD)
             })
             .map(|(i, _)| i)
             .take(RETRANSMISSION_COUNT)
@@ -1021,29 +1126,27 @@ impl NetworkManager {
     }
 
     #[allow(unused)]
-    pub fn retransmit_expired_tx_packets(
+    pub fn get_expired_tx_packets(
         &mut self,
-        udp_tx: &mpsc::UnboundedSender<(SocketAddr, Packet)>,
         addr: SocketAddr,
         confirmed_ack: Option<u64>,
         indices: &Vec<usize>,
-    ) {
+    ) -> Vec<(Packet, SocketAddr)> {
         let mut error_occurred = false;
         let mut failed_index = 0;
+        let mut expired_packets = vec![];
 
-        // Retransmit all packets after that are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
+        // Determine which packets are still in the queue after RETRANSMISSION_THRESHOLD_IN_MS
         for &index in indices.iter() {
             let mut send_counter = 1;
 
             if let Some(ts) = self.tx_packets.attempts.get_mut(index) {
                 ts.increment_retries();
-                if ts.retries >= RETRY_AGGRESSIVE_THRESHOLD_IN_MS {
+                if ts.retries >= RETRY_AGGRESSIVE_THRESHOLD {
+                    // If the packet is truly late, send it twice
+                    send_counter += 2;
+                } else if ts.retries >= RETRY_THRESHOLD {
                     send_counter += 1;
-                    ts.increment_retries()
-                }
-                if ts.retries >= RETRY_THRESHOLD_IN_MS {
-                    send_counter += 1;
-                    ts.increment_retries()
                 }
             }
 
@@ -1052,11 +1155,7 @@ impl NetworkManager {
                 pkt.set_response_sequence(confirmed_ack);
                 trace!("[Retransmitting (Times={})] {:?}", send_counter, pkt);
                 for _ in 0..send_counter {
-                    netwayste_send!(
-                        udp_tx,
-                        (addr, (*pkt).clone()),
-                        ("Could not retransmit packet to server: {:?}", pkt)
-                    );
+                    expired_packets.push(((*pkt).clone(), addr));
                 }
             } else {
                 error_occurred = true;
@@ -1066,9 +1165,8 @@ impl NetworkManager {
         }
 
         if error_occurred {
-            // Panic during development, probably want to make this error later on
-            panic!(
-                "ERROR: Index ({}) in attempt queue out-of-bounds in tx packets queue,
+            error!(
+                "Index ({}) in attempt queue out-of-bounds in tx packets queue,
                             or perhaps `None`?:\n\t {:?}\n{:?}\n{:?}",
                 failed_index,
                 indices,
@@ -1076,6 +1174,8 @@ impl NetworkManager {
                 self.tx_packets.attempts.len()
             );
         }
+
+        return expired_packets;
     }
 
     #[allow(unused)]

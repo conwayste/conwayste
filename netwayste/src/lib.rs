@@ -14,6 +14,7 @@
  *
  *  You should have received a copy of the GNU General Public License
  *  along with netwayste.  If not, see <http://www.gnu.org/licenses/>. */
+#![recursion_limit = "512"] // The select!{...} macro hits the default 128 limit
 
 extern crate base64;
 extern crate bincode;
@@ -26,7 +27,6 @@ extern crate clap;
 extern crate rand;
 extern crate semver;
 extern crate serde;
-extern crate tokio_core;
 
 #[macro_use]
 pub mod net;

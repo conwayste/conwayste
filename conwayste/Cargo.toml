@@ -12,19 +12,22 @@ color-backtrace = "0.4"
 conway       = { path = "../libconway" }
 custom_error = "1.7"
 downcast-rs  = "1.2.0"
-enum-iterator = "0.5"
+enum-iterator = "0.6"
 env_logger   = "0.7.1"
-futures      = "0.1.17"
+futures      = "0.3"
 ggez         = "0.5"
 id_tree      = "1.7.0"
 lazy_static  = "1.3"
-log          = "0.4.8"
+log          = "0.4.11"
 netwayste    = { path = "../netwayste" }
 rand         = "0.7"
 serde        = {version="1.0.90", features=["derive"]}
-tokio-core   = "0.1.9"
 toml         = "0.5"
 version      = "2.0.1"
+
+[dependencies.tokio]
+version = "0.2"
+features = ["full"]
 
 [[bin]]
 name = "client"
