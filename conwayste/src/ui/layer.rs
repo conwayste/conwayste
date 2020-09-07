@@ -374,6 +374,36 @@ impl Layering {
         self.focus_cycles[self.highest_z_order].focused_widget_id()
     }
 
+    fn switch_focus(uictx: &mut context::UIContext, focus_cycle: &mut FocusCycle, old_id: Option<&NodeId>, new_id: &NodeId) -> UIResult<()> {
+        let mut needs_gain_focus = true;
+
+        if let Some(old_focused_id) = old_id {
+            if old_focused_id != new_id {
+                // old ID loses focus
+                Layering::emit_focus_change(context::EventType::LoseFocus, uictx, &old_focused_id).map_err(
+                    |e| UIError::InvalidAction {
+                        reason: format!("{:?}", e),
+                    },
+                )?;
+                focus_cycle.clear_focus();
+            } else {
+                needs_gain_focus = false;
+            }
+        }
+
+        if needs_gain_focus {
+            // new ID gains focus
+            Layering::emit_focus_change(context::EventType::GainFocus, uictx, new_id).map_err(|e| {
+                UIError::InvalidAction {
+                    reason: format!("{:?}", e),
+                }
+            })?;
+            focus_cycle.set_focused(new_id);
+        }
+
+        Ok(())
+    }
+
     /// Notifies the layer that the provided NodeId is to capture input events
     ///
     /// # Errors
@@ -390,7 +420,7 @@ impl Layering {
         viewport: &mut GridView,
         id: &NodeId,
     ) -> UIResult<()> {
-        let focus_cycle = &mut self.focus_cycles[self.highest_z_order];
+        let mut focus_cycle = &mut self.focus_cycles[self.highest_z_order];
         if focus_cycle.find(id).is_none() {
             return Err(Box::new(UIError::WidgetNotFound {
                 reason: format!(
@@ -421,27 +451,7 @@ impl Layering {
             viewport,
         );
 
-        let mut needs_gain_focus = true;
-        if let Some(old_focused_widget) = old_focused_widget {
-            if old_focused_widget != *id {
-                // old ID loses focus
-                Layering::emit_focus_change(context::EventType::LoseFocus, &mut uictx, &old_focused_widget).map_err(
-                    |e| UIError::InvalidAction {
-                        reason: format!("{:?}", e),
-                    },
-                )?;
-            } else {
-                needs_gain_focus = false;
-            }
-        }
-        if needs_gain_focus {
-            // new ID gains focus
-            Layering::emit_focus_change(context::EventType::GainFocus, &mut uictx, id).map_err(|e| {
-                UIError::InvalidAction {
-                    reason: format!("{:?}", e),
-                }
-            })?;
-        }
+        Layering::switch_focus(&mut uictx, &mut focus_cycle, old_focused_widget.as_ref(), id)?;
 
         Ok(())
     }
@@ -631,12 +641,11 @@ impl Layering {
                 }
                 break;
             } else if event.what == context::EventType::RequestFocus {
-                if let Some(node_id) = &focus_cycle.focused_widget_id() {
-                    Layering::emit_focus_change(context::EventType::LoseFocus, uictx, node_id)?;
-                }
-                if let Some(node_id) = &event.node_id {
-                    Layering::emit_focus_change(context::EventType::GainFocus, uictx, node_id)?;
-                }
+                // unwrap safe because a focus request must be destined to a node
+                let id =  &event.node_id.as_ref().unwrap();
+
+                let (was_successful, old_focused_widget) = focus_cycle.set_focused(id);
+                Layering::switch_focus(uictx, focus_cycle, old_focused_widget.as_ref(),id)?;
             }
         }
         Ok(())
@@ -664,8 +673,6 @@ impl Layering {
         }
 
         drop(subuictx);
-
-        if unhandled_event {}
 
         Ok(child_events)
     }

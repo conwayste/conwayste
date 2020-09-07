@@ -98,9 +98,7 @@ impl GameArea {
             move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, evt: &Event| -> Result<Handled, Box<dyn Error>> {
                 let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
                 println!("Game area: Gained Focus");
-                if evt.is_key_event() {
-                    game_area.has_keyboard_focus = true;
-                }
+                game_area.has_keyboard_focus = true;
 
                 Ok(Handled::NotHandled)
             };
@@ -237,6 +235,11 @@ fn update_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event)
 
 fn keypress_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) -> Result<Handled, Box<dyn Error>> {
     let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
+
+    if !game_area.has_keyboard_focus {
+        return Ok(NotHandled);
+    }
+
     let game_area_state = &mut game_area.game_state;
 
     if let Some(KeyCodeOrChar::KeyCode(keycode)) = evt.key {
