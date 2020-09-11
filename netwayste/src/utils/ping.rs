@@ -89,10 +89,9 @@ impl LatencyFilter {
             error!("The LatencyFilter's start() was not called so a duration cannot be computed.");
             let elapsed = self.start_timestamp.elapsed();
             error!(
-                "LatencyFilter.start_timestamp snapshot was {}.{}.{} seconds ago.",
+                "LatencyFilter.start_timestamp snapshot was {}.{:06} seconds ago.",
                 elapsed.as_secs(),
-                elapsed.as_millis(),
-                elapsed.as_micros()
+                elapsed.subsec_micros()
             );
         }
 
