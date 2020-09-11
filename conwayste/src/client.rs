@@ -368,28 +368,20 @@ impl EventHandler for MainState {
 
         let mouse_action = self.inputs.mouse_info.action;
 
-        let left_mouse_click =
-            mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
-
-        let mut game_area_has_keyboard_focus = false;
         let game_area_id = self.static_node_ids.game_area_id.clone();
 
         let mut game_area_state;
-        match GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, screen, &game_area_id) {
+        match GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &game_area_id) {
             Ok(gamearea) => {
-                game_area_has_keyboard_focus = gamearea.has_keyboard_focus;
                 game_area_state = gamearea.get_game_area_state();
             }
             Err(e) => {
-                if screen == Screen::Run {
-                    error!("failed to look up GameArea widget: {:?}", e);
-                }
+                error!("failed to look up GameArea widget: {:?}", e);
                 game_area_state = GameAreaState::default()
             }
         }
 
         // ==== Handle widget events ====
-        let mut game_area_should_ignore_input = false;
         if let Some(layer) = self.ui_layout.get_screen_layering_mut(screen) {
             let update = Event::new_update();
             layer
@@ -430,39 +422,61 @@ impl EventHandler for MainState {
             }
 
             if let Some(action) = mouse_action {
-                if action == MouseAction::Drag {
-                    let drag_event = Event::new_drag(mouse_point, self.inputs.mouse_info.mousebutton, is_shift);
-                    layer
-                        .emit(
-                            &drag_event,
-                            ctx,
-                            &mut self.config,
-                            &mut self.screen_stack,
-                            &mut game_area_state,
-                            &mut self.static_node_ids,
-                            &mut self.viewport,
-                        )
-                        .unwrap_or_else(|e| {
-                            error!("Error from layer.emit on left click: {:?}", e);
-                        });
+                match action {
+                    MouseAction::Drag => {
+                        let drag_event = Event::new_drag(mouse_point, self.inputs.mouse_info.mousebutton, is_shift);
+                        layer
+                            .emit(
+                                &drag_event,
+                                ctx,
+                                &mut self.config,
+                                &mut self.screen_stack,
+                                &mut game_area_state,
+                                &mut self.static_node_ids,
+                                &mut self.viewport,
+                            )
+                            .unwrap_or_else(|e| {
+                                error!("Error from layer.emit on left click: {:?}", e);
+                            });
+                    }
+                    MouseAction::Click => {
+                        let click_event = Event::new_click(mouse_point, self.inputs.mouse_info.mousebutton, is_shift);
+                        layer
+                            .emit(
+                                &click_event,
+                                ctx,
+                                &mut self.config,
+                                &mut self.screen_stack,
+                                &mut game_area_state,
+                                &mut self.static_node_ids,
+                                &mut self.viewport,
+                            )
+                            .unwrap_or_else(|e| {
+                                error!("Error from layer.emit on left click: {:?}", e);
+                            });
+                    }
+                    MouseAction::Held => {
+                        let hold_event =
+                            Event::new_mouse_held(mouse_point, self.inputs.mouse_info.mousebutton, is_shift);
+                        layer
+                            .emit(
+                                &hold_event,
+                                ctx,
+                                &mut self.config,
+                                &mut self.screen_stack,
+                                &mut game_area_state,
+                                &mut self.static_node_ids,
+                                &mut self.viewport,
+                            )
+                            .unwrap_or_else(|e| {
+                                error!("Error from layer.emit on left click: {:?}", e);
+                            });
+                    }
+                    MouseAction::DoubleClick => {
+                        // TODO add support
+                        error!("Please add double click support in the client update event dispatcher.");
+                    }
                 }
-            }
-
-            if left_mouse_click {
-                let click_event = Event::new_click(mouse_point, self.inputs.mouse_info.mousebutton, is_shift);
-                layer
-                    .emit(
-                        &click_event,
-                        ctx,
-                        &mut self.config,
-                        &mut self.screen_stack,
-                        &mut game_area_state,
-                        &mut self.static_node_ids,
-                        &mut self.viewport,
-                    )
-                    .unwrap_or_else(|e| {
-                        error!("Error from layer.emit on left click: {:?}", e);
-                    });
             }
 
             if let Some(key) = key {
@@ -480,7 +494,6 @@ impl EventHandler for MainState {
                     .unwrap_or_else(|e| {
                         error!("Error from layer.emit on key press: {:?}", e);
                     });
-                game_area_should_ignore_input = true;
             }
 
             let mut text_input = vec![];
@@ -501,19 +514,23 @@ impl EventHandler for MainState {
                         error!("Error from layer.emit on key press (text input): {:?}", e);
                     });
             }
-        }
 
-        if screen == Screen::Run && game_area_has_keyboard_focus && !game_area_should_ignore_input {
-            let result = self.process_running_inputs(ctx);
-            handle_error!(result,
-                UIError => |e| {
-                    error!("Received UI Error from process_running_inputs(). {:?}", e);
-                },
-                else => |e| {
-                    error!("Received unexpected error from process_running_inputs(). {:?}", e);
-                }
-            )
-            .unwrap(); // OK to call unwrap here because there is an else match arm (all errors handled)
+            // Ensure the game area is always in focus if nothing else holds focus
+            if screen == Screen::Run && layer.highest_z_order == 0 && layer.focused_widget_id().is_none() {
+                layer
+                    .enter_focus(
+                        ctx,
+                        &mut self.config,
+                        &mut self.screen_stack,
+                        &mut game_area_state,
+                        &mut self.static_node_ids,
+                        &mut self.viewport,
+                        &game_area_id,
+                    )
+                    .unwrap_or_else(|e| {
+                        error!("Error from layer.enter_focus to default focus the game area in Screen::Run")
+                    });
+            }
         }
 
         if screen == Screen::Run {
@@ -1021,16 +1038,6 @@ impl MainState {
             }
             _ => {}
         }
-        Ok(())
-    }
-
-    /// Handles keyboard and mouse input stored in `self.inputs` by the ggez callbacks. This is
-    /// called from update() when we are in the Run screen, and the focus is not captured by, for
-    /// example, a text dialog.
-    fn process_running_inputs(&mut self, _ctx: &mut Context) -> Result<(), Box<dyn Error>> {
-        let keymods = self.inputs.key_info.modifier;
-        let _is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
-
         Ok(())
     }
 

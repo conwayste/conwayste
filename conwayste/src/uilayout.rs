@@ -280,7 +280,10 @@ impl UILayout {
         let chatbox_id = layer_ingame.add_widget(chatbox, InsertLocation::ToNestedContainer(&chatpane_id))?;
         let chatbox_tf_id = layer_ingame.add_widget(textfield, InsertLocation::ToNestedContainer(&chatpane_id))?;
 
-        let game_area = Box::new(GameArea::new());
+        let mut game_area = Box::new(GameArea::new());
+        info!("Setting Game Area to {:?}", config.get_resolution());
+        let (x, y) = config.get_resolution();
+        game_area.set_rect(Rect::new(0.0, 0.0, x, y))?;
         let game_area_id = layer_ingame.add_widget(game_area, InsertLocation::AtCurrentLayer)?;
 
         debug!("RUN WIDGET TREE");

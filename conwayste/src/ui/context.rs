@@ -195,7 +195,7 @@ pub enum EventType {
     KeyPress,
     MouseMove,
     Drag,
-    MousePressAndHeld,
+    MouseButtonHeld,
     Translate,
     Resize,
     ParentTranslate,
@@ -247,13 +247,19 @@ pub enum KeyCodeOrChar {
 pub const KEY_EVENTS: &[EventType] = &[EventType::KeyPress];
 
 /// A slice containing all EventTypes related to the mouse.
-pub const MOUSE_EVENTS: &[EventType] = &[EventType::Click, EventType::MouseMove, EventType::Drag];
+pub const MOUSE_EVENTS: &[EventType] = &[
+    EventType::Click,
+    EventType::MouseMove,
+    EventType::Drag,
+    EventType::MouseButtonHeld,
+];
 
 /// A slice containing all EventTypes related to keyboard focus changes.
 pub const FOCUS_EVENTS: &[EventType] = &[
     EventType::GainFocus,
     EventType::LoseFocus,
     EventType::ChildReleasedFocus,
+    EventType::RequestFocus,
 ];
 
 impl EventType {
@@ -331,6 +337,16 @@ impl Event {
             what: EventType::MouseMove,
             point: Some(point),
             prev_point: Some(prev_point),
+            button: Some(mouse_button),
+            shift_pressed: is_shift,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_mouse_held(mouse_point: Point2<f32>, mouse_button: MouseButton, is_shift: bool) -> Self {
+        Event {
+            what: EventType::MouseButtonHeld,
+            point: Some(mouse_point),
             button: Some(mouse_button),
             shift_pressed: is_shift,
             ..Default::default()

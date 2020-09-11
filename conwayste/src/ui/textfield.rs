@@ -158,6 +158,7 @@ impl TextField {
         _evt: &Event,
     ) -> Result<Handled, Box<dyn Error>> {
         let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
+
         tf.focused = false;
         tf.draw_cursor = false;
         Ok(Handled::NotHandled)
@@ -236,6 +237,7 @@ impl TextField {
 
     /// Sends a notification to the parent widget that we have released focus.
     fn release_focus(&mut self, uictx: &mut UIContext) {
+        self.draw_cursor = false;
         self.focused = false;
         let evt = Event::new_child_released_focus();
         uictx.child_event(evt);

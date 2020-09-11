@@ -94,7 +94,7 @@ pub struct Layering {
     // will have children nodes which are the nested elements
     // (think Buttons) of the widget.
     removed_node_ids:      HashSet<NodeId>, // Set of all node-ids that have been removed from the Tree
-    highest_z_order:       usize,           // Number of layers allocated in the system + 1
+    pub highest_z_order:   usize,           // Number of layers allocated in the system + 1
     focus_cycles:          Vec<FocusCycle>, // For each layer, a "FocusCycle" keeping track of which widgets
                                             // can be tabbed through to get focus, in which order, and which
                                             // widget of these (if any) has focus.
@@ -374,17 +374,22 @@ impl Layering {
         self.focus_cycles[self.highest_z_order].focused_widget_id()
     }
 
-    fn switch_focus(uictx: &mut context::UIContext, focus_cycle: &mut FocusCycle, old_id: Option<&NodeId>, new_id: &NodeId) -> UIResult<()> {
+    fn switch_focus(
+        uictx: &mut context::UIContext,
+        focus_cycle: &mut FocusCycle,
+        old_id: Option<&NodeId>,
+        new_id: &NodeId,
+    ) -> UIResult<()> {
         let mut needs_gain_focus = true;
 
         if let Some(old_focused_id) = old_id {
             if old_focused_id != new_id {
                 // old ID loses focus
-                Layering::emit_focus_change(context::EventType::LoseFocus, uictx, &old_focused_id).map_err(
-                    |e| UIError::InvalidAction {
+                Layering::emit_focus_change(context::EventType::LoseFocus, uictx, &old_focused_id).map_err(|e| {
+                    UIError::InvalidAction {
                         reason: format!("{:?}", e),
-                    },
-                )?;
+                    }
+                })?;
                 focus_cycle.clear_focus();
             } else {
                 needs_gain_focus = false;
@@ -508,7 +513,7 @@ impl Layering {
         ggez_context: &mut ggez::Context,
         cfg: &mut config::Config,
         screen_stack: &mut Vec<Screen>,
-        game_state: &mut GameAreaState,
+        game_area_state: &mut GameAreaState,
         static_node_ids: &mut StaticNodeIds,
         viewport: &mut GridView,
     ) -> Result<(), Box<dyn Error>> {
@@ -518,7 +523,7 @@ impl Layering {
             cfg,
             widget_view,
             screen_stack,
-            game_state.running,
+            game_area_state.first_gen_was_drawn,
             static_node_ids,
             viewport,
         );
@@ -631,7 +636,9 @@ impl Layering {
                     } else {
                         focus_cycle.focus_next();
                     }
-                } else if key == KeyCodeOrChar::KeyCode(KeyCode::Escape) {
+                } else if key == KeyCodeOrChar::KeyCode(KeyCode::Escape)
+                    || key == KeyCodeOrChar::KeyCode(KeyCode::Return)
+                {
                     focus_cycle.clear_focus();
                 }
                 // send a GainFocus event to the newly focused widget (if any)
@@ -642,10 +649,11 @@ impl Layering {
                 break;
             } else if event.what == context::EventType::RequestFocus {
                 // unwrap safe because a focus request must be destined to a node
-                let id =  &event.node_id.as_ref().unwrap();
+                let id = &event.node_id.as_ref().unwrap();
 
                 let (was_successful, old_focused_widget) = focus_cycle.set_focused(id);
-                Layering::switch_focus(uictx, focus_cycle, old_focused_widget.as_ref(),id)?;
+                Layering::switch_focus(uictx, focus_cycle, old_focused_widget.as_ref(), id)?;
+                break;
             }
         }
         Ok(())
@@ -740,19 +748,11 @@ impl Layering {
             }
         }
 
-        // Emitted click events clear the previous focus
-        if event.what == context::EventType::Click {
-            if let Some(current_focused_id) = focus_cycle.focused_widget_id() {
-                println!("Clearing due to Click: {:?}", current_focused_id);
-                Layering::emit_focus_change(context::EventType::LoseFocus, uictx, current_focused_id)?;
-                focus_cycle.clear_focus()
-            }
-        }
-
         for (child_id, child_event) in child_events {
-            // Gain a new focus
-            if child_event.what == context::EventType::ChildRequestsFocus {
-                println!("Gaining due to Click: {:?}", child_id);
+            // Switch focus to child widget if not already in focus
+            if child_event.what == context::EventType::ChildRequestsFocus
+                && focus_cycle.focused_widget_id() != Some(&child_id)
+            {
                 Layering::emit_focus_change(context::EventType::GainFocus, uictx, &child_id)?;
                 focus_cycle.set_focused(&child_id);
                 break;
@@ -761,6 +761,7 @@ impl Layering {
         Ok(())
     }
 
+    // A temporary hack for layers that do not have a default focus (like Run/Gamearea) to switch
     fn handle_unhandled_keyboard_events(
         event: &context::Event,
         uictx: &mut context::UIContext,

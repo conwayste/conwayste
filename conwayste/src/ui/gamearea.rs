@@ -97,7 +97,6 @@ impl GameArea {
         let gain_focus_handler =
             move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, evt: &Event| -> Result<Handled, Box<dyn Error>> {
                 let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
-                println!("Game area: Gained Focus");
                 game_area.has_keyboard_focus = true;
 
                 Ok(Handled::NotHandled)
@@ -106,7 +105,6 @@ impl GameArea {
         let lose_focus_handler =
             move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event| -> Result<Handled, Box<dyn Error>> {
                 let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
-                println!("Game area: Lost Focus");
                 game_area.has_keyboard_focus = false;
                 Ok(Handled::NotHandled)
             };
@@ -122,6 +120,10 @@ impl GameArea {
 
         game_area.on(EventType::KeyPress, Box::new(keypress_handler)).unwrap();
         game_area.on(EventType::Click, Box::new(mouse_handler)).unwrap();
+        game_area
+            .on(EventType::MouseButtonHeld, Box::new(mouse_handler))
+            .unwrap();
+        game_area.on(EventType::Drag, Box::new(mouse_handler)).unwrap();
 
         game_area
     }
@@ -320,8 +322,12 @@ fn keypress_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event)
                 let pat = game_area.uni.to_pattern(visibility);
                 println!("PATTERN DUMP:\n{}", pat.0);
             }
+            KeyCode::Escape => {
+                uictx.pop_screen()?;
+            }
             _ => {
-                println!("Unrecognized keycode {:?}", keycode);
+                error!("Unrecognized keycode {:?} in GameArea keypress_handler", keycode);
+                return Ok(NotHandled);
             }
         }
     }
@@ -333,6 +339,8 @@ fn mouse_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) ->
     let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
     let game_area_state = &mut game_area.game_state;
     use ggez::input::mouse::MouseButton;
+
+    let mut event_handled = NotHandled;
 
     if let Some(MouseButton::Left) = evt.button {
         let mouse_pos = evt.point.unwrap(); //unwrap safe b/c mouse clicks must have a point
@@ -347,6 +355,10 @@ fn mouse_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) ->
                     game_area
                         .uni
                         .copy_from_bit_grid(grid, dst_region, Some(CURRENT_PLAYER_ID));
+
+                    event_handled = Handled;
+                } else {
+                    error!("Failed to get cell coordinates from mouse position during Click");
                 }
             }
         } else {
@@ -355,6 +367,7 @@ fn mouse_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) ->
                 EventType::Click => {
                     // release
                     game_area_state.drag_draw = None;
+                    event_handled = Handled;
                 }
                 EventType::Drag => {
                     // hold + motion
@@ -362,16 +375,20 @@ fn mouse_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) ->
                         // Only make dead cells alive
                         if let Some(cell_state) = game_area_state.drag_draw {
                             game_area.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
+                            event_handled = Handled;
                         }
                     }
                 }
-                EventType::MousePressAndHeld => {
+                EventType::MouseButtonHeld => {
                     // depress, no move yet
                     if let Some(cell) = uictx.viewport.get_cell(mouse_pos) {
                         if game_area_state.drag_draw.is_none() {
                             game_area_state.drag_draw =
                                 game_area.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
+                            event_handled = Handled;
                         }
+                    } else {
+                        error!("Failed to get cell coordinates from mouse position during MouseButtonHeld");
                     }
                 }
                 _ => {}
@@ -393,13 +410,14 @@ fn mouse_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) ->
                 let (new_width, new_height) = (*height, *width);
                 *width = new_width;
                 *height = new_height;
+                event_handled = Handled;
             } else {
                 info!("Ignoring Shift-<Up/Down>");
             }
         }
     }
 
-    Ok(NotHandled)
+    Ok(event_handled)
 }
 
 /// This takes a keyboard code and returns a `Result` whose Ok value is a `(BitGrid, width,
