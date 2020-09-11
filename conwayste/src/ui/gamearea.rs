@@ -263,24 +263,6 @@ fn keypress_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event)
             KeyCode::Return => {
                 let chatbox_pane_id = uictx.static_node_ids.chatbox_pane_id.clone();
                 uictx.child_event(Event::new_request_focus(chatbox_pane_id));
-                /*
-                match Pane::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &chatbox_pane_id) {
-                    Ok(_chatbox_pane) => {
-                        if let Some(layer) = self.ui_layout.get_screen_layering_mut(Screen::Run) {
-                            layer.enter_focus(
-                                ctx,
-                                &mut self.config,
-                                &mut self.screen_stack,
-                                game_area_state.running,
-                                &chatbox_pane_id,
-                            )?;
-                        }
-                    }
-                    Err(e) => {
-                        error!("Could not get Chatbox's textfield while processing key inputs: {:?}", e);
-                    }
-                }
-                */
             }
             KeyCode::R => {
                 if !evt.key_repeating {
