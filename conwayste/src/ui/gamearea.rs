@@ -94,19 +94,17 @@ impl GameArea {
         };
 
         // Set handlers for toggling has_keyboard_focus.
-        // The unwrap calls on each handler registration is OK because are not unwraping within an
-        // emit event
+        // The unwrap calls on each handler registration below are all OK. The unwrap is not taking
+        // place within an handler or emit call.
         game_area
             .on(EventType::GainFocus, Box::new(GameArea::gain_focus_handler))
             .unwrap();
         game_area
             .on(EventType::LoseFocus, Box::new(GameArea::lose_focus_handler))
             .unwrap();
-
         game_area
             .on(EventType::Update, Box::new(GameArea::update_handler))
             .unwrap();
-
         game_area
             .on(EventType::KeyPress, Box::new(GameArea::keypress_handler))
             .unwrap();

@@ -85,8 +85,8 @@ impl Pane {
         // for each event type, define a handler of the appropriate type (mouse or keyboard)
         for event_type in EventType::into_enum_iter() {
             if event_type.is_mouse_event() {
+                // unwrap OK because we aren't calling from within a handler
                 pane.on(event_type, Box::new(Pane::mouse_event_handler)).unwrap();
-            // unwrap OK because we aren't calling from within a handler
             } else if event_type.is_key_event() {
                 // unwrap OK because we aren't calling from within a handler
                 pane.on(event_type, Box::new(Pane::key_press_handler)).unwrap();
