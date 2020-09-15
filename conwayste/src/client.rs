@@ -85,7 +85,7 @@ use constants::{
 use input::{MouseAction, ScrollEvent};
 use ui::{
     context::{EmitEvent, Event, Handled, Handler, UIContext},
-    Chatbox, ChatboxPublishHandle, EventType, GameArea, GameAreaState, TextField, UIError,
+    Chatbox, ChatboxPublishHandle, EventType, GameArea, GameAreaState, TextField,
 };
 use uilayout::{StaticNodeIds, UILayout};
 
@@ -528,7 +528,10 @@ impl EventHandler for MainState {
                         &game_area_id,
                     )
                     .unwrap_or_else(|e| {
-                        error!("Error from layer.enter_focus to default focus the game area in Screen::Run")
+                        error!(
+                            "Error from layer.enter_focus to default focus the game area in Screen::Run: {:?}",
+                            e
+                        )
                     });
             }
         }

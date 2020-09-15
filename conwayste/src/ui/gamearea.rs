@@ -93,37 +93,32 @@ impl GameArea {
             game_state:         GameAreaState::default(),
         };
 
-        // Set handlers for toggling has_keyboard_focus
-        let gain_focus_handler =
-            move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, evt: &Event| -> Result<Handled, Box<dyn Error>> {
-                let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
-                game_area.has_keyboard_focus = true;
-
-                Ok(Handled::NotHandled)
-            };
-
-        let lose_focus_handler =
-            move |obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event| -> Result<Handled, Box<dyn Error>> {
-                let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
-                game_area.has_keyboard_focus = false;
-                Ok(Handled::NotHandled)
-            };
-
+        // Set handlers for toggling has_keyboard_focus.
+        // The unwrap calls on each handler registration is OK because are not unwraping within an
+        // emit event
         game_area
-            .on(EventType::GainFocus, Box::new(gain_focus_handler))
-            .unwrap(); // unwrap OK
-        game_area
-            .on(EventType::LoseFocus, Box::new(lose_focus_handler))
-            .unwrap(); // unwrap OK
-
-        game_area.on(EventType::Update, Box::new(update_handler)).unwrap(); // unwrap OK
-
-        game_area.on(EventType::KeyPress, Box::new(keypress_handler)).unwrap();
-        game_area.on(EventType::Click, Box::new(mouse_handler)).unwrap();
-        game_area
-            .on(EventType::MouseButtonHeld, Box::new(mouse_handler))
+            .on(EventType::GainFocus, Box::new(GameArea::gain_focus_handler))
             .unwrap();
-        game_area.on(EventType::Drag, Box::new(mouse_handler)).unwrap();
+        game_area
+            .on(EventType::LoseFocus, Box::new(GameArea::lose_focus_handler))
+            .unwrap();
+
+        game_area
+            .on(EventType::Update, Box::new(GameArea::update_handler))
+            .unwrap();
+
+        game_area
+            .on(EventType::KeyPress, Box::new(GameArea::keypress_handler))
+            .unwrap();
+        game_area
+            .on(EventType::Click, Box::new(GameArea::mouse_handler))
+            .unwrap();
+        game_area
+            .on(EventType::MouseButtonHeld, Box::new(GameArea::mouse_handler))
+            .unwrap();
+        game_area
+            .on(EventType::Drag, Box::new(GameArea::mouse_handler))
+            .unwrap();
 
         game_area
     }
@@ -223,185 +218,219 @@ fn init_patterns(uni: &mut Universe) -> ConwayResult<()> {
     Ok(())
 }
 
-fn update_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
-    let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
-    let game_state = &mut game_area.game_state;
-
-    if game_state.first_gen_was_drawn && (game_state.running || game_state.single_step) {
-        game_area.uni.next(); // next generation
-        game_state.single_step = false;
+impl GameArea {
+    fn gain_focus_handler(
+        obj: &mut dyn EmitEvent,
+        _uictx: &mut UIContext,
+        _evt: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        // Unwrap OK because we are guaranteed a GameArea
+        let game_area = obj.downcast_mut::<GameArea>().unwrap();
+        game_area.has_keyboard_focus = true;
+        Ok(Handled::NotHandled)
     }
 
-    Ok(NotHandled)
-}
-
-fn keypress_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) -> Result<Handled, Box<dyn Error>> {
-    let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
-
-    if !game_area.has_keyboard_focus {
-        return Ok(NotHandled);
+    fn lose_focus_handler(
+        obj: &mut dyn EmitEvent,
+        _uictx: &mut UIContext,
+        _evt: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        // Unwrap OK because we are guaranteed a GameArea
+        let game_area = obj.downcast_mut::<GameArea>().unwrap();
+        game_area.has_keyboard_focus = false;
+        Ok(Handled::NotHandled)
     }
 
-    let game_area_state = &mut game_area.game_state;
+    fn update_handler(
+        obj: &mut dyn EmitEvent,
+        _uictx: &mut UIContext,
+        _evt: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        // Unwrap OK because we are guaranteed a GameArea
+        let game_area = obj.downcast_mut::<GameArea>().unwrap();
+        let game_state = &mut game_area.game_state;
 
-    if let Some(KeyCodeOrChar::KeyCode(keycode)) = evt.key {
-        match keycode {
-            KeyCode::Key1 => {
-                // pressing 1 clears selection
-                game_area_state.insert_mode = None;
-            }
-            k if k >= KeyCode::Key2 && k <= KeyCode::Key0 => {
-                // select a pattern
-                let grid_info_result = bit_pattern_from_char(&mut uictx.config, keycode);
-                let grid_info = handle_error! {grid_info_result -> (BitGrid, usize, usize),
-                    ConwayError => |e| {
-                        return Err(format!("Invalid pattern bound to keycode {:?}: {}", keycode, e).into())
+        if game_state.first_gen_was_drawn && (game_state.running || game_state.single_step) {
+            game_area.uni.next(); // next generation
+            game_state.single_step = false;
+        }
+
+        Ok(NotHandled)
+    }
+
+    fn keypress_handler(
+        obj: &mut dyn EmitEvent,
+        uictx: &mut UIContext,
+        evt: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        // Unwrap OK because we are guaranteed a GameArea
+        let game_area = obj.downcast_mut::<GameArea>().unwrap();
+
+        if !game_area.has_keyboard_focus {
+            return Ok(NotHandled);
+        }
+
+        let game_area_state = &mut game_area.game_state;
+
+        if let Some(KeyCodeOrChar::KeyCode(keycode)) = evt.key {
+            match keycode {
+                KeyCode::Key1 => {
+                    // pressing 1 clears selection
+                    game_area_state.insert_mode = None;
+                }
+                k if k >= KeyCode::Key2 && k <= KeyCode::Key0 => {
+                    // select a pattern
+                    let grid_info_result = bit_pattern_from_char(&mut uictx.config, keycode);
+                    let grid_info = handle_error! {grid_info_result -> (BitGrid, usize, usize),
+                        ConwayError => |e| {
+                            return Err(format!("Invalid pattern bound to keycode {:?}: {}", keycode, e).into())
+                        }
+                    }?;
+                    game_area_state.insert_mode = Some(grid_info);
+                }
+                KeyCode::Return => {
+                    let chatbox_pane_id = uictx.static_node_ids.chatbox_pane_id.clone();
+                    uictx.child_event(Event::new_request_focus(chatbox_pane_id));
+                }
+                KeyCode::R => {
+                    if !evt.key_repeating {
+                        game_area_state.running = !game_area_state.running;
                     }
-                }?;
-                game_area_state.insert_mode = Some(grid_info);
-            }
-            KeyCode::Return => {
-                let chatbox_pane_id = uictx.static_node_ids.chatbox_pane_id.clone();
-                uictx.child_event(Event::new_request_focus(chatbox_pane_id));
-            }
-            KeyCode::R => {
-                if !evt.key_repeating {
-                    game_area_state.running = !game_area_state.running;
+                }
+                KeyCode::Space => {
+                    game_area_state.single_step = true;
+                }
+                KeyCode::Up => {
+                    game_area_state.arrow_input = (0, -1);
+                }
+                KeyCode::Down => {
+                    game_area_state.arrow_input = (0, 1);
+                }
+                KeyCode::Left => {
+                    game_area_state.arrow_input = (-1, 0);
+                }
+                KeyCode::Right => {
+                    game_area_state.arrow_input = (1, 0);
+                }
+                KeyCode::Add | KeyCode::Equals => {
+                    uictx.viewport.adjust_zoom_level(ZoomDirection::ZoomIn);
+                    let cell_size = uictx.viewport.get_cell_size();
+                    uictx.config.modify(|settings| {
+                        settings.gameplay.zoom = cell_size;
+                    });
+                }
+                KeyCode::Minus | KeyCode::Subtract => {
+                    uictx.viewport.adjust_zoom_level(ZoomDirection::ZoomOut);
+                    let cell_size = uictx.viewport.get_cell_size();
+                    uictx.config.modify(|settings| {
+                        settings.gameplay.zoom = cell_size;
+                    });
+                }
+                KeyCode::D => {
+                    // TODO: do something with this debug code
+                    let visibility = None; // can also do Some(player_id)
+                    let pat = game_area.uni.to_pattern(visibility);
+                    println!("PATTERN DUMP:\n{}", pat.0);
+                }
+                KeyCode::Escape => {
+                    uictx.pop_screen()?;
+                }
+                _ => {
+                    error!("Unrecognized keycode {:?} in GameArea keypress_handler", keycode);
+                    return Ok(NotHandled);
                 }
             }
-            KeyCode::Space => {
-                game_area_state.single_step = true;
-            }
-            KeyCode::Up => {
-                game_area_state.arrow_input = (0, -1);
-            }
-            KeyCode::Down => {
-                game_area_state.arrow_input = (0, 1);
-            }
-            KeyCode::Left => {
-                game_area_state.arrow_input = (-1, 0);
-            }
-            KeyCode::Right => {
-                game_area_state.arrow_input = (1, 0);
-            }
-            KeyCode::Add | KeyCode::Equals => {
-                uictx.viewport.adjust_zoom_level(ZoomDirection::ZoomIn);
-                let cell_size = uictx.viewport.get_cell_size();
-                uictx.config.modify(|settings| {
-                    settings.gameplay.zoom = cell_size;
-                });
-            }
-            KeyCode::Minus | KeyCode::Subtract => {
-                uictx.viewport.adjust_zoom_level(ZoomDirection::ZoomOut);
-                let cell_size = uictx.viewport.get_cell_size();
-                uictx.config.modify(|settings| {
-                    settings.gameplay.zoom = cell_size;
-                });
-            }
-            KeyCode::D => {
-                // TODO: do something with this debug code
-                let visibility = None; // can also do Some(player_id)
-                let pat = game_area.uni.to_pattern(visibility);
-                println!("PATTERN DUMP:\n{}", pat.0);
-            }
-            KeyCode::Escape => {
-                uictx.pop_screen()?;
-            }
-            _ => {
-                error!("Unrecognized keycode {:?} in GameArea keypress_handler", keycode);
-                return Ok(NotHandled);
-            }
         }
+
+        Ok(Handled)
     }
 
-    Ok(Handled)
-}
+    fn mouse_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) -> Result<Handled, Box<dyn Error>> {
+        // Unwrap OK because we are guaranteed a GameArea
+        let game_area = obj.downcast_mut::<GameArea>().unwrap();
+        let game_area_state = &mut game_area.game_state;
+        use ggez::input::mouse::MouseButton;
 
-fn mouse_handler(obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event) -> Result<Handled, Box<dyn Error>> {
-    let game_area = obj.downcast_mut::<GameArea>().unwrap(); // unwrap OK
-    let game_area_state = &mut game_area.game_state;
-    use ggez::input::mouse::MouseButton;
+        let mut event_handled = NotHandled;
 
-    let mut event_handled = NotHandled;
+        if let Some(MouseButton::Left) = evt.button {
+            let mouse_pos = evt.point.unwrap(); //unwrap safe b/c mouse clicks must have a point
 
-    if let Some(MouseButton::Left) = evt.button {
-        let mouse_pos = evt.point.unwrap(); //unwrap safe b/c mouse clicks must have a point
+            if let Some((ref grid, width, height)) = game_area_state.insert_mode {
+                // inserting a pattern
+                if evt.what == EventType::Click {
+                    if let Some(cell) = uictx.viewport.get_cell(mouse_pos) {
+                        let insert_col = cell.col as isize - (width / 2) as isize;
+                        let insert_row = cell.row as isize - (height / 2) as isize;
+                        let dst_region = Region::new(insert_col, insert_row, width, height);
+                        game_area
+                            .uni
+                            .copy_from_bit_grid(grid, dst_region, Some(CURRENT_PLAYER_ID));
 
-        if let Some((ref grid, width, height)) = game_area_state.insert_mode {
-            // inserting a pattern
-            if evt.what == EventType::Click {
-                if let Some(cell) = uictx.viewport.get_cell(mouse_pos) {
-                    let insert_col = cell.col as isize - (width / 2) as isize;
-                    let insert_row = cell.row as isize - (height / 2) as isize;
-                    let dst_region = Region::new(insert_col, insert_row, width, height);
-                    game_area
-                        .uni
-                        .copy_from_bit_grid(grid, dst_region, Some(CURRENT_PLAYER_ID));
-
+                        event_handled = Handled;
+                    } else {
+                        error!("Failed to get cell coordinates from mouse position during Click");
+                    }
+                }
+            } else {
+                // not inserting a pattern, just drawing single cells
+                match evt.what {
+                    EventType::Click => {
+                        // release
+                        game_area_state.drag_draw = None;
+                        event_handled = Handled;
+                    }
+                    EventType::Drag => {
+                        // hold + motion
+                        if let Some(cell) = uictx.viewport.get_cell(mouse_pos) {
+                            // Only make dead cells alive
+                            if let Some(cell_state) = game_area_state.drag_draw {
+                                game_area.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
+                                event_handled = Handled;
+                            }
+                        }
+                    }
+                    EventType::MouseButtonHeld => {
+                        // depress, no move yet
+                        if let Some(cell) = uictx.viewport.get_cell(mouse_pos) {
+                            if game_area_state.drag_draw.is_none() {
+                                game_area_state.drag_draw =
+                                    game_area.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
+                                event_handled = Handled;
+                            }
+                        } else {
+                            error!("Failed to get cell coordinates from mouse position during MouseButtonHeld");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        } else if evt.shift_pressed && game_area_state.arrow_input != (0, 0) {
+            if let Some((ref mut grid, ref mut width, ref mut height)) = game_area_state.insert_mode {
+                let rotation = match game_area_state.arrow_input {
+                    (-1, 0) => Some(Rotation::CCW),
+                    (1, 0) => Some(Rotation::CW),
+                    (0, 0) => unreachable!(),
+                    _ => None, // do nothing in this case
+                };
+                if let Some(rotation) = rotation {
+                    grid.rotate(*width, *height, rotation).unwrap_or_else(|e| {
+                        error!("Failed to rotate pattern {:?}: {:?}", rotation, e);
+                    });
+                    // reverse the stored width and height
+                    let (new_width, new_height) = (*height, *width);
+                    *width = new_width;
+                    *height = new_height;
                     event_handled = Handled;
                 } else {
-                    error!("Failed to get cell coordinates from mouse position during Click");
+                    info!("Ignoring Shift-<Up/Down>");
                 }
-            }
-        } else {
-            // not inserting a pattern, just drawing single cells
-            match evt.what {
-                EventType::Click => {
-                    // release
-                    game_area_state.drag_draw = None;
-                    event_handled = Handled;
-                }
-                EventType::Drag => {
-                    // hold + motion
-                    if let Some(cell) = uictx.viewport.get_cell(mouse_pos) {
-                        // Only make dead cells alive
-                        if let Some(cell_state) = game_area_state.drag_draw {
-                            game_area.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
-                            event_handled = Handled;
-                        }
-                    }
-                }
-                EventType::MouseButtonHeld => {
-                    // depress, no move yet
-                    if let Some(cell) = uictx.viewport.get_cell(mouse_pos) {
-                        if game_area_state.drag_draw.is_none() {
-                            game_area_state.drag_draw =
-                                game_area.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
-                            event_handled = Handled;
-                        }
-                    } else {
-                        error!("Failed to get cell coordinates from mouse position during MouseButtonHeld");
-                    }
-                }
-                _ => {}
             }
         }
-    } else if evt.shift_pressed && game_area_state.arrow_input != (0, 0) {
-        if let Some((ref mut grid, ref mut width, ref mut height)) = game_area_state.insert_mode {
-            let rotation = match game_area_state.arrow_input {
-                (-1, 0) => Some(Rotation::CCW),
-                (1, 0) => Some(Rotation::CW),
-                (0, 0) => unreachable!(),
-                _ => None, // do nothing in this case
-            };
-            if let Some(rotation) = rotation {
-                grid.rotate(*width, *height, rotation).unwrap_or_else(|e| {
-                    error!("Failed to rotate pattern {:?}: {:?}", rotation, e);
-                });
-                // reverse the stored width and height
-                let (new_width, new_height) = (*height, *width);
-                *width = new_width;
-                *height = new_height;
-                event_handled = Handled;
-            } else {
-                info!("Ignoring Shift-<Up/Down>");
-            }
-        }
+
+        Ok(event_handled)
     }
-
-    Ok(event_handled)
 }
-
 /// This takes a keyboard code and returns a `Result` whose Ok value is a `(BitGrid, width,
 /// height)` tuple.
 ///

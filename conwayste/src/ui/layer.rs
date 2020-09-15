@@ -29,7 +29,7 @@ use id_tree::{InsertBehavior, Node, NodeId, RemoveBehavior, Tree, TreeBuilder};
 
 use super::{
     common::within_widget,
-    context::{self, KeyCodeOrChar},
+    context::{Event, EventType, Handled, KeyCodeOrChar, UIContext},
     focus::{CycleType, FocusCycle},
     treeview,
     widget::Widget,
@@ -375,7 +375,7 @@ impl Layering {
     }
 
     fn switch_focus(
-        uictx: &mut context::UIContext,
+        uictx: &mut UIContext,
         focus_cycle: &mut FocusCycle,
         old_id: Option<&NodeId>,
         new_id: &NodeId,
@@ -385,7 +385,7 @@ impl Layering {
         if let Some(old_focused_id) = old_id {
             if old_focused_id != new_id {
                 // old ID loses focus
-                Layering::emit_focus_change(context::EventType::LoseFocus, uictx, &old_focused_id).map_err(|e| {
+                Layering::emit_focus_change(EventType::LoseFocus, uictx, &old_focused_id).map_err(|e| {
                     UIError::InvalidAction {
                         reason: format!("{:?}", e),
                     }
@@ -398,10 +398,8 @@ impl Layering {
 
         if needs_gain_focus {
             // new ID gains focus
-            Layering::emit_focus_change(context::EventType::GainFocus, uictx, new_id).map_err(|e| {
-                UIError::InvalidAction {
-                    reason: format!("{:?}", e),
-                }
+            Layering::emit_focus_change(EventType::GainFocus, uictx, new_id).map_err(|e| UIError::InvalidAction {
+                reason: format!("{:?}", e),
             })?;
             focus_cycle.set_focused(new_id);
         }
@@ -446,7 +444,7 @@ impl Layering {
 
         let widget_view = treeview::TreeView::new(&mut self.widget_tree);
 
-        let mut uictx = context::UIContext::new(
+        let mut uictx = UIContext::new(
             ggez_context,
             cfg,
             widget_view,
@@ -509,7 +507,7 @@ impl Layering {
     /// more than once.
     pub fn emit(
         &mut self,
-        event: &context::Event,
+        event: &Event,
         ggez_context: &mut ggez::Context,
         cfg: &mut config::Config,
         screen_stack: &mut Vec<Screen>,
@@ -518,7 +516,7 @@ impl Layering {
         viewport: &mut GridView,
     ) -> Result<(), Box<dyn Error>> {
         let widget_view = treeview::TreeView::new(&mut self.widget_tree);
-        let mut uictx = context::UIContext::new(
+        let mut uictx = UIContext::new(
             ggez_context,
             cfg,
             widget_view,
@@ -527,7 +525,7 @@ impl Layering {
             static_node_ids,
             viewport,
         );
-        if event.what == context::EventType::Update || event.what == context::EventType::MouseMove {
+        if event.what == EventType::Update || event.what == EventType::MouseMove {
             Layering::broadcast_event(event, &mut uictx)
         } else if event.is_mouse_event() {
             Layering::emit_mouse_event(event, &mut uictx, &mut self.focus_cycles[self.highest_z_order])
@@ -539,7 +537,7 @@ impl Layering {
         }
     }
 
-    fn broadcast_event(event: &context::Event, uictx: &mut context::UIContext) -> Result<(), Box<dyn Error>> {
+    fn broadcast_event(event: &Event, uictx: &mut UIContext) -> Result<(), Box<dyn Error>> {
         for child_id in uictx.widget_view.children_ids() {
             // Get a mutable reference to a BoxedWidget, as well as a UIContext with a view on the
             // widgets in the tree under this widget.
@@ -560,8 +558,8 @@ impl Layering {
     }
 
     fn handle_keyboard_event(
-        event: &context::Event,
-        uictx: &mut context::UIContext,
+        event: &Event,
+        uictx: &mut UIContext,
         focus_cycle: &mut FocusCycle,
     ) -> Result<(), Box<dyn Error>> {
         let key = event.key.ok_or_else(|| -> Box<dyn Error> {
@@ -593,12 +591,12 @@ impl Layering {
                 if focus_cycle.focused_widget_id() != opt_child_id.as_ref() {
                     // send a GainFocus event to the newly focused widget (if any)
                     if let Some(newly_focused_id) = focus_cycle.focused_widget_id() {
-                        Layering::emit_focus_change(context::EventType::GainFocus, uictx, newly_focused_id)?;
+                        Layering::emit_focus_change(EventType::GainFocus, uictx, newly_focused_id)?;
                     }
 
                     // send a LoseFocus event to the previously focused widget (if any)
                     if let Some(newly_focused_id) = opt_child_id {
-                        Layering::emit_focus_change(context::EventType::LoseFocus, uictx, &newly_focused_id)?;
+                        Layering::emit_focus_change(EventType::LoseFocus, uictx, &newly_focused_id)?;
                     }
                 }
             }
@@ -622,13 +620,13 @@ impl Layering {
     fn handle_reflexive_event(
         key: KeyCodeOrChar,
         focus_cycle: &mut FocusCycle,
-        uictx: &mut context::UIContext,
-        events: &[context::Event],
+        uictx: &mut UIContext,
+        events: &[Event],
         shift_pressed: bool,
     ) -> Result<(), Box<dyn Error>> {
         for event in events {
             // ignore all event types except this one for now
-            if event.what == context::EventType::ChildReleasedFocus {
+            if event.what == EventType::ChildReleasedFocus {
                 // Special keys
                 if key == KeyCodeOrChar::KeyCode(KeyCode::Tab) {
                     if shift_pressed {
@@ -644,15 +642,17 @@ impl Layering {
                 // send a GainFocus event to the newly focused widget (if any)
                 if let Some(newly_focused_id) = focus_cycle.focused_widget_id() {
                     let newly_focused_id = newly_focused_id.clone();
-                    Layering::emit_focus_change(context::EventType::GainFocus, uictx, &newly_focused_id)?;
+                    Layering::emit_focus_change(EventType::GainFocus, uictx, &newly_focused_id)?;
                 }
                 break;
-            } else if event.what == context::EventType::RequestFocus {
+            } else if event.what == EventType::RequestFocus {
                 // unwrap safe because a focus request must be destined to a node
                 let id = &event.node_id.as_ref().unwrap();
 
                 let (was_successful, old_focused_widget) = focus_cycle.set_focused(id);
-                Layering::switch_focus(uictx, focus_cycle, old_focused_widget.as_ref(), id)?;
+                if was_successful {
+                    Layering::switch_focus(uictx, focus_cycle, old_focused_widget.as_ref(), id)?;
+                }
                 break;
             }
         }
@@ -660,17 +660,17 @@ impl Layering {
     }
 
     fn emit_keyboard_event(
-        event: &context::Event,
-        uictx: &mut context::UIContext,
+        event: &Event,
+        uictx: &mut UIContext,
         focused_id: &NodeId,
-    ) -> Result<Vec<context::Event>, Box<dyn Error>> {
+    ) -> Result<Vec<Event>, Box<dyn Error>> {
         let mut unhandled_event = false;
         let mut child_events = vec![];
         let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
         if let Some(emittable) = widget_ref.as_emit_event() {
             emittable.emit(event, &mut subuictx).map(|handled| {
                 // Nothing picked up the key event, send it to the Layer itself
-                unhandled_event = handled == context::Handled::NotHandled;
+                unhandled_event = handled == Handled::NotHandled;
                 let events = subuictx.collect_child_events();
                 child_events.extend_from_slice(&events[..]);
             })?;
@@ -685,17 +685,13 @@ impl Layering {
         Ok(child_events)
     }
 
-    fn emit_focus_change(
-        what: context::EventType,
-        uictx: &mut context::UIContext,
-        focused_id: &NodeId,
-    ) -> Result<(), Box<dyn Error>> {
-        if what != context::EventType::GainFocus && what != context::EventType::LoseFocus {
+    fn emit_focus_change(what: EventType, uictx: &mut UIContext, focused_id: &NodeId) -> Result<(), Box<dyn Error>> {
+        if what != EventType::GainFocus && what != EventType::LoseFocus {
             return Err(format!("Unexpected event type passed to Pane::emit_focus_change: {:?}", what).into());
         }
         let (widget_ref, mut subuictx) = uictx.derive(&focused_id).unwrap(); // unwrap OK b/c NodeId valid & in view
         if let Some(emittable) = widget_ref.as_emit_event() {
-            let event = context::Event::new_gain_or_lose_focus(what);
+            let event = Event::new_gain_or_lose_focus(what);
             emittable.emit(&event, &mut subuictx)?;
             let pane_events = subuictx.collect_child_events();
             if pane_events.len() != 0 {
@@ -714,8 +710,8 @@ impl Layering {
     }
 
     fn emit_mouse_event(
-        event: &context::Event,
-        uictx: &mut context::UIContext,
+        event: &Event,
+        uictx: &mut UIContext,
         focus_cycle: &mut FocusCycle,
     ) -> Result<(), Box<dyn Error>> {
         let point = event
@@ -732,41 +728,48 @@ impl Layering {
 
             if within_widget(point, &widget_ref.rect()) {
                 if let Some(emittable) = widget_ref.as_emit_event() {
-                    emittable.emit(event, &mut subuictx)?;
+                    let handled = emittable.emit(event, &mut subuictx)?;
                     let pane_events = subuictx.collect_child_events();
                     if pane_events.len() != 0 {
                         for child_event in pane_events {
                             child_events.push((widget_ref.id().unwrap().clone(), child_event));
                         }
+                    }
+
+                    if handled == Handled::Handled {
                         break;
-                    } else {
-                        return Ok(());
                     }
                 } else {
                     debug!("nothing to emit on; widget is not an EmitEvent");
                 }
+            } else if (focus_cycle.focused_widget_id() == widget_ref.id()) && (event.what == EventType::Click) {
+                // A click outside of the focused widget occurred
+                child_events.push((
+                    widget_ref.id().unwrap().clone(),
+                    Event::new_gain_or_lose_focus(EventType::LoseFocus),
+                ));
             }
         }
 
         for (child_id, child_event) in child_events {
             // Switch focus to child widget if not already in focus
-            if child_event.what == context::EventType::ChildRequestsFocus
-                && focus_cycle.focused_widget_id() != Some(&child_id)
-            {
-                Layering::emit_focus_change(context::EventType::GainFocus, uictx, &child_id)?;
+            if child_event.what == EventType::ChildRequestsFocus && focus_cycle.focused_widget_id() != Some(&child_id) {
+                Layering::emit_focus_change(EventType::GainFocus, uictx, &child_id)?;
                 focus_cycle.set_focused(&child_id);
                 break;
+            }
+            // Child loses focus due to a mouse click outside of its boundaries
+            else if child_event.what == EventType::LoseFocus || child_event.what == EventType::ChildReleasedFocus {
+                Layering::emit_focus_change(EventType::LoseFocus, uictx, &child_id)?;
+                focus_cycle.clear_focus();
             }
         }
         Ok(())
     }
 
     // A temporary hack for layers that do not have a default focus (like Run/Gamearea) to switch
-    fn handle_unhandled_keyboard_events(
-        event: &context::Event,
-        uictx: &mut context::UIContext,
-    ) -> Result<(), Box<dyn Error>> {
-        if let Some(context::KeyCodeOrChar::KeyCode(key)) = event.key {
+    fn handle_unhandled_keyboard_events(event: &Event, uictx: &mut UIContext) -> Result<(), Box<dyn Error>> {
+        if let Some(KeyCodeOrChar::KeyCode(key)) = event.key {
             match key {
                 KeyCode::Escape => {
                     // Handle Escape, only if screen was not changed above
