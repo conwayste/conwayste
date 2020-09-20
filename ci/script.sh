@@ -18,7 +18,7 @@ main() {
 
     if [[ "$TARGET" = *linux* ]]; then
         # TODO: once submodules for openbsd support are removed (PR #145) can delete exclusions below
-        cross test --target $TARGET --release --exclude ggez
+        cross test --target $TARGET --release --workspace --exclude ggez
     else
         # don't attempt to build the dissector for windows/darwin (missing dependencies)
         cross test --target $TARGET --release --workspace --exclude dissect-netwayste
