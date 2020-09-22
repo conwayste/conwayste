@@ -297,6 +297,7 @@ impl GameArea {
                 }
                 KeyCode::Space => {
                     game_area_state.single_step = true;
+                    game_area_state.running = false;
                 }
                 KeyCode::Up => {
                     game_area_state.arrow_input = (0, -1);
