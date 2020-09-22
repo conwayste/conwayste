@@ -28,7 +28,7 @@ use std::{
 
 use crate::utils::PingPong;
 
-use bincode::{deserialize, serialize, Infinite};
+use bincode::{deserialize, serialize};
 use bytes::BytesMut;
 use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
@@ -600,7 +600,7 @@ impl Encoder<Packet> for NetwaystePacketCodec {
     type Error = io::Error;
 
     fn encode(&mut self, packet: Packet, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let encoded: Vec<u8> = serialize(&packet, Infinite).unwrap();
+        let encoded: Vec<u8> = serialize(&packet).unwrap();
         dst.extend_from_slice(&encoded[..]);
         Ok(())
     }
