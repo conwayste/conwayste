@@ -26,7 +26,7 @@ time                 = "0.1"
 tokio-core           = "0.1.9"
 
 [dependencies.serde]
-version = "1.0.90"
+version = "1.0.116"
 features = ["derive"]
 
 [dependencies.tokio]
