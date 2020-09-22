@@ -21,7 +21,7 @@ use std::time::Duration;
 
 // Universe settings
 pub const UNIVERSE_WIDTH_IN_CELLS: usize = 256;
-pub const UNIVERSE_HEIGHT_IN_CELLS: usize = 120;
+pub const UNIVERSE_HEIGHT_IN_CELLS: usize = 128;
 pub const INTRO_UNIVERSE_WIDTH_IN_CELLS: usize = 256;
 pub const INTRO_UNIVERSE_HEIGHT_IN_CELLS: usize = 256;
 
