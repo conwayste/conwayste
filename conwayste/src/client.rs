@@ -987,8 +987,11 @@ impl MainState {
         self.draw_game_of_life(ctx, &self.intro_uni)
     }
 
+    /// Draws the GameArea's universe to the screen.
     fn draw_universe(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
         let game_area_id = self.static_node_ids.game_area_id.clone();
+
+        // A mutable reference is used to notify the first generation is drawn
         match GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &game_area_id) {
             Ok(gamearea) => {
                 gamearea.first_gen_drawn();
@@ -997,6 +1000,8 @@ impl MainState {
                 error!("failed to look up GameArea widget: {:?}", e);
             }
         }
+
+        // A non-mutable reference is used to draw the universe
         match GameArea::widget_from_screen_and_id(&self.ui_layout, Screen::Run, &game_area_id) {
             Ok(gamearea) => {
                 self.draw_game_of_life(ctx, &gamearea.uni)?;

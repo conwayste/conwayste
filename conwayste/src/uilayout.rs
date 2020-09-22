@@ -40,8 +40,9 @@ use context::{
 };
 
 // When adding support for a new widget, use this macro to define a routine which allows the
-// developer to search in a `UILayout`/`Screen` pair for a widget by its ID
-macro_rules! add_layering_support {
+// developer to search in a `UILayout`/`Screen` pair for a widget by its ID. In most cases this is
+// all you need to retrieve a widget for mutating, like on an "update".
+macro_rules! add_widget_from_screen_id_mut {
     ($type:ident) => {
         #[allow(unused)]
         impl<'a> $type {
@@ -61,23 +62,13 @@ macro_rules! add_layering_support {
     };
 }
 
-macro_rules! add_layering_support_with_nonmut {
+// This macro is similar to `add_widget_from_screen_and_id_mut!()` however it creates a non-mutable
+// function. This should be used when you do not need to mutate the underlying widget, like when
+// drawing a widget to the screen.
+macro_rules! add_widget_from_screen_id {
     ($type:ident) => {
         #[allow(unused)]
         impl<'a> $type {
-            pub fn widget_from_screen_and_id_mut(
-                ui: &'a mut UILayout,
-                screen: Screen,
-                id: &'a NodeId,
-            ) -> crate::ui::UIResult<&'a mut $type> {
-                if let Some(layer) = ui.get_screen_layering_mut(screen) {
-                    return $type::widget_from_id_mut(layer, id);
-                }
-                Err(Box::new(crate::ui::UIError::InvalidArgument {
-                    reason: format!("{:?} not found in UI Layout", screen),
-                }))
-            }
-
             pub fn widget_from_screen_and_id(
                 ui: &'a UILayout,
                 screen: Screen,
@@ -378,10 +369,11 @@ fn resolution_update_handler(
     Ok(context::Handled::Handled)
 }
 
-add_layering_support!(Button);
-add_layering_support!(Checkbox);
-add_layering_support!(Label);
-add_layering_support!(Pane);
-add_layering_support!(TextField);
-add_layering_support!(Chatbox);
-add_layering_support_with_nonmut!(GameArea);
+add_widget_from_screen_id_mut!(Button);
+add_widget_from_screen_id_mut!(Checkbox);
+add_widget_from_screen_id_mut!(Label);
+add_widget_from_screen_id_mut!(Pane);
+add_widget_from_screen_id_mut!(TextField);
+add_widget_from_screen_id_mut!(Chatbox);
+add_widget_from_screen_id_mut!(GameArea);
+add_widget_from_screen_id!(GameArea);
