@@ -622,7 +622,9 @@ impl EventHandler for MainState {
         }
 
         if let Some(layering) = self.ui_layout.get_screen_layering_mut(current_screen) {
-            layering.draw(ctx).unwrap(); // TODO: unwrap not OK!
+            layering.draw(ctx).unwrap_or_else(|e| {
+                error!("Error received during layering draw: {:?}", e);
+            });
         }
 
         graphics::present(ctx)?;
@@ -1046,6 +1048,35 @@ impl MainState {
             }
             _ => {}
         }
+
+        if old_screen != new_screen {
+            // Emit a Save event on the old screen
+            if let Some(layering) = self.ui_layout.get_screen_layering_mut(old_screen) {
+                layering.emit(
+                    &Event::new_save(),
+                    ggez_ctx,
+                    &mut self.config,
+                    &mut self.screen_stack,
+                    game_area_state,
+                    &mut self.static_node_ids,
+                    &mut self.viewport,
+                )?;
+            }
+
+            // Emit a Load event on the new screen
+            if let Some(layering) = self.ui_layout.get_screen_layering_mut(new_screen) {
+                layering.emit(
+                    &Event::new_load(),
+                    ggez_ctx,
+                    &mut self.config,
+                    &mut self.screen_stack,
+                    game_area_state,
+                    &mut self.static_node_ids,
+                    &mut self.viewport,
+                )?;
+            }
+        }
+
         Ok(())
     }
 

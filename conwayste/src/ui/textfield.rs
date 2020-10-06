@@ -189,7 +189,7 @@ impl TextField {
     }
 
     /// Sets the text field's string contents
-    pub fn _set_text(&mut self, text: String) {
+    pub fn set_text(&mut self, text: String) {
         self.text = text;
         self.cursor_index = 0;
     }
@@ -203,8 +203,10 @@ impl TextField {
         match evt.key.unwrap() {
             KeyCodeOrChar::KeyCode(keycode) => match keycode {
                 KeyCode::Return => {
+                    let forward_text = tf.handler_data.registered_events.contains(&EventType::TextEntered);
                     let text = tf.text();
-                    if text.is_some() {
+
+                    if text.is_some() && forward_text {
                         tf.clear();
                         let evt = Event::new_text_entered(text.unwrap());
                         tf.emit(&evt, uictx).unwrap_or_else(|e| {
@@ -212,7 +214,6 @@ impl TextField {
                             NotHandled // XXX actually fix the compiler error
                         });
                     }
-
                     tf.release_focus(uictx);
                 }
                 KeyCode::Back => tf.remove_left_of_cursor(),

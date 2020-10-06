@@ -209,6 +209,8 @@ pub enum EventType {
     TextEntered,
     Update,
     RequestFocus,
+    Load,
+    Save,
 }
 
 /// Describes a MouseMove event in relation to a Rect.
@@ -244,10 +246,10 @@ pub enum KeyCodeOrChar {
 }
 
 /// A slice containing all EventTypes related to the keyboard. Must have a key set.
-pub const KEY_EVENTS: &[EventType] = &[EventType::KeyPress];
+const KEY_EVENTS: &[EventType] = &[EventType::KeyPress];
 
 /// A slice containing all EventTypes related to the mouse.
-pub const MOUSE_EVENTS: &[EventType] = &[
+const MOUSE_EVENTS: &[EventType] = &[
     EventType::Click,
     EventType::MouseMove,
     EventType::Drag,
@@ -255,11 +257,19 @@ pub const MOUSE_EVENTS: &[EventType] = &[
 ];
 
 /// A slice containing all EventTypes related to keyboard focus changes.
-pub const FOCUS_EVENTS: &[EventType] = &[
+const FOCUS_EVENTS: &[EventType] = &[
     EventType::GainFocus,
     EventType::LoseFocus,
     EventType::ChildReleasedFocus,
     EventType::RequestFocus,
+];
+
+/// A slice containing all EventTypes related to events broadcasted to all widgets
+const BROADCASTED_EVENTS: &[EventType] = &[
+    EventType::Update,
+    EventType::MouseMove,
+    EventType::Load,
+    EventType::Save,
 ];
 
 impl EventType {
@@ -276,6 +286,10 @@ impl EventType {
     /// Returns true if and only if this is a keyboard focus event type.
     pub fn is_focus_event(self) -> bool {
         FOCUS_EVENTS.contains(&self)
+    }
+
+    pub fn is_broadcast_event(self) -> bool {
+        BROADCASTED_EVENTS.contains(&self)
     }
 }
 
@@ -432,6 +446,20 @@ impl Event {
         }
     }
 
+    pub fn new_save() -> Self {
+        Event {
+            what: EventType::Save,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_load() -> Self {
+        Event {
+            what: EventType::Load,
+            ..Default::default()
+        }
+    }
+
     /// Returns true if and only if this is a keyboard event.
     pub fn is_key_event(&self) -> bool {
         self.what.is_key_event()
@@ -444,8 +472,12 @@ impl Event {
 
     /// Returns true if and only if this is a keyboard focus event.
     #[allow(unused)]
-    pub fn is_focus_event(self) -> bool {
+    pub fn is_focus_event(&self) -> bool {
         self.what.is_focus_event()
+    }
+
+    pub fn is_broadcast_event(&self) -> bool {
+        self.what.is_broadcast_event()
     }
 }
 
@@ -460,8 +492,9 @@ pub type Handler = Box<dyn FnMut(&mut dyn EmitEvent, &mut UIContext, &Event) -> 
 pub type HandlerMap = HashMap<EventType, Vec<Handler>>;
 
 pub struct HandlerData {
-    pub handlers:         Option<HandlerMap>,
-    pub forwarded_events: Vec<Event>,
+    pub handlers:          Option<HandlerMap>,
+    pub forwarded_events:  Vec<Event>,
+    pub registered_events: Vec<EventType>, // Used for event support look-up after `on()` registration
 }
 
 impl fmt::Debug for HandlerData {
@@ -482,8 +515,9 @@ impl fmt::Debug for HandlerData {
 impl HandlerData {
     pub fn new() -> Self {
         HandlerData {
-            handlers:         Some(HandlerMap::new()),
-            forwarded_events: vec![],
+            handlers:          Some(HandlerMap::new()),
+            forwarded_events:  vec![],
+            registered_events: vec![],
         }
     }
 }
@@ -587,6 +621,7 @@ macro_rules! impl_emit_event {
                     handler_vec = handlers.get_mut(&what).unwrap();
                 }
                 handler_vec.push(hdlr);
+                self.$handler_data_field.registered_events.push(what);
                 Ok(())
             }
 

@@ -82,7 +82,7 @@ impl Pane {
             handler_data: context::HandlerData::new(),
         };
 
-        // for each event type, define a handler of the appropriate type (mouse or keyboard)
+        // for each event type, auto-register some of the common event types to a common handler
         for event_type in EventType::into_enum_iter() {
             if event_type.is_mouse_event() {
                 // unwrap OK because we aren't calling from within a handler
@@ -90,14 +90,12 @@ impl Pane {
             } else if event_type.is_key_event() {
                 // unwrap OK because we aren't calling from within a handler
                 pane.on(event_type, Box::new(Pane::key_press_handler)).unwrap();
-            } else {
-                warn!("Found neither a mouse nor key event during Pane handler registration");
             }
 
-            // unwraps OK because not called within handler
-            pane.on(EventType::Update, Box::new(Pane::broadcast_handler)).unwrap();
-            pane.on(EventType::MouseMove, Box::new(Pane::broadcast_handler))
-                .unwrap();
+            if event_type.is_broadcast_event() {
+                // unwrap OK because not called within handler
+                pane.on(event_type, Box::new(Pane::broadcast_handler)).unwrap();
+            }
         }
 
         pane.on(EventType::GainFocus, Box::new(Pane::gain_focus_handler))

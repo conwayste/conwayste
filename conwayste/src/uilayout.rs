@@ -166,10 +166,13 @@ impl UILayout {
         let pnlabel_x = playername_label.position().x;
         let pnlabel_y = playername_label.position().y;
         let pnlabel_r_edge = playername_label.size().0 + pnlabel_x;
-        let playername_tf = Box::new(TextField::new(
+        let mut playername_tf = Box::new(TextField::new(
             default_font_info,
-            Rect::new(pnlabel_r_edge + 20.0, pnlabel_y, 100.0, 30.0),
+            Rect::new(pnlabel_r_edge + 20.0, pnlabel_y, 200.0, 30.0),
         ));
+        playername_tf.on(EventType::Load, Box::new(load_player_name)).unwrap();
+        playername_tf.on(EventType::Save, Box::new(save_player_name)).unwrap();
+
         let mut playername_pane = Box::new(Pane::new(Rect::new(10.0, 0.0, 0.0, 0.0)));
         playername_pane.set_rect(Rect::new(
             10.0,
@@ -367,6 +370,32 @@ fn resolution_update_handler(
         label.set_text(uictx.ggez_context, new_res_text);
     }
     Ok(context::Handled::Handled)
+}
+
+// TODO find a place for all these specific widget-instance handlers
+fn load_player_name(
+    obj: &mut dyn EmitEvent,
+    uictx: &mut context::UIContext,
+    _evt: &context::Event,
+) -> Result<context::Handled, Box<dyn Error>> {
+    let textfield = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK because it's always a textfield
+    let ref player_name = uictx.config.get().user.name;
+    textfield.set_text(player_name.clone());
+    Ok(context::Handled::NotHandled)
+}
+
+fn save_player_name(
+    obj: &mut dyn EmitEvent,
+    uictx: &mut context::UIContext,
+    _evt: &context::Event,
+) -> Result<context::Handled, Box<dyn Error>> {
+    let textfield = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK because it's always a textfield
+    if let Some(player_name) = textfield.text() {
+        uictx.config.modify(|c| {
+            c.user.name = player_name.clone();
+        });
+    }
+    Ok(context::Handled::NotHandled)
 }
 
 add_widget_from_screen_id_mut!(Button);

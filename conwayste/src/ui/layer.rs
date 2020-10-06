@@ -525,7 +525,7 @@ impl Layering {
             static_node_ids,
             viewport,
         );
-        if event.what == EventType::Update || event.what == EventType::MouseMove {
+        if event.is_broadcast_event() {
             Layering::broadcast_event(event, &mut uictx)
         } else if event.is_mouse_event() {
             Layering::emit_mouse_event(event, &mut uictx, &mut self.focus_cycles[self.highest_z_order])
