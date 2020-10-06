@@ -578,7 +578,7 @@ impl Layering {
                 let pane_events = Layering::emit_keyboard_event(event, uictx, &child_id)?;
 
                 // check if the Pane's focus dropped of the end of its open-ended focus "cycle"
-                Layering::handle_reflexive_event(key, focus_cycle, uictx, &pane_events[..], event.shift_pressed)?;
+                Layering::handle_keyboard_child_event(key, focus_cycle, uictx, &pane_events[..], event.shift_pressed)?;
             } else {
                 if event.shift_pressed {
                     focus_cycle.focus_previous();
@@ -608,16 +608,15 @@ impl Layering {
             if let Some(id) = focused_id {
                 let id = id.clone();
                 let pane_events = Layering::emit_keyboard_event(event, uictx, &id)?;
-                Layering::handle_reflexive_event(key, focus_cycle, uictx, &pane_events[..], false)?;
+                Layering::handle_keyboard_child_event(key, focus_cycle, uictx, &pane_events[..], false)?;
             } else {
-                // XXX pick a better name because I can't handle this 😂
-                Layering::handle_unhandled_keyboard_events(event, uictx)?;
+                Layering::handle_no_focus_keyboard_event(event, uictx)?;
             }
             Ok(())
         }
     }
 
-    fn handle_reflexive_event(
+    fn handle_keyboard_child_event(
         key: KeyCodeOrChar,
         focus_cycle: &mut FocusCycle,
         uictx: &mut UIContext,
@@ -767,8 +766,8 @@ impl Layering {
         Ok(())
     }
 
-    // A temporary hack for layers that do not have a default focus (like Run/Gamearea) to switch
-    fn handle_unhandled_keyboard_events(event: &Event, uictx: &mut UIContext) -> Result<(), Box<dyn Error>> {
+    // Layers that do not have a default focus (like Run/Gamearea)
+    fn handle_no_focus_keyboard_event(event: &Event, uictx: &mut UIContext) -> Result<(), Box<dyn Error>> {
         if let Some(KeyCodeOrChar::KeyCode(key)) = event.key {
             match key {
                 KeyCode::Escape => {

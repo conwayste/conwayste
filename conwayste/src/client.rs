@@ -364,8 +364,6 @@ impl EventHandler for MainState {
         let is_repeating = self.inputs.key_info.repeating;
 
         let mouse_point = self.inputs.mouse_info.position;
-        //let origin_point = self.inputs.mouse_info.down_position; // TODO: when we need drag support, we'll need this
-
         let mouse_action = self.inputs.mouse_info.action;
 
         let game_area_id = self.static_node_ids.game_area_id.clone();
