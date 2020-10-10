@@ -2,14 +2,15 @@
 
 Multiplayer Conway's Game of Life!
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) ![build status](https://api.travis-ci.com/conwayste/conwayste.svg?branch=master) [![Discord](https://img.shields.io/discord/463752820026376202.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/5Z4E3w)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) ![build status](https://api.travis-ci.com/conwayste/conwayste.svg?branch=master) [![Discord](https://img.shields.io/discord/463752820026376202.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/mjSsUMw)
 ![life in action](https://s7.gifyu.com/images/BlaringTidyDutchsmoushond-mobile.gif)
+![Patterns!](https://s8.gifyu.com/images/conwayste.gif)
 
 ## How to Play
 
 Click on the desired menu option after the game boots. `Start Game` is a good place to... start ;).
 
-When in the game:
+Once in game:
 
 * Left click toggles a cell (by default).
 * The number keys control what left click does (whether it toggles a cell or drops a pattern).
@@ -20,34 +21,24 @@ When in the game:
 * `Space` to single step (*Will not work in multiplayer mode*).
 * `Esc` to go back to the menu.
 
-## Installation
-First, install the `cargo` command if you have not already done so. The recommended way is [Rustup](https://rustup.rs/).
+# Setup
+Conwayste has been developed with cross-platform support in mind since day one using the Rust programming language! Your dependencies will likely vary based on your choice of operating system.
 
-Next, clone this repository, and build the game:
+The easiest way to get the Rust compiler and toolchain is using [Rustup](https://rustup.rs/).
 
-```
-$ git clone https://github.com/conwayste/conwayste
-$ cargo build --bin client
-```
+## Windows
 
-To run the game as a client:
+The Conwayste client and server work right out of the box, just follow the installation instructions below.
 
-```
-$ cargo run --bin client
-```
+The `netwayste-dissector` is not currently supported.
 
-The GUI client (`cargo run --bin client`) depends on ALSA. We do plan on bundling these libraries with the binary at some point in the future, but for now you will need to manually install them.
-
-### Windows
-_Note: This has been validated as working on Windows 10; tread carefully elsewhere_ :smile:_._
-
-TODO (will use Win10)
-
-### macOS
+## macOS
 
 TODO
 
-### Linux
+## Linux
+
+The GUI client depends on the ALSA audio framework. We do plan on bundling these libraries with the binary at some point in the future, but for now you will need to manually install them (see dependency instructions above).
 
 On Ubuntu, you can install with `apt`:
 
@@ -63,21 +54,37 @@ On Fedora you can use `dnf`; this will install pretty much everything you will n
 sudo dnf install alsa-lib-devel
 ```
 
-## Running the server
-
+# Playing the Game
+Now that your dependencies and rust compiler are setup, clone this repository, and build the client and server using `cargo`:
 ```
-cargo run --bin server
+$ git clone https://github.com/conwayste/conwayste
+$ cd conwayste/
+$ cargo build --bin client
+$ cargo build --bin server
 ```
 
-## FAQ
+## Running The Client
+```
+$ cargo run --bin client
+```
+
+_Note: This has been validated as working on Ubuntu Linux, Fedora Linux, Windows 10, OpenBSD, and MacOS; tread carefully elsewhere_ :smile:_._
+
+
+## Running the Server
+```
+$ cargo run --bin server
+```
+
+# FAQ
 
 ### Did you write your own game engine?
 
-We are using the [`ggez`](https://github.com/ggez/ggez) engine and give many thanks to its developers and contributers. Head over to their [GitHub page](https://github.com/ggez/ggez) to learn more about it.
+Nope! We are using the [`ggez`](https://github.com/ggez/ggez) engine and give many thanks to its developers and contributers. Head over to their [GitHub page](https://github.com/ggez/ggez) to learn more about it.
 
 ### When will this be ready?
 
-The developers have busy lives and enjoy working on this in their spare time. If you are waiting for a release, then you I encourage you to contribute :smile:. If you feel like donating, we always accept donations in liquid form, such as cup of coffee.
+The developers have busy lives and enjoy working on this in their spare time. If you are waiting for a release, then you I encourage you to contribute :smile:.
 
 
 ## Contributors
