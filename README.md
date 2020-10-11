@@ -28,9 +28,7 @@ The easiest way to get the Rust compiler and toolchain is using [Rustup](https:/
 
 ## Windows
 
-The Conwayste client and server work right out of the box, just follow the installation instructions below.
-
-The `netwayste-dissector` is not currently supported.
+The Conwayste client and server work right out of the box, just skip to [Playing the Game](#playing-the-game) follow the installation instructions below.
 
 ## macOS
 

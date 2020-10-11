@@ -1,6 +1,8 @@
 # Prerequisites
 In order to compile the dissector to be used with Wireshark, you'll need to install glib-2.0 and bindgen.
 
+The `netwayste-dissector` has not been tested on Windows and is not officially supported, thought it probably does work with some effort. If it interests you to get it working in-tree, you're more than welcome to submit a pull request.
+
 ## glib-2.0
 `glib-2.0` is required so please refer to your distribution's package manager for installation instructions.
 
