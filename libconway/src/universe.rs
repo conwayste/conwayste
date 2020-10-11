@@ -426,6 +426,16 @@ impl GenState {
             );
         }
     }
+
+    /// Forces the entire bit grid to the known state
+    pub fn force_known(&mut self) {
+        for row in 0..self.known.0.len() {
+            let known_row = &mut self.known[row];
+            for word_col in 0..known_row.len() {
+                known_row[word_col] = u64::max_value();
+            }
+        }
+    }
 }
 
 impl CharGrid for GenState {
@@ -1719,6 +1729,17 @@ impl Universe {
                 Some(opt_genstate0.unwrap().diff(opt_genstate1.unwrap(), visibility))
             }
         }
+    }
+
+    /// This marks all cells in the latest generator as known.
+    ///
+    /// # Panics
+    ///
+    /// This panics if there is no latest generation
+    pub fn force_known(&mut self) {
+        let gen_state = &mut self.gen_states[self.state_index];
+        assert!(gen_state.gen_or_none.is_some());
+        gen_state.force_known();
     }
 }
 

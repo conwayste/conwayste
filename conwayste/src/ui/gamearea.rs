@@ -26,7 +26,7 @@ use conway::{
     error::ConwayError,
     grids::{BitGrid, CharGrid, Rotation},
     rle::Pattern,
-    universe::{BigBang, CellState, PlayerBuilder, Region, Universe},
+    universe::{BigBang, CellState, GenStateDiff, PlayerBuilder, Region, Universe},
     ConwayResult,
 };
 use ggez::graphics::Rect;
@@ -72,8 +72,7 @@ impl GameArea {
             BigBang::new()
                 .width(UNIVERSE_WIDTH_IN_CELLS)
                 .height(UNIVERSE_HEIGHT_IN_CELLS)
-                .server_mode(true) // TODO will change to false once we get server support up
-                // Currently 'client' is technically both client and server
+                .server_mode(false)
                 .history(HISTORY_SIZE)
                 .fog_radius(FOG_RADIUS)
                 .add_players(players)
@@ -123,95 +122,22 @@ impl GameArea {
 }
 
 fn init_patterns(uni: &mut Universe) -> ConwayResult<()> {
-    let _pat = Pattern("10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW$10bW$10bW$10b16W48$100b2A5b2A$100b2A5b2A2$104b2A$104b2A5$122b2Ab2A$121bA5bA$121bA6bA2b2A$121b3A3bA3b2A$126bA!".to_owned());
-
-    // Simkin glider gun
-    uni.toggle(100, 70, 0)?;
-    uni.toggle(100, 71, 0)?;
-    uni.toggle(101, 70, 0)?;
-    uni.toggle(101, 71, 0)?;
-
-    uni.toggle(104, 73, 0)?;
-    uni.toggle(104, 74, 0)?;
-    uni.toggle(105, 73, 0)?;
-    uni.toggle(105, 74, 0)?;
-
-    uni.toggle(107, 70, 0)?;
-    uni.toggle(107, 71, 0)?;
-    uni.toggle(108, 70, 0)?;
-    uni.toggle(108, 71, 0)?;
-
-    /* eater
-    uni.toggle(120, 87, 0)?;
-    uni.toggle(120, 88, 0)?;
-    uni.toggle(121, 87, 0)?;
-    uni.toggle(121, 89, 0)?;
-    uni.toggle(122, 89, 0)?;
-    uni.toggle(123, 89, 0)?;
-    uni.toggle(123, 90, 0)?;
-    */
-
-    uni.toggle(121, 80, 0)?;
-    uni.toggle(121, 81, 0)?;
-    uni.toggle(121, 82, 0)?;
-    uni.toggle(122, 79, 0)?;
-    uni.toggle(122, 82, 0)?;
-    uni.toggle(123, 79, 0)?;
-    uni.toggle(123, 82, 0)?;
-    uni.toggle(125, 79, 0)?;
-    uni.toggle(126, 79, 0)?;
-    uni.toggle(126, 83, 0)?;
-    uni.toggle(127, 80, 0)?;
-    uni.toggle(127, 82, 0)?;
-    uni.toggle(128, 81, 0)?;
-
-    uni.toggle(131, 81, 0)?;
-    uni.toggle(131, 82, 0)?;
-    uni.toggle(132, 81, 0)?;
-    uni.toggle(132, 82, 0)?;
-
-    //Wall in player 0 area!
-    let bw = 5; // buffer width
-
-    // right side
-    for row in (70 - bw)..(83 + bw + 1) {
-        uni.set_unchecked(132 + bw, row, CellState::Wall);
-    }
-
-    // top side
-    for col in (100 - bw)..109 {
-        uni.set_unchecked(col, 70 - bw, CellState::Wall);
-    }
-    for col in 114..(132 + bw + 1) {
-        uni.set_unchecked(col, 70 - bw, CellState::Wall);
-    }
-
-    // left side
-    for row in (70 - bw)..(83 + bw + 1) {
-        uni.set_unchecked(100 - bw, row, CellState::Wall);
-    }
-
-    // bottom side
-    for col in (100 - bw)..120 {
-        uni.set_unchecked(col, 83 + bw, CellState::Wall);
-    }
-    for col in 125..(132 + bw + 1) {
-        uni.set_unchecked(col, 83 + bw, CellState::Wall);
-    }
-
-    //Wall in player 1!
-    for row in 10..19 {
-        uni.set_unchecked(25, row, CellState::Wall);
-    }
-    for col in 10..25 {
-        uni.set_unchecked(col, 10, CellState::Wall);
-    }
-    for row in 11..23 {
-        uni.set_unchecked(10, row, CellState::Wall);
-    }
-    for col in 11..26 {
-        uni.set_unchecked(col, 22, CellState::Wall);
-    }
+    let pat = Pattern(
+        "b10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW
+14bW$10bW14bW$10bW$10bW$10bW$10b16W43$95b14W5b24W$95bW41bW$95bW41bW$
+95bW41bW$95bW41bW$95bW4b2A5b2A28bW$95bW4b2A5b2A28bW$95bW41bW$95bW8b2A
+31bW$95bW8b2A31bW$95bW41bW$95bW41bW$95bW41bW$95bW41bW$95bW26b2Ab2A10bW
+$95bW25bA5bA9bW$95bW25bA6bA2b2A4bW$95bW25b3A3bA3b2A4bW$95bW30bA10bW$
+95bW41bW$95bW41bW$95bW41bW$95bW41bW$95b25W5b13W!"
+            .to_owned(),
+    );
+    let diff = GenStateDiff {
+        gen0:    0,
+        gen1:    1,
+        pattern: pat,
+    };
+    uni.apply(&diff, None)?.unwrap(); // apply should return Ok(Some(...))
+    uni.force_known();
 
     Ok(())
 }
