@@ -4,7 +4,7 @@ We love pull requests from everyone. By participating in this project, you agree
 
 Fork, then clone the repository:
 
-`$ git clone git@github.com:your-username/factory_bot_rails.git`
+`$ git clone git@github.com:your-username/conwayste.git`
 
 Build the code as is to ensure it is not broken out the gate:
 

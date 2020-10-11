@@ -36,21 +36,10 @@ TODO
 
 ## Linux
 
-The GUI client depends on the ALSA audio framework. We do plan on bundling these libraries with the binary at some point in the future, but for now you will need to manually install them (see dependency instructions above).
-
-On Ubuntu, you can install with `apt`:
-
-```
-sudo apt install libudev-dev libasound2-dev
-```
+Note that on Linux, the ALSA development files are required. These are provided as part of the `libasound2-dev` package on Debian and Ubuntu distributions and `alsa-lib-devel` on Fedora.
 
 _Note: if installation doesn't work on Ubuntu we may not have kept this up to date. Check the Ubuntu section in `.travis.yml` for a guaranteed up-to-date list of packages_ :)
 
-On Fedora you can use `dnf`; this will install pretty much everything you will need:
-
-```
-sudo dnf install alsa-lib-devel
-```
 
 # Playing the Game
 Now that your dependencies and rust compiler are setup, clone this repository, and build the client and server using `cargo`:
