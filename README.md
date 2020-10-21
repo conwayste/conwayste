@@ -3,6 +3,7 @@
 Multiplayer Conway's Game of Life!
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) ![build status](https://api.travis-ci.com/conwayste/conwayste.svg?branch=master) [![Discord](https://img.shields.io/discord/463752820026376202.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/mjSsUMw)
+
 ![life in action](https://s7.gifyu.com/images/BlaringTidyDutchsmoushond-mobile.gif)
 ![Patterns!](https://s8.gifyu.com/images/conwayste.gif)
 
@@ -26,23 +27,27 @@ Conwayste has been developed with cross-platform support in mind since day one u
 
 The easiest way to get the Rust compiler and toolchain is using [Rustup](https://rustup.rs/).
 
-## Windows
+This has been validated as runnable on:
+  * Ubuntu Linux (18.04 and 20.04)
+  * Fedora Linux 32
+  * Windows 10
+  * OpenBSD
+  * macOS Catalina (10.15.7)
 
-The Conwayste client and server work right out of the box, just skip to [Playing the Game](#playing-the-game) follow the installation instructions below.
+There be dragons for any other operating system not listed above. Please tread carefully :smile:.
 
-## macOS
+## Windows / MacOS
 
-TODO
+The Conwayste client and server compile and run right out of the box. Skip directly to [Installation](#installation).
 
 ## Linux
 
-Note that on Linux, the ALSA development files are required. These are provided as part of the `libasound2-dev` package on Debian and Ubuntu distributions and `alsa-lib-devel` on Fedora.
+On Linux, the ALSA development files are required. These are provided as part of the `libasound2-dev` package on Debian and Ubuntu distributions and `alsa-lib-devel` on Fedora. For any other distribution, please refer to your package manager and/or compile them from source.
 
-_Note: if installation doesn't work on Ubuntu we may not have kept this up to date. Check the Ubuntu section in `.travis.yml` for a guaranteed up-to-date list of packages_ :)
+## Installation
 
+Please clone this repository, and build the client and server using `cargo`. The build may take several minutes to complete, depending on your system specs.
 
-# Playing the Game
-Now that your dependencies and rust compiler are setup, clone this repository, and build the client and server using `cargo`:
 ```
 $ git clone https://github.com/conwayste/conwayste
 $ cd conwayste/
@@ -50,13 +55,12 @@ $ cargo build --bin client
 $ cargo build --bin server
 ```
 
+# Playing the Game
+
 ## Running The Client
 ```
 $ cargo run --bin client
 ```
-
-_Note: This has been validated as working on Ubuntu Linux, Fedora Linux, Windows 10, OpenBSD, and MacOS; tread carefully elsewhere_ :smile:_._
-
 
 ## Running the Server
 ```
@@ -73,11 +77,17 @@ Nope! We are using the [`ggez`](https://github.com/ggez/ggez) engine and give ma
 
 The developers have busy lives and enjoy working on this in their spare time. If you are waiting for a release, then you I encourage you to contribute :smile:.
 
+### My installation fails in Linux. What should I do?
+
+It's likely that we have not kept the installation steps up-to-date. Please Check the Ubuntu section in `.travis.yml` for a guaranteed up-to-date list of packages if your installation fails. :)
+
+### I found a bug! What should I do?
+
+It would help the developers a lot if you could submit an issue in GitHub describing the bug.
 
 ## Contributors
 
-* manghi
-
 * aaronm04
+* manghi
 
 _Your name could be here! Pull requests are welcome!_
