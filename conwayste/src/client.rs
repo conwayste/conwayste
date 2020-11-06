@@ -312,7 +312,7 @@ impl MainState {
             static_node_ids: static_node_ids,
         };
 
-        init_title_screen(&mut s).unwrap();
+        init_intro_screen(&mut s).unwrap();
 
         Ok(s)
     }
@@ -366,7 +366,10 @@ impl EventHandler for MainState {
         let mouse_point = self.inputs.mouse_info.position;
         let mouse_action = self.inputs.mouse_info.action;
 
-        let mut game_area_state = self.get_gamearea();
+        let mut game_area_state = self.get_gamearea_state().unwrap_or_else(|e| {
+            error!("Could not get game area state: {}", e);
+            GameAreaState::default()
+        });
 
         // ==== Handle widget events ====
         if let Some(layer) = self.ui_layout.get_screen_layering_mut(screen) {
@@ -525,7 +528,10 @@ impl EventHandler for MainState {
         }
 
         // Refresh the game area state after processing all events
-        game_area_state = self.get_gamearea();
+        game_area_state = self.get_gamearea_state().unwrap_or_else(|e| {
+            error!("Could not get game area state after processing all UI events: {}", e);
+            GameAreaState::default()
+        });
 
         if screen == Screen::Run {
             if game_area_state.single_step {
@@ -828,18 +834,9 @@ struct UniDrawParams {
 }
 
 impl MainState {
-    fn get_gamearea(&mut self) -> GameAreaState {
-        match GameArea::widget_from_screen_and_id_mut(
-            &mut self.ui_layout,
-            Screen::Run,
-            &self.static_node_ids.game_area_id,
-        ) {
-            Ok(gamearea) => gamearea.get_game_area_state(),
-            Err(e) => {
-                error!("failed to look up GameArea widget: {:?}", e);
-                GameAreaState::default()
-            }
-        }
+    fn get_gamearea_state(&mut self) -> ui::UIResult<GameAreaState> {
+        GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id)
+            .map(|gs| gs.get_game_area_state())
     }
 
     fn draw_game_of_life(&self, ctx: &mut Context, universe: &Universe) -> Result<(), Box<dyn Error>> {
@@ -894,14 +891,12 @@ impl MainState {
         });
 
         let mut insert_mode = None;
-        match GameArea::widget_from_screen_and_id(&self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id) {
-            Ok(gamearea) => {
+        GameArea::widget_from_screen_and_id(&self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id).map(
+            |gamearea| {
                 insert_mode = gamearea.insert_mode();
-            }
-            Err(e) => {
-                error!("failed to look up GameArea widget: {:?}", e);
-            }
-        }
+            },
+        )?;
+
         // TODO: truncate if outside of writable region
         // TODO: move to new function
         if let Some((ref grid, width, height)) = insert_mode {
@@ -997,18 +992,10 @@ impl MainState {
     /// Draws the GameArea's universe to the screen.
     fn draw_universe(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
         // A mutable reference is used to notify the first generation is drawn
-        match GameArea::widget_from_screen_and_id_mut(
-            &mut self.ui_layout,
-            Screen::Run,
-            &self.static_node_ids.game_area_id,
-        ) {
-            Ok(gamearea) => {
-                gamearea.first_gen_drawn();
-            }
-            Err(e) => {
-                error!("failed to look up GameArea widget: {:?}", e);
-            }
-        }
+        GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id)
+            .map(|gamearea| {
+            gamearea.first_gen_drawn();
+        })?;
 
         // A non-mutable reference is used to draw the universe
         match GameArea::widget_from_screen_and_id(&self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id) {
@@ -1255,8 +1242,7 @@ fn toggle_line(s: &mut MainState, orientation: Orientation, col: isize, row: isi
     }
 }
 
-// TODO: this should really have "intro" in its name!
-fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
+fn init_intro_screen(s: &mut MainState) -> Result<(), ()> {
     // 1) Calculate width and height of rectangle which represents the intro logo
     // 2) Determine height and width of the window
     // 3) Center it
