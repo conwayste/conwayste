@@ -2,115 +2,92 @@
 
 Multiplayer Conway's Game of Life!
 
-![build status](https://api.travis-ci.com/conwayste/conwayste.svg?branch=master)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) ![build status](https://api.travis-ci.com/conwayste/conwayste.svg?branch=master) [![Discord](https://img.shields.io/discord/463752820026376202.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/mjSsUMw)
 
 ![life in action](https://s7.gifyu.com/images/BlaringTidyDutchsmoushond-mobile.gif)
+![Patterns!](https://s8.gifyu.com/images/conwayste.gif)
+
+## How to Play
+
+Click on the desired menu option after the game boots. `Start Game` is a good place to... start ;).
+
+Once in game:
+
+* Left click toggles a cell (by default).
+* The number keys control what left click does (whether it toggles a cell or drops a pattern).
+* If dropping a pattern, you can use `Shift-left` and `Shift-right` to rotate the pattern.
+* `Enter` to toggle chatbox focus.
+* `+` and `-` to zoom in and out
+* Press `r` to toggle running/paused (*Will not work in multiplayer mode*).
+* `Space` to single step (*Will not work in multiplayer mode*).
+* `Esc` to go back to the menu.
+
+# Setup
+Conwayste has been developed with cross-platform support in mind since day one using the Rust programming language! Your dependencies will likely vary based on your choice of operating system.
+
+The easiest way to get the Rust compiler and toolchain is using [Rustup](https://rustup.rs/).
+
+This has been validated as runnable on:
+  * Ubuntu Linux (18.04 and 20.04)
+  * Fedora Linux 32
+  * Windows 10
+  * OpenBSD
+  * macOS Catalina (10.15.7)
+
+There be dragons for any other operating system not listed above. Please tread carefully :smile:.
+
+## Windows / MacOS
+
+The Conwayste client and server compile and run right out of the box. Skip directly to [Installation](#installation).
+
+## Linux
+
+On Linux, the ALSA development files are required. These are provided as part of the `libasound2-dev` package on Debian and Ubuntu distributions and `alsa-lib-devel` on Fedora. For any other distribution, please refer to your package manager and/or compile them from source.
 
 ## Installation
-Clone this repository:
+
+Please clone this repository, and build the client and server using `cargo`. The build may take several minutes to complete, depending on your system specs.
 
 ```
 $ git clone https://github.com/conwayste/conwayste
+$ cd conwayste/
+$ cargo build --bin client
+$ cargo build --bin server
 ```
 
-The GUI client (`cargo run --bin client`) depends on `SDL2`, `SDL2_Mixer` and `SDL2_Image`. We do plan on bundling these libraries with the binary at some point in the future, but for now you will need to manually install them. The versions (at least) needed are:
+# Playing the Game
 
-* `SDL2 v2.0.5`
-* `SDL2_Mixer v2.0.1`
-* `SDL2_Image v2.0.1`
-
-Please follow the instructions listed on the [rust-sdl2](https://github.com/Rust-SDL2/rust-sdl2) bindings page for your specific platform.
-
-Make sure your Rust is up to date! The easiest way is through `rustup update`.
-
-### Windows
-_Note: This has been validated as working on Windows 10; tread carefully elsewhere_:smile:_._
-
-Grab the development libraries for SDL2, SDL2 Mixer, and SDL2 Image and place each of them in your toolchain's library folder. An example of this may be `~\.multirust\toolchains\stable-x86_64-pc-windows-msvc\lib\rustlib\x86_64-pc-windows-msvc\lib`.
-Also place the `SDL2.dll` within the crate root folder.
-
-You will not need to do this step once there is proper binary release of Conwayste (TBD).
-
-### Mac/Linux
-_Note: I used homebrew on Mac to accomplish these steps._
-
+## Running The Client
 ```
-brew install sdl2
-brew install sdl2_image 
-brew install sdl2_mixer --with-libvorbis
+$ cargo run --bin client
 ```
 
-On Fedora you can use `dnf`; this will install pretty much everything you will need:
-
+## Running the Server
 ```
-sudo dnf install SDL2*
-```
-
-**Note:** Debian stable only supports SDL2 v.2.0.4 so you will need to compile SDL2 from source.
-If you are compiling from source make sure you specify vorbis support.
-
-```
-...
-./configure --with-vorbis
+$ cargo run --bin server
 ```
 
-**(If necessary)** Add the libraries to your path. This step is necessary if cargo fails to link against the SDL2 libraries.
- 
-Under Linux, I had to export `$LD_LIBRARY_PATH`, but in Mac it was `$LIBRARY_PATH`.
-Homebrew will install the libraries to the Cellar. 
-```
-export LIBRARY_PATH="/usr/local/Cellar/sdl2_mixer/2.0.1/lib/:/usr/local/Cellar/sdl2_image/2.0.1_2/lib/:/usr/local/Cellar/sdl2/2.0.5/lib/"
-```
-I ended up adding these to my `~/.profile` .
+# FAQ
 
-## Building
+### Did you write your own game engine?
 
-```
-cargo build
-```
-
-## Running the server
-
-```
-cargo run --bin server
-```
-
-## Running the GUI client
-
-```
-cargo run --bin client
-```
-Note: at the time of this writing, it does not have network support.
-
-## Running the CLI client
-
-```
-cargo run --bin cli-client
-```
-Note: at the time of this writing, it only has partial network support.
-
-## FAQ
+Nope! We are using the [`ggez`](https://github.com/ggez/ggez) engine and give many thanks to its developers and contributers. Head over to their [GitHub page](https://github.com/ggez/ggez) to learn more about it.
 
 ### When will this be ready?
 
-The developers have busy lives and enjoy working on this in their spare time. If you are waiting for a release, then you should find something else to do. We always accept donations in liquid form, such as cup of coffee.
+The developers have busy lives and enjoy working on this in their spare time. If you are waiting for a release, then you I encourage you to contribute :smile:.
 
-### ResourceNotFound Error
-```
-λ cargo run --bin client                                                                                                
-    Finished dev [unoptimized + debuginfo] target(s) in 0.2 secs                                                        
-     Running `target\debug\client.exe`                                                                                  
-thread 'main' panicked at 'called `Result::unwrap()` on an `Err` value: ResourceNotFound("conwayste.ico")', src\libcore\
-result.rs:906:4                                                                                                         
-note: Run with `RUST_BACKTRACE=1` for a backtrace.                                                                      
-error: process didn't exit successfully: `target\debug\client.exe` (exit code: 101)                                     
-```
-You need to link your resources folder. Please see the Build section above.
+### My installation fails in Linux. What should I do?
+
+It's likely that we have not kept the installation steps up-to-date. Please Check the Ubuntu section in `.travis.yml` for a guaranteed up-to-date list of packages if your installation fails. :)
+
+### I found a bug! What should I do?
+
+It would help the developers a lot if you could submit an issue in GitHub describing the bug.
 
 ## Contributors
 
-* manghi
-
 * aaronm04
+* manghi
 
 _Your name could be here! Pull requests are welcome!_
