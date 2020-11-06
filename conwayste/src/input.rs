@@ -16,6 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
+use conway::universe::CellState;
 use ggez::event::{KeyCode, KeyMods, MouseButton};
 use ggez::nalgebra::Point2;
 use std::time::Instant;
@@ -104,6 +105,7 @@ pub struct InputManager {
     pub mouse_info: MouseInfo,
     pub key_info:   KeyInfo,
     pub text_input: Vec<char>,
+    pub drag_draw:  Option<CellState>,
 }
 
 impl InputManager {
@@ -112,6 +114,7 @@ impl InputManager {
             mouse_info: MouseInfo::new(),
             key_info:   KeyInfo::new(),
             text_input: vec![],
+            drag_draw:  None,
         }
     }
 }

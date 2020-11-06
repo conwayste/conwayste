@@ -26,6 +26,7 @@ custom_error! {pub UIError
     InvalidArgument{reason: String} = "UIError::InvalidArgument({reason})",
 }
 
+// TODO: use Box<dyn Error> and make this a generic CwResult (project-wide)
 pub type UIResult<T> = Result<T, Box<UIError>>;
 
 impl From<GameError> for UIError {

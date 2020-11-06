@@ -27,11 +27,31 @@ macro_rules! widget_from_id {
     ($type:ident) => {
         use super::layer::Layering;
 
+        #[allow(unused)]
         impl $type {
-            pub fn widget_from_id<'a, 'b>(layer: &'b mut Layering, id: &'a NodeId) -> UIResult<&'b mut $type> {
+            pub fn widget_from_id_mut<'a, 'b>(layer: &'b mut Layering, id: &'a NodeId) -> UIResult<&'b mut $type> {
                 let widget_result = layer.get_widget_mut(id);
                 match widget_result {
                     Ok(widget) => match widget.downcast_mut::<$type>() {
+                        Some(downcasted_widget) => {
+                            return Ok(downcasted_widget);
+                        }
+                        None => {
+                            return Err(Box::new(UIError::WidgetNotFound {
+                                reason: format!("{:?} could not be downcasted to type $type", id),
+                            }));
+                        }
+                    },
+                    Err(e) => {
+                        return Err(e);
+                    }
+                }
+            }
+
+            pub fn widget_from_id<'a, 'b>(layer: &'b Layering, id: &'a NodeId) -> UIResult<&'b $type> {
+                let widget_result = layer.get_widget(id);
+                match widget_result {
+                    Ok(widget) => match widget.downcast_ref::<$type>() {
                         Some(downcasted_widget) => {
                             return Ok(downcasted_widget);
                         }

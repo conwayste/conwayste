@@ -42,7 +42,7 @@ pub use chatbox::{Chatbox, ChatboxPublishHandle};
 pub use checkbox::Checkbox;
 pub use common::{center, color_with_alpha, draw_text, intersection, point_offset, within_widget};
 pub use context::{EmitEvent, Event, EventType, UIContext};
-pub use gamearea::GameArea;
+pub use gamearea::{GameArea, GameAreaState};
 pub use label::Label;
 pub use layer::{InsertLocation, Layering};
 pub use pane::Pane;

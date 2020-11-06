@@ -103,15 +103,21 @@ impl TextField {
             bg_color: None,
             handler_data: HandlerData::new(),
         };
-        tf.on(EventType::KeyPress, Box::new(TextField::key_handler)).unwrap(); // unwrap OK b/c not inside handler now
 
-        // Set handlers for toggling has_keyboard_focus
+        // The following unwraps are okay b/c we are not within a handler execution
+
+        // Handler for accepting keyboard input
+        tf.on(EventType::KeyPress, Box::new(TextField::key_handler)).unwrap();
+
+        // Set handlers for toggling focus
         tf.on(EventType::GainFocus, Box::new(TextField::gain_focus_handler))
-            .unwrap(); // unwrap OK
+            .unwrap();
         tf.on(EventType::LoseFocus, Box::new(TextField::lose_focus_handler))
-            .unwrap(); // unwrap OK
+            .unwrap();
+        tf.on(EventType::Click, Box::new(TextField::on_click_handler)).unwrap();
 
-        tf.on(EventType::Update, Box::new(TextField::update_handler)).unwrap(); // unwrap OK because we aren't in handler
+        // Handler for graphical updates
+        tf.on(EventType::Update, Box::new(TextField::update_handler)).unwrap();
         tf
     }
 
@@ -121,10 +127,13 @@ impl TextField {
         _evt: &Event,
     ) -> Result<Handled, Box<dyn Error>> {
         let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK because it's always a TextField
-        if let Some(prev_blink_ms) = tf.cursor_blink_timestamp {
-            if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
-                tf.draw_cursor ^= true;
-                tf.cursor_blink_timestamp = Some(Instant::now());
+
+        if tf.focused {
+            if let Some(prev_blink_ms) = tf.cursor_blink_timestamp {
+                if Instant::now() - prev_blink_ms > Duration::from_millis(BLINK_RATE_MS) {
+                    tf.draw_cursor ^= true;
+                    tf.cursor_blink_timestamp = Some(Instant::now());
+                }
             }
         }
 
@@ -149,9 +158,19 @@ impl TextField {
         _evt: &Event,
     ) -> Result<Handled, Box<dyn Error>> {
         let tf = obj.downcast_mut::<TextField>().unwrap(); // unwrap OK
+
         tf.focused = false;
         tf.draw_cursor = false;
         Ok(Handled::NotHandled)
+    }
+
+    fn on_click_handler(
+        _obj: &mut dyn EmitEvent,
+        uictx: &mut UIContext,
+        _evt: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        uictx.child_event(Event::new_child_request_focus());
+        Ok(Handled::Handled)
     }
 
     /// Maximum number of characters that can be visible at once.
@@ -170,7 +189,7 @@ impl TextField {
     }
 
     /// Sets the text field's string contents
-    pub fn _set_text(&mut self, text: String) {
+    pub fn set_text(&mut self, text: String) {
         self.text = text;
         self.cursor_index = 0;
     }
@@ -184,15 +203,17 @@ impl TextField {
         match evt.key.unwrap() {
             KeyCodeOrChar::KeyCode(keycode) => match keycode {
                 KeyCode::Return => {
+                    let forward_text = tf.handler_data.registered_events.contains(&EventType::TextEntered);
                     let text = tf.text();
-                    if text.is_some() {
+
+                    if text.is_some() && forward_text {
                         tf.clear();
                         let evt = Event::new_text_entered(text.unwrap());
                         tf.emit(&evt, uictx).unwrap_or_else(|e| {
                             error!("Error from TextEntered handler on textfield: {:?}", e);
+                            NotHandled // XXX actually fix the compiler error
                         });
                     }
-
                     tf.release_focus(uictx);
                 }
                 KeyCode::Back => tf.remove_left_of_cursor(),
@@ -202,19 +223,22 @@ impl TextField {
                 KeyCode::Home => tf.cursor_home(),
                 KeyCode::End => tf.cursor_end(),
                 KeyCode::Escape => tf.release_focus(uictx),
-                _ => (),
+                _ => return Ok(Handled::NotHandled),
             },
             KeyCodeOrChar::Char(ch) => {
                 if tf.focused {
                     tf.add_char_at_cursor(ch);
+                } else {
+                    return Ok(Handled::NotHandled);
                 }
             }
         }
-        Ok(Handled::NotHandled)
+        Ok(Handled::Handled)
     }
 
     /// Sends a notification to the parent widget that we have released focus.
     fn release_focus(&mut self, uictx: &mut UIContext) {
+        self.draw_cursor = false;
         self.focused = false;
         let evt = Event::new_child_released_focus();
         uictx.child_event(evt);
