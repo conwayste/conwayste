@@ -82,68 +82,58 @@ impl Pane {
             handler_data: context::HandlerData::new(),
         };
 
-        // for each event type, define a handler of the appropriate type (mouse or keyboard)
+        // for each event type, auto-register some of the common event types to a common handler
         for event_type in EventType::into_enum_iter() {
             if event_type.is_mouse_event() {
-                let handler = |_obj: &mut dyn EmitEvent,
-                               uictx: &mut context::UIContext,
-                               evt: &context::Event|
-                 -> Result<Handled, Box<dyn Error>> {
-                    for child_id in uictx.widget_view.children_ids() {
-                        let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK because 1) valid ID, 2) in view
-
-                        let point = &evt.point.unwrap(); // unwrap OK because a Click event always has a point
-                        if within_widget(&point, &widget_ref.rect()) {
-                            if let Some(emittable_ref) = widget_ref.as_emit_event() {
-                                emittable_ref.emit(evt, &mut subuictx)?;
-                                let pane_events = subuictx.collect_child_events();
-                                if pane_events.len() != 0 {
-                                    warn!(
-                                        "expected no mouse child events to be collected from Pane; got {:?}",
-                                        pane_events
-                                    );
-                                }
-                                return Ok(Handled::Handled);
-                            } else {
-                                warn!(
-                                    "Widget at point of click ({:?}) does not implement EmitEvent: {:?}",
-                                    evt.point,
-                                    widget_ref.id(),
-                                );
-                            }
-                        }
-                    }
-                    Ok(Handled::NotHandled)
-                };
-                pane.on(event_type, Box::new(handler)).unwrap(); // unwrap OK because we aren't calling from within a handler
+                // unwrap OK because we aren't calling from within a handler
+                pane.on(event_type, Box::new(Pane::mouse_event_handler)).unwrap();
             } else if event_type.is_key_event() {
                 // unwrap OK because we aren't calling from within a handler
                 pane.on(event_type, Box::new(Pane::key_press_handler)).unwrap();
-            } else {
-                // nothing to do if this is not a key or a mouse event
             }
 
-            pane.on(EventType::Update, Box::new(Pane::broadcast_handler)).unwrap(); // unwrap OK because not called w/in handler
-            pane.on(EventType::MouseMove, Box::new(Pane::broadcast_handler))
-                .unwrap(); // unwrap OK because not called w/in handler
+            if event_type.is_broadcast_event() {
+                // unwrap OK because not called within handler
+                pane.on(event_type, Box::new(Pane::broadcast_handler)).unwrap();
+            }
         }
 
-        // Set handler for focusing first widget in focus cycle when focus is gained
-        let gain_focus_handler =
-            move |obj: &mut dyn EmitEvent, uictx: &mut UIContext, _evt: &Event| -> Result<Handled, Box<dyn Error>> {
-                let pane = obj.downcast_mut::<Pane>().unwrap(); // unwrap OK
-                if pane.focus_cycle.focused_widget_id().is_none() {
-                    pane.focus_cycle.focus_next();
-                }
-                if let Some(focused_widget_id) = pane.focus_cycle.focused_widget_id() {
-                    let focused_widget_id = focused_widget_id.clone();
-                    pane.emit_focus_change(EventType::GainFocus, uictx, &focused_widget_id)?;
-                }
-                Ok(Handled::NotHandled)
-            };
-        pane.on(EventType::GainFocus, Box::new(gain_focus_handler)).unwrap(); // unwrap OK
+        pane.on(EventType::GainFocus, Box::new(Pane::gain_focus_handler))
+            .unwrap(); // unwrap OK
+        pane.on(EventType::LoseFocus, Box::new(Pane::lose_focus_handler))
+            .unwrap(); // unwrap OK
 
         pane
+    }
+
+    fn gain_focus_handler(
+        obj: &mut dyn EmitEvent,
+        uictx: &mut UIContext,
+        _event: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        let pane = obj.downcast_mut::<Pane>().unwrap(); // unwrap OK
+        if pane.focus_cycle.focused_widget_id().is_none() {
+            pane.focus_cycle.focus_next();
+        }
+        if let Some(focused_widget_id) = pane.focus_cycle.focused_widget_id() {
+            let focused_widget_id = focused_widget_id.clone();
+            pane.emit_focus_change(EventType::GainFocus, uictx, &focused_widget_id)?;
+        }
+        Ok(Handled::NotHandled)
+    }
+
+    fn lose_focus_handler(
+        obj: &mut dyn EmitEvent,
+        uictx: &mut UIContext,
+        _event: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        let pane = obj.downcast_mut::<Pane>().unwrap(); // unwrap OK
+        if let Some(focused_widget_id) = pane.focus_cycle.focused_widget_id() {
+            let focused_widget_id = focused_widget_id.clone();
+            pane.emit_focus_change(EventType::LoseFocus, uictx, &focused_widget_id)?;
+            pane.focus_cycle.clear_focus();
+        }
+        Ok(Handled::NotHandled)
     }
 
     fn broadcast_handler(
@@ -240,6 +230,55 @@ impl Pane {
         Ok(Handled::Handled)
     }
 
+    fn mouse_event_handler(
+        obj: &mut dyn EmitEvent,
+        uictx: &mut UIContext,
+        event: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        let mut child_events = vec![];
+        // Unwrap OK because we are guaranteed a Pane widget
+        let pane = downcast_widget!(obj, Pane).unwrap();
+
+        for child_id in uictx.widget_view.children_ids() {
+            let (widget_ref, mut subuictx) = uictx.derive(&child_id).unwrap(); // unwrap OK because 1) valid ID, 2) in view
+
+            let point = &event.point.unwrap(); // unwrap OK because a Click event always has a point
+            if within_widget(&point, &widget_ref.rect()) {
+                if let Some(emittable_ref) = widget_ref.as_emit_event() {
+                    let handled = emittable_ref.emit(event, &mut subuictx)?;
+                    let pane_events = subuictx.collect_child_events();
+                    if pane_events.len() != 0 {
+                        for event in pane_events {
+                            child_events.push(event);
+                        }
+                    }
+
+                    if handled == Handled::Handled {
+                        break;
+                    }
+                } else {
+                    warn!(
+                        "Widget at point of click ({:?}) does not implement EmitEvent: {:?}",
+                        event.point,
+                        widget_ref.id(),
+                    );
+                }
+            } else if EventType::Click == event.what && widget_ref.id() == pane.focus_cycle.focused_widget_id() {
+                // Click event occurred outside the focused child's boundaries
+                child_events.push(Event::new_child_released_focus());
+            }
+        }
+
+        for event in child_events {
+            match event.what {
+                EventType::ChildRequestsFocus | EventType::ChildReleasedFocus => uictx.child_event(event),
+                _ => warn!("Unhandled child event in Pane: {:?}", event.what),
+            }
+        }
+
+        Ok(Handled::NotHandled)
+    }
+
     fn handle_events_from_child(
         &mut self,
         uictx: &mut UIContext,
@@ -334,6 +373,48 @@ impl Pane {
         if is_mouse_released {
             self.previous_pos = None;
         }
+    }
+    */
+
+    /* PR_GATE: Need to to use the TreeView that has since been added
+
+    /// Adds the vector of children to the parent, and shrink the parent to fit the widgets with
+    /// padding on all sides. The widgets will have the padding added to their x and y coordinates.
+    /// Therefore it is suggested that the upper left widget in `children` be at `(0, 0)`.
+    ///
+    /// # Errors
+    ///
+    /// Any errors from adding are passed down. NOTE: parent will have already been resized!
+    //TODO if a `Container` trait is added, this can be a method of that trait instead. This would
+    // allow things other than Pane to contain child Widgets.
+    pub fn add_and_shrink_to_fit(&mut self, children: Vec<Box<dyn Widget>>, padding: f32) -> UIResult<()> {
+        // find bounding box
+        let (mut width, mut height) = (0.0, 0.0);
+        for child in &children {
+            let child_rect = child.rect();
+            let w = child_rect.x + child_rect.w;
+            let h = child_rect.y + child_rect.h;
+            if w > width {
+                width = w;
+            }
+            if h > height {
+                height = h;
+            }
+        }
+
+        // resize parent (use padding)
+        self.set_size(width + 2.0 * padding, height + 2.0 * padding)?;
+
+        for mut child in children {
+            // add padding to each child
+            let mut p = child.position();
+            p.x += padding;
+            p.y += padding;
+            child.set_position(p.x, p.y);
+
+            self.add_widget(child.id())?;
+        }
+        Ok(())
     }
     */
 

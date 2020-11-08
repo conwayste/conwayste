@@ -148,8 +148,7 @@ impl Checkbox {
         // create a synthetic click event
         let mouse_point = checkbox.position();
         let click_event = Event::new_click(mouse_point, MouseButton::Left, false);
-        checkbox.emit(&click_event, uictx)?;
-        Ok(Handled::NotHandled) // allow other handlers for this event type to be activated
+        Ok(checkbox.emit(&click_event, uictx)?)
     }
 
     fn click_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
@@ -158,7 +157,7 @@ impl Checkbox {
         // toggle
         checkbox.enabled = !checkbox.enabled;
 
-        Ok(Handled::NotHandled)
+        Ok(Handled::Handled)
     }
 
     fn mouse_move_handler(
@@ -219,6 +218,14 @@ impl Widget for Checkbox {
                     self.id()
                 ),
             }));
+        }
+
+        if self.dimensions.x != new_dims.x || self.dimensions.y != new_dims.y {
+            // also move the label
+            self.label.translate(Vector2::<f32>::new(
+                new_dims.x - self.dimensions.x,
+                new_dims.y - self.dimensions.y,
+            ))
         }
 
         self.dimensions = new_dims;

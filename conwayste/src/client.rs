@@ -44,6 +44,7 @@ extern crate chromatica;
 
 mod config;
 mod constants;
+#[macro_use]
 mod error;
 mod input;
 mod network;
@@ -55,13 +56,8 @@ mod viewport;
 use chrono::Local;
 use log::LevelFilter;
 
-use conway::error::ConwayError;
-use conway::grids::{BitGrid, CharGrid};
-use conway::rle::Pattern;
+use conway::grids::CharGrid;
 use conway::universe::{BigBang, CellState, PlayerBuilder, Region, Universe};
-use conway::ConwayResult;
-use conway::Rotation;
-
 use netwayste::net::NetwaysteEvent;
 
 use ggez::conf;
@@ -83,15 +79,15 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use constants::{
-    colors::*, DrawStyle, CURRENT_PLAYER_ID, DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, DEFAULT_ZOOM_LEVEL,
-    FOG_RADIUS, GRID_DRAW_STYLE, HISTORY_SIZE, INTRO_DURATION, INTRO_PAUSE_DURATION,
+    colors::*, DrawStyle, DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, DEFAULT_ZOOM_LEVEL, GRID_DRAW_STYLE,
+    INTRO_DURATION, INTRO_PAUSE_DURATION,
 };
 use input::{MouseAction, ScrollEvent};
 use ui::{
     context::{EmitEvent, Event, Handled, Handler, UIContext},
-    Chatbox, ChatboxPublishHandle, EventType, GameArea, Pane, TextField, UIError,
+    Chatbox, ChatboxPublishHandle, EventType, GameArea, GameAreaState, TextField,
 };
-use uilayout::UILayout;
+use uilayout::{StaticNodeIds, UILayout};
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum Screen {
@@ -106,32 +102,25 @@ pub enum Screen {
 
 // All game state
 struct MainState {
-    system_font:         Font,
-    screen_stack:        Vec<Screen>, // Where are we in the game (Intro/Menu Main/Running..)
+    system_font:        Font,
+    screen_stack:       Vec<Screen>, // Where are we in the game (Intro/Menu Main/Running..)
     // If the top is Exit, then the game exits
-    uni:                 Universe, // Things alive and moving here
-    intro_uni:           Universe,
-    first_gen_was_drawn: bool, // The purpose of this is to inhibit gen calc until the first draw
-    color_settings:      ColorSettings,
-    uni_draw_params:     UniDrawParams,
-    running:             bool,
-    video_settings:      video::VideoSettings,
-    config:              config::Config,
-    viewport:            viewport::GridView,
-    intro_viewport:      viewport::GridView,
-    inputs:              input::InputManager,
-    net_worker:          Arc<Mutex<Option<network::ConwaysteNetWorker>>>,
-    recvd_first_resize:  bool, // work around an apparent ggez bug where the first resize event is bogus
+    intro_uni:          Universe,
+    color_settings:     ColorSettings,
+    uni_draw_params:    UniDrawParams,
+    video_settings:     video::VideoSettings,
+    config:             config::Config,
+    viewport:           viewport::GridView,
+    intro_viewport:     viewport::GridView,
+    inputs:             input::InputManager,
+    net_worker:         Arc<Mutex<Option<network::ConwaysteNetWorker>>>,
+    recvd_first_resize: bool, // work around an apparent ggez bug where the first resize event is bogus
 
-    // Input state
-    single_step:            bool,
-    arrow_input:            (isize, isize),
-    drag_draw:              Option<CellState>,
-    insert_mode:            Option<(BitGrid, usize, usize)>, // pattern to be drawn on click along with width and height;
     // if Some(...), dragging doesn't draw anything
     current_intro_duration: f64,
 
-    ui_layout: UILayout,
+    ui_layout:       UILayout,
+    static_node_ids: StaticNodeIds,
 }
 
 // Support non-alive/dead/bg colors
@@ -158,122 +147,6 @@ impl ColorSettings {
         let mut iter = colors.into_iter();
         Color::new(iter.next().unwrap(), iter.next().unwrap(), iter.next().unwrap(), 1.0)
     }
-}
-
-fn init_patterns(s: &mut MainState) -> ConwayResult<()> {
-    let _pat = Pattern("10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW$10bW$10bW$10b16W48$100b2A5b2A$100b2A5b2A2$104b2A$104b2A5$122b2Ab2A$121bA5bA$121bA6bA2b2A$121b3A3bA3b2A$126bA!".to_owned());
-    //XXX apply to universe, then return Ok
-    //XXX return Ok(());
-    // TODO: remove the following
-    /*
-    // R pentomino
-    s.uni.toggle(16, 15, 0)?;
-    s.uni.toggle(17, 15, 0)?;
-    s.uni.toggle(15, 16, 0)?;
-    s.uni.toggle(16, 16, 0)?;
-    s.uni.toggle(16, 17, 0)?;
-    */
-
-    /*
-    // Acorn
-    s.uni.toggle(23, 19, 0)?;
-    s.uni.toggle(24, 19, 0)?;
-    s.uni.toggle(24, 17, 0)?;
-    s.uni.toggle(26, 18, 0)?;
-    s.uni.toggle(27, 19, 0)?;
-    s.uni.toggle(28, 19, 0)?;
-    s.uni.toggle(29, 19, 0)?;
-    */
-
-    // Simkin glider gun
-    s.uni.toggle(100, 70, 0)?;
-    s.uni.toggle(100, 71, 0)?;
-    s.uni.toggle(101, 70, 0)?;
-    s.uni.toggle(101, 71, 0)?;
-
-    s.uni.toggle(104, 73, 0)?;
-    s.uni.toggle(104, 74, 0)?;
-    s.uni.toggle(105, 73, 0)?;
-    s.uni.toggle(105, 74, 0)?;
-
-    s.uni.toggle(107, 70, 0)?;
-    s.uni.toggle(107, 71, 0)?;
-    s.uni.toggle(108, 70, 0)?;
-    s.uni.toggle(108, 71, 0)?;
-
-    /* eater
-    s.uni.toggle(120, 87, 0)?;
-    s.uni.toggle(120, 88, 0)?;
-    s.uni.toggle(121, 87, 0)?;
-    s.uni.toggle(121, 89, 0)?;
-    s.uni.toggle(122, 89, 0)?;
-    s.uni.toggle(123, 89, 0)?;
-    s.uni.toggle(123, 90, 0)?;
-    */
-
-    s.uni.toggle(121, 80, 0)?;
-    s.uni.toggle(121, 81, 0)?;
-    s.uni.toggle(121, 82, 0)?;
-    s.uni.toggle(122, 79, 0)?;
-    s.uni.toggle(122, 82, 0)?;
-    s.uni.toggle(123, 79, 0)?;
-    s.uni.toggle(123, 82, 0)?;
-    s.uni.toggle(125, 79, 0)?;
-    s.uni.toggle(126, 79, 0)?;
-    s.uni.toggle(126, 83, 0)?;
-    s.uni.toggle(127, 80, 0)?;
-    s.uni.toggle(127, 82, 0)?;
-    s.uni.toggle(128, 81, 0)?;
-
-    s.uni.toggle(131, 81, 0)?;
-    s.uni.toggle(131, 82, 0)?;
-    s.uni.toggle(132, 81, 0)?;
-    s.uni.toggle(132, 82, 0)?;
-
-    //Wall in player 0 area!
-    let bw = 5; // buffer width
-
-    // right side
-    for row in (70 - bw)..(83 + bw + 1) {
-        s.uni.set_unchecked(132 + bw, row, CellState::Wall);
-    }
-
-    // top side
-    for col in (100 - bw)..109 {
-        s.uni.set_unchecked(col, 70 - bw, CellState::Wall);
-    }
-    for col in 114..(132 + bw + 1) {
-        s.uni.set_unchecked(col, 70 - bw, CellState::Wall);
-    }
-
-    // left side
-    for row in (70 - bw)..(83 + bw + 1) {
-        s.uni.set_unchecked(100 - bw, row, CellState::Wall);
-    }
-
-    // bottom side
-    for col in (100 - bw)..120 {
-        s.uni.set_unchecked(col, 83 + bw, CellState::Wall);
-    }
-    for col in 125..(132 + bw + 1) {
-        s.uni.set_unchecked(col, 83 + bw, CellState::Wall);
-    }
-
-    //Wall in player 1!
-    for row in 10..19 {
-        s.uni.set_unchecked(25, row, CellState::Wall);
-    }
-    for col in 10..25 {
-        s.uni.set_unchecked(col, 10, CellState::Wall);
-    }
-    for row in 11..23 {
-        s.uni.set_unchecked(10, row, CellState::Wall);
-    }
-    for col in 11..26 {
-        s.uni.set_unchecked(col, 22, CellState::Wall);
-    }
-
-    Ok(())
 }
 
 fn get_text_entered_handler(
@@ -307,11 +180,6 @@ fn get_text_entered_handler(
 // that you can override if you wish, but the defaults are fine.
 impl MainState {
     fn new(ctx: &mut Context) -> GameResult<MainState> {
-        let universe_width_in_cells = 256;
-        let universe_height_in_cells = 120;
-        let intro_universe_width_in_cells = 256;
-        let intro_universe_height_in_cells = 256;
-
         let mut config = config::Config::new();
         config.load_or_create_default().map_err(|e| {
             let msg = format!("Error while loading config: {:?}", e);
@@ -331,14 +199,14 @@ impl MainState {
 
         let intro_viewport = viewport::GridView::new(
             DEFAULT_ZOOM_LEVEL,
-            intro_universe_width_in_cells,
-            intro_universe_height_in_cells,
+            constants::INTRO_UNIVERSE_WIDTH_IN_CELLS,
+            constants::INTRO_UNIVERSE_HEIGHT_IN_CELLS,
         );
 
         let viewport = viewport::GridView::new(
             config.get().gameplay.zoom,
-            universe_width_in_cells,
-            universe_height_in_cells,
+            constants::UNIVERSE_WIDTH_IN_CELLS,
+            constants::UNIVERSE_HEIGHT_IN_CELLS,
         );
 
         let mut color_settings = ColorSettings {
@@ -374,31 +242,11 @@ impl MainState {
         let font = Font::new(ctx, path::Path::new("/telegrama_render.ttf"))
             .map_err(|e| GameError::FilesystemError(format!("Could not load or find font. {:?}", e)))?;
 
-        let bigbang = {
-            // we're going to have to tear this all out when this becomes a real game
-            let player0_writable = Region::new(100, 70, 34, 16);
-            let player1_writable = Region::new(0, 0, 80, 80);
-
-            let player0 = PlayerBuilder::new(player0_writable);
-            let player1 = PlayerBuilder::new(player1_writable);
-            let players = vec![player0, player1];
-
-            BigBang::new()
-                .width(universe_width_in_cells)
-                .height(universe_height_in_cells)
-                .server_mode(true) // TODO will change to false once we get server support up
-                // Currently 'client' is technically both client and server
-                .history(HISTORY_SIZE)
-                .fog_radius(FOG_RADIUS)
-                .add_players(players)
-                .birth()
-        };
-
         let intro_universe = {
             let player = PlayerBuilder::new(Region::new(0, 0, 256, 256));
             BigBang::new()
-                .width(intro_universe_width_in_cells)
-                .height(intro_universe_height_in_cells)
+                .width(constants::INTRO_UNIVERSE_WIDTH_IN_CELLS)
+                .height(constants::INTRO_UNIVERSE_HEIGHT_IN_CELLS)
                 .fog_radius(100)
                 .add_players(vec![player])
                 .birth()
@@ -410,7 +258,7 @@ impl MainState {
             GameError::ConfigError(msg)
         })?;
 
-        let mut ui_layout = UILayout::new(ctx, &config, font.clone()).unwrap(); // TODO: unwrap not OK!
+        let (mut ui_layout, static_node_ids) = UILayout::new(ctx, &config, font.clone()).unwrap(); // TODO: unwrap not OK!
 
         // Update universe draw parameters for intro
         let intro_uni_draw_params = UniDrawParams {
@@ -425,9 +273,9 @@ impl MainState {
         // underlying implementation may change.
         let net_worker = Arc::new(Mutex::new(None));
         let chatbox_pub_handle = {
-            let chatbox_id = ui_layout.chatbox_id.clone();
+            let chatbox_id = static_node_ids.chatbox_id.clone();
             let w = ui_layout
-                .get_screen_layering(Screen::Run)
+                .get_screen_layering_mut(Screen::Run)
                 .unwrap()
                 .get_widget_mut(&chatbox_id)
                 .unwrap();
@@ -436,9 +284,9 @@ impl MainState {
         };
         let text_entered_handler = get_text_entered_handler(chatbox_pub_handle, net_worker.clone());
         {
-            let textfield_id = ui_layout.chatbox_tf_id.clone();
+            let textfield_id = static_node_ids.chatbox_tf_id.clone();
             let w = ui_layout
-                .get_screen_layering(Screen::Run)
+                .get_screen_layering_mut(Screen::Run)
                 .unwrap()
                 .get_widget_mut(&textfield_id)
                 .unwrap();
@@ -449,12 +297,9 @@ impl MainState {
         let mut s = MainState {
             screen_stack: vec![Screen::Intro],
             system_font: font.clone(),
-            uni: bigbang.unwrap(),
             intro_uni: intro_universe.unwrap(),
-            first_gen_was_drawn: false,
             uni_draw_params: intro_uni_draw_params,
             color_settings: color_settings,
-            running: false,
             video_settings: vs,
             config: config,
             viewport: viewport,
@@ -462,17 +307,12 @@ impl MainState {
             inputs: input::InputManager::new(),
             net_worker,
             recvd_first_resize: false,
-            single_step: false,
-            arrow_input: (0, 0),
-            drag_draw: None,
-            insert_mode: None,
             current_intro_duration: 0.0,
             ui_layout: ui_layout,
+            static_node_ids: static_node_ids,
         };
 
-        init_patterns(&mut s).unwrap();
-
-        init_title_screen(&mut s).unwrap();
+        init_intro_screen(&mut s).unwrap();
 
         Ok(s)
     }
@@ -521,34 +361,29 @@ impl EventHandler for MainState {
         let key = self.inputs.key_info.key;
         let keymods = self.inputs.key_info.modifier;
         let is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
+        let is_repeating = self.inputs.key_info.repeating;
 
         let mouse_point = self.inputs.mouse_info.position;
-        //let origin_point = self.inputs.mouse_info.down_position; // TODO: when we need drag support, we'll need this
-
         let mouse_action = self.inputs.mouse_info.action;
 
-        let left_mouse_click =
-            mouse_action == Some(MouseAction::Click) && self.inputs.mouse_info.mousebutton == MouseButton::Left;
-
-        let mut game_area_has_keyboard_focus = false;
-        let game_area_id = self.ui_layout.game_area_id.clone();
-        match GameArea::widget_from_screen_and_id(&mut self.ui_layout, screen, &game_area_id) {
-            Ok(gamearea) => {
-                game_area_has_keyboard_focus = gamearea.has_keyboard_focus;
-            }
-            Err(e) => {
-                if screen == Screen::Run {
-                    error!("failed to look up GameArea widget: {:?}", e);
-                }
-            }
-        }
+        let mut game_area_state = self.get_gamearea_state().unwrap_or_else(|e| {
+            error!("Could not get game area state: {}", e);
+            GameAreaState::default()
+        });
 
         // ==== Handle widget events ====
-        let mut game_area_should_ignore_input = false;
-        if let Some(layer) = self.ui_layout.get_screen_layering(screen) {
+        if let Some(layer) = self.ui_layout.get_screen_layering_mut(screen) {
             let update = Event::new_update();
             layer
-                .emit(&update, ctx, &mut self.config, &mut self.screen_stack)
+                .emit(
+                    &update,
+                    ctx,
+                    &mut self.config,
+                    &mut self.screen_stack,
+                    &mut game_area_state,
+                    &mut self.static_node_ids,
+                    &mut self.viewport,
+                )
                 .unwrap_or_else(|e| {
                     error!("Error from layer.emit on update: {:?}", e);
                 });
@@ -561,7 +396,15 @@ impl EventHandler for MainState {
                     is_shift,
                 );
                 layer
-                    .emit(&mouse_move, ctx, &mut self.config, &mut self.screen_stack)
+                    .emit(
+                        &mouse_move,
+                        ctx,
+                        &mut self.config,
+                        &mut self.screen_stack,
+                        &mut game_area_state,
+                        &mut self.static_node_ids,
+                        &mut self.viewport,
+                    )
                     .unwrap_or_else(|e| {
                         error!("Error from layer.emit on mouse move: {:?}", e);
                     });
@@ -569,31 +412,78 @@ impl EventHandler for MainState {
             }
 
             if let Some(action) = mouse_action {
-                if action == MouseAction::Drag {
-                    // TODO: replace with event
-                    //layer.on_drag(&origin_point, &mouse_point);
+                match action {
+                    MouseAction::Drag => {
+                        let drag_event = Event::new_drag(mouse_point, self.inputs.mouse_info.mousebutton, is_shift);
+                        layer
+                            .emit(
+                                &drag_event,
+                                ctx,
+                                &mut self.config,
+                                &mut self.screen_stack,
+                                &mut game_area_state,
+                                &mut self.static_node_ids,
+                                &mut self.viewport,
+                            )
+                            .unwrap_or_else(|e| {
+                                error!("Error from layer.emit on left click: {:?}", e);
+                            });
+                    }
+                    MouseAction::Click => {
+                        let click_event = Event::new_click(mouse_point, self.inputs.mouse_info.mousebutton, is_shift);
+                        layer
+                            .emit(
+                                &click_event,
+                                ctx,
+                                &mut self.config,
+                                &mut self.screen_stack,
+                                &mut game_area_state,
+                                &mut self.static_node_ids,
+                                &mut self.viewport,
+                            )
+                            .unwrap_or_else(|e| {
+                                error!("Error from layer.emit on left click: {:?}", e);
+                            });
+                    }
+                    MouseAction::Held => {
+                        let hold_event =
+                            Event::new_mouse_held(mouse_point, self.inputs.mouse_info.mousebutton, is_shift);
+                        layer
+                            .emit(
+                                &hold_event,
+                                ctx,
+                                &mut self.config,
+                                &mut self.screen_stack,
+                                &mut game_area_state,
+                                &mut self.static_node_ids,
+                                &mut self.viewport,
+                            )
+                            .unwrap_or_else(|e| {
+                                error!("Error from layer.emit on left click: {:?}", e);
+                            });
+                    }
+                    MouseAction::DoubleClick => {
+                        // TODO add support
+                        error!("Please add double click support in the client update event dispatcher.");
+                    }
                 }
             }
 
-            if left_mouse_click {
-                let click_event = Event::new_click(mouse_point, self.inputs.mouse_info.mousebutton, is_shift);
+            if let Some(key) = key {
+                let key_event = Event::new_key_press(mouse_point, key, is_shift, is_repeating);
                 layer
-                    .emit(&click_event, ctx, &mut self.config, &mut self.screen_stack)
+                    .emit(
+                        &key_event,
+                        ctx,
+                        &mut self.config,
+                        &mut self.screen_stack,
+                        &mut game_area_state,
+                        &mut self.static_node_ids,
+                        &mut self.viewport,
+                    )
                     .unwrap_or_else(|e| {
-                        error!("Error from layer.emit on left click: {:?}", e);
+                        error!("Error from layer.emit on key press: {:?}", e);
                     });
-            }
-
-            if !game_area_has_keyboard_focus {
-                if let Some(key) = key {
-                    let key_event = Event::new_key_press(mouse_point, key, is_shift);
-                    layer
-                        .emit(&key_event, ctx, &mut self.config, &mut self.screen_stack)
-                        .unwrap_or_else(|e| {
-                            error!("Error from layer.emit on key press: {:?}", e);
-                        });
-                    game_area_should_ignore_input = true;
-                }
             }
 
             let mut text_input = vec![];
@@ -601,58 +491,68 @@ impl EventHandler for MainState {
             for character in text_input {
                 let key_event = Event::new_char_press(mouse_point, character, is_shift);
                 layer
-                    .emit(&key_event, ctx, &mut self.config, &mut self.screen_stack)
+                    .emit(
+                        &key_event,
+                        ctx,
+                        &mut self.config,
+                        &mut self.screen_stack,
+                        &mut game_area_state,
+                        &mut self.static_node_ids,
+                        &mut self.viewport,
+                    )
                     .unwrap_or_else(|e| {
                         error!("Error from layer.emit on key press (text input): {:?}", e);
                     });
             }
+
+            // Ensure the game area is always in focus if nothing else holds focus
+            if screen == Screen::Run && layer.highest_z_order == 0 && layer.focused_widget_id().is_none() {
+                let game_area_id = self.static_node_ids.game_area_id.clone();
+                layer
+                    .enter_focus(
+                        ctx,
+                        &mut self.config,
+                        &mut self.screen_stack,
+                        &mut game_area_state,
+                        &mut self.static_node_ids,
+                        &mut self.viewport,
+                        &game_area_id,
+                    )
+                    .unwrap_or_else(|e| {
+                        error!(
+                            "Error from layer.enter_focus to default focus the game area in Screen::Run: {:?}",
+                            e
+                        )
+                    });
+            }
         }
 
-        if screen == Screen::Run && game_area_has_keyboard_focus && !game_area_should_ignore_input {
-            let result = self.process_running_inputs(ctx);
-            handle_error!(result,
-                UIError => |e| {
-                    error!("Received UI Error from process_running_inputs(). {:?}", e);
-                },
-                else => |e| {
-                    error!("Received unexpected error from process_running_inputs(). {:?}", e);
-                }
-            )
-            .unwrap(); // OK to call unwrap here because there is an else match arm (all errors handled)
-        }
+        // Refresh the game area state after processing all events
+        game_area_state = self.get_gamearea_state().unwrap_or_else(|e| {
+            error!("Could not get game area state after processing all UI events: {}", e);
+            GameAreaState::default()
+        });
 
         if screen == Screen::Run {
-            if self.single_step {
-                self.running = false;
-            }
-
-            if self.first_gen_was_drawn && (self.running || self.single_step) {
-                self.uni.next(); // next generation
-                self.single_step = false;
+            if game_area_state.single_step {
+                game_area_state.running = false;
             }
 
             if !is_shift {
                 // Arrow keys (but not Shift-<Arrow>!) move the player's view of the universe around
-                self.viewport.update(self.arrow_input);
+                self.viewport.update(game_area_state.arrow_input);
             }
         }
 
-        // Handle Escape, only if screen was not changed above
-        if key == Some(KeyCode::Escape) && screen == self.get_current_screen() {
-            if screen == Screen::Menu {
-                self.screen_stack.push(Screen::Run);
-            } else {
-                self.screen_stack.pop();
-            }
-        }
-
+        // Event processing may have updated the state of the current screen
         let new_screen = self.get_current_screen();
-        self.transition_screen(ctx, screen, new_screen).unwrap_or_else(|e| {
-            error!("Failed to transition_screen: {:?}", e);
-        });
+        self.transition_screen(ctx, screen, new_screen, &mut game_area_state)
+            .unwrap_or_else(|e| {
+                error!("Failed to transition_screen: {:?}", e);
+            });
 
         // HACK: propagate any video-related config settings from UI handlers to self.video_settings
-        // TODO: consider removing self.video_settings
+        // TODO: remove self.video_settings
         if self.video_settings.is_fullscreen != self.config.get().video.fullscreen {
             self.video_settings.is_fullscreen = self.config.get().video.fullscreen;
             self.video_settings.update_fullscreen(ctx)?;
@@ -668,6 +568,7 @@ impl EventHandler for MainState {
 
         let current_screen = self.get_current_screen();
 
+        // Before drawing widgets, draw other stuff underneath
         match current_screen {
             Screen::Intro => {
                 self.draw_intro(ctx).unwrap_or_else(|e| {
@@ -718,8 +619,10 @@ impl EventHandler for MainState {
             Screen::Exit => {}
         }
 
-        if let Some(layering) = self.ui_layout.get_screen_layering(current_screen) {
-            layering.draw(ctx).unwrap(); // TODO: unwrap not OK!
+        if let Some(layering) = self.ui_layout.get_screen_layering_mut(current_screen) {
+            layering.draw(ctx).unwrap_or_else(|e| {
+                error!("Error received during layering draw: {:?}", e);
+            });
         }
 
         graphics::present(ctx)?;
@@ -784,7 +687,10 @@ impl EventHandler for MainState {
             }
         }
 
-        self.drag_draw = None; // probably unnecessary because of state.left() check in mouse_motion_event
+        self.modify_game_area(Box::new(|game_area| {
+            // probably unnecessary because of state.left() check in mouse_motion_event
+            game_area.set_drag_draw(None);
+        }));
     }
 
     /// Vertical scroll:   (y, positive away from and negative toward the user)
@@ -928,6 +834,11 @@ struct UniDrawParams {
 }
 
 impl MainState {
+    fn get_gamearea_state(&mut self) -> ui::UIResult<GameAreaState> {
+        GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id)
+            .map(|gs| gs.get_game_area_state())
+    }
+
     fn draw_game_of_life(&self, ctx: &mut Context, universe: &Universe) -> Result<(), Box<dyn Error>> {
         let viewport = if self.uni_draw_params.player_id >= 0 {
             &self.viewport
@@ -979,9 +890,16 @@ impl MainState {
             }
         });
 
+        let mut insert_mode = None;
+        GameArea::widget_from_screen_and_id(&self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id).map(
+            |gamearea| {
+                insert_mode = gamearea.insert_mode();
+            },
+        )?;
+
         // TODO: truncate if outside of writable region
         // TODO: move to new function
-        if let Some((ref grid, width, height)) = self.insert_mode {
+        if let Some((ref grid, width, height)) = insert_mode {
             let unwritable_flash_on = timer::time_since_start(ctx).subsec_millis() % 250 < 125; // 50% duty cycle, 250ms period
 
             if self.uni_draw_params.player_id < 0 {
@@ -1002,8 +920,7 @@ impl MainState {
                     if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col, row)) {
                         let mut color = player_color;
                         // only error is due to player_id out of range, so unwrap OK here
-                        if !self
-                            .uni
+                        if !universe
                             .writable(col, row, self.uni_draw_params.player_id as usize)
                             .unwrap()
                         {
@@ -1072,9 +989,25 @@ impl MainState {
         self.draw_game_of_life(ctx, &self.intro_uni)
     }
 
+    /// Draws the GameArea's universe to the screen.
     fn draw_universe(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
-        self.first_gen_was_drawn = true;
-        self.draw_game_of_life(ctx, &self.uni)
+        // A mutable reference is used to notify the first generation is drawn
+        GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id)
+            .map(|gamearea| {
+            gamearea.first_gen_drawn();
+        })?;
+
+        // A non-mutable reference is used to draw the universe
+        match GameArea::widget_from_screen_and_id(&self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id) {
+            Ok(gamearea) => {
+                self.draw_game_of_life(ctx, &gamearea.uni)?;
+            }
+            Err(e) => {
+                error!("failed to look up GameArea widget: {:?}", e);
+            }
+        }
+
+        Ok(())
     }
 
     fn transition_screen(
@@ -1082,170 +1015,62 @@ impl MainState {
         ggez_ctx: &mut Context,
         old_screen: Screen,
         new_screen: Screen,
+        game_area_state: &mut GameAreaState,
     ) -> Result<(), Box<dyn Error>> {
         match old_screen {
             Screen::Menu => {
                 if new_screen == Screen::Run {
-                    let id = self.ui_layout.game_area_id.clone();
-                    if let Some(layering) = self.ui_layout.get_screen_layering(Screen::Run) {
-                        layering.enter_focus(ggez_ctx, &mut self.config, &mut self.screen_stack, &id)?;
+                    let game_area_id = self.static_node_ids.game_area_id.clone();
+                    if let Some(layering) = self.ui_layout.get_screen_layering_mut(Screen::Run) {
+                        layering.enter_focus(
+                            ggez_ctx,
+                            &mut self.config,
+                            &mut self.screen_stack,
+                            game_area_state,
+                            &mut self.static_node_ids,
+                            &mut self.viewport,
+                            &game_area_id,
+                        )?;
                     }
-                    self.running = true;
+                    game_area_state.running = true;
                 }
             }
             Screen::Run => {
                 if new_screen == Screen::Menu {
-                    self.running = false;
+                    game_area_state.running = false;
                 }
             }
             _ => {}
         }
-        Ok(())
-    }
 
-    /// Handles keyboard and mouse input stored in `self.inputs` by the ggez callbacks. This is
-    /// called from update() when we are in the Run screen, and the focus is not captured by, for
-    /// example, a text dialog.
-    fn process_running_inputs(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
-        let keymods = self.inputs.key_info.modifier;
-        let is_shift = keymods & KeyMods::SHIFT > KeyMods::default();
+        if old_screen != new_screen {
+            // Emit a Save event on the old screen
+            if let Some(layering) = self.ui_layout.get_screen_layering_mut(old_screen) {
+                layering.emit(
+                    &Event::new_save(),
+                    ggez_ctx,
+                    &mut self.config,
+                    &mut self.screen_stack,
+                    game_area_state,
+                    &mut self.static_node_ids,
+                    &mut self.viewport,
+                )?;
+            }
 
-        if let Some(keycode) = self.inputs.key_info.key {
-            match keycode {
-                KeyCode::Key1 => {
-                    // pressing 1 clears selection
-                    self.insert_mode = None;
-                }
-                k if k >= KeyCode::Key2 && k <= KeyCode::Key0 => {
-                    // select a pattern
-                    let grid_info_result = self.bit_pattern_from_char(keycode);
-                    let grid_info = handle_error! {grid_info_result -> (BitGrid, usize, usize),
-                        ConwayError => |e| {
-                            return Err(format!("Invalid pattern bound to keycode {:?}: {}", keycode, e).into())
-                        }
-                    }?;
-                    self.insert_mode = Some(grid_info);
-                }
-                KeyCode::Return => {
-                    let chatbox_pane_id = self.ui_layout.chatbox_pane_id.clone();
-                    match Pane::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &chatbox_pane_id) {
-                        Ok(_chatbox_pane) => {
-                            if let Some(layer) = self.ui_layout.get_screen_layering(Screen::Run) {
-                                layer.enter_focus(ctx, &mut self.config, &mut self.screen_stack, &chatbox_pane_id)?;
-                            }
-                        }
-                        Err(e) => {
-                            error!("Could not get Chatbox's textfield while processing key inputs: {:?}", e);
-                        }
-                    }
-                }
-                KeyCode::R => {
-                    if !self.inputs.key_info.repeating {
-                        self.running = !self.running;
-                    }
-                }
-                KeyCode::Space => {
-                    self.single_step = true;
-                }
-                KeyCode::Up => {
-                    self.arrow_input = (0, -1);
-                }
-                KeyCode::Down => {
-                    self.arrow_input = (0, 1);
-                }
-                KeyCode::Left => {
-                    self.arrow_input = (-1, 0);
-                }
-                KeyCode::Right => {
-                    self.arrow_input = (1, 0);
-                }
-                KeyCode::Add | KeyCode::Equals => {
-                    self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomIn);
-                    let cell_size = self.viewport.get_cell_size();
-                    self.config.modify(|settings| {
-                        settings.gameplay.zoom = cell_size;
-                    });
-                }
-                KeyCode::Minus | KeyCode::Subtract => {
-                    self.viewport.adjust_zoom_level(viewport::ZoomDirection::ZoomOut);
-                    let cell_size = self.viewport.get_cell_size();
-                    self.config.modify(|settings| {
-                        settings.gameplay.zoom = cell_size;
-                    });
-                }
-                KeyCode::D => {
-                    // TODO: do something with this debug code
-                    let visibility = None; // can also do Some(player_id)
-                    let pat = self.uni.to_pattern(visibility);
-                    println!("PATTERN DUMP:\n{}", pat.0);
-                }
-                _ => {
-                    println!("Unrecognized keycode {:?}", keycode);
-                }
+            // Emit a Load event on the new screen
+            if let Some(layering) = self.ui_layout.get_screen_layering_mut(new_screen) {
+                layering.emit(
+                    &Event::new_load(),
+                    ggez_ctx,
+                    &mut self.config,
+                    &mut self.screen_stack,
+                    game_area_state,
+                    &mut self.static_node_ids,
+                    &mut self.viewport,
+                )?;
             }
         }
 
-        if self.inputs.mouse_info.mousebutton == MouseButton::Left {
-            let mouse_pos = self.inputs.mouse_info.position;
-
-            if let Some((ref grid, width, height)) = self.insert_mode {
-                // inserting a pattern
-                if self.inputs.mouse_info.action == Some(MouseAction::Click) {
-                    if let Some(cell) = self.viewport.get_cell(mouse_pos) {
-                        let insert_col = cell.col as isize - (width / 2) as isize;
-                        let insert_row = cell.row as isize - (height / 2) as isize;
-                        let dst_region = Region::new(insert_col, insert_row, width, height);
-                        self.uni.copy_from_bit_grid(grid, dst_region, Some(CURRENT_PLAYER_ID));
-                    }
-                }
-            } else {
-                // not inserting a pattern, just drawing single cells
-                match self.inputs.mouse_info.action {
-                    Some(MouseAction::Click) => {
-                        // release
-                        self.drag_draw = None;
-                    }
-                    Some(MouseAction::Drag) => {
-                        // hold + motion
-                        if let Some(cell) = self.viewport.get_cell(mouse_pos) {
-                            // Only make dead cells alive
-                            if let Some(cell_state) = self.drag_draw {
-                                self.uni.set(cell.col, cell.row, cell_state, CURRENT_PLAYER_ID);
-                            }
-                        }
-                    }
-                    Some(MouseAction::Held) => {
-                        // depress, no move yet
-                        if let Some(cell) = self.viewport.get_cell(mouse_pos) {
-                            if self.drag_draw.is_none() {
-                                self.drag_draw = self.uni.toggle(cell.col, cell.row, CURRENT_PLAYER_ID).ok();
-                            }
-                        }
-                    }
-                    Some(MouseAction::DoubleClick) | None => {} // do nothing
-                }
-            }
-        } else if is_shift && self.arrow_input != (0, 0) {
-            if let Some((ref mut grid, ref mut width, ref mut height)) = self.insert_mode {
-                let rotation = match self.arrow_input {
-                    (-1, 0) => Some(Rotation::CCW),
-                    (1, 0) => Some(Rotation::CW),
-                    (0, 0) => unreachable!(),
-                    _ => None, // do nothing in this case
-                };
-                if let Some(rotation) = rotation {
-                    grid.rotate(*width, *height, rotation).unwrap_or_else(|e| {
-                        error!("Failed to rotate pattern {:?}: {:?}", rotation, e);
-                    });
-                    // reverse the stored width and height
-                    let (new_width, new_height) = (*height, *width);
-                    *width = new_width;
-                    *height = new_height;
-                } else {
-                    info!("Ignoring Shift-<Up/Down>");
-                }
-            }
-        }
         Ok(())
     }
 
@@ -1307,9 +1132,9 @@ impl MainState {
             }
         }
 
-        let id = self.ui_layout.chatbox_id.clone();
+        let id = self.static_node_ids.chatbox_id.clone();
         for msg in incoming_messages {
-            match Chatbox::widget_from_screen_and_id(&mut self.ui_layout, Screen::Run, &id) {
+            match Chatbox::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &id) {
                 Ok(cb) => cb.add_message(msg),
                 Err(e) => error!("Could not add message to Chatbox on network message receive: {:?}", e),
             }
@@ -1330,13 +1155,13 @@ impl MainState {
                 MouseAction::Drag | MouseAction::Held | MouseAction::DoubleClick => {}
             }
         }
+
         self.inputs.mouse_info.scroll_event = None;
+        self.inputs.key_info.key = None;
 
-        if self.inputs.key_info.key.is_some() {
-            self.inputs.key_info.key = None;
-        }
-
-        self.arrow_input = (0, 0);
+        self.modify_game_area(Box::new(|game_area| {
+            game_area.set_arrow_input((0, 0));
+        }));
 
         // Flush config
         self.config
@@ -1362,30 +1187,16 @@ impl MainState {
         }
     }
 
-    /// This takes a keyboard code and returns a `Result` whose Ok value is a `(BitGrid, width,
-    /// height)` tuple.
-    ///
-    /// # Errors
-    ///
-    /// This will return an error if the selected RLE pattern is invalid.
-    fn bit_pattern_from_char(&self, keycode: KeyCode) -> Result<(BitGrid, usize, usize), Box<dyn Error>> {
-        let gameplay = &self.config.get().gameplay;
-        let rle_str = match keycode {
-            KeyCode::Key2 => &gameplay.pattern2,
-            KeyCode::Key3 => &gameplay.pattern3,
-            KeyCode::Key4 => &gameplay.pattern4,
-            KeyCode::Key5 => &gameplay.pattern5,
-            KeyCode::Key6 => &gameplay.pattern6,
-            KeyCode::Key7 => &gameplay.pattern7,
-            KeyCode::Key8 => &gameplay.pattern8,
-            KeyCode::Key9 => &gameplay.pattern9,
-            KeyCode::Key0 => &gameplay.pattern0,
-            _ => "", // unexpected
-        };
-        let pat = Pattern(rle_str.to_owned());
-        let (width, height) = pat.calc_size()?; // calc_size will fail on invalid RLE -- return it
-        let grid = pat.to_new_bit_grid(width, height)?;
-        Ok((grid, width, height))
+    fn modify_game_area(&mut self, modification: Box<dyn Fn(&mut GameArea)>) {
+        let screen = self.get_current_screen();
+        match GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, screen, &self.static_node_ids.game_area_id) {
+            Ok(gamearea) => modification(gamearea),
+            Err(e) => {
+                if screen == Screen::Run {
+                    error!("failed to look up GameArea widget: {:?}", e);
+                }
+            }
+        }
     }
 }
 
@@ -1431,8 +1242,7 @@ fn toggle_line(s: &mut MainState, orientation: Orientation, col: isize, row: isi
     }
 }
 
-// TODO: this should really have "intro" in its name!
-fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
+fn init_intro_screen(s: &mut MainState) -> Result<(), ()> {
     // 1) Calculate width and height of rectangle which represents the intro logo
     // 2) Determine height and width of the window
     // 3) Center it

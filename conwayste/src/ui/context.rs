@@ -32,8 +32,7 @@ use id_tree::NodeId;
 
 use super::treeview::TreeView;
 use super::BoxedWidget;
-use crate::config;
-use crate::Screen;
+use crate::{config, uilayout::StaticNodeIds, viewport::GridView, Screen};
 
 /// Stores references to many things a handler is likely to need:
 ///
@@ -42,11 +41,14 @@ use crate::Screen;
 /// * `widget_view` - a `TreeView` on the handler's widget and all widgets beneath it in the widget tree.
 /// * `screen_stack` - the layers of `Screen`s in the UI. Handlers are able to push or pop this stack.
 pub struct UIContext<'a> {
-    pub ggez_context: &'a mut ggez::Context,
-    pub config:       &'a mut config::Config,
-    pub widget_view:  TreeView<'a, BoxedWidget>,
-    pub screen_stack: &'a mut Vec<Screen>,
-    child_events:     Vec<Event>,
+    pub ggez_context:     &'a mut ggez::Context,
+    pub config:           &'a mut config::Config,
+    pub widget_view:      TreeView<'a, BoxedWidget>,
+    pub screen_stack:     &'a mut Vec<Screen>,
+    pub game_in_progress: bool,
+    pub static_node_ids:  &'a mut StaticNodeIds,
+    pub viewport:         &'a mut GridView,
+    child_events:         Vec<Event>,
 }
 
 impl<'a> UIContext<'a> {
@@ -55,6 +57,9 @@ impl<'a> UIContext<'a> {
         config: &'a mut config::Config,
         view: TreeView<'a, BoxedWidget>,
         screen_stack: &'a mut Vec<Screen>,
+        game_in_progress: bool,
+        static_node_ids: &'a mut StaticNodeIds,
+        viewport: &'a mut GridView,
     ) -> Self {
         UIContext {
             ggez_context,
@@ -62,6 +67,9 @@ impl<'a> UIContext<'a> {
             widget_view: view,
             child_events: vec![],
             screen_stack,
+            game_in_progress,
+            static_node_ids,
+            viewport,
         }
     }
 
@@ -83,11 +91,14 @@ impl<'a> UIContext<'a> {
         Ok((
             widget_ref,
             UIContext {
-                ggez_context: self.ggez_context,
-                config:       self.config,
-                widget_view:  subtree,
-                screen_stack: self.screen_stack,
-                child_events: vec![],
+                ggez_context:     self.ggez_context,
+                config:           self.config,
+                widget_view:      subtree,
+                screen_stack:     self.screen_stack,
+                child_events:     vec![],
+                game_in_progress: self.game_in_progress,
+                static_node_ids:  self.static_node_ids,
+                viewport:         self.viewport,
             },
         ))
     }
@@ -178,21 +189,28 @@ impl<'a> Drop for UIContext<'a> {
 /// The type of an event.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, IntoEnumIterator)]
 pub enum EventType {
+    None,
     Click,
+    DoubleClick,
     KeyPress,
     MouseMove,
     Drag,
+    MouseButtonHeld,
     Translate,
     Resize,
     ParentTranslate,
     ParentResize,
     GainFocus,
     LoseFocus,
-    ChildReleasedFocus,
     // ChildReleasedFocus goes toward the root of the tree! Emitted by Pane onto its parent via
     // child_event(). Note that a LoseFocus event will not be received after this is sent.
+    ChildReleasedFocus,
+    ChildRequestsFocus,
     TextEntered,
     Update,
+    RequestFocus,
+    Load,
+    Save,
 }
 
 /// Describes a MouseMove event in relation to a Rect.
@@ -216,7 +234,9 @@ pub struct Event {
     pub button:        Option<MouseButton>, // Click
     pub key:           Option<KeyCodeOrChar>,
     pub shift_pressed: bool,
+    pub key_repeating: bool,
     pub text:          Option<String>,
+    pub node_id:       Option<NodeId>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -226,16 +246,30 @@ pub enum KeyCodeOrChar {
 }
 
 /// A slice containing all EventTypes related to the keyboard. Must have a key set.
-pub const KEY_EVENTS: &[EventType] = &[EventType::KeyPress];
+const KEY_EVENTS: &[EventType] = &[EventType::KeyPress];
 
 /// A slice containing all EventTypes related to the mouse.
-pub const MOUSE_EVENTS: &[EventType] = &[EventType::Click, EventType::MouseMove, EventType::Drag];
+const MOUSE_EVENTS: &[EventType] = &[
+    EventType::Click,
+    EventType::MouseMove,
+    EventType::Drag,
+    EventType::MouseButtonHeld,
+];
 
 /// A slice containing all EventTypes related to keyboard focus changes.
-pub const FOCUS_EVENTS: &[EventType] = &[
+const FOCUS_EVENTS: &[EventType] = &[
     EventType::GainFocus,
     EventType::LoseFocus,
     EventType::ChildReleasedFocus,
+    EventType::RequestFocus,
+];
+
+/// A slice containing all EventTypes related to events broadcasted to all widgets
+const BROADCASTED_EVENTS: &[EventType] = &[
+    EventType::Update,
+    EventType::MouseMove,
+    EventType::Load,
+    EventType::Save,
 ];
 
 impl EventType {
@@ -253,42 +287,57 @@ impl EventType {
     pub fn is_focus_event(self) -> bool {
         FOCUS_EVENTS.contains(&self)
     }
+
+    pub fn is_broadcast_event(self) -> bool {
+        BROADCASTED_EVENTS.contains(&self)
+    }
+}
+
+impl Default for Event {
+    fn default() -> Self {
+        Event {
+            what:          EventType::None,
+            point:         None,
+            prev_point:    None,
+            button:        None,
+            key:           None,
+            shift_pressed: false,
+            key_repeating: false,
+            text:          None,
+            node_id:       None,
+        }
+    }
 }
 
 impl Event {
     pub fn new_char_press(mouse_point: Point2<f32>, character: char, is_shift: bool) -> Self {
         Event {
-            what:          EventType::KeyPress,
-            point:         Some(mouse_point),
-            prev_point:    None,
-            button:        None,
-            key:           Some(KeyCodeOrChar::Char(character)),
+            what: EventType::KeyPress,
+            point: Some(mouse_point),
+            key: Some(KeyCodeOrChar::Char(character)),
             shift_pressed: is_shift,
-            text:          None,
+            ..Default::default()
         }
     }
 
-    pub fn new_key_press(mouse_point: Point2<f32>, key_code: KeyCode, is_shift: bool) -> Self {
+    pub fn new_key_press(mouse_point: Point2<f32>, key_code: KeyCode, is_shift: bool, is_repeating: bool) -> Self {
         Event {
-            what:          EventType::KeyPress,
-            point:         Some(mouse_point),
-            prev_point:    None,
-            button:        None,
-            key:           Some(KeyCodeOrChar::KeyCode(key_code)),
+            what: EventType::KeyPress,
+            point: Some(mouse_point),
+            key: Some(KeyCodeOrChar::KeyCode(key_code)),
             shift_pressed: is_shift,
-            text:          None,
+            key_repeating: is_repeating,
+            ..Default::default()
         }
     }
 
     pub fn new_click(mouse_point: Point2<f32>, mouse_button: MouseButton, is_shift: bool) -> Self {
         Event {
-            what:          EventType::Click,
-            point:         Some(mouse_point),
-            prev_point:    None,
-            button:        Some(mouse_button),
-            key:           None,
+            what: EventType::Click,
+            point: Some(mouse_point),
+            button: Some(mouse_button),
             shift_pressed: is_shift,
-            text:          None,
+            ..Default::default()
         }
     }
 
@@ -299,13 +348,22 @@ impl Event {
         is_shift: bool,
     ) -> Self {
         Event {
-            what:          EventType::MouseMove,
-            point:         Some(point),
-            prev_point:    Some(prev_point),
-            button:        Some(mouse_button),
-            key:           None,
+            what: EventType::MouseMove,
+            point: Some(point),
+            prev_point: Some(prev_point),
+            button: Some(mouse_button),
             shift_pressed: is_shift,
-            text:          None,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_mouse_held(mouse_point: Point2<f32>, mouse_button: MouseButton, is_shift: bool) -> Self {
+        Event {
+            what: EventType::MouseButtonHeld,
+            point: Some(mouse_point),
+            button: Some(mouse_button),
+            shift_pressed: is_shift,
+            ..Default::default()
         }
     }
 
@@ -330,25 +388,16 @@ impl Event {
 
     pub fn new_child_released_focus() -> Self {
         Event {
-            what:          EventType::ChildReleasedFocus,
-            point:         None,
-            prev_point:    None,
-            button:        None,
-            key:           None,
-            shift_pressed: false,
-            text:          None,
+            what: EventType::ChildReleasedFocus,
+            ..Default::default()
         }
     }
 
     pub fn new_text_entered(text: String) -> Self {
         Event {
-            what:          EventType::TextEntered,
-            point:         None,
-            prev_point:    None,
-            button:        None,
-            key:           None,
-            shift_pressed: false,
-            text:          Some(text),
+            what: EventType::TextEntered,
+            text: Some(text),
+            ..Default::default()
         }
     }
 
@@ -361,24 +410,53 @@ impl Event {
         }
         Event {
             what,
-            point: None,
-            prev_point: None,
-            button: None,
-            key: None,
-            shift_pressed: false,
-            text: None,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_child_request_focus() -> Self {
+        Event {
+            what: EventType::ChildRequestsFocus,
+            ..Default::default()
         }
     }
 
     pub fn new_update() -> Self {
         Event {
-            what:          EventType::Update,
-            point:         None,
-            prev_point:    None,
-            button:        None,
-            key:           None,
-            shift_pressed: false,
-            text:          None,
+            what: EventType::Update,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_drag(mouse_point: Point2<f32>, mouse_button: MouseButton, is_shift: bool) -> Self {
+        Event {
+            what: EventType::Drag,
+            point: Some(mouse_point),
+            button: Some(mouse_button),
+            shift_pressed: is_shift,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_request_focus(node_id: NodeId) -> Self {
+        Event {
+            what: EventType::RequestFocus,
+            node_id: Some(node_id),
+            ..Default::default()
+        }
+    }
+
+    pub fn new_save() -> Self {
+        Event {
+            what: EventType::Save,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_load() -> Self {
+        Event {
+            what: EventType::Load,
+            ..Default::default()
         }
     }
 
@@ -394,8 +472,12 @@ impl Event {
 
     /// Returns true if and only if this is a keyboard focus event.
     #[allow(unused)]
-    pub fn is_focus_event(self) -> bool {
+    pub fn is_focus_event(&self) -> bool {
         self.what.is_focus_event()
+    }
+
+    pub fn is_broadcast_event(&self) -> bool {
+        self.what.is_broadcast_event()
     }
 }
 
@@ -410,8 +492,9 @@ pub type Handler = Box<dyn FnMut(&mut dyn EmitEvent, &mut UIContext, &Event) -> 
 pub type HandlerMap = HashMap<EventType, Vec<Handler>>;
 
 pub struct HandlerData {
-    pub handlers:         Option<HandlerMap>,
-    pub forwarded_events: Vec<Event>,
+    pub handlers:          Option<HandlerMap>,
+    pub forwarded_events:  Vec<Event>,
+    pub registered_events: Vec<EventType>, // Used for event support look-up after `on()` registration
 }
 
 impl fmt::Debug for HandlerData {
@@ -432,8 +515,9 @@ impl fmt::Debug for HandlerData {
 impl HandlerData {
     pub fn new() -> Self {
         HandlerData {
-            handlers:         Some(HandlerMap::new()),
-            forwarded_events: vec![],
+            handlers:          Some(HandlerMap::new()),
+            forwarded_events:  vec![],
+            registered_events: vec![],
         }
     }
 }
@@ -478,7 +562,7 @@ pub trait EmitEvent: Downcast {
     ///   forwarding.
     /// * The first error to be returned by a handler will be returned here, and no other handlers
     ///   will run.
-    fn emit(&mut self, event: &Event, uictx: &mut UIContext) -> Result<(), Box<dyn Error>>;
+    fn emit(&mut self, event: &Event, uictx: &mut UIContext) -> Result<Handled, Box<dyn Error>>;
 }
 
 impl_downcast!(EmitEvent);
@@ -507,6 +591,8 @@ impl_downcast!(EmitEvent);
 #[macro_export]
 macro_rules! impl_emit_event {
     ($widget_name:ty, self.$handler_data_field:ident) => {
+        use crate::ui::context::Handled as H;
+        use H::*;
         impl crate::ui::context::EmitEvent for $widget_name {
             /// Setup a handler for an event type
             fn on(
@@ -535,6 +621,7 @@ macro_rules! impl_emit_event {
                     handler_vec = handlers.get_mut(&what).unwrap();
                 }
                 handler_vec.push(hdlr);
+                self.$handler_data_field.registered_events.push(what);
                 Ok(())
             }
 
@@ -543,12 +630,13 @@ macro_rules! impl_emit_event {
                 &mut self,
                 event: &crate::ui::context::Event,
                 uictx: &mut crate::ui::context::UIContext,
-            ) -> Result<(), Box<dyn std::error::Error>> {
-                use crate::ui::context::Handled::*;
+            ) -> Result<H, Box<dyn std::error::Error>> {
+                let mut event_handled = NotHandled;
+
                 if self.$handler_data_field.handlers.is_none() {
                     // save event into forwarded_events for later forwarding
                     self.$handler_data_field.forwarded_events.push(event.clone());
-                    return Ok(());
+                    return Ok(NotHandled);
                 }
 
                 // take the handlers, so we are not mutably borrowing them more than once during
@@ -561,6 +649,7 @@ macro_rules! impl_emit_event {
                     for hdlr in handler_vec {
                         let handled = hdlr(self, uictx, event)?;
                         if handled == Handled {
+                            event_handled = Handled;
                             break;
                         }
                     }
@@ -580,6 +669,7 @@ macro_rules! impl_emit_event {
                             for hdlr in handler_vec {
                                 let handled = hdlr(self, uictx, &event)?;
                                 if handled == Handled {
+                                    event_handled = Handled;
                                     break;
                                 }
                             }
@@ -588,7 +678,7 @@ macro_rules! impl_emit_event {
                 }
 
                 self.$handler_data_field.handlers = Some(handlers); // put it back
-                Ok(())
+                Ok(event_handled)
             }
         }
     };
