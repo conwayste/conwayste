@@ -13,7 +13,7 @@ tokio-core  = "0.1.9"
 walkdir = "2"
 
 [dependencies.syn]
-version = "1.0.48"
+version = "1.0.53"
 features = ["full", "extra-traits"]
 
 [dependencies.tokio-util]
