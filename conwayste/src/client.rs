@@ -312,7 +312,7 @@ impl MainState {
             static_node_ids: static_node_ids,
         };
 
-        init_title_screen(&mut s).unwrap();
+        init_intro_screen(&mut s).unwrap();
 
         Ok(s)
     }
@@ -366,18 +366,10 @@ impl EventHandler for MainState {
         let mouse_point = self.inputs.mouse_info.position;
         let mouse_action = self.inputs.mouse_info.action;
 
-        let game_area_id = self.static_node_ids.game_area_id.clone();
-
-        let mut game_area_state;
-        match GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &game_area_id) {
-            Ok(gamearea) => {
-                game_area_state = gamearea.get_game_area_state();
-            }
-            Err(e) => {
-                error!("failed to look up GameArea widget: {:?}", e);
-                game_area_state = GameAreaState::default()
-            }
-        }
+        let mut game_area_state = self.get_gamearea_state().unwrap_or_else(|e| {
+            error!("Could not get game area state: {}", e);
+            GameAreaState::default()
+        });
 
         // ==== Handle widget events ====
         if let Some(layer) = self.ui_layout.get_screen_layering_mut(screen) {
@@ -515,6 +507,7 @@ impl EventHandler for MainState {
 
             // Ensure the game area is always in focus if nothing else holds focus
             if screen == Screen::Run && layer.highest_z_order == 0 && layer.focused_widget_id().is_none() {
+                let game_area_id = self.static_node_ids.game_area_id.clone();
                 layer
                     .enter_focus(
                         ctx,
@@ -534,6 +527,12 @@ impl EventHandler for MainState {
             }
         }
 
+        // Refresh the game area state after processing all events
+        game_area_state = self.get_gamearea_state().unwrap_or_else(|e| {
+            error!("Could not get game area state after processing all UI events: {}", e);
+            GameAreaState::default()
+        });
+
         if screen == Screen::Run {
             if game_area_state.single_step {
                 game_area_state.running = false;
@@ -545,6 +544,7 @@ impl EventHandler for MainState {
             }
         }
 
+        // Event processing may have updated the state of the current screen
         let new_screen = self.get_current_screen();
         self.transition_screen(ctx, screen, new_screen, &mut game_area_state)
             .unwrap_or_else(|e| {
@@ -552,7 +552,7 @@ impl EventHandler for MainState {
             });
 
         // HACK: propagate any video-related config settings from UI handlers to self.video_settings
-        // TODO: consider removing self.video_settings
+        // TODO: remove self.video_settings
         if self.video_settings.is_fullscreen != self.config.get().video.fullscreen {
             self.video_settings.is_fullscreen = self.config.get().video.fullscreen;
             self.video_settings.update_fullscreen(ctx)?;
@@ -834,6 +834,11 @@ struct UniDrawParams {
 }
 
 impl MainState {
+    fn get_gamearea_state(&mut self) -> ui::UIResult<GameAreaState> {
+        GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id)
+            .map(|gs| gs.get_game_area_state())
+    }
+
     fn draw_game_of_life(&self, ctx: &mut Context, universe: &Universe) -> Result<(), Box<dyn Error>> {
         let viewport = if self.uni_draw_params.player_id >= 0 {
             &self.viewport
@@ -885,16 +890,13 @@ impl MainState {
             }
         });
 
-        let game_area_id = self.static_node_ids.game_area_id.clone();
         let mut insert_mode = None;
-        match GameArea::widget_from_screen_and_id(&self.ui_layout, Screen::Run, &game_area_id) {
-            Ok(gamearea) => {
+        GameArea::widget_from_screen_and_id(&self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id).map(
+            |gamearea| {
                 insert_mode = gamearea.insert_mode();
-            }
-            Err(e) => {
-                error!("failed to look up GameArea widget: {:?}", e);
-            }
-        }
+            },
+        )?;
+
         // TODO: truncate if outside of writable region
         // TODO: move to new function
         if let Some((ref grid, width, height)) = insert_mode {
@@ -989,20 +991,14 @@ impl MainState {
 
     /// Draws the GameArea's universe to the screen.
     fn draw_universe(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
-        let game_area_id = self.static_node_ids.game_area_id.clone();
-
         // A mutable reference is used to notify the first generation is drawn
-        match GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &game_area_id) {
-            Ok(gamearea) => {
-                gamearea.first_gen_drawn();
-            }
-            Err(e) => {
-                error!("failed to look up GameArea widget: {:?}", e);
-            }
-        }
+        GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id)
+            .map(|gamearea| {
+            gamearea.first_gen_drawn();
+        })?;
 
         // A non-mutable reference is used to draw the universe
-        match GameArea::widget_from_screen_and_id(&self.ui_layout, Screen::Run, &game_area_id) {
+        match GameArea::widget_from_screen_and_id(&self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id) {
             Ok(gamearea) => {
                 self.draw_game_of_life(ctx, &gamearea.uni)?;
             }
@@ -1024,7 +1020,7 @@ impl MainState {
         match old_screen {
             Screen::Menu => {
                 if new_screen == Screen::Run {
-                    let id = self.static_node_ids.game_area_id.clone();
+                    let game_area_id = self.static_node_ids.game_area_id.clone();
                     if let Some(layering) = self.ui_layout.get_screen_layering_mut(Screen::Run) {
                         layering.enter_focus(
                             ggez_ctx,
@@ -1033,7 +1029,7 @@ impl MainState {
                             game_area_state,
                             &mut self.static_node_ids,
                             &mut self.viewport,
-                            &id,
+                            &game_area_id,
                         )?;
                     }
                     game_area_state.running = true;
@@ -1159,11 +1155,9 @@ impl MainState {
                 MouseAction::Drag | MouseAction::Held | MouseAction::DoubleClick => {}
             }
         }
-        self.inputs.mouse_info.scroll_event = None;
 
-        if self.inputs.key_info.key.is_some() {
-            self.inputs.key_info.key = None;
-        }
+        self.inputs.mouse_info.scroll_event = None;
+        self.inputs.key_info.key = None;
 
         self.modify_game_area(Box::new(|game_area| {
             game_area.set_arrow_input((0, 0));
@@ -1194,9 +1188,8 @@ impl MainState {
     }
 
     fn modify_game_area(&mut self, modification: Box<dyn Fn(&mut GameArea)>) {
-        let game_area_id = self.static_node_ids.game_area_id.clone();
         let screen = self.get_current_screen();
-        match GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, screen, &game_area_id) {
+        match GameArea::widget_from_screen_and_id_mut(&mut self.ui_layout, screen, &self.static_node_ids.game_area_id) {
             Ok(gamearea) => modification(gamearea),
             Err(e) => {
                 if screen == Screen::Run {
@@ -1249,8 +1242,7 @@ fn toggle_line(s: &mut MainState, orientation: Orientation, col: isize, row: isi
     }
 }
 
-// TODO: this should really have "intro" in its name!
-fn init_title_screen(s: &mut MainState) -> Result<(), ()> {
+fn init_intro_screen(s: &mut MainState) -> Result<(), ()> {
     // 1) Calculate width and height of rectangle which represents the intro logo
     // 2) Determine height and width of the window
     // 3) Center it

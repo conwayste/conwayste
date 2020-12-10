@@ -13,7 +13,7 @@ tokio-core  = "0.1.9"
 walkdir = "2"
 
 [dependencies.syn]
-version = "1.0.42"
+version = "1.0.48"
 features = ["full", "extra-traits"]
 
 [dependencies.tokio-util]
@@ -23,7 +23,7 @@ features = ["codec"]
 
 [build-dependencies]
 bindgen = "0.54.0"
-pkg-config = "0.3.18"
+pkg-config = "0.3.19"
 
 [lib]
 crate-type = ["cdylib"]
