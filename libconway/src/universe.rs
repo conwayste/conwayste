@@ -430,7 +430,6 @@ impl CharGrid for GenState {
         self.cells.height()
     }
 
-    #[inline]
     fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: Option<usize>) {
         if !GenState::is_valid(ch) {
             panic!(format!("char {:?} is invalid for this CharGrid", ch));
@@ -909,12 +908,21 @@ impl Universe {
                 player_states.push(pgs);
             }
 
+            // The first generation in a new universe will either be zero or one, depending on single or multiplayer
+            let gen_or_none = if i == 0 {
+                if is_server {
+                    Some(0)
+                } else {
+                    Some(1)
+                }
+            } else {
+                None
+            };
 
             gen_states.push(GenState {
-                gen_or_none:   if i == 0 && is_server { Some(1) } else { None },
+                gen_or_none:   gen_or_none,
                 cells:         BitGrid::new(width_in_words, height),
                 wall_cells:    BitGrid::new(width_in_words, height),
-                known:         known,
                 player_states: player_states,
             });
         }
@@ -979,6 +987,36 @@ impl Universe {
                 }
             }
         }
+    }
+
+    pub fn reset_fog(&mut self, visibility: Option<usize>) -> ConwayResult<()> {
+        let gs = &mut self.gen_states[self.state_index];
+
+        if let Some(player_id) = visibility {
+            if player_id < gs.player_states.len() {
+                let region = Region::new(0, 0, self.width, self.height);
+                gs.player_states[player_id].fog.modify_region(region, BitOperation::Set);
+
+                let writable_region = self.player_writable[player_id];
+                gs.player_states[player_id]
+                    .fog
+                    .modify_region(writable_region, BitOperation::Clear);
+            } else {
+                return Err(ConwayError::InvalidData {
+                    reason: format!(
+                        "Cannot reset fog for player_id: {}. Number of players: {}",
+                        player_id,
+                        gs.player_states.len()
+                    ),
+                });
+            }
+        } else {
+            return Err(ConwayError::AccessDenied {
+                reason: "Cannot reset fog for a server. Server knows all!".to_owned(),
+            });
+        }
+
+        Ok(())
     }
 
     /// Get the latest generation number (1-based).

@@ -60,6 +60,8 @@ impl fmt::Debug for GameArea {
 /// widget.
 impl GameArea {
     pub fn new() -> Self {
+        let is_server = false;
+
         let bigbang = {
             // we're going to have to tear this all out when this becomes a real game
             let player0_writable = Region::new(100, 70, 34, 16);
@@ -72,7 +74,7 @@ impl GameArea {
             BigBang::new()
                 .width(UNIVERSE_WIDTH_IN_CELLS)
                 .height(UNIVERSE_HEIGHT_IN_CELLS)
-                .server_mode(false)
+                .server_mode(is_server)
                 .history(HISTORY_SIZE)
                 .fog_radius(FOG_RADIUS)
                 .add_players(players)
@@ -80,7 +82,7 @@ impl GameArea {
         };
         let mut uni = bigbang.unwrap();
 
-        init_patterns(&mut uni).unwrap();
+        init_patterns(&mut uni, is_server).unwrap();
 
         let mut game_area = GameArea {
             id:                 None,
@@ -121,7 +123,7 @@ impl GameArea {
     }
 }
 
-fn init_patterns(uni: &mut Universe) -> ConwayResult<()> {
+fn init_patterns(uni: &mut Universe, is_server: bool) -> ConwayResult<()> {
     let pat = Pattern(
         "b10$10b16W$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW14bW$10bW
 14bW$10bW14bW$10bW$10bW$10bW$10b16W43$95b14W5b24W$95bW41bW$95bW41bW$
@@ -131,13 +133,21 @@ $95bW25bA5bA9bW$95bW25bA6bA2b2A4bW$95bW25b3A3bA3b2A4bW$95bW30bA10bW$
 95bW41bW$95bW41bW$95bW41bW$95bW41bW$95b25W5b13W!"
             .to_owned(),
     );
+
     let diff = GenStateDiff {
-        gen0:    0,
-        gen1:    1,
+        gen0:    if is_server { 0 } else { 1 },
+        gen1:    if is_server { 1 } else { 2 },
         pattern: pat,
     };
-    uni.apply(&diff, None)?.unwrap(); // apply should return Ok(Some(...))
-    uni.force_known();
+
+    let visibility = if is_server { None } else { Some(CURRENT_PLAYER_ID) };
+
+    uni.apply(&diff, visibility)?.unwrap(); // apply should return Ok(Some(...))
+
+    if !is_server {
+        // The pattern above clears several rows, fog included, indescriminate of who the active player is.
+        uni.reset_fog(visibility)?;
+    }
 
     Ok(())
 }
