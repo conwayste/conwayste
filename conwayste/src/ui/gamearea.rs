@@ -64,7 +64,7 @@ impl GameArea {
 
         let bigbang = {
             // we're going to have to tear this all out when this becomes a real game
-            let player0_writable = Region::new(100, 70, 34, 16);
+            let player0_writable = Region::new(85, 55, 60, 50);
             let player1_writable = Region::new(0, 0, 80, 80);
 
             let player0 = PlayerBuilder::new(player0_writable);

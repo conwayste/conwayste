@@ -1457,6 +1457,30 @@ impl Universe {
         self.each_non_dead(self.region(), visibility, callback);
     }
 
+    pub fn each_cell_in_region(&self, region: Region, callback: &mut dyn FnMut(usize, usize)) {
+        let mut col;
+        for row in 0..self.height {
+            if (row as isize) >= region.top() && (row as isize) < (region.top() + region.height() as isize) {
+                col = 0;
+                for _ in 0..self.width_in_words {
+                    for _ in (0..64).rev() {
+                        if (col as isize) >= region.left() && (col as isize) < (region.left() + region.width() as isize)
+                        {
+                            callback(col, row);
+                        }
+                        col += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn each_writable_cell(&self, player_id: usize, callback: &mut dyn FnMut(usize, usize)) {
+        if player_id < self.player_writable.len() {
+            self.each_cell_in_region(self.player_writable[player_id], callback);
+        }
+    }
+
     /// Get a Region of the same size as the universe.
     pub fn region(&self) -> Region {
         Region::new(0, 0, self.width, self.height)

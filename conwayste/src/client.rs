@@ -874,6 +874,20 @@ impl MainState {
             Some(0)
         };
 
+        // Shade the writable region slightly differently
+        if visibility.is_some() {
+            universe.each_writable_cell(player_id as usize, &mut |col, row| {
+                if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col, row)) {
+                    let p = graphics::DrawParam::new()
+                        .dest(Point2::new(rect.x, rect.y))
+                        .scale(Vector2::new(rect.w, rect.h))
+                        .color(*CELL_STATE_WRITABLE);
+
+                    main_spritebatch.add(p);
+                }
+            });
+        }
+
         // TODO: call each_non_dead with visible region (add method to viewport)
         universe.each_non_dead_full(visibility, &mut |col, row, state| {
             let color = if player_id >= 0 {
