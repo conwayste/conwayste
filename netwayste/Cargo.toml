@@ -14,7 +14,7 @@ bincode              = "1.3.1"
 bytes                = "0.5"
 chrono               = "0.4.19"
 clap                 = "2"
-color-backtrace      = "0.4"
+color-backtrace      = "0.5"
 conway               = { path = "../libconway" }
 env_logger           = "0.8.2"
 futures              = "0.3"
