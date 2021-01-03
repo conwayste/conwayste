@@ -909,15 +909,7 @@ impl Universe {
             }
 
             // The first generation in a new universe will either be zero or one, depending on single or multiplayer
-            let gen_or_none = if i == 0 {
-                if is_server {
-                    Some(0)
-                } else {
-                    Some(1)
-                }
-            } else {
-                None
-            };
+            let gen_or_none = if i == 0 { Some(1) } else { None };
 
             gen_states.push(GenState {
                 gen_or_none:   gen_or_none,
@@ -1805,20 +1797,21 @@ pub mod test_helpers {
     pub const GEN_BUFSIZE: usize = 16;
 
     pub fn generate_test_universe_with_default_params(uni_type: UniType) -> Universe {
-        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16)); // used for the glider gun and predefined patterns
+        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));
         let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
         let players = vec![player0, player1];
 
-        let bigbang = BigBang::new()
+        let universe = BigBang::new()
             .width(256)
             .height(128)
             .server_mode(uni_type == UniType::Server)
             .history(GEN_BUFSIZE)
             .fog_radius(9)
             .add_players(players)
-            .birth();
+            .birth()
+            .unwrap();
 
-        bigbang.unwrap()
+        universe
     }
 
     pub fn make_gen_state() -> GenState {
@@ -1982,32 +1975,6 @@ mod universe_tests {
         );
         // 1 bit surrounding 'F', and inclusive, are cleared
         assert_eq!(output, 0xFFFFFFFFFFFFFFFF);
-    }
-
-    #[test]
-    fn contagious_zero_with_all_neighbors_set() {
-        let north = u64::max_value();
-        let northwest = u64::max_value();
-        let northeast = u64::max_value();
-        let west = u64::max_value();
-        let mut center = u64::max_value();
-        let east = u64::max_value();
-        let southwest = u64::max_value();
-        let south = u64::max_value();
-        let southeast = u64::max_value();
-
-        let mut output = Universe::contagious_zero(
-            northwest, north, northeast, west, center, east, southwest, south, southeast,
-        );
-        assert_eq!(output, u64::max_value());
-
-        center &= !(0x0000000F00000000);
-
-        output = Universe::contagious_zero(
-            northwest, north, northeast, west, center, east, southwest, south, southeast,
-        );
-        // 1 bit surrounding 'F', and inclusive, are cleared
-        assert_eq!(output, 0xFFFFFFE07FFFFFFF);
     }
 
     #[test]

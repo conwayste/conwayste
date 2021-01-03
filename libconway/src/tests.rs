@@ -215,7 +215,7 @@ mod universe_tests {
             uni.set_unchecked(col, 12, CellState::Wall);
         }
 
-        let gens = 21;
+        let gens = 1;
         for _ in 0..gens {
             uni.next();
         }
