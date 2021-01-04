@@ -52,6 +52,7 @@ pub mod colors {
         pub static ref CHAT_PANE_FILL_COLOR: Color = color_with_alpha(css::TURQUOISE, 0.33);
         pub static ref PANE_BORDER_COLOR: Color = Color::from(css::FIREBRICK);
         pub static ref CELL_STATE_DEAD_COLOR: Color = Color::new(0.875, 0.875, 0.875, 1.0);
+        pub static ref CELL_STATE_WRITABLE: Color = Color::new(0.185, 0.885, 0.185, 0.05);
         pub static ref CELL_STATE_BG_FILL_SOLID_COLOR: Color = Color::from(css::WHITE);
         pub static ref CELL_STATE_BG_FILL_HOLLOW_COLOR: Color = Color::from(css::BLACK);
         pub static ref CELL_STATE_ALIVE_PLAYER_0_COLOR: Color = Color::from(css::RED);

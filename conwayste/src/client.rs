@@ -79,8 +79,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use constants::{
-    colors::*, DrawStyle, DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, DEFAULT_ZOOM_LEVEL, GRID_DRAW_STYLE,
-    INTRO_DURATION, INTRO_PAUSE_DURATION,
+    colors::*, DrawStyle, CURRENT_PLAYER_ID, DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, DEFAULT_ZOOM_LEVEL,
+    GRID_DRAW_STYLE, INTRO_DURATION, INTRO_PAUSE_DURATION,
 };
 use input::{MouseAction, ScrollEvent};
 use ui::{
@@ -340,7 +340,7 @@ impl EventHandler for MainState {
                     self.uni_draw_params = UniDrawParams {
                         bg_color:     self.color_settings.get_color(None),
                         fg_color:     self.color_settings.get_color(Some(CellState::Dead)),
-                        player_id:    1, // Current player, TODO sync with Server's CLIENT ID
+                        player_id:    CURRENT_PLAYER_ID as isize,
                         draw_counter: true,
                     };
                 } else {
@@ -840,7 +840,9 @@ impl MainState {
     }
 
     fn draw_game_of_life(&self, ctx: &mut Context, universe: &Universe) -> Result<(), Box<dyn Error>> {
-        let viewport = if self.uni_draw_params.player_id >= 0 {
+        let player_id = self.uni_draw_params.player_id;
+
+        let viewport = if player_id >= 0 {
             &self.viewport
         } else {
             // intro
@@ -865,16 +867,30 @@ impl MainState {
         let mut overlay_spritebatch = graphics::spritebatch::SpriteBatch::new(image);
 
         // grid non-dead cells (walls, players, etc.)
-        let visibility = if self.uni_draw_params.player_id >= 0 {
-            Some(self.uni_draw_params.player_id as usize)
+        let visibility = if player_id >= 0 {
+            Some(player_id as usize)
         } else {
             // used for random coloring in intro
             Some(0)
         };
 
+        // Shade the writable region slightly differently
+        if visibility.is_some() {
+            universe.each_writable_cell(player_id as usize, &mut |col, row| {
+                if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col, row)) {
+                    let p = graphics::DrawParam::new()
+                        .dest(Point2::new(rect.x, rect.y))
+                        .scale(Vector2::new(rect.w, rect.h))
+                        .color(*CELL_STATE_WRITABLE);
+
+                    main_spritebatch.add(p);
+                }
+            });
+        }
+
         // TODO: call each_non_dead with visible region (add method to viewport)
         universe.each_non_dead_full(visibility, &mut |col, row, state| {
-            let color = if self.uni_draw_params.player_id >= 0 {
+            let color = if player_id >= 0 {
                 self.color_settings.get_color(Some(state))
             } else {
                 self.color_settings.get_random_color()
@@ -902,10 +918,10 @@ impl MainState {
         if let Some((ref grid, width, height)) = insert_mode {
             let unwritable_flash_on = timer::time_since_start(ctx).subsec_millis() % 250 < 125; // 50% duty cycle, 250ms period
 
-            if self.uni_draw_params.player_id < 0 {
-                return Err(format!("Unexpected player ID {}", self.uni_draw_params.player_id).into());
+            if player_id < 0 {
+                return Err(format!("Unexpected player ID {}", player_id).into());
             }
-            let player_cell_state = CellState::Alive(Some(self.uni_draw_params.player_id as usize));
+            let player_cell_state = CellState::Alive(Some(player_id as usize));
             let player_color = self.color_settings.get_color(Some(player_cell_state));
             if let Some(cursor_cell) = viewport.game_coords_from_window(self.inputs.mouse_info.position) {
                 let (cursor_col, cursor_row) = (cursor_cell.col, cursor_cell.row);
@@ -920,10 +936,7 @@ impl MainState {
                     if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col, row)) {
                         let mut color = player_color;
                         // only error is due to player_id out of range, so unwrap OK here
-                        if !universe
-                            .writable(col, row, self.uni_draw_params.player_id as usize)
-                            .unwrap()
-                        {
+                        if !universe.writable(col, row, player_id as usize).unwrap() {
                             // not writable, so draw flashing red cells
                             if unwritable_flash_on {
                                 color = *constants::colors::INSERT_PATTERN_UNWRITABLE;

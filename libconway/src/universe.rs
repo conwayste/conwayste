@@ -171,14 +171,13 @@ pub struct Universe {
 }
 
 // Describes the state of the universe for a particular generation
-// This includes any cells alive, known, and each player's own gen states
+// This includes any cells alive, and each player's own gen states
 // for this current session
 #[derive(Debug, Clone, PartialEq)]
 pub struct GenState {
     gen_or_none:   Option<usize>, // Some(generation number) (redundant info); if None, this is an unused buffer
-    cells:         BitGrid,       // 1 = cell is known to be Alive
+    cells:         BitGrid,       // 1 = cell is Alive, but could be obscured by fog
     wall_cells:    BitGrid,       // 1 = is a wall cell (should this just be fixed for the universe?)
-    known:         BitGrid,       // 1 = cell is known (always 1 if this is server)
     player_states: Vec<PlayerGenState>, // player-specific info (indexed by player_id)
 }
 
@@ -247,17 +246,11 @@ impl GenState {
     ///
     /// # Panics
     ///
-    /// Panics if an attempt is made to set an unknown cell.
+    /// Panics if an attempt is made to set cell to the fog state.
     pub fn set_unchecked(&mut self, col: usize, row: usize, new_state: CellState) {
         let word_col = col / 64;
         let shift = 63 - (col & (64 - 1)); // translate literal col (ex: 134) to bit index in word_col
         let mask = 1 << shift; // cell to set
-
-        // panic if not known
-        let known_cell_word = self.known[row][word_col];
-        if known_cell_word & mask == 0 {
-            panic!("Tried to set unknown cell at ({}, {})", col, row);
-        }
 
         // clear all player cell bits, so that this cell is unowned by any player (we'll set
         // ownership further down)
@@ -289,7 +282,7 @@ impl GenState {
                 cells.modify_bits_in_word(row, word_col, mask, BitOperation::Clear);
                 walls.modify_bits_in_word(row, word_col, mask, BitOperation::Set);
             }
-            _ => unimplemented!(),
+            CellState::Fog => panic!("A cell cannot become fog"),
         }
     }
 
@@ -397,7 +390,6 @@ impl GenState {
     pub fn clear(&mut self) {
         let region = Region::new(0, 0, self.width(), self.height());
         self.cells.modify_region(region, BitOperation::Clear);
-        self.known.modify_region(region, BitOperation::Clear);
         self.wall_cells.modify_region(region, BitOperation::Clear);
 
         for player_id in 0..self.player_states.len() {
@@ -410,7 +402,6 @@ impl GenState {
     pub fn copy(&self, dest: &mut GenState) {
         let region = Region::new(0, 0, self.width(), self.height());
         BitGrid::copy(&self.cells, &mut dest.cells, region);
-        BitGrid::copy(&self.known, &mut dest.known, region);
         BitGrid::copy(&self.wall_cells, &mut dest.wall_cells, region);
 
         for player_id in 0..dest.player_states.len() {
@@ -439,7 +430,6 @@ impl CharGrid for GenState {
         self.cells.height()
     }
 
-    #[inline]
     fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: Option<usize>) {
         if !GenState::is_valid(ch) {
             panic!(format!("char {:?} is invalid for this CharGrid", ch));
@@ -469,7 +459,6 @@ impl CharGrid for GenState {
             // only set fog bit for specified player
             self.player_states[player_id].fog[row][word_col] |= 1 << shift;
         } else {
-            self.known[row][word_col] |= 1 << shift; // known
             if let Some(player_id) = visibility {
                 // only clear fog bit for specified player
                 self.player_states[player_id].fog[row][word_col] &= !(1 << shift);
@@ -516,14 +505,6 @@ impl CharGrid for GenState {
     /// This function will panic if `col`, `row`, or `visibility` (`Some(player_id)`) are out of bounds.
     fn get_run(&self, col: usize, row: usize, visibility: Option<usize>) -> (usize, char) {
         let mut min_run = self.width() - col;
-
-        let (known_run, known_ch) = self.known.get_run(col, row, None);
-        if known_run < min_run {
-            min_run = known_run;
-        }
-        if known_ch == 'b' {
-            return (min_run, CellState::Fog.to_char());
-        }
 
         if let Some(player_id) = visibility {
             let (fog_run, fog_ch) = self.player_states[player_id].fog.get_run(col, row, None);
@@ -643,17 +624,13 @@ impl fmt::Display for Universe {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let cells = &self.gen_states[self.state_index].cells;
         let wall = &self.gen_states[self.state_index].wall_cells;
-        let known = &self.gen_states[self.state_index].known;
         for row_idx in 0..self.height {
             for col_idx in 0..self.width_in_words {
                 let cell_cen = cells[row_idx][col_idx];
                 let wall_cen = wall[row_idx][col_idx];
-                let known_cen = known[row_idx][col_idx];
                 let mut s = String::with_capacity(64);
                 for shift in (0..64).rev() {
-                    if (known_cen >> shift) & 1 == 0 {
-                        s.push('?');
-                    } else if (cell_cen >> shift) & 1 == 1 {
+                    if (cell_cen >> shift) & 1 == 1 {
                         let mut is_player = false;
                         for player_id in 0..self.num_players {
                             let player_word =
@@ -715,7 +692,7 @@ impl Universe {
     ///
     /// # Panics
     ///
-    /// Panics if an attempt is made to set an unknown cell.
+    /// Panics if an attempt is made to set a cell to the fog state
     pub fn set_unchecked(&mut self, col: usize, row: usize, new_state: CellState) {
         self.gen_states[self.state_index].set_unchecked(col, row, new_state)
     }
@@ -819,8 +796,8 @@ impl Universe {
     ///
     /// # Errors
     ///
-    /// * It is a `ConwayError::AccessDenied` error to toggle outside player's writable area, or to
-    /// toggle a wall or an unknown cell.
+    /// * It is a `ConwayError::AccessDenied` error to toggle outside player's writable area or to
+    /// toggle a wall.
     /// * It is a `ConwayError::InvalidData` error to pass in an invalid player_id.
     pub fn toggle(&mut self, col: usize, row: usize, player_id: usize) -> ConwayResult<CellState> {
         use ConwayError::*;
@@ -834,15 +811,9 @@ impl Universe {
         let shift = 63 - (col & (64 - 1));
         {
             let wall = &self.gen_states[self.state_index].wall_cells;
-            let known = &self.gen_states[self.state_index].known;
             if (wall[row][word_col] >> shift) & 1 == 1 {
                 return Err(AccessDenied {
                     reason: format!("cannot write to wall cell: col={}, row={}", col, row),
-                });
-            }
-            if (known[row][word_col] >> shift) & 1 == 0 {
-                return Err(AccessDenied {
-                    reason: format!("not a known cell for player {}: col={}, row={}", player_id, col, row),
                 });
             }
         }
@@ -937,25 +908,13 @@ impl Universe {
                 player_states.push(pgs);
             }
 
-            // Known cells describe what the current operative (player, server)
-            // visibility reaches. For example, a Server has total visibility as
-            // it needs to know all.
-            let mut known = BitGrid::new(width_in_words, height);
-
-            if is_server && i == 0 {
-                // could use modify_region but it's much cheaper this way
-                for y in 0..height {
-                    for x in 0..width_in_words {
-                        known[y][x] = u64::max_value(); // if server, all cells are known
-                    }
-                }
-            }
+            // The first generation in a new universe will either be zero or one, depending on single or multiplayer
+            let gen_or_none = if i == 0 { Some(1) } else { None };
 
             gen_states.push(GenState {
-                gen_or_none:   if i == 0 && is_server { Some(1) } else { None },
+                gen_or_none:   gen_or_none,
                 cells:         BitGrid::new(width_in_words, height),
                 wall_cells:    BitGrid::new(width_in_words, height),
-                known:         known,
                 player_states: player_states,
             });
         }
@@ -1022,6 +981,36 @@ impl Universe {
         }
     }
 
+    pub fn reset_fog(&mut self, visibility: Option<usize>) -> ConwayResult<()> {
+        let gs = &mut self.gen_states[self.state_index];
+
+        if let Some(player_id) = visibility {
+            if player_id < gs.player_states.len() {
+                let region = Region::new(0, 0, self.width, self.height);
+                gs.player_states[player_id].fog.modify_region(region, BitOperation::Set);
+
+                let writable_region = self.player_writable[player_id];
+                gs.player_states[player_id]
+                    .fog
+                    .modify_region(writable_region, BitOperation::Clear);
+            } else {
+                return Err(ConwayError::InvalidData {
+                    reason: format!(
+                        "Cannot reset fog for player_id: {}. Number of players: {}",
+                        player_id,
+                        gs.player_states.len()
+                    ),
+                });
+            }
+        } else {
+            return Err(ConwayError::AccessDenied {
+                reason: "Cannot reset fog for a server. Server knows all!".to_owned(),
+            });
+        }
+
+        Ok(())
+    }
+
     /// Get the latest generation number (1-based).
     pub fn latest_gen(&self) -> usize {
         assert!(self.generation != 0);
@@ -1071,18 +1060,6 @@ impl Universe {
      * D   E
      * F G H
      */
-    // a cell is 0 if itself or any of its neighbors are 0
-    fn contagious_zero(nw: u64, n: u64, ne: u64, w: u64, center: u64, e: u64, sw: u64, s: u64, se: u64) -> u64 {
-        let a = (nw << 63) | (n >> 1);
-        let b = n;
-        let c = (n << 1) | (ne >> 63);
-        let d = (w << 63) | (center >> 1);
-        let e = (center << 1) | (e >> 63);
-        let f = (sw << 63) | (s >> 1);
-        let g = s;
-        let h = (s << 1) | (se >> 63);
-        a & b & c & d & center & e & f & g & h
-    }
 
     // a cell is 1 if itself or any of its neighbors are 1
     fn contagious_one(nw: u64, n: u64, ne: u64, w: u64, center: u64, e: u64, sw: u64, s: u64, se: u64) -> u64 {
@@ -1116,10 +1093,8 @@ impl Universe {
         {
             let cells = &gen_state.cells;
             let wall = &gen_state.wall_cells;
-            let known = &gen_state.known;
             let cells_next = &mut gen_state_next.cells;
             let wall_next = &mut gen_state_next.wall_cells;
-            let known_next = &mut gen_state_next.known;
 
             // Copy fog over to next generation
             for row_idx in 0..self.height {
@@ -1136,9 +1111,6 @@ impl Universe {
                 let cells_row_c = &cells[row_idx];
                 let cells_row_s = &cells[s_row_idx];
                 let wall_row_c = &wall[row_idx];
-                let known_row_n = &known[n_row_idx];
-                let known_row_c = &known[row_idx];
-                let known_row_s = &known[s_row_idx];
 
                 // These will be shifted over at the beginning of the loop
                 let mut cells_nw;
@@ -1150,15 +1122,6 @@ impl Universe {
                 let mut cells_ne = cells_row_n[0];
                 let mut cells_e = cells_row_c[0];
                 let mut cells_se = cells_row_s[0];
-                let mut known_nw;
-                let mut known_w;
-                let mut known_sw;
-                let mut known_n = known_row_n[self.width_in_words - 1];
-                let mut known_cen = known_row_c[self.width_in_words - 1];
-                let mut known_s = known_row_s[self.width_in_words - 1];
-                let mut known_ne = known_row_n[0];
-                let mut known_e = known_row_c[0];
-                let mut known_se = known_row_s[0];
 
                 for col_idx in 0..self.width_in_words {
                     // shift over
@@ -1171,28 +1134,12 @@ impl Universe {
                     cells_ne = cells_row_n[(col_idx + 1) % self.width_in_words];
                     cells_e = cells_row_c[(col_idx + 1) % self.width_in_words];
                     cells_se = cells_row_s[(col_idx + 1) % self.width_in_words];
-                    known_nw = known_n;
-                    known_n = known_ne;
-                    known_w = known_cen;
-                    known_cen = known_e;
-                    known_sw = known_s;
-                    known_s = known_se;
-                    known_ne = known_row_n[(col_idx + 1) % self.width_in_words];
-                    known_e = known_row_c[(col_idx + 1) % self.width_in_words];
-                    known_se = known_row_s[(col_idx + 1) % self.width_in_words];
 
                     // apply BitGrid changes
                     let mut cells_cen_next = Universe::next_single_gen(
                         cells_nw, cells_n, cells_ne, cells_w, cells_cen, cells_e, cells_sw, cells_s, cells_se,
                     );
 
-                    // any known cells with at least one unknown neighbor will become unknown in
-                    // the next generation
-                    known_next[row_idx][col_idx] = Universe::contagious_zero(
-                        known_nw, known_n, known_ne, known_w, known_cen, known_e, known_sw, known_s, known_se,
-                    );
-
-                    cells_cen_next &= known_next[row_idx][col_idx];
                     cells_cen_next &= !wall_row_c[col_idx];
 
                     // assign to the u64 element in the next generation
@@ -1201,8 +1148,6 @@ impl Universe {
                     let mut in_multiple: u64 = 0;
                     let mut seen_before: u64 = 0;
                     for player_id in 0..self.num_players {
-                        // Any unknown cell with
-                        //
                         // A cell which would have belonged to 2+ players in the next
                         // generation will belong to no one. These are unowned cells.
                         //
@@ -1410,7 +1355,6 @@ impl Universe {
     ) {
         let cells = &self.gen_states[self.state_index].cells;
         let wall = &self.gen_states[self.state_index].wall_cells;
-        let known = &self.gen_states[self.state_index].known;
         let opt_player_state = if let Some(player_id) = visibility {
             Some(&self.gen_states[self.state_index].player_states[player_id])
         } else {
@@ -1420,13 +1364,11 @@ impl Universe {
         for row in 0..self.height {
             let cells_row = &cells[row];
             let wall_row = &wall[row];
-            let known_row = &known[row];
             if (row as isize) >= region.top() && (row as isize) < (region.top() + region.height() as isize) {
                 col = 0;
                 for col_idx in 0..self.width_in_words {
                     let cells_word = cells_row[col_idx];
                     let wall_word = wall_row[col_idx];
-                    let known_word = known_row[col_idx];
                     let opt_player_words;
                     if let Some(player_state) = opt_player_state {
                         let player_cells_word = player_state.cells[row][col_idx];
@@ -1438,18 +1380,16 @@ impl Universe {
                     for shift in (0..64).rev() {
                         if (col as isize) >= region.left() && (col as isize) < (region.left() + region.width() as isize)
                         {
-                            let mut state = CellState::Wall;
+                            let mut state;
                             let c = (cells_word >> shift) & 1 == 1;
                             let w = (wall_word >> shift) & 1 == 1;
-                            let k = (known_word >> shift) & 1 == 1;
+
                             if c && w {
                                 panic!("Cannot be both cell and wall at ({}, {})", col, row);
                             }
-                            if !k && ((c && !w) || (!c && w)) {
-                                panic!("Unspecified invalid state at ({}, {})", col, row);
-                            }
-                            if c && !w && k {
-                                // It's known and it's a cell; check cells + fog for every player
+
+                            if c && !w {
+                                // If it's a cell and not a wall, check cells + fog for every player
                                 // (expensive step since this is per-bit).
 
                                 let mut opt_player_id = None;
@@ -1474,20 +1414,16 @@ impl Universe {
                                     }
                                 }
                                 state = CellState::Alive(opt_player_id);
+                            } else if !c && !w {
+                                state = CellState::Dead;
                             } else {
-                                // (B) other states
-                                if !c && !w {
-                                    state = if k { CellState::Dead } else { CellState::Fog };
-                                } else if !c && w {
-                                    state = CellState::Wall;
-                                }
+                                state = CellState::Wall;
                             }
+
                             if let Some((player_cells_word, player_fog_word)) = opt_player_words {
                                 let pc = (player_cells_word >> shift) & 1 == 1;
                                 let pf = (player_fog_word >> shift) & 1 == 1;
-                                if !k && pc {
-                                    panic!("Player can't have cells where unknown, at ({}, {})", col, row);
-                                }
+
                                 if w && pc {
                                     panic!("Player can't have cells where wall, at ({}, {})", col, row);
                                 }
@@ -1511,6 +1447,30 @@ impl Universe {
     /// Callback receives (col, row, cell_state).
     pub fn each_non_dead_full(&self, visibility: Option<usize>, callback: &mut dyn FnMut(usize, usize, CellState)) {
         self.each_non_dead(self.region(), visibility, callback);
+    }
+
+    pub fn each_cell_in_region(&self, region: Region, callback: &mut dyn FnMut(usize, usize)) {
+        let mut col;
+        for row in 0..self.height {
+            if (row as isize) >= region.top() && (row as isize) < (region.top() + region.height() as isize) {
+                col = 0;
+                for _ in 0..self.width_in_words {
+                    for _ in (0..64).rev() {
+                        if (col as isize) >= region.left() && (col as isize) < (region.left() + region.width() as isize)
+                        {
+                            callback(col, row);
+                        }
+                        col += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn each_writable_cell(&self, player_id: usize, callback: &mut dyn FnMut(usize, usize)) {
+        if player_id < self.player_writable.len() {
+            self.each_cell_in_region(self.player_writable[player_id], callback);
+        }
     }
 
     /// Get a Region of the same size as the universe.
@@ -1837,20 +1797,21 @@ pub mod test_helpers {
     pub const GEN_BUFSIZE: usize = 16;
 
     pub fn generate_test_universe_with_default_params(uni_type: UniType) -> Universe {
-        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16)); // used for the glider gun and predefined patterns
+        let player0 = PlayerBuilder::new(Region::new(100, 70, 34, 16));
         let player1 = PlayerBuilder::new(Region::new(0, 0, 80, 80));
         let players = vec![player0, player1];
 
-        let bigbang = BigBang::new()
+        let universe = BigBang::new()
             .width(256)
             .height(128)
             .server_mode(uni_type == UniType::Server)
             .history(GEN_BUFSIZE)
             .fog_radius(9)
             .add_players(players)
-            .birth();
+            .birth()
+            .unwrap();
 
-        bigbang.unwrap()
+        universe
     }
 
     pub fn make_gen_state() -> GenState {
@@ -1991,50 +1952,6 @@ mod universe_tests {
     }
 
     #[test]
-    fn toggle_checked_players_can_toggle_an_known_cell_if_writable() {
-        let mut uni = generate_test_universe_with_default_params(UniType::Server);
-        let player_one = 0;
-        let player_two = 1;
-        let row = 0;
-        let col = 0;
-        let state_index = uni.state_index;
-
-        uni.gen_states[state_index]
-            .known
-            .modify_bits_in_word(row, col, 1 << 63, BitOperation::Set);
-
-        assert_eq!(
-            uni.toggle(row, col, player_one),
-            Err(AccessDenied {
-                reason: "player 0 cannot write to col=0, row=0".to_owned(),
-            })
-        );
-        assert_eq!(uni.toggle(row, col, player_two), Ok(CellState::Alive(Some(player_two))));
-    }
-
-    #[test]
-    fn toggle_checked_players_cannot_toggle_an_unknown_cell() {
-        let mut uni = generate_test_universe_with_default_params(UniType::Server);
-        //let player_one = 0;
-        let player_two = 1;
-        let row = 0;
-        let col = 0;
-        let state_index = uni.state_index;
-
-        uni.gen_states[state_index]
-            .known
-            .modify_bits_in_word(row, col, 1 << 63, BitOperation::Clear);
-
-        // cannot test with player_one because this wall cell is outside their writable area
-        assert_eq!(
-            uni.toggle(row, col, player_two),
-            Err(AccessDenied {
-                reason: "not a known cell for player 1: col=0, row=0".to_owned(),
-            })
-        );
-    }
-
-    #[test]
     fn contagious_one_with_all_neighbors_set() {
         let north = u64::max_value();
         let northwest = u64::max_value();
@@ -2058,32 +1975,6 @@ mod universe_tests {
         );
         // 1 bit surrounding 'F', and inclusive, are cleared
         assert_eq!(output, 0xFFFFFFFFFFFFFFFF);
-    }
-
-    #[test]
-    fn contagious_zero_with_all_neighbors_set() {
-        let north = u64::max_value();
-        let northwest = u64::max_value();
-        let northeast = u64::max_value();
-        let west = u64::max_value();
-        let mut center = u64::max_value();
-        let east = u64::max_value();
-        let southwest = u64::max_value();
-        let south = u64::max_value();
-        let southeast = u64::max_value();
-
-        let mut output = Universe::contagious_zero(
-            northwest, north, northeast, west, center, east, southwest, south, southeast,
-        );
-        assert_eq!(output, u64::max_value());
-
-        center &= !(0x0000000F00000000);
-
-        output = Universe::contagious_zero(
-            northwest, north, northeast, west, center, east, southwest, south, southeast,
-        );
-        // 1 bit surrounding 'F', and inclusive, are cleared
-        assert_eq!(output, 0xFFFFFFE07FFFFFFF);
     }
 
     #[test]
@@ -2371,7 +2262,6 @@ mod genstate_tests {
         genstate.write_at_position(63, 0, 'W', None);
         assert_eq!(genstate.cells[0][0], 0);
         assert_eq!(genstate.wall_cells[0][0], 1);
-        assert_eq!(genstate.known[0][0], u64::max_value());
         assert_eq!(genstate.player_states[0].cells[0][0], 0);
         assert_eq!(genstate.player_states[1].cells[0][0], 0);
     }
@@ -2384,7 +2274,6 @@ mod genstate_tests {
         genstate.write_at_position(63, 0, 'W', None);
         assert_eq!(genstate.cells[0][0], 0);
         assert_eq!(genstate.wall_cells[0][0], 1);
-        assert_eq!(genstate.known[0][0], u64::max_value());
         assert_eq!(genstate.player_states[0].cells[0][0], 0);
         assert_eq!(genstate.player_states[1].cells[0][0], 0);
     }
@@ -2396,7 +2285,6 @@ mod genstate_tests {
         genstate.write_at_position(63, 0, 'A', None);
         assert_eq!(genstate.cells[0][0], 1);
         assert_eq!(genstate.wall_cells[0][0], 0);
-        assert_eq!(genstate.known[0][0], u64::max_value());
         assert_eq!(genstate.player_states[0].cells[0][0], 1);
         assert_eq!(genstate.player_states[1].cells[0][0], 0);
     }
@@ -2408,7 +2296,6 @@ mod genstate_tests {
         genstate.write_at_position(63, 0, 'B', None);
         assert_eq!(genstate.cells[0][0], 1);
         assert_eq!(genstate.wall_cells[0][0], 0);
-        assert_eq!(genstate.known[0][0], u64::max_value());
         assert_eq!(genstate.player_states[0].cells[0][0], 0);
         assert_eq!(genstate.player_states[1].cells[0][0], 1);
     }
@@ -2432,7 +2319,6 @@ mod genstate_tests {
         genstate.write_at_position(63, 0, 'o', None);
         assert_eq!(genstate.cells[0][0], 1);
         assert_eq!(genstate.wall_cells[0][0], 0);
-        assert_eq!(genstate.known[0][0], u64::max_value());
         assert_eq!(genstate.player_states[0].cells[0][0], 0);
         assert_eq!(genstate.player_states[1].cells[0][0], 0);
     }
@@ -2445,7 +2331,6 @@ mod genstate_tests {
         genstate.write_at_position(63, 0, 'b', None);
         assert_eq!(genstate.cells[0][0], 0);
         assert_eq!(genstate.wall_cells[0][0], 0);
-        assert_eq!(genstate.known[0][0], u64::max_value());
         assert_eq!(genstate.player_states[0].cells[0][0], 0);
         assert_eq!(genstate.player_states[1].cells[0][0], 0);
     }
@@ -2458,7 +2343,6 @@ mod genstate_tests {
         genstate.write_at_position(63, 0, 'b', Some(0));
         assert_eq!(genstate.cells[0][0], 0);
         assert_eq!(genstate.wall_cells[0][0], 0);
-        assert_eq!(genstate.known[0][0], u64::max_value());
         assert_eq!(genstate.player_states[0].cells[0][0], 0);
         assert_eq!(genstate.player_states[1].cells[0][0], 0);
     }
@@ -2589,7 +2473,6 @@ mod genstate_tests {
         gsdiff.pattern.to_grid(&mut new_gs, visibility).unwrap();
         assert_eq!(new_gs.gen_or_none, gs1.gen_or_none);
         assert_eq!(new_gs.cells, gs1.cells);
-        assert_eq!(new_gs.known, gs1.known);
         assert_eq!(new_gs.wall_cells, gs1.wall_cells);
         for i in 0..new_gs.player_states.len() {
             assert_eq!(new_gs.player_states[i].cells, gs1.player_states[i].cells);
@@ -2613,7 +2496,6 @@ mod genstate_tests {
         gsdiff.pattern.to_grid(&mut new_gs, visibility).unwrap();
         assert_eq!(new_gs.gen_or_none, gs1.gen_or_none);
         assert_eq!(new_gs.cells, gs1.cells);
-        assert_eq!(new_gs.known, gs1.known);
         assert_eq!(new_gs.wall_cells, gs1.wall_cells);
         for i in 0..new_gs.player_states.len() {
             assert_eq!(new_gs.player_states[i].cells, gs1.player_states[i].cells);
