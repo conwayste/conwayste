@@ -506,19 +506,19 @@ impl ClientNetState {
 
         loop {
             select! {
-                (_) = tick_interval.select_next_some() => {
+                _ = tick_interval.select_next_some() => {
                     if let Some(keep_alive_pkt) = client_state.handle_tick_event() {
                         // Unwrap safe b/c the connection to server is active
                         udp_sink.send((keep_alive_pkt, client_state.server_address.unwrap())).await?;
                     }
                 },
-                (_) = network_interval.select_next_some() => {
+                _ = network_interval.select_next_some() => {
                     let retransmissions = client_state.maintain_network_state().await;
                     for packet_addr_tuple in retransmissions {
                         udp_sink.send(packet_addr_tuple).await?;
                     }
                 },
-                (addr_packet_result) = udp_stream.select_next_some() => {
+                addr_packet_result = udp_stream.select_next_some() => {
                     if let Ok((packet, addr)) = addr_packet_result {
                         let responses = client_state.handle_incoming_event(packet, addr).await;
                         for response in responses {
@@ -526,7 +526,7 @@ impl ClientNetState {
                         }
                     }
                 },
-                (netwayste_request) = channel_from_conwayste.select_next_some() => {
+                netwayste_request = channel_from_conwayste.select_next_some() => {
                     if let NetwaysteEvent::GetStatus(ping) = netwayste_request {
                         let server_address = client_state.server_address.unwrap().clone();
 

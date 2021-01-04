@@ -11,31 +11,31 @@ path = "src/server.rs"
 [dependencies]
 base64               = "0.13.0"
 bincode              = "1.3.1"
-bytes                = "0.5"
+bytes                = "0.6.0"
 chrono               = "0.4.19"
 clap                 = "2"
-color-backtrace      = "0.4"
+color-backtrace      = "0.5"
 conway               = { path = "../libconway" }
-env_logger           = "0.8.1"
+env_logger           = "0.8.2"
 futures              = "0.3"
 log                  = "0.4.11"
-rand                 = "0.7.3"
+rand                 = "0.8.0"
 regex                = "1"
-semver               = "0.10.0"
+semver               = "0.11.0"
 time                 = "0.1"
-tokio-core           = "0.1.9"
+tokio-core           = "0.1.18"
 
 [dependencies.serde]
 version = "1.0.116"
 features = ["derive"]
 
 [dependencies.tokio]
-version = "0.2"
+version = "0.3"
 features = ["full"]
 
 [dependencies.tokio-util]
-version = "0.3"
-features = ["codec", "udp"]
+version = "0.5.1"
+features = ["codec", "net"]
 
 [dev-dependencies]
 proptest             = "0.10"
