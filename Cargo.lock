@@ -497,7 +497,7 @@ dependencies = [
  "netwayste",
  "rand 0.8.0",
  "serde",
- "tokio 0.3.5",
+ "tokio 0.3.6",
  "toml",
  "version",
 ]
@@ -679,7 +679,7 @@ version = "0.3.5"
 dependencies = [
  "bindgen 0.54.0",
  "byteorder",
- "bytes 0.5.6",
+ "bytes 0.6.0",
  "lazy_static",
  "netwayste",
  "pkg-config",
@@ -1726,7 +1726,7 @@ version = "0.3.5"
 dependencies = [
  "base64 0.13.0",
  "bincode",
- "bytes 0.5.6",
+ "bytes 0.6.0",
  "chrono",
  "clap",
  "color-backtrace",
@@ -1740,7 +1740,7 @@ dependencies = [
  "semver 0.11.0",
  "serde",
  "time",
- "tokio 0.3.5",
+ "tokio 0.3.6",
  "tokio-core",
  "tokio-test",
  "tokio-util",
@@ -1905,9 +1905,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.4.1"
+version = "1.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "260e51e7efe62b592207e9e13a68e43692a7a279171d6ba57abd208bf23645ad"
+checksum = "13bd41f508810a131401606d54ac32a467c97172d74ba7662562ebba5ad07fa0"
 
 [[package]]
 name = "ordered-float"
@@ -2950,26 +2950,24 @@ dependencies = [
  "bytes 0.5.6",
  "fnv",
  "futures-core",
- "lazy_static",
- "mio 0.6.22",
  "pin-project-lite 0.1.7",
  "slab",
 ]
 
 [[package]]
 name = "tokio"
-version = "0.3.5"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a12a3eb39ee2c231be64487f1fcbe726c8f2514876a55480a5ab8559fc374252"
+checksum = "720ba21c25078711bf456d607987d95bce90f7c3bea5abe1db587862e7a1e87c"
 dependencies = [
  "autocfg 1.0.0",
  "bytes 0.6.0",
  "futures-core",
- "lazy_static",
  "libc",
  "memchr",
  "mio 0.7.7",
  "num_cpus",
+ "once_cell",
  "parking_lot 0.11.1",
  "pin-project-lite 0.2.0",
  "signal-hook-registry",
@@ -3179,16 +3177,16 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.3.1"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be8242891f2b6cbef26a2d7e8605133c2c554cd35b3e4948ea892d6d68436499"
+checksum = "3137de2b078e95274b696cc522e87f22c9a753fe3ef3344116ffb94f104f10a3"
 dependencies = [
- "bytes 0.5.6",
+ "bytes 0.6.0",
  "futures-core",
  "futures-sink",
  "log",
- "pin-project-lite 0.1.7",
- "tokio 0.2.24",
+ "pin-project-lite 0.2.0",
+ "tokio 0.3.6",
 ]
 
 [[package]]

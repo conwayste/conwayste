@@ -142,7 +142,7 @@ impl ColorSettings {
         let mut rng = rand::thread_rng();
 
         for x in colors.iter_mut() {
-            *x = rng.gen_range(0.0, 1.0);
+            *x = rng.gen_range(0.0..1.0);
         }
         let mut iter = colors.into_iter();
         Color::new(iter.next().unwrap(), iter.next().unwrap(), iter.next().unwrap(), 1.0)
