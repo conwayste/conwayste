@@ -1359,25 +1359,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     loop {
         select! {
-            (_) = tick_interval.select_next_some() => {
+            _ = tick_interval.select_next_some() => {
                 let update_packets = server_state.garbage_collection();
                 for (addr, packet) in update_packets {
                     udp_sink.send((packet, addr)).await?;
                 }
             },
-            (_) = network_interval.select_next_some() => {
+            _ = network_interval.select_next_some() => {
                 let retransmissions = server_state.maintain_network_state();
                 for packet_addr_tuple in retransmissions {
                     udp_sink.send(packet_addr_tuple).await?;
                 }
             },
-            (_) = heartbeat_interval.select_next_some() => {
+            _ = heartbeat_interval.select_next_some() => {
                 let heartbeats = server_state.send_heartbeats();
                 for packet_addr_tuple in heartbeats {
                     udp_sink.send(packet_addr_tuple).await?;
                 }
             },
-            (addr_packet_result) = udp_stream.select_next_some() => {
+            addr_packet_result = udp_stream.select_next_some() => {
                 if let Ok(addr_packet_tuple) = addr_packet_result {
                     let responses = server_state.process_packet(addr_packet_tuple);
                     for response in responses {
