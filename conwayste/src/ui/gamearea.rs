@@ -31,7 +31,7 @@ use conway::{
 };
 use ggez::graphics::Rect;
 use ggez::input::keyboard::KeyCode;
-use ggez::nalgebra::{Point2, Vector2};
+use ggez::mint::{Point2, Vector2};
 use ggez::{Context, GameResult};
 use id_tree::NodeId;
 use std::error::Error;
@@ -311,14 +311,14 @@ impl GameArea {
                 KeyCode::Right => {
                     game_area_state.arrow_input = (1, 0);
                 }
-                KeyCode::Add | KeyCode::Equals => {
+                KeyCode::Plus | KeyCode::Equals => {
                     uictx.viewport.adjust_zoom_level(ZoomDirection::ZoomIn);
                     let cell_size = uictx.viewport.get_cell_size();
                     uictx.config.modify(|settings| {
                         settings.gameplay.zoom = cell_size;
                     });
                 }
-                KeyCode::Minus | KeyCode::Subtract => {
+                KeyCode::Minus => {
                     uictx.viewport.adjust_zoom_level(ZoomDirection::ZoomOut);
                     let cell_size = uictx.viewport.get_cell_size();
                     uictx.config.modify(|settings| {

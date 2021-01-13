@@ -20,7 +20,7 @@ use std::error::Error;
 use std::fmt;
 
 use ggez::graphics::{self, Color, DrawMode, DrawParam, Rect};
-use ggez::nalgebra::{Point2, Vector2};
+use ggez::mint::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use enum_iterator::IntoEnumIterator;

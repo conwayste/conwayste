@@ -22,7 +22,7 @@ use std::fmt;
 use ggez::event::MouseButton;
 use ggez::graphics::{self, DrawMode, DrawParam, Rect};
 use ggez::input::keyboard::KeyCode;
-use ggez::nalgebra::{Point2, Vector2};
+use ggez::mint::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use id_tree::NodeId;
@@ -87,10 +87,10 @@ impl Checkbox {
     /// ```
     ///
     pub fn new(ctx: &mut Context, enabled: bool, font_info: FontInfo, text: String, dimensions: Rect) -> Self {
-        let label_origin = Point2::new(
-            dimensions.x + dimensions.w + LABEL_OFFSET_X,
-            dimensions.y + dimensions.h + LABEL_OFFSET_Y,
-        );
+        let label_origin = Point2{
+            x: dimensions.x + dimensions.w + LABEL_OFFSET_X,
+            y: dimensions.y + dimensions.h + LABEL_OFFSET_Y,
+        };
 
         let mut cb = Checkbox {
             id: None,
@@ -222,10 +222,10 @@ impl Widget for Checkbox {
 
         if self.dimensions.x != new_dims.x || self.dimensions.y != new_dims.y {
             // also move the label
-            self.label.translate(Vector2::<f32>::new(
-                new_dims.x - self.dimensions.x,
-                new_dims.y - self.dimensions.y,
-            ))
+            self.label.translate(Vector2{
+                x: new_dims.x - self.dimensions.x,
+                y: new_dims.y - self.dimensions.y,
+            })
         }
 
         self.dimensions = new_dims;

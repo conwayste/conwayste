@@ -22,7 +22,7 @@ use std::collections::HashSet;
 
 use ggez::graphics::{self, DrawMode, DrawParam, Rect};
 use ggez::input::keyboard::KeyCode;
-use ggez::nalgebra::{Point2, Vector2};
+use ggez::mint::{Point2, Vector2};
 use ggez::Context;
 
 use id_tree::{InsertBehavior, Node, NodeId, RemoveBehavior, Tree, TreeBuilder};
@@ -70,7 +70,7 @@ impl Widget for LayerRootNode {
         Rect::new(0.0, 0.0, 0.0, 0.0)
     }
     fn position(&self) -> Point2<f32> {
-        Point2::new(0.0, 0.0)
+        Point2{x:0.0, y: 0.0}
     }
     fn size(&self) -> (f32, f32) {
         (0.0, 0.0)
@@ -257,7 +257,7 @@ impl Layering {
                     // Prepare the widget for insertion at the Pane's layer, translated to
                     // an offset from the Pane's top-left corner
                     let point = pane.dimensions.point();
-                    let vector = Vector2::new(point.x, point.y);
+                    let vector = Vector2{x:point.x, y: point.y};
                     widget.translate(vector);
                     widget.set_z_index(pane.z_index());
                 }

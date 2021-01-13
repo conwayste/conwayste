@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 
 use ggez::event::KeyCode;
 use ggez::graphics::{self, Color, DrawMode, DrawParam, Rect};
-use ggez::nalgebra::{Point2, Vector2};
+use ggez::mint::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use id_tree::NodeId;
@@ -392,10 +392,10 @@ impl Widget for TextField {
         graphics::draw(ctx, &colored_rect, DrawParam::default())?;
 
         // 3.0 px added to y for central alignment
-        let text_pos = Point2::new(
-            self.dimensions.x + CHATBOX_BORDER_PIXELS / 2.0 + 1.0,
-            self.dimensions.y + 3.0,
-        );
+        let text_pos = Point2{
+            x: self.dimensions.x + CHATBOX_BORDER_PIXELS / 2.0 + 1.0,
+            y: self.dimensions.y + 3.0,
+        };
 
         let mut end = self.text.len();
         if self.visible_start_index + self.max_visible_chars() < end {
