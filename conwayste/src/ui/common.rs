@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{self, Color, DrawParam, Font, Rect, Scale, Text, TextFragment};
+use ggez::graphics::{self, Color, DrawParam, Font, Rect, PxScale, Text, TextFragment};
 use ggez::mint::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -139,7 +139,7 @@ pub struct FontInfo {
     #[cfg(not(test))]
     pub font:            Font,
     /// Scale at which to draw this font.
-    pub scale:           Scale,
+    pub scale:           PxScale,
     /// Use the `x` and `y` fields for the width and height of a single character.
     pub char_dimensions: Vector2<f32>,
 
@@ -150,7 +150,7 @@ pub struct FontInfo {
 
 impl FontInfo {
     /// Creates a FontInfo. If `scale` is `None`, uses `DEFAULT_UI_FONT_SCALE`.
-    pub fn new(ctx: &mut Context, font: Font, scale: Option<Scale>) -> Self {
+    pub fn new(ctx: &mut Context, font: Font, scale: Option<PxScale>) -> Self {
         let scale = scale.unwrap_or(*DEFAULT_UI_FONT_SCALE);
         #[cfg(not(test))]
         {

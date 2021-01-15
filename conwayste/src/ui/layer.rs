@@ -791,13 +791,13 @@ mod test {
     use super::super::{common::FontInfo, Chatbox};
     use super::*;
     use crate::constants;
-    use crate::ggez::{graphics::Scale, nalgebra::Vector2};
+    use crate::ggez::{graphics::PxScale, mint::Vector2};
 
     fn create_dummy_font() -> FontInfo {
         FontInfo {
             font:            (),                  //dummy font because we can't create a real Font without ggez
-            scale:           Scale::uniform(1.0), // Does not matter
-            char_dimensions: Vector2::<f32>::new(5.0, 5.0), // any positive values will do
+            scale:           PxScale::from(1.0), // Does not matter
+            char_dimensions: Vector2{x: 5.0f32, y: 5.0f32}, // any positive values will do
         }
     }
 

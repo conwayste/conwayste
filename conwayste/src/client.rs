@@ -1171,15 +1171,6 @@ impl MainState {
         Ok(())
     }
 
-    // Clean up before we quit
-    fn cleanup(&mut self) {
-        if self.config.is_dirty() {
-            self.config.force_flush().unwrap_or_else(|e| {
-                error!("Failed to flush config on exit: {:?}", e);
-            });
-        }
-    }
-
     fn get_current_screen(&self) -> Screen {
         match self.screen_stack.last() {
             Some(screen) => *screen,
@@ -1578,7 +1569,7 @@ pub fn main() {
         .window_setup(
             conf::WindowSetup::default()
                 .title(format!("{} {} {}", "💥 conwayste", version!().to_owned(), "💥").as_str())
-                .icon("//conwayste.ico")
+                .icon("//conwayste.png")
                 .vsync(true),
         )
         .window_mode(
@@ -1597,7 +1588,7 @@ pub fn main() {
         cb = cb.add_resource_path(path);
     }
 
-    let (ctx, events_loop) = cb.build().unwrap_or_else(|e| {
+    let (mut ctx, events_loop) = cb.build().unwrap_or_else(|e| {
         error!("ContextBuilder failed: {:?}", e);
         std::process::exit(1);
     });
@@ -1607,6 +1598,6 @@ pub fn main() {
             println!("Could not load Conwayste!");
             println!("Error: {}", e);
         }
-        Ok(ref mut game) => run(ctx, events_loop, game)
+        Ok(game) => run(ctx, events_loop, game)
     }
 }

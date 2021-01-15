@@ -502,13 +502,13 @@ impl_emit_event!(TextField, self.handler_data);
 #[cfg(test)]
 mod test {
     use super::*;
-    use ggez::graphics::Scale;
+    use ggez::graphics::PxScale;
 
     fn create_dummy_textfield() -> TextField {
         let font_info = FontInfo {
             font:            (),                  //dummy font because we can't create a real Font without ggez
-            scale:           Scale::uniform(1.0), // I don't think this matters
-            char_dimensions: Vector2::<f32>::new(5.0, 5.0), // any positive values will do
+            scale:           PxScale::from(1.0), // I don't think this matters
+            char_dimensions: Vector2{x: 5.0f32, y: 5.0f32}, // any positive values will do
         };
         TextField::new(font_info, Rect::new(0.0, 0.0, 100.0, 100.0))
     }

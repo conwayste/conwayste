@@ -436,7 +436,7 @@ impl ChatboxPublishHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ggez::graphics::Scale;
+    use ggez::graphics::PxScale;
     use std::collections::vec_deque;
 
     // Utilities
@@ -444,8 +444,8 @@ mod tests {
         let history_lines = 20;
         let font_info = FontInfo {
             font:            (),                  //dummy font because we can't create a real Font without ggez
-            scale:           Scale::uniform(1.0), // I don't think this matters
-            char_dimensions: Vector2::<f32>::new(5.0, 5.0), // any positive values will do
+            scale:           PxScale::from(1.0), // I don't think this matters
+            char_dimensions: Vector2{x: 5.0f32, y: 5.0f32}, // any positive values will do
         };
         let height = 123.0; // doesn't matter
                             // The following must be the reverse of the `max_chars_per_line` calculation in
