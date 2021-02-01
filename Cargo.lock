@@ -473,7 +473,7 @@ dependencies = [
  "custom_error",
  "env_logger 0.8.2",
  "log",
- "rand 0.8.0",
+ "rand 0.8.3",
  "serde",
 ]
 
@@ -495,7 +495,7 @@ dependencies = [
  "lazy_static",
  "log",
  "netwayste",
- "rand 0.8.0",
+ "rand 0.8.3",
  "serde",
  "tokio 0.3.6",
  "toml",
@@ -1735,7 +1735,7 @@ dependencies = [
  "futures 0.3.8",
  "log",
  "proptest",
- "rand 0.8.0",
+ "rand 0.8.3",
  "regex",
  "semver 0.11.0",
  "serde",
@@ -2197,9 +2197,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.8.0"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a76330fb486679b4ace3670f117bbc9e16204005c4bde9c4bd372f45bed34f12"
+checksum = "0ef9e7e66b4468674bfcb0c81af8b7fa0bb154fa9f28eb840da5c447baeb8d7e"
 dependencies = [
  "libc",
  "rand_chacha 0.3.0",
