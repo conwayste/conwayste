@@ -51,6 +51,7 @@ use log::LevelFilter;
 use rand::RngCore;
 use semver::Version;
 use tokio::time as TokioTime;
+use tokio_stream::wrappers::IntervalStream;
 use tokio_util::udp::UdpFramed;
 use Fut::prelude::*;
 use Fut::select;
@@ -1353,25 +1354,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let mut server_state = ServerState::new();
 
-    let mut tick_interval = TokioTime::interval(Duration::from_millis(TICK_INTERVAL_IN_MS)).fuse();
-    let mut network_interval = TokioTime::interval(Duration::from_millis(NETWORK_INTERVAL_IN_MS)).fuse();
-    let mut heartbeat_interval = TokioTime::interval(Duration::from_millis(HEARTBEAT_INTERVAL_IN_MS)).fuse();
+    let tick_interval = TokioTime::interval(Duration::from_millis(TICK_INTERVAL_IN_MS));
+    let mut tick_interval_stream = IntervalStream::new(tick_interval).fuse();
+
+    let network_interval = TokioTime::interval(Duration::from_millis(NETWORK_INTERVAL_IN_MS));
+    let mut network_interval_stream = IntervalStream::new(network_interval).fuse();
+
+    let heartbeat_interval = TokioTime::interval(Duration::from_millis(HEARTBEAT_INTERVAL_IN_MS));
+    let mut heartbeat_interval_stream = IntervalStream::new(heartbeat_interval).fuse();
 
     loop {
         select! {
-            _ = tick_interval.select_next_some() => {
+            _ = tick_interval_stream.select_next_some() => {
                 let update_packets = server_state.garbage_collection();
                 for (addr, packet) in update_packets {
                     udp_sink.send((packet, addr)).await?;
                 }
             },
-            _ = network_interval.select_next_some() => {
+            _ = network_interval_stream.select_next_some() => {
                 let retransmissions = server_state.maintain_network_state();
                 for packet_addr_tuple in retransmissions {
                     udp_sink.send(packet_addr_tuple).await?;
                 }
             },
-            _ = heartbeat_interval.select_next_some() => {
+            _ = heartbeat_interval_stream.select_next_some() => {
                 let heartbeats = server_state.send_heartbeats();
                 for packet_addr_tuple in heartbeats {
                     udp_sink.send(packet_addr_tuple).await?;

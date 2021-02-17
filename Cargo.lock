@@ -293,12 +293,6 @@ checksum = "0e4cec68f03f32e44924783795810fa50a7035d8c8ebe78580ad7e6c703fba38"
 
 [[package]]
 name = "bytes"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0dcbc35f504eb6fc275a6d20e4ebcda18cf50d40ba6fabff8c711fa16cb3b16"
-
-[[package]]
-name = "bytes"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b700ce4376041dcd0a327fd0097c41095743c4c8af8887265942faf1100bd040"
@@ -685,7 +679,7 @@ version = "0.3.5"
 dependencies = [
  "bindgen 0.54.0",
  "byteorder",
- "bytes 0.6.0",
+ "bytes 1.0.1",
  "lazy_static",
  "netwayste",
  "pkg-config",
@@ -1732,7 +1726,7 @@ version = "0.3.5"
 dependencies = [
  "base64 0.13.0",
  "bincode",
- "bytes 0.6.0",
+ "bytes 1.0.1",
  "chrono",
  "clap",
  "color-backtrace",
@@ -1748,6 +1742,7 @@ dependencies = [
  "time",
  "tokio 1.2.0",
  "tokio-core",
+ "tokio-stream",
  "tokio-test",
  "tokio-util",
 ]
@@ -2962,19 +2957,6 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46409491c9375a693ce7032101970a54f8a2010efb77e13f70788f0d84489e39"
-dependencies = [
- "autocfg 1.0.0",
- "futures-core",
- "libc",
- "mio 0.7.7",
- "pin-project-lite 0.2.0",
-]
-
-[[package]]
-name = "tokio"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8190d04c665ea9e6b6a0dc45523ade572c088d2e6566244c1122671dbf4ae3a"
@@ -3096,6 +3078,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-stream"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1981ad97df782ab506a1f43bf82c967326960d278acf3bf8279809648c3ff3ea"
+dependencies = [
+ "futures-core",
+ "pin-project-lite 0.2.0",
+ "tokio 1.2.0",
+]
+
+[[package]]
 name = "tokio-sync"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3194,16 +3187,16 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.5.1"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3137de2b078e95274b696cc522e87f22c9a753fe3ef3344116ffb94f104f10a3"
+checksum = "ebb7cb2f00c5ae8df755b252306272cd1790d39728363936e01827e11f0b017b"
 dependencies = [
- "bytes 0.6.0",
+ "bytes 1.0.1",
  "futures-core",
  "futures-sink",
  "log",
  "pin-project-lite 0.2.0",
- "tokio 0.3.7",
+ "tokio 1.2.0",
 ]
 
 [[package]]
