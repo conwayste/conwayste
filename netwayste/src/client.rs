@@ -27,6 +27,7 @@ use std::time::Instant;
 use futures as Fut;
 use regex::Regex;
 use tokio::time as TokioTime;
+use tokio_stream::wrappers::IntervalStream;
 use tokio_util::udp::UdpFramed;
 use Fut::prelude::*;
 use Fut::select;
@@ -501,18 +502,21 @@ impl ClientNetState {
         let mut client_state = ClientNetState::new(channel_to_conwayste);
         client_state.server_address = Some(addr);
 
-        let mut tick_interval = TokioTime::interval(Duration::from_millis(TICK_INTERVAL_IN_MS)).fuse();
-        let mut network_interval = TokioTime::interval(Duration::from_millis(NETWORK_INTERVAL_IN_MS)).fuse();
+        let tick_interval = TokioTime::interval(Duration::from_millis(TICK_INTERVAL_IN_MS));
+        let network_interval = TokioTime::interval(Duration::from_millis(NETWORK_INTERVAL_IN_MS));
+
+        let mut tick_interval_stream = IntervalStream::new(tick_interval).fuse();
+        let mut network_interval_stream = IntervalStream::new(network_interval).fuse();
 
         loop {
             select! {
-                _ = tick_interval.select_next_some() => {
+                _ = tick_interval_stream.select_next_some() => {
                     if let Some(keep_alive_pkt) = client_state.handle_tick_event() {
                         // Unwrap safe b/c the connection to server is active
                         udp_sink.send((keep_alive_pkt, client_state.server_address.unwrap())).await?;
                     }
                 },
-                _ = network_interval.select_next_some() => {
+                _ = network_interval_stream.select_next_some() => {
                     let retransmissions = client_state.maintain_network_state().await;
                     for packet_addr_tuple in retransmissions {
                         udp_sink.send(packet_addr_tuple).await?;
