@@ -16,8 +16,8 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{self, Color, DrawParam, Font, Rect, Scale, Text, TextFragment};
-use ggez::nalgebra::{Point2, Vector2};
+use ggez::graphics::{self, Color, DrawParam, Font, Rect, PxScale, Text, TextFragment};
+use ggez::mint::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use crate::constants::DEFAULT_UI_FONT_SCALE;
@@ -139,7 +139,7 @@ pub struct FontInfo {
     #[cfg(not(test))]
     pub font:            Font,
     /// Scale at which to draw this font.
-    pub scale:           Scale,
+    pub scale:           PxScale,
     /// Use the `x` and `y` fields for the width and height of a single character.
     pub char_dimensions: Vector2<f32>,
 
@@ -150,17 +150,17 @@ pub struct FontInfo {
 
 impl FontInfo {
     /// Creates a FontInfo. If `scale` is `None`, uses `DEFAULT_UI_FONT_SCALE`.
-    pub fn new(ctx: &mut Context, font: Font, scale: Option<Scale>) -> Self {
+    pub fn new(ctx: &mut Context, font: Font, scale: Option<PxScale>) -> Self {
         let scale = scale.unwrap_or(*DEFAULT_UI_FONT_SCALE);
         #[cfg(not(test))]
         {
             let text = "xxxxxxxxxx"; // 10 arbitrary characters
             let text_fragment = TextFragment::new(text).scale(scale).font(font);
             let graphics_text = Text::new(text_fragment);
-            let char_dimensions = Vector2::new(
-                graphics_text.width(ctx) as f32 / text.len() as f32,
-                graphics_text.height(ctx) as f32,
-            );
+            let char_dimensions = Vector2{
+                x: graphics_text.width(ctx) as f32 / text.len() as f32,
+                y: graphics_text.height(ctx) as f32,
+            };
             FontInfo {
                 font,
                 scale,
@@ -173,7 +173,7 @@ impl FontInfo {
             FontInfo {
                 font: (),
                 scale,
-                char_dimensions: Vector2::new(1.0, 1.0), // dummy
+                char_dimensions: Vector2{x:1.0, y: 1.0}, // dummy
             }
         }
     }
@@ -244,12 +244,12 @@ pub fn intersection(a: Rect, b: Rect) -> Option<Rect> {
 
 /// Provides a new `Point2` from the specified point a the specified offset.
 pub fn point_offset(p1: Point2<f32>, x: f32, y: f32) -> Point2<f32> {
-    Point2::new(p1.x + x, p1.y + y)
+    Point2{x:p1.x + x, y: p1.y + y}
 }
 
 /// Calculates the center coordinate of the provided rectangle
 pub fn center(r: &Rect) -> Point2<f32> {
-    Point2::new((r.left() + r.right()) / 2.0, (r.top() + r.bottom()) / 2.0)
+    Point2{x:(r.left() + r.right()) / 2.0, y: (r.top() + r.bottom()) / 2.0}
 }
 
 /// Checks to see if the boundary defined by the provided rectangle contains the specified point
@@ -268,12 +268,12 @@ mod test {
 
     #[test]
     fn test_point_offset() {
-        let point = Point2::new(1.0, 1.0);
+        let point = Point2{x:1.0, y: 1.0};
         let point2 = point_offset(point, 5.0, 5.0);
         let point3 = point_offset(point, -5.0, -5.0);
 
-        assert_eq!(point2, Point2::new(6.0, 6.0));
-        assert_eq!(point3, Point2::new(-4.0, -4.0));
+        assert_eq!(point2, Point2{x:6.0, y: 6.0});
+        assert_eq!(point3, Point2{x:-4.0, y: -4.0});
     }
 
     #[test]

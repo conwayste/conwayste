@@ -23,7 +23,7 @@ use chromatica::css;
 use ggez::event::MouseButton;
 use ggez::graphics::{self, Color, DrawMode, DrawParam, Rect};
 use ggez::input::keyboard::KeyCode;
-use ggez::nalgebra::{Point2, Vector2};
+use ggez::mint::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use id_tree::NodeId;
@@ -93,7 +93,7 @@ impl Button {
     ///
     pub fn new(ctx: &mut Context, font_info: FontInfo, button_text: String) -> Self {
         // label positioning defined an offset to button origin after centering
-        let label_position = Point2::new(0.0, 0.0);
+        let label_position = Point2{x:0.0, y: 0.0};
         let label = Label::new(
             ctx,
             font_info,

@@ -63,7 +63,7 @@ use netwayste::net::NetwaysteEvent;
 use ggez::conf;
 use ggez::event::*;
 use ggez::graphics::{self, Color, DrawParam, Font};
-use ggez::nalgebra::{Point2, Vector2};
+use ggez::mint::{Point2, Vector2};
 use ggez::timer;
 use ggez::{Context, ContextBuilder, GameError, GameResult};
 
@@ -262,8 +262,8 @@ impl MainState {
 
         // Update universe draw parameters for intro
         let intro_uni_draw_params = UniDrawParams {
-            bg_color:     graphics::BLACK,
-            fg_color:     graphics::BLACK,
+            bg_color:     BLACK,
+            fg_color:     BLACK,
             player_id:    -1,
             draw_counter: true,
         };
@@ -581,7 +581,7 @@ impl EventHandler for MainState {
                     self.system_font.clone(),
                     *MENU_TEXT_COLOR,
                     String::from("Main Menu"),
-                    &Point2::new(500.0, 100.0),
+                    &Point2{x:500.0, y: 100.0},
                 )?;
             }
             Screen::Run => {
@@ -595,7 +595,7 @@ impl EventHandler for MainState {
                     self.system_font.clone(),
                     *MENU_TEXT_COLOR,
                     String::from("In Room"),
-                    &Point2::new(100.0, 100.0),
+                    &Point2{x:100.0, y: 100.0},
                 )?;
             }
             Screen::ServerList => {
@@ -604,7 +604,7 @@ impl EventHandler for MainState {
                     self.system_font.clone(),
                     *MENU_TEXT_COLOR,
                     String::from("Server List"),
-                    &Point2::new(100.0, 100.0),
+                    &Point2{x:100.0, y: 100.0},
                 )?;
             }
             Screen::Options => {
@@ -613,7 +613,7 @@ impl EventHandler for MainState {
                     self.system_font.clone(),
                     *MENU_TEXT_COLOR,
                     String::from("Options"),
-                    &Point2::new(100.0, 100.0),
+                    &Point2{x:100.0, y: 100.0},
                 )?;
             }
             Screen::Exit => {}
@@ -639,8 +639,8 @@ impl EventHandler for MainState {
             self.inputs.mouse_info.mousebutton = button;
             self.inputs.mouse_info.down_timestamp = Some(Instant::now());
             self.inputs.mouse_info.action = Some(MouseAction::Held);
-            self.inputs.mouse_info.position = Point2::new(x, y);
-            self.inputs.mouse_info.down_position = Point2::new(x, y);
+            self.inputs.mouse_info.position = Point2{x, y};
+            self.inputs.mouse_info.down_position = Point2{x, y};
 
             if self.inputs.mouse_info.debug_print {
                 debug!("{:?} Down", button);
@@ -649,7 +649,7 @@ impl EventHandler for MainState {
     }
 
     fn mouse_motion_event(&mut self, _ctx: &mut Context, x: f32, y: f32, _dx: f32, _dy: f32) {
-        self.inputs.mouse_info.position = Point2::new(x, y);
+        self.inputs.mouse_info.position = Point2{x, y};
 
         // Check that a valid mouse button was held down (but no motion yet), or that we are already
         // dragging the mouse. If either case is true, update the action to reflect that the mouse
@@ -675,7 +675,7 @@ impl EventHandler for MainState {
         // Register as a click if the same mouse button that clicked down is what triggered the event
         if self.inputs.mouse_info.mousebutton == button {
             self.inputs.mouse_info.action = Some(MouseAction::Click);
-            self.inputs.mouse_info.position = Point2::new(x, y);
+            self.inputs.mouse_info.position = Point2{x, y};
 
             if self.inputs.mouse_info.debug_print {
                 debug!(
@@ -718,7 +718,7 @@ impl EventHandler for MainState {
             || (key_as_int32 >= KeyCode::LAlt as i32 && key_as_int32 <= KeyCode::LWin as i32)
             || (key_as_int32 >= KeyCode::RAlt as i32 && key_as_int32 <= KeyCode::RWin as i32)
             || (key_as_int32 == KeyCode::Equals as i32
-                || key_as_int32 == KeyCode::Subtract as i32
+                || key_as_int32 == KeyCode::Minus as i32
                 || key_as_int32 == KeyCode::Tab as i32)
         {
             // NOTE: we need to exclude modifiers we are using below.
@@ -860,7 +860,7 @@ impl MainState {
         // grid foreground (dead cells)
         let full_rect = viewport.get_rect_from_origin();
 
-        let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
+        let image = graphics::Image::solid(ctx, 1u16, WHITE)?; // 1x1 square
         let mut main_spritebatch = graphics::spritebatch::SpriteBatch::new(image.clone());
         let mut overlay_spritebatch = graphics::spritebatch::SpriteBatch::new(image);
 
@@ -882,8 +882,8 @@ impl MainState {
 
             if let Some(rect) = viewport.window_coords_from_game(viewport::Cell::new(col, row)) {
                 let p = graphics::DrawParam::new()
-                    .dest(Point2::new(rect.x, rect.y))
-                    .scale(Vector2::new(rect.w, rect.h))
+                    .dest(Point2{x:rect.x, y: rect.y})
+                    .scale(Vector2{x:rect.w, y: rect.h})
                     .color(color);
 
                 main_spritebatch.add(p);
@@ -933,8 +933,8 @@ impl MainState {
                         }
                         color.a = 0.5; // semi-transparent since this is an overlay
                         let p = graphics::DrawParam::new()
-                            .dest(Point2::new(rect.x, rect.y))
-                            .scale(Vector2::new(rect.w, rect.h))
+                            .dest(Point2{x:rect.x, y: rect.y})
+                            .scale(Vector2{x:rect.w, y: rect.h})
                             .color(color);
 
                         overlay_spritebatch.add(p);
@@ -944,7 +944,7 @@ impl MainState {
         }
 
         if let Some(clipped_rect) = ui::intersection(full_rect, viewport_rect) {
-            let origin = graphics::DrawParam::new().dest(Point2::new(0.0, 0.0));
+            let origin = graphics::DrawParam::new().dest(Point2{x:0.0, y: 0.0});
             let rectangle = graphics::Mesh::new_rectangle(
                 ctx,
                 GRID_DRAW_STYLE.to_draw_mode(),
@@ -969,7 +969,7 @@ impl MainState {
                 self.system_font.clone(),
                 *GEN_COUNTER_COLOR,
                 gen_counter,
-                &Point2::new(0.0, 0.0),
+                &Point2{x:0.0, y: 0.0},
             )?;
         }
 
@@ -982,7 +982,7 @@ impl MainState {
         let target_center_x = win_width / 2.0 - grid_width / 2.0;
         let target_center_y = win_height / 2.0 - grid_height / 2.0;
         self.intro_viewport
-            .set_origin(Point2::new(target_center_x, target_center_y));
+            .set_origin(Point2{x:target_center_x, y: target_center_y});
     }
 
     fn draw_intro(&mut self, ctx: &mut Context) -> Result<(), Box<dyn Error>> {
@@ -1150,7 +1150,7 @@ impl MainState {
                     self.inputs.mouse_info.down_timestamp = None;
                     self.inputs.mouse_info.action = None;
                     self.inputs.mouse_info.mousebutton = MouseButton::Other(0);
-                    self.inputs.mouse_info.down_position = Point2::new(0.0, 0.0);
+                    self.inputs.mouse_info.down_position = Point2{x:0.0, y: 0.0};
                 }
                 MouseAction::Drag | MouseAction::Held | MouseAction::DoubleClick => {}
             }
@@ -1169,15 +1169,6 @@ impl MainState {
             .map_err(|e| GameError::FilesystemError(format!("Error while flushing config: {:?}", e)))?;
 
         Ok(())
-    }
-
-    // Clean up before we quit
-    fn cleanup(&mut self) {
-        if self.config.is_dirty() {
-            self.config.force_flush().unwrap_or_else(|e| {
-                error!("Failed to flush config on exit: {:?}", e);
-            });
-        }
     }
 
     fn get_current_screen(&self) -> Screen {
@@ -1578,7 +1569,7 @@ pub fn main() {
         .window_setup(
             conf::WindowSetup::default()
                 .title(format!("{} {} {}", "💥 conwayste", version!().to_owned(), "💥").as_str())
-                .icon("//conwayste.ico")
+                .icon("//conwayste.png")
                 .vsync(true),
         )
         .window_mode(
@@ -1597,24 +1588,16 @@ pub fn main() {
         cb = cb.add_resource_path(path);
     }
 
-    let (ctx, events_loop) = &mut cb.build().unwrap_or_else(|e| {
+    let (mut ctx, events_loop) = cb.build().unwrap_or_else(|e| {
         error!("ContextBuilder failed: {:?}", e);
         std::process::exit(1);
     });
 
-    match MainState::new(ctx) {
+    match MainState::new(&mut ctx) {
         Err(e) => {
             println!("Could not load Conwayste!");
             println!("Error: {}", e);
         }
-        Ok(ref mut game) => {
-            let result = run(ctx, events_loop, game);
-            if let Err(e) = result {
-                println!("Error encountered while running game: {}", e);
-            } else {
-                game.cleanup();
-                println!("Game exited cleanly.");
-            }
-        }
+        Ok(game) => run(ctx, events_loop, game)
     }
 }

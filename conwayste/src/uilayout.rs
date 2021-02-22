@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use ggez::graphics::{Font, Rect};
-use ggez::nalgebra::Point2;
+use ggez::mint::Point2;
 use ggez::Context;
 
 use id_tree::NodeId;
@@ -133,7 +133,7 @@ impl UILayout {
                 default_font_info,
                 "Resolution".to_owned(),
                 name_color,
-                Point2::new(10.0, 300.0),
+                Point2{x:10.0, y: 300.0},
             )),
             InsertLocation::AtCurrentLayer,
         )?;
@@ -143,7 +143,7 @@ impl UILayout {
             default_font_info,
             "<no data>".to_owned(),
             value_color,
-            Point2::new(200.0, 300.0),
+            Point2{x:200.0, y: 300.0},
         ));
         resolution_value_label
             .on(context::EventType::Update, Box::new(resolution_update_handler))
@@ -161,7 +161,7 @@ impl UILayout {
             default_font_info,
             "Player Name:".to_owned(),
             name_color,
-            Point2::new(0.0, 0.0),
+            Point2{x:0.0, y: 0.0},
         ));
         let pnlabel_x = playername_label.position().x;
         let pnlabel_y = playername_label.position().y;

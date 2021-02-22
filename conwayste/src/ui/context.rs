@@ -27,7 +27,7 @@ use ggez;
 use ggez::event::MouseButton;
 use ggez::graphics::Rect;
 use ggez::input::keyboard::KeyCode;
-use ggez::nalgebra::Point2;
+use ggez::mint::Point2;
 use id_tree::NodeId;
 
 use super::treeview::TreeView;

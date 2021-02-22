@@ -22,7 +22,7 @@ use std::fmt;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use ggez::graphics::{self, Color, DrawMode, DrawParam, FilterMode, Rect, Text};
-use ggez::nalgebra::{Point2, Vector2};
+use ggez::mint::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use id_tree::NodeId;
@@ -386,19 +386,19 @@ impl Widget for Chatbox {
 
         // Draw as many messages as we can fit in the dimensions of the chatbox, newest at the bottom
         let mut i = 0;
-        let bottom_left_corner = Point2::new(
-            self.dimensions.x,
-            self.dimensions.y + self.dimensions.h - self.font_info.char_dimensions.y,
-        );
+        let bottom_left_corner = Point2{
+            x: self.dimensions.x,
+            y: self.dimensions.y + self.dimensions.h - self.font_info.char_dimensions.y,
+        };
 
         for (_, wrapped_text) in self.wrapped.iter().rev() {
             if max_lines == 0 {
                 break;
             }
-            let point = Point2::new(
-                bottom_left_corner.x + constants::CHATBOX_BORDER_PIXELS + 1.0,
-                bottom_left_corner.y - (i as f32 * self.font_info.char_dimensions.y),
-            );
+            let point = Point2{
+                x: bottom_left_corner.x + constants::CHATBOX_BORDER_PIXELS + 1.0,
+                y: bottom_left_corner.y - (i as f32 * self.font_info.char_dimensions.y),
+            };
             graphics::queue_text(ctx, wrapped_text, point, Some(*CHATBOX_TEXT_COLOR));
             max_lines -= 1;
             i += 1;
@@ -436,7 +436,7 @@ impl ChatboxPublishHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ggez::graphics::Scale;
+    use ggez::graphics::PxScale;
     use std::collections::vec_deque;
 
     // Utilities
@@ -444,8 +444,8 @@ mod tests {
         let history_lines = 20;
         let font_info = FontInfo {
             font:            (),                  //dummy font because we can't create a real Font without ggez
-            scale:           Scale::uniform(1.0), // I don't think this matters
-            char_dimensions: Vector2::<f32>::new(5.0, 5.0), // any positive values will do
+            scale:           PxScale::from(1.0), // I don't think this matters
+            char_dimensions: Vector2{x: 5.0f32, y: 5.0f32}, // any positive values will do
         };
         let height = 123.0; // doesn't matter
                             // The following must be the reverse of the `max_chars_per_line` calculation in

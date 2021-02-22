@@ -1,0 +1,12 @@
+[submodule "third_party_submods/ggez"]
+	path = third_party_submods/ggez
+	url = https://github.com/conwayste/ggez
+[submodule "third_party_submods/rodio"]
+	path = third_party_submods/rodio
+	url = https://github.com/conwayste/rodio
+[submodule "third_party_submods/cpal"]
+	path = third_party_submods/cpal
+	url = https://github.com/conwayste/cpal
+[submodule "third_party_submods/gilrs"]
+	path = third_party_submods/gilrs
+	url = https://github.com/conwayste/gilrs

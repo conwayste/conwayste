@@ -19,7 +19,7 @@
 extern crate ggez;
 
 use ggez::graphics::Rect;
-use ggez::nalgebra::Point2;
+use ggez::mint::Point2;
 
 use crate::constants::{
     DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, MAX_CELL_SIZE, MIN_CELL_SIZE, PIXELS_SCROLLED_PER_FRAME,
@@ -75,7 +75,7 @@ impl GridView {
             cell_size:   cell_size,
             columns:     uni_width,
             rows:        uni_height,
-            grid_origin: Point2::new(0.0, 0.0),
+            grid_origin: Point2{x:0.0, y:0.0},
         }
     }
 
@@ -99,7 +99,7 @@ impl GridView {
             let old_cell_size = self.cell_size;
             let cell_size_delta = next_cell_size - old_cell_size;
 
-            let window_center = Point2::new(self.rect.w / 2.0, self.rect.h / 2.0);
+            let window_center = Point2{x:self.rect.w / 2.0, y: self.rect.h / 2.0};
 
             if let Some(cell) = self.game_coords_from_window(window_center) {
                 let (old_cell_center_x, old_cell_center_y) = (cell.row, cell.col);
@@ -228,7 +228,7 @@ impl GridView {
             self.grid_origin = ui::point_offset(self.grid_origin, dx_in_pixels, dy_in_pixels);
         } else {
             // We cannot pan as we are out of bounds, but let us ensure we maintain a border
-            self.grid_origin = Point2::new(limit_x as f32, limit_y as f32);
+            self.grid_origin = Point2{x:limit_x, y: limit_y};
         }
     }
 
@@ -366,7 +366,7 @@ mod test {
 
         assert_eq!(gv.cell_size, 10.0);
         assert_eq!(gv.rect, rect);
-        assert_eq!(gv.grid_origin, Point2::new(0.0, 0.0));
+        assert_eq!(gv.grid_origin, Point2{x:0.0, y: 0.0});
         assert_eq!(gv.columns, 256);
         assert_eq!(gv.rows, 128);
     }
@@ -374,12 +374,12 @@ mod test {
     #[test]
     fn test_gridview_game_coords_unchecked() {
         let gv = gen_default_gridview();
-        let inside = Point2::new(5.0, 5.0);
-        let corner = Point2::new(
-            DEFAULT_SCREEN_WIDTH as f32 * gv.cell_size,
-            DEFAULT_SCREEN_HEIGHT as f32 * gv.cell_size,
-        );
-        let outside = Point2::new(-10.0, -10.0);
+        let inside = Point2{x:5.0, y: 5.0};
+        let corner = Point2{
+            x: DEFAULT_SCREEN_WIDTH as f32 * gv.cell_size,
+            y: DEFAULT_SCREEN_HEIGHT as f32 * gv.cell_size,
+        };
+        let outside = Point2{x:-10.0, y: -10.0};
 
         assert_eq!(gv.game_coords_from_window_unchecked(inside), (0, 0));
         assert_eq!(gv.game_coords_from_window_unchecked(corner), (1200, 800));
@@ -389,17 +389,17 @@ mod test {
     #[test]
     fn test_gridview_game_coords_checked() {
         let gv = gen_default_gridview();
-        let inside = Point2::new(5.0, 5.0);
-        let corner1 = Point2::new(
-            (DEFAULT_SCREEN_WIDTH - 1.0) * gv.cell_size,
-            (DEFAULT_SCREEN_HEIGHT - 1.0) * gv.cell_size,
-        );
-        let corner2 = Point2::new(
-            DEFAULT_SCREEN_WIDTH * gv.cell_size,
-            DEFAULT_SCREEN_HEIGHT * gv.cell_size,
-        );
-        let outside = Point2::new(-10.0, -10.0);
-        let edge_point = Point2::new(1200.0, 800.0);
+        let inside = Point2{x:5.0, y: 5.0};
+        let corner1 = Point2{
+            x: (DEFAULT_SCREEN_WIDTH - 1.0) * gv.cell_size,
+            y: (DEFAULT_SCREEN_HEIGHT - 1.0) * gv.cell_size,
+        };
+        let corner2 = Point2{
+            x: DEFAULT_SCREEN_WIDTH * gv.cell_size,
+            y: DEFAULT_SCREEN_HEIGHT * gv.cell_size,
+        };
+        let outside = Point2{x:-10.0, y: -10.0};
+        let edge_point = Point2{x:1200.0, y: 800.0};
 
         assert_eq!(gv.game_coords_from_window(inside), Some(Cell::new(0, 0)));
         assert_eq!(gv.game_coords_from_window(corner1), None);

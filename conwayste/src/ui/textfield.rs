@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 
 use ggez::event::KeyCode;
 use ggez::graphics::{self, Color, DrawMode, DrawParam, Rect};
-use ggez::nalgebra::{Point2, Vector2};
+use ggez::mint::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use id_tree::NodeId;
@@ -392,10 +392,10 @@ impl Widget for TextField {
         graphics::draw(ctx, &colored_rect, DrawParam::default())?;
 
         // 3.0 px added to y for central alignment
-        let text_pos = Point2::new(
-            self.dimensions.x + CHATBOX_BORDER_PIXELS / 2.0 + 1.0,
-            self.dimensions.y + 3.0,
-        );
+        let text_pos = Point2{
+            x: self.dimensions.x + CHATBOX_BORDER_PIXELS / 2.0 + 1.0,
+            y: self.dimensions.y + 3.0,
+        };
 
         let mut end = self.text.len();
         if self.visible_start_index + self.max_visible_chars() < end {
@@ -502,13 +502,13 @@ impl_emit_event!(TextField, self.handler_data);
 #[cfg(test)]
 mod test {
     use super::*;
-    use ggez::graphics::Scale;
+    use ggez::graphics::PxScale;
 
     fn create_dummy_textfield() -> TextField {
         let font_info = FontInfo {
             font:            (),                  //dummy font because we can't create a real Font without ggez
-            scale:           Scale::uniform(1.0), // I don't think this matters
-            char_dimensions: Vector2::<f32>::new(5.0, 5.0), // any positive values will do
+            scale:           PxScale::from(1.0), // I don't think this matters
+            char_dimensions: Vector2{x: 5.0f32, y: 5.0f32}, // any positive values will do
         };
         TextField::new(font_info, Rect::new(0.0, 0.0, 100.0, 100.0))
     }

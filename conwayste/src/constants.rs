@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{self, Rect, Scale};
+use ggez::graphics::{self, Rect, PxScale};
 use std::time::Duration;
 
 // Universe settings
@@ -65,6 +65,21 @@ pub mod colors {
         pub static ref OPTIONS_LABEL_TEXT_COLOR: Color = Color::from(css::WHITE);
         pub static ref INSERT_PATTERN_UNWRITABLE: Color = Color::from(css::RED);
     }
+
+    pub const BLACK: Color = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    };
+
+    pub const WHITE: Color = Color {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 1.0,
+    };
+
 }
 
 pub const DEFAULT_SCREEN_HEIGHT: f32 = 800.0; // pixels
@@ -85,10 +100,10 @@ pub const MIN_CONFIG_FLUSH_TIME: Duration = Duration::from_millis(5000);
 // user interface
 lazy_static! {
     // In pixels, used for any UI element containing text (except for chatbox)
-    pub static ref DEFAULT_UI_FONT_SCALE: Scale = Scale::uniform(20.0);
+    pub static ref DEFAULT_UI_FONT_SCALE: PxScale = PxScale::from(20.0);
     // In pixels, used for the message container of the chatbox. Currently different from other UI
     // elements for experimentation.
-    pub static ref DEFAULT_CHATBOX_FONT_SCALE: Scale = Scale::uniform(15.0);
+    pub static ref DEFAULT_CHATBOX_FONT_SCALE: PxScale = PxScale::from(15.0);
     pub static ref DEFAULT_CHATBOX_RECT: Rect =  Rect::new(30.0, 40.0, 300.0, 175.0);
 
 }

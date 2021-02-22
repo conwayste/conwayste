@@ -21,7 +21,7 @@ use std::fmt;
 #[cfg(test)]
 use ggez::graphics::Font;
 use ggez::graphics::{self, Color, DrawParam, Drawable, Rect, Text, TextFragment};
-use ggez::nalgebra::{Point2, Vector2};
+use ggez::mint::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
 use id_tree::NodeId;
