@@ -44,16 +44,27 @@ The Conwayste client and server compile and run right out of the box. Skip direc
 
 On Linux, the ALSA development files are required. These are provided as part of the `libasound2-dev` package on Debian and Ubuntu distributions and `alsa-lib-devel` on Fedora. For any other distribution, please refer to your package manager and/or compile them from source.
 
+## OpenBSD
+
+```
+doas pkg_add llvm
+```
+
+You will also need this environment variable. Add to your profile if desired:
+```
+export LIBCLANG_PATH=/usr/local/lib
+```
+
 ## Installation
 
 Please clone this repository, and build the client and server using `cargo`. The build may take several minutes to complete, depending on your system specs.
 
 ```
-$ git clone https://github.com/conwayste/conwayste
+$ git clone https://github.com/conwayste/conwayste --recurse-submodules
 $ cd conwayste/
-$ cargo build --bin client
-$ cargo build --bin server
 ```
+
+If you cloned this previously and want to update, note that you may need to run `git submodule init` then `git submodule update` after pulling.
 
 # Playing the Game
 
