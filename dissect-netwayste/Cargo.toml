@@ -5,8 +5,8 @@ authors = ["Aaron Miller <aaron.miller04@gmail.com>", "Ameen Manghi <manghirs@gm
 edition = "2018"
 
 [dependencies]
-bytes = "0.6.0"
-byteorder = "1.3.4"
+bytes = "1.0.0"
+byteorder = "1.4.2"
 lazy_static = "1.3.0"
 netwayste   = { path = "../netwayste" }
 tokio-core  = "0.1.18"
@@ -17,7 +17,7 @@ version = "1.0.56"
 features = ["full", "extra-traits"]
 
 [dependencies.tokio-util]
-version = "0.5.1"
+version = "0.6.3"
 features = ["codec"]
 
 
