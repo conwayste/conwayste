@@ -65,6 +65,21 @@ pub mod colors {
         pub static ref OPTIONS_LABEL_TEXT_COLOR: Color = Color::from(css::WHITE);
         pub static ref INSERT_PATTERN_UNWRITABLE: Color = Color::from(css::RED);
     }
+
+    pub const BLACK: Color = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    };
+
+    pub const WHITE: Color = Color {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 1.0,
+    };
+
 }
 
 pub const DEFAULT_SCREEN_HEIGHT: f32 = 800.0; // pixels

@@ -262,8 +262,8 @@ impl MainState {
 
         // Update universe draw parameters for intro
         let intro_uni_draw_params = UniDrawParams {
-            bg_color:     graphics::BLACK,
-            fg_color:     graphics::BLACK,
+            bg_color:     BLACK,
+            fg_color:     BLACK,
             player_id:    -1,
             draw_counter: true,
         };
@@ -860,7 +860,7 @@ impl MainState {
         // grid foreground (dead cells)
         let full_rect = viewport.get_rect_from_origin();
 
-        let image = graphics::Image::solid(ctx, 1u16, graphics::WHITE)?; // 1x1 square
+        let image = graphics::Image::solid(ctx, 1u16, WHITE)?; // 1x1 square
         let mut main_spritebatch = graphics::spritebatch::SpriteBatch::new(image.clone());
         let mut overlay_spritebatch = graphics::spritebatch::SpriteBatch::new(image);
 
