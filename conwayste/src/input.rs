@@ -53,9 +53,9 @@ impl MouseInfo {
             action:         None,
             scroll_event:   None,
             down_timestamp: None,
-            down_position:  Point2{x:0.0, y: 0.0},
-            prev_position:  Point2{x:0.0, y: 0.0},
-            position:       Point2{x:0.0, y: 0.0},
+            down_position:  Point2 { x: 0.0, y: 0.0 },
+            prev_position:  Point2 { x: 0.0, y: 0.0 },
+            position:       Point2 { x: 0.0, y: 0.0 },
             debug_print:    false,
         }
     }

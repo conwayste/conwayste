@@ -386,7 +386,7 @@ impl Widget for Chatbox {
 
         // Draw as many messages as we can fit in the dimensions of the chatbox, newest at the bottom
         let mut i = 0;
-        let bottom_left_corner = Point2{
+        let bottom_left_corner = Point2 {
             x: self.dimensions.x,
             y: self.dimensions.y + self.dimensions.h - self.font_info.char_dimensions.y,
         };
@@ -395,7 +395,7 @@ impl Widget for Chatbox {
             if max_lines == 0 {
                 break;
             }
-            let point = Point2{
+            let point = Point2 {
                 x: bottom_left_corner.x + constants::CHATBOX_BORDER_PIXELS + 1.0,
                 y: bottom_left_corner.y - (i as f32 * self.font_info.char_dimensions.y),
             };
@@ -443,9 +443,9 @@ mod tests {
     fn max_chars_chatbox(max_chars_per_line: usize) -> Chatbox {
         let history_lines = 20;
         let font_info = FontInfo {
-            font:            (),                  //dummy font because we can't create a real Font without ggez
+            font:            (),                 //dummy font because we can't create a real Font without ggez
             scale:           PxScale::from(1.0), // I don't think this matters
-            char_dimensions: Vector2{x: 5.0f32, y: 5.0f32}, // any positive values will do
+            char_dimensions: Vector2 { x: 5.0f32, y: 5.0f32 }, // any positive values will do
         };
         let height = 123.0; // doesn't matter
                             // The following must be the reverse of the `max_chars_per_line` calculation in

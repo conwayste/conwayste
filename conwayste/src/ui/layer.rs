@@ -70,7 +70,7 @@ impl Widget for LayerRootNode {
         Rect::new(0.0, 0.0, 0.0, 0.0)
     }
     fn position(&self) -> Point2<f32> {
-        Point2{x:0.0, y: 0.0}
+        Point2 { x: 0.0, y: 0.0 }
     }
     fn size(&self) -> (f32, f32) {
         (0.0, 0.0)
@@ -257,7 +257,7 @@ impl Layering {
                     // Prepare the widget for insertion at the Pane's layer, translated to
                     // an offset from the Pane's top-left corner
                     let point = pane.dimensions.point();
-                    let vector = Vector2{x:point.x, y: point.y};
+                    let vector = Vector2 { x: point.x, y: point.y };
                     widget.translate(vector);
                     widget.set_z_index(pane.z_index());
                 }
@@ -795,9 +795,9 @@ mod test {
 
     fn create_dummy_font() -> FontInfo {
         FontInfo {
-            font:            (),                  //dummy font because we can't create a real Font without ggez
+            font:            (),                 //dummy font because we can't create a real Font without ggez
             scale:           PxScale::from(1.0), // Does not matter
-            char_dimensions: Vector2{x: 5.0f32, y: 5.0f32}, // any positive values will do
+            char_dimensions: Vector2 { x: 5.0f32, y: 5.0f32 }, // any positive values will do
         }
     }
 
