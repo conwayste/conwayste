@@ -430,6 +430,7 @@ impl GameArea {
         Ok(event_handled)
     }
 }
+
 /// This takes a keyboard code and returns a `Result` whose Ok value is a `(BitGrid, width,
 /// height)` tuple.
 ///
