@@ -341,6 +341,27 @@ impl GameArea {
             }
         }
 
+        if evt.shift_pressed && game_area_state.arrow_input != (0, 0) {
+            if let Some((ref mut grid, ref mut width, ref mut height)) = game_area_state.insert_mode {
+                let rotation = match game_area_state.arrow_input {
+                    (-1, 0) => Some(Rotation::CCW),
+                    (1, 0) => Some(Rotation::CW),
+                    (0, 0) => unreachable!(),
+                    _ => None, // do nothing in this case
+                };
+                if let Some(rotation) = rotation {
+                    grid.rotate(*width, *height, rotation).unwrap_or_else(|e| {
+                        error!("Failed to rotate pattern {:?}: {:?}", rotation, e);
+                    });
+                    // reverse the stored width and height
+                    let (new_width, new_height) = (*height, *width);
+                    *width = new_width;
+                    *height = new_height;
+                } else {
+                    info!("Ignoring Shift-<Up/Down>");
+                }
+            }
+        }
         Ok(Handled)
     }
 
@@ -402,27 +423,6 @@ impl GameArea {
                         }
                     }
                     _ => {}
-                }
-            }
-        } else if evt.shift_pressed && game_area_state.arrow_input != (0, 0) {
-            if let Some((ref mut grid, ref mut width, ref mut height)) = game_area_state.insert_mode {
-                let rotation = match game_area_state.arrow_input {
-                    (-1, 0) => Some(Rotation::CCW),
-                    (1, 0) => Some(Rotation::CW),
-                    (0, 0) => unreachable!(),
-                    _ => None, // do nothing in this case
-                };
-                if let Some(rotation) = rotation {
-                    grid.rotate(*width, *height, rotation).unwrap_or_else(|e| {
-                        error!("Failed to rotate pattern {:?}: {:?}", rotation, e);
-                    });
-                    // reverse the stored width and height
-                    let (new_width, new_height) = (*height, *width);
-                    *width = new_width;
-                    *height = new_height;
-                    event_handled = Handled;
-                } else {
-                    info!("Ignoring Shift-<Up/Down>");
                 }
             }
         }
