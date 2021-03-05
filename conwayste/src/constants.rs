@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{self, Rect, PxScale};
+use ggez::graphics::{self, PxScale, Rect};
 use std::time::Duration;
 
 // Universe settings
@@ -79,7 +79,6 @@ pub mod colors {
         b: 1.0,
         a: 1.0,
     };
-
 }
 
 pub const DEFAULT_SCREEN_HEIGHT: f32 = 800.0; // pixels

@@ -87,7 +87,7 @@ impl Checkbox {
     /// ```
     ///
     pub fn new(ctx: &mut Context, enabled: bool, font_info: FontInfo, text: String, dimensions: Rect) -> Self {
-        let label_origin = Point2{
+        let label_origin = Point2 {
             x: dimensions.x + dimensions.w + LABEL_OFFSET_X,
             y: dimensions.y + dimensions.h + LABEL_OFFSET_Y,
         };
@@ -222,7 +222,7 @@ impl Widget for Checkbox {
 
         if self.dimensions.x != new_dims.x || self.dimensions.y != new_dims.y {
             // also move the label
-            self.label.translate(Vector2{
+            self.label.translate(Vector2 {
                 x: new_dims.x - self.dimensions.x,
                 y: new_dims.y - self.dimensions.y,
             })

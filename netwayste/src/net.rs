@@ -29,7 +29,7 @@ use std::{
 use crate::utils::PingPong;
 
 use bincode::{deserialize, serialize};
-use bytes::BytesMut;
+use bytes::{Buf, BytesMut};
 use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
 use tokio::net::UdpSocket;
@@ -590,7 +590,19 @@ impl Decoder for NetwaystePacketCodec {
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         match deserialize(src) {
-            Ok(decoded) => Ok(Some(decoded)),
+            Ok(decoded) => {
+                let pkt: Packet = decoded;
+                match bincode::serialized_size(&pkt) {
+                    Ok(length) => src.advance(length as usize),
+                    Err(err) => {
+                        // Something went horribly wrong if we were unable to serialize something we just deserialized.
+                        // Clear the buffer and restart the decoder by returning an error.
+                        src.clear();
+                        return Err(io::Error::new(io::ErrorKind::InvalidData, err));
+                    }
+                }
+                Ok(Some(pkt))
+            }
             Err(_) => Ok(None),
         }
     }

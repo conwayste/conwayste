@@ -93,7 +93,7 @@ impl Button {
     ///
     pub fn new(ctx: &mut Context, font_info: FontInfo, button_text: String) -> Self {
         // label positioning defined an offset to button origin after centering
-        let label_position = Point2{x:0.0, y: 0.0};
+        let label_position = Point2 { x: 0.0, y: 0.0 };
         let label = Label::new(
             ctx,
             font_info,

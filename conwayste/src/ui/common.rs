@@ -16,7 +16,7 @@
  *  along with conwayste.  If not, see
  *  <http://www.gnu.org/licenses/>. */
 
-use ggez::graphics::{self, Color, DrawParam, Font, Rect, PxScale, Text, TextFragment};
+use ggez::graphics::{self, Color, DrawParam, Font, PxScale, Rect, Text, TextFragment};
 use ggez::mint::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
@@ -157,7 +157,7 @@ impl FontInfo {
             let text = "xxxxxxxxxx"; // 10 arbitrary characters
             let text_fragment = TextFragment::new(text).scale(scale).font(font);
             let graphics_text = Text::new(text_fragment);
-            let char_dimensions = Vector2{
+            let char_dimensions = Vector2 {
                 x: graphics_text.width(ctx) as f32 / text.len() as f32,
                 y: graphics_text.height(ctx) as f32,
             };
@@ -173,7 +173,7 @@ impl FontInfo {
             FontInfo {
                 font: (),
                 scale,
-                char_dimensions: Vector2{x:1.0, y: 1.0}, // dummy
+                char_dimensions: Vector2 { x: 1.0, y: 1.0 }, // dummy
             }
         }
     }
@@ -244,12 +244,18 @@ pub fn intersection(a: Rect, b: Rect) -> Option<Rect> {
 
 /// Provides a new `Point2` from the specified point a the specified offset.
 pub fn point_offset(p1: Point2<f32>, x: f32, y: f32) -> Point2<f32> {
-    Point2{x:p1.x + x, y: p1.y + y}
+    Point2 {
+        x: p1.x + x,
+        y: p1.y + y,
+    }
 }
 
 /// Calculates the center coordinate of the provided rectangle
 pub fn center(r: &Rect) -> Point2<f32> {
-    Point2{x:(r.left() + r.right()) / 2.0, y: (r.top() + r.bottom()) / 2.0}
+    Point2 {
+        x: (r.left() + r.right()) / 2.0,
+        y: (r.top() + r.bottom()) / 2.0,
+    }
 }
 
 /// Checks to see if the boundary defined by the provided rectangle contains the specified point
@@ -268,12 +274,12 @@ mod test {
 
     #[test]
     fn test_point_offset() {
-        let point = Point2{x:1.0, y: 1.0};
+        let point = Point2 { x: 1.0, y: 1.0 };
         let point2 = point_offset(point, 5.0, 5.0);
         let point3 = point_offset(point, -5.0, -5.0);
 
-        assert_eq!(point2, Point2{x:6.0, y: 6.0});
-        assert_eq!(point3, Point2{x:-4.0, y: -4.0});
+        assert_eq!(point2, Point2 { x: 6.0, y: 6.0 });
+        assert_eq!(point3, Point2 { x: -4.0, y: -4.0 });
     }
 
     #[test]
