@@ -1,9 +1,7 @@
-#![recursion_limit = "300"] // The select!{...} macro hits the default 128 limit
-
 /*
  * Herein lies a networking library for the multiplayer game, Conwayste.
  *
- * Copyright (C) 2018-2020 The Conwayste Developers
+ * Copyright (C) 2018-2021 The Conwayste Developers
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -49,20 +47,27 @@ use clap::{App, Arg};
 use futures as Fut;
 use log::LevelFilter;
 use rand::RngCore;
+use reqwest;
 use semver::Version;
 use tokio::time as TokioTime;
 use tokio_stream::wrappers::IntervalStream;
 use tokio_util::udp::UdpFramed;
 use Fut::prelude::*;
 use Fut::select;
+use serde::Serialize;
 
 pub const TICK_INTERVAL_IN_MS: u64 = 10;
 pub const NETWORK_INTERVAL_IN_MS: u64 = 100; // Arbitrarily chosen
 pub const HEARTBEAT_INTERVAL_IN_MS: u64 = 1000; // Arbitrarily chosen
+pub const REGISTER_INTERVAL_IN_MS: u64 = 10_000_000;
+pub const REGISTER_RETRIES: usize = 3;
+pub const REGISTER_RETRY_SLEEP: Duration = Duration::from_millis(5000);
+pub const REGISTRY_DEFAULT_URL: &str = "https://registry.conwayste.rs/addServer";
 pub const MAX_ROOM_NAME: usize = 16;
 pub const MAX_NUM_CHAT_MESSAGES: usize = 128;
 pub const MAX_AGE_CHAT_MESSAGES: usize = 60 * 5; // seconds
 pub const SERVER_ID: PlayerID = PlayerID(u64::max_value()); // 0xFFFF....FFFF
+pub const DEFAULT_NAME: &str = "Leto II"; //XXX
 
 #[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
 pub struct PlayerID(pub u64);
@@ -175,11 +180,31 @@ pub struct Room {
 
 pub struct ServerState {
     pub tick:        usize,
+    pub name:        String,
+    pub reg_params:  Option<RegistryParams>,
     pub players:     HashMap<PlayerID, Player>,
     pub player_map:  HashMap<String, PlayerID>, // map cookie to player ID
     pub rooms:       HashMap<RoomID, Room>,
     pub room_map:    HashMap<String, RoomID>, // map room name to room ID
     pub network_map: HashMap<PlayerID, NetworkManager>, // map Player ID to Player's network data
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryParams {
+    /// The value sent to the registrar
+    pub public_addr: String,
+
+    /// The URL to POST our public address to
+    pub registry_url: String,
+}
+
+impl RegistryParams {
+    fn new(public_addr: String) -> Self {
+        RegistryParams {
+            public_addr,
+            registry_url: REGISTRY_DEFAULT_URL.to_owned(),
+        }
+    }
 }
 
 //////////////// Utilities ///////////////////////
@@ -1001,7 +1026,7 @@ impl ServerState {
             pong:           PingPong { nonce },
             player_count:   self.player_map.len() as u64,
             room_count:     self.room_map.len() as u64,
-            server_name:    "Leto II".to_owned(),
+            server_name:    self.name.clone(),
             server_version: VERSION.to_owned(),
         }
     }
@@ -1232,6 +1257,8 @@ impl ServerState {
     pub fn new() -> Self {
         let mut server_state = ServerState {
             tick:        0,
+            name:        DEFAULT_NAME.to_owned(),
+            reg_params:  None,
             players:     HashMap::<PlayerID, Player>::new(),
             rooms:       HashMap::<RoomID, Room>::new(),
             player_map:  HashMap::<String, PlayerID>::new(),
@@ -1295,6 +1322,42 @@ impl ServerState {
     }
 }
 
+#[derive(Debug, Serialize)]
+struct RegisterRequestBody {
+    host_and_port: String,
+}
+
+async fn register(reg_params: &RegistryParams) -> Result<(), Box<dyn Error>> {
+    let req_body = RegisterRequestBody{
+        host_and_port: reg_params.public_addr.clone(),
+    };
+    let response = reqwest::Client::new()
+        .post(reg_params.registry_url.clone())
+        .json(&req_body)
+        .send().await?;
+    debug!("Response from registration attempt: {:?}", response);
+    if response.status() != reqwest::StatusCode::OK {
+        return Err("failed to register".to_owned().into());
+    }
+    Ok(())
+}
+
+async fn try_register(reg_params: RegistryParams) {
+    debug!("attempting to register server with {:?}", reg_params.registry_url);
+    for attempt in 1..=REGISTER_RETRIES {
+        match register(&reg_params).await {
+            Ok(_) => {
+                debug!("registration success!");
+                break;
+            }
+            Err(e) => {
+                warn!("Failed to register server (was attempt {} of {}): {:?}", attempt, REGISTER_RETRIES, e);
+            }
+        }
+        TokioTime::sleep(REGISTER_RETRY_SLEEP).await;
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
     env_logger::Builder::new()
@@ -1332,6 +1395,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 .help(&format!("port to listen for connections on [default {}]", DEFAULT_PORT))
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("name")
+            .long("name")
+            .help(&format!("name of the server [default {}]", DEFAULT_NAME))
+            .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("public-address")
+            .long("public-address")
+            .help("public-facing address for clients to connect to; this gets sent to registrar")
+            .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("registrar-url")
+            .long("registrar-url")
+            .help(&format!("URL of registrar [default {}]; only used if public-address is set", REGISTRY_DEFAULT_URL))
+            .takes_value(true),
+        )
         .get_matches();
 
     let opt_host = matches.value_of("address");
@@ -1354,6 +1435,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let mut server_state = ServerState::new();
 
+    if let Some(name) = matches.value_of("name") {
+        server_state.name = name.to_owned();
+    }
+
+    if let Some(public_addr) = matches.value_of("public-address") {
+        let mut reg_params = RegistryParams::new(public_addr.to_owned());
+        if let Some(registrar_url) = matches.value_of("registrar-url") {
+            reg_params.registry_url = registrar_url.to_owned();
+        }
+        server_state.reg_params = Some(reg_params);
+    }
+
     let tick_interval = TokioTime::interval(Duration::from_millis(TICK_INTERVAL_IN_MS));
     let mut tick_interval_stream = IntervalStream::new(tick_interval).fuse();
 
@@ -1362,6 +1455,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
 
     let heartbeat_interval = TokioTime::interval(Duration::from_millis(HEARTBEAT_INTERVAL_IN_MS));
     let mut heartbeat_interval_stream = IntervalStream::new(heartbeat_interval).fuse();
+
+    let register_interval = TokioTime::interval(Duration::from_millis(REGISTER_INTERVAL_IN_MS));
+    let mut register_interval_stream = IntervalStream::new(register_interval).fuse();
 
     loop {
         select! {
@@ -1381,6 +1477,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
                 let heartbeats = server_state.send_heartbeats();
                 for packet_addr_tuple in heartbeats {
                     udp_sink.send(packet_addr_tuple).await?;
+                }
+            },
+            _ = register_interval_stream.select_next_some() => {
+                if let Some(ref reg_params) = server_state.reg_params {
+                    tokio::spawn(try_register(reg_params.clone()));
                 }
             },
             addr_packet_result = udp_stream.select_next_some() => {

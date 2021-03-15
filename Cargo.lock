@@ -2421,6 +2421,8 @@ dependencies = [
  "reqwest",
  "semver 0.11.0",
  "serde",
+ "serde_json",
+ "thiserror",
  "time 0.1.44",
  "tokio 1.2.0",
  "tokio-core",
