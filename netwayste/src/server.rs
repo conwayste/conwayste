@@ -67,7 +67,7 @@ pub const MAX_ROOM_NAME: usize = 16;
 pub const MAX_NUM_CHAT_MESSAGES: usize = 128;
 pub const MAX_AGE_CHAT_MESSAGES: usize = 60 * 5; // seconds
 pub const SERVER_ID: PlayerID = PlayerID(u64::max_value()); // 0xFFFF....FFFF
-pub const DEFAULT_NAME: &str = "Leto II"; //XXX
+pub const DEFAULT_NAME: &str = "Leto II";
 
 #[derive(PartialEq, Debug, Clone, Copy, Eq, Hash)]
 pub struct PlayerID(pub u64);
