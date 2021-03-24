@@ -1159,13 +1159,13 @@ mod netwayste_net_tests {
     #[test]
     fn test_serialize_status() {
         let packet = Packet::Status {
-            pong: PingPong {
+            pong:           PingPong {
                 nonce: 0x123456789ABCDEF0,
             },
             server_version: "ver".to_owned(),
-            player_count: 123,
-            room_count: 456,
-            server_name: "nm".to_owned(),
+            player_count:   123,
+            room_count:     456,
+            server_name:    "nm".to_owned(),
         };
         let bytes = serialize(&packet).unwrap();
         // Keep this in sync with the registrar (packet/packet_test.go)

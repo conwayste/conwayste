@@ -49,12 +49,12 @@ use log::LevelFilter;
 use rand::RngCore;
 use reqwest;
 use semver::Version;
+use serde::Serialize;
 use tokio::time as TokioTime;
 use tokio_stream::wrappers::IntervalStream;
 use tokio_util::udp::UdpFramed;
 use Fut::prelude::*;
 use Fut::select;
-use serde::Serialize;
 
 pub const TICK_INTERVAL_IN_MS: u64 = 10;
 pub const NETWORK_INTERVAL_IN_MS: u64 = 100; // Arbitrarily chosen
@@ -1328,13 +1328,14 @@ struct RegisterRequestBody {
 }
 
 async fn register(reg_params: &RegistryParams) -> Result<(), Box<dyn Error>> {
-    let req_body = RegisterRequestBody{
+    let req_body = RegisterRequestBody {
         host_and_port: reg_params.public_addr.clone(),
     };
     let response = reqwest::Client::new()
         .post(reg_params.registry_url.clone())
         .json(&req_body)
-        .send().await?;
+        .send()
+        .await?;
     debug!("Response from registration attempt: {:?}", response);
     if response.status() != reqwest::StatusCode::OK {
         return Err("failed to register".to_owned().into());
@@ -1351,7 +1352,10 @@ async fn try_register(reg_params: RegistryParams) {
                 break;
             }
             Err(e) => {
-                warn!("Failed to register server (was attempt {} of {}): {:?}", attempt, REGISTER_RETRIES, e);
+                warn!(
+                    "Failed to register server (was attempt {} of {}): {:?}",
+                    attempt, REGISTER_RETRIES, e
+                );
             }
         }
         TokioTime::sleep(REGISTER_RETRY_SLEEP).await;
@@ -1397,21 +1401,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
         )
         .arg(
             Arg::with_name("name")
-            .long("name")
-            .help(&format!("name of the server [default {}]", DEFAULT_NAME))
-            .takes_value(true),
+                .long("name")
+                .help(&format!("name of the server [default {}]", DEFAULT_NAME))
+                .takes_value(true),
         )
         .arg(
             Arg::with_name("public-address")
-            .long("public-address")
-            .help("public-facing address for clients to connect to; this gets sent to registrar")
-            .takes_value(true),
+                .long("public-address")
+                .help("public-facing address for clients to connect to; this gets sent to registrar")
+                .takes_value(true),
         )
         .arg(
             Arg::with_name("registrar-url")
-            .long("registrar-url")
-            .help(&format!("URL of registrar [default {}]; only used if public-address is set", REGISTRY_DEFAULT_URL))
-            .takes_value(true),
+                .long("registrar-url")
+                .help(&format!(
+                    "URL of registrar [default {}]; only used if public-address is set",
+                    REGISTRY_DEFAULT_URL
+                ))
+                .takes_value(true),
         )
         .get_matches();
 
