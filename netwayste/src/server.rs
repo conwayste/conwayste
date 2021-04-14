@@ -1369,7 +1369,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + 'static>> {
             writeln!(
                 buf,
                 "{} [{:5}] - {}",
-                Local::now().format("%a %Y-%m-%d %H:%M:%S%.6f"),
+                Local::now().format("%Y-%m-%dT%H:%M:%S%.6fZ"),
                 record.level(),
                 record.args(),
             )
