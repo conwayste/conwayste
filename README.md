@@ -57,31 +57,6 @@ You will also need this environment variable. Add to your profile if desired:
 export LIBCLANG_PATH=/usr/local/lib
 ```
 
-### LibreSSL Workaround
-
-If you get an error that looks like this:
-
-```
-  This crate is only compatible with OpenSSL 1.0.1 through 1.1.1, or LibreSSL 2.5
-  through 3.3.1, but a different version of OpenSSL was found. The build is now aborting
-  due to this version mismatch.
-```
-
-Then try running `doas pkg_add openssl` (select option 2: `openssl-1.1.1j`) and using these environment variables when running the client or server:
-
-```
-$ export OPENSSL_LIB_DIR=/usr/local/lib/eopenssl11
-$ export OPENSSL_INCLUDE_DIR=/usr/local/include/eopenssl11
-```
-
-See https://github.com/sfackler/rust-openssl/issues/1278#issuecomment-678597781
-
-Alternatively, change the line starting with `reqwest` in `netwayste/Cargo.toml` to have `default-features = false` with an extra `"rustls"` feature in the `features` array. Something like this:
-
-```
-reqwest = { version = "0.11", default-features = false, features = ["json", "rustls"] }
-```
-
 ## Installation
 
 Please clone this repository, and build the client and server using `cargo`. The build may take several minutes to complete, depending on your system specs.
