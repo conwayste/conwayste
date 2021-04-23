@@ -10,5 +10,5 @@ edition = "2018"
 env_logger = "0.8"
 log        = "0.4"
 rand       = "0.8"
-serde        = {version="1.0.116", features=["derive"]}
+serde        = {version="1.0.125", features=["derive"]}
 custom_error = "1.8"
