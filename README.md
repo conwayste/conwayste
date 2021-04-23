@@ -44,6 +44,8 @@ The Conwayste client and server compile and run right out of the box. Skip direc
 
 On Linux, the ALSA development files are required. These are provided as part of the `libasound2-dev` package on Debian and Ubuntu distributions and `alsa-lib-devel` on Fedora. For any other distribution, please refer to your package manager and/or compile them from source.
 
+Also install OpenSSL development files with `openssl-dev` or `openssl-devel` (depending on your distro).
+
 ## OpenBSD
 
 ```
@@ -53,6 +55,31 @@ doas pkg_add llvm
 You will also need this environment variable. Add to your profile if desired:
 ```
 export LIBCLANG_PATH=/usr/local/lib
+```
+
+### LibreSSL Workaround
+
+If you get an error that looks like this:
+
+```
+  This crate is only compatible with OpenSSL 1.0.1 through 1.1.1, or LibreSSL 2.5
+  through 3.3.1, but a different version of OpenSSL was found. The build is now aborting
+  due to this version mismatch.
+```
+
+Then try running `doas pkg_add openssl` (select option 2: `openssl-1.1.1j`) and using these environment variables when running the client or server:
+
+```
+$ export OPENSSL_LIB_DIR=/usr/local/lib/eopenssl11
+$ export OPENSSL_INCLUDE_DIR=/usr/local/include/eopenssl11
+```
+
+See https://github.com/sfackler/rust-openssl/issues/1278#issuecomment-678597781
+
+Alternatively, change the line starting with `reqwest` in `netwayste/Cargo.toml` to have `default-features = false` with an extra `"rustls"` feature in the `features` array. Something like this:
+
+```
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls"] }
 ```
 
 ## Installation
@@ -75,8 +102,18 @@ $ cargo run --bin client
 
 ## Running the Server
 ```
-$ cargo run --bin server
+$ cargo run --bin server --name "Example Server" --public-address yourserver.example.com:2016
 ```
+
+If `--public-address` is specified, the server automatically registers itself with the [Official Conwayste Registrar](https://github.com/conwayste/registrar). Leave this off if you are running a private server.
+
+An alternate registrar can be specified with the `--registrar-url` option:
+
+```
+$ cargo run --bin server --name "Example Server" --public-address yourserver.example.com:2016 --registrar-url https://yourregistrar.example.com/addServer
+```
+
+Use this if we didn't pay our server bills and someone else has their own registrar running. :)
 
 # FAQ
 
