@@ -1,0 +1,17 @@
+version: 2
+updates:
+- package-ecosystem: cargo
+  directory: "/"
+  schedule:
+    interval: monthly
+  open-pull-requests-limit: 10
+  ignore:
+  - dependency-name: time
+    versions:
+    - ">= 0.2.a, < 0.3"
+  - dependency-name: serde
+    versions:
+    - 1.0.118
+  - dependency-name: tokio
+    versions:
+    - 1.1.1
