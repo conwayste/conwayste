@@ -99,7 +99,7 @@ impl Transport {
                     if let Ok((item, address)) = item_address_result {
                         trace!("LinesCodec data: {:?}", item);
 
-                        if let Err(e) = self.endpoints.insert_receive_queue(Endpoint(address), item) {
+                        if let Err(e) = self.endpoints.push_receive_queue(Endpoint(address), item) {
                             warn!("{}", e);
                         } else {
                             self.notifications.send(TransportNotice::PacketsAvailable{
@@ -110,15 +110,23 @@ impl Transport {
                 }
                 _ = transmit_interval_stream.select_next_some() => {
                     // Resend any packets in the transmit queue at their retry interval or send PacketTimeout
-                    // XXX, for all end-points
+                    let (retry_packets, packet_timeouts) = self.endpoints.bisect_retries();
 
-                    // Check all end-points are still active or send EndpointTimeout
-                    if let Ok(endpoints) = self.endpoints.timed_out_endpoints() {
-                       for e in endpoints {
-                           self.notifications.send(TransportNotice::EndpointTimeout {
-                               endpoint: e
-                           }).await?;
-                       }
+                    for (data_ref, endpoint) in retry_packets {
+                        self.udp_stream_send.send((data_ref.to_owned(), endpoint.0)).await?;
+                    }
+
+                    for (tid, endpoint) in packet_timeouts {
+                        self.notifications.send(TransportNotice::PacketTimeout {
+                            endpoint, tid
+                        }).await?;
+                    }
+
+                    // Notify filter of any endpoints that have timed-out
+                    for endpoint in  self.endpoints.timed_out_endpoints() {
+                        self.notifications.send(TransportNotice::EndpointTimeout {
+                            endpoint
+                        }).await?;
                     }
                 }
             }
