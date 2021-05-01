@@ -21,13 +21,12 @@ pub enum TransportCmd {
         kind:     TransportQueueKind,
     },
     TakeReceivePackets {
-        endpoint:    Endpoint,
-        amount:      usize,
-        queue_index: isize,
+        endpoint: Endpoint,
     },
     SendPackets {
-        endpoint: Endpoint,
-        packets:  Vec<PacketInfo>,
+        endpoint:     Endpoint,
+        packet_infos: Vec<PacketInfo>,
+        packets:      Vec<Packet>,
     },
     DropEndpoint {
         endpoint: Endpoint,
@@ -49,7 +48,7 @@ pub enum TransportRsp {
         kind:     TransportQueueKind,
         count:    usize,
     },
-    NoPacketAtIndex,
+    UnknownPacketTid,
     BufferFull,
     ExceedsMtu,
     EndpointNotFound,
@@ -67,16 +66,16 @@ pub enum TransportNotice {
         endpoint: Endpoint,
     },
 
-    /// The packet at this index in the tx queue of this endpoint has been resent the maximum number of times
+    /// A packet in the tx queue for this endpoint has been resent the maximum number of times
     PacketTimeout {
         endpoint: Endpoint,
-        index:    usize,
+        tid:      usize,
     },
 }
 
 #[derive(Debug)]
 pub struct PacketInfo {
-    packet:         Packet,
+    tid:            usize,
     retry_count:    u16,
     retry_interval: usize,
 }

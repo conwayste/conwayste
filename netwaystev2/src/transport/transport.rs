@@ -99,7 +99,7 @@ impl Transport {
                     if let Ok((item, address)) = item_address_result {
                         trace!("LinesCodec data: {:?}", item);
 
-                        if let Err(e) = self.endpoints.insert_receivequeue(Endpoint(address), item) {
+                        if let Err(e) = self.endpoints.insert_receive_queue(Endpoint(address), item) {
                             warn!("{}", e);
                         } else {
                             self.notifications.send(TransportNotice::PacketsAvailable{
@@ -157,26 +157,23 @@ fn process_transport_command(endpoints: &mut EndpointData<String>, command: Tran
                 return Some(TransportRsp::EndpointNotFound);
             }
         }
-        TakeReceivePackets {
-            endpoint,
-            amount,
-            queue_index,
-        } => {
-            // PR_GATE Change String to Packet
-            let mut packets: Vec<String> = vec![];
-            for _ in 0..amount {
-                match endpoints.remove_receivequeue(endpoint) {
-                    Ok(Some(packet)) => packets.push(packet),
-                    Ok(None) => break,
-                    Err(e) => {
-                        error!("{}", e.to_string());
-                        return Some(TransportRsp::EndpointNotFound);
-                    }
-                }
+        TakeReceivePackets { endpoint } => match endpoints.drain_receive_queue(endpoint) {
+            Ok(packets) if !packets.is_empty() => {
+                return Some(TransportRsp::TakenPackets { packets });
             }
-            return Some(TransportRsp::TakenPackets { packets });
-        }
-        SendPackets { endpoint, packets } => {}
+            Ok(_) => {
+                return None;
+            }
+            Err(e) => {
+                error!("{}", e.to_string());
+                return Some(TransportRsp::EndpointNotFound);
+            }
+        },
+        SendPackets {
+            endpoint,
+            packet_infos,
+            packets,
+        } => {}
         DropEndpoint { endpoint } => {
             if let Ok(_) = endpoints.drop_endpoint(endpoint) {
                 return Some(TransportRsp::Accepted);

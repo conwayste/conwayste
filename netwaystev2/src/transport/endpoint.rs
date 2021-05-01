@@ -2,7 +2,7 @@ use super::interface::TransportQueueKind;
 use crate::common::Endpoint;
 use anyhow::{anyhow, Result};
 
-use std::collections::{hash_map::Entry, HashMap, VecDeque};
+use std::collections::{hash_map::Entry, vec_deque, HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 struct TransmissionInfo {
@@ -20,7 +20,6 @@ impl TransmissionInfo {
 }
 
 pub(in crate::transport) struct EndpointData<T> {
-    //received_packets: HashMap<Endpoint, VecDeque<Packet>>,
     receive:           HashMap<Endpoint, VecDeque<T>>,
     transmit:          HashMap<Endpoint, VecDeque<T>>,
     transmission_info: HashMap<Endpoint, TransmissionInfo>,
@@ -60,7 +59,7 @@ impl<T> EndpointData<T> {
         Ok(())
     }
 
-    pub fn insert_receivequeue(&mut self, endpoint: Endpoint, item: T) -> Result<()> {
+    pub fn insert_receive_queue(&mut self, endpoint: Endpoint, item: T) -> Result<()> {
         match self.receive.entry(endpoint) {
             Entry::Vacant(_) => {
                 return Err(anyhow!(
@@ -85,7 +84,7 @@ impl<T> EndpointData<T> {
         Ok(())
     }
 
-    pub fn insert_transmitqueue(&mut self, endpoint: Endpoint, item: T) -> Result<()> {
+    pub fn insert_transmit_queue(&mut self, endpoint: Endpoint, item: T) -> Result<()> {
         match self.transmit.entry(endpoint) {
             Entry::Vacant(_) => Err(anyhow!(
                 "Endpoint not found in Transmit Queue during Insert: {:?}",
@@ -98,17 +97,17 @@ impl<T> EndpointData<T> {
         }
     }
 
-    pub fn remove_receivequeue(&mut self, endpoint: Endpoint) -> Result<Option<T>> {
+    pub fn drain_receive_queue(&mut self, endpoint: Endpoint) -> Result<Vec<T>> {
         match self.receive.entry(endpoint) {
             Entry::Vacant(_) => Err(anyhow!(
                 "Endpoint not found in Receieve Queue during Remove: {:?}",
                 endpoint
             )),
-            Entry::Occupied(mut entry) => Ok(entry.get_mut().pop_front()),
+            Entry::Occupied(mut entry) => Ok(entry.get_mut().drain(..).collect()),
         }
     }
 
-    pub fn remove_transmitqueue(&mut self, endpoint: Endpoint) -> Result<Option<T>> {
+    pub fn remove_transmit_queue(&mut self, endpoint: Endpoint) -> Result<Option<T>> {
         match self.transmit.entry(endpoint) {
             Entry::Vacant(_) => Err(anyhow!(
                 "Endpoint not found in Transmit Queue during Remove: {:?}",

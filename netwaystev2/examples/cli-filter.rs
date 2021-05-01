@@ -53,11 +53,9 @@ async fn main() -> Result<()> {
                         TransportRsp::Accepted => {
                             trace!("Transport Command Accepted");
                         }
-                        TransportRsp::QueueCount{endpoint, kind: _, count} => {
+                        TransportRsp::QueueCount{endpoint, kind: _, count: _} => {
                             transport_cmd_tx.send(TransportCmd::TakeReceivePackets{
                                 endpoint,
-                                amount: count,
-                                queue_index: 0
                             }).await?;
                         }
                         TransportRsp::TakenPackets{packets} => {
@@ -65,7 +63,7 @@ async fn main() -> Result<()> {
                                 trace!("Took packet: {:?}", p);
                             }
                         }
-                        TransportRsp::NoPacketAtIndex => {
+                        TransportRsp::UnknownPacketTid => {
                             // XXX
                         }
                         TransportRsp::BufferFull => {
@@ -103,7 +101,7 @@ async fn main() -> Result<()> {
                         }
                         TransportNotice::PacketTimeout {
                             endpoint,
-                            index,
+                            tid,
                         } => {
                             // XXX drop the packet
                         }
