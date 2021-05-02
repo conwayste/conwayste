@@ -1,9 +1,8 @@
 use super::interface::TransportQueueKind;
-use super::timeout::Timeout;
 use crate::common::Endpoint;
 use anyhow::{anyhow, Result};
 
-use std::collections::{hash_map::Entry, vec_deque, HashMap, VecDeque};
+use std::collections::{hash_map::Entry, HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 #[derive(Copy, Clone)]
