@@ -63,6 +63,15 @@ impl<T> EndpointData<T> {
             Entry::Occupied(entry) => return Err(anyhow!("Endpoint {:?} exists in Transmit Queue", entry.key()).into()),
         }
 
+        match self.transmit_meta.entry(endpoint) {
+            Entry::Vacant(entry) => {
+                entry.insert(VecDeque::new());
+            }
+            Entry::Occupied(entry) => {
+                return Err(anyhow!("Endpoint {:?} exists in Transmit Meta Queue", entry.key()).into())
+            }
+        }
+
         match self.receive.entry(endpoint) {
             Entry::Vacant(entry) => {
                 entry.insert(VecDeque::new());
@@ -83,10 +92,7 @@ impl<T> EndpointData<T> {
     pub fn push_receive_queue(&mut self, endpoint: Endpoint, item: T) -> Result<()> {
         match self.receive.entry(endpoint) {
             Entry::Vacant(_) => {
-                return Err(anyhow!(
-                    "Endpoint not found in Receive Queue during Insert: {:?}",
-                    endpoint
-                ));
+                return Err(anyhow!("Receive Queue push failed. Endpoint not found: {:?}", endpoint));
             }
             Entry::Occupied(mut entry) => {
                 entry.get_mut().push_back(item);
@@ -96,7 +102,7 @@ impl<T> EndpointData<T> {
         match self.endpoint_meta.entry(endpoint) {
             Entry::Vacant(_) => {
                 return Err(anyhow!(
-                    "Endpoint not found in Receive Queue during Insert: {:?}",
+                    "Receive Queue last receive timestamp update failed. Endpoint not found: {:?}",
                     endpoint
                 ));
             }
@@ -116,7 +122,7 @@ impl<T> EndpointData<T> {
         match self.transmit.entry(endpoint) {
             Entry::Vacant(_) => {
                 return Err(anyhow!(
-                    "Endpoint Transport Queue not found during Insert: {:?}",
+                    "Transport Queue push failed. Endpoint not found: {:?}",
                     endpoint
                 ))
             }
@@ -128,7 +134,7 @@ impl<T> EndpointData<T> {
         match self.transmit_meta.entry(endpoint) {
             Entry::Vacant(_) => {
                 return Err(anyhow!(
-                    "Endpoint Transmit Metadata not found during Insert: {:?}",
+                    "Transmit Metadata Queue push failed. Endpoint not found: {:?}",
                     endpoint
                 ))
             }
@@ -144,7 +150,7 @@ impl<T> EndpointData<T> {
     pub fn drain_receive_queue(&mut self, endpoint: Endpoint) -> Result<Vec<T>> {
         match self.receive.entry(endpoint) {
             Entry::Vacant(_) => Err(anyhow!(
-                "Endpoint Receieve Queue not found during Remove: {:?}",
+                "Receieve Queue drain failed. Endpoint not found: {:?}",
                 endpoint
             )),
             Entry::Occupied(mut entry) => Ok(entry.get_mut().drain(..).collect()),
@@ -153,12 +159,44 @@ impl<T> EndpointData<T> {
 
     pub fn pop_transmit_queue(&mut self, endpoint: Endpoint) -> Result<Option<(usize, T)>> {
         match self.transmit.entry(endpoint) {
-            Entry::Vacant(_) => Err(anyhow!(
-                "Endpoint Transmit Queue not found during Remove: {:?}",
-                endpoint
-            )),
+            Entry::Vacant(_) => Err(anyhow!("Transmit Queue pop failed. Endpoint not found: {:?}", endpoint)),
             Entry::Occupied(mut entry) => Ok(entry.get_mut().pop_front()),
         }
+    }
+
+    pub fn clear_queue(&mut self, endpoint: Endpoint, kind: TransportQueueKind) -> Result<()> {
+        match kind {
+            TransportQueueKind::Transmit => {
+                if let Some(tx_queue) = self.transmit.get_mut(&endpoint) {
+                    tx_queue.clear()
+                } else {
+                    return Err(anyhow!(
+                        "Transmit Queue clear failed. Endpoint not found: {:?}",
+                        endpoint
+                    ));
+                }
+
+                if let Some(tx_meta_queue) = self.transmit_meta.get_mut(&endpoint) {
+                    tx_meta_queue.clear()
+                } else {
+                    return Err(anyhow!(
+                        "Transmit Meta Queue clear failed. Endpoint not found: {:?}",
+                        endpoint
+                    ));
+                }
+            }
+            TransportQueueKind::Receive => {
+                if let Some(rx_queue) = self.receive.get_mut(&endpoint) {
+                    rx_queue.clear()
+                } else {
+                    return Err(anyhow!(
+                        "Receive Queue clear failed. Endpoint not found: {:?}",
+                        endpoint
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn queue_count(&mut self, endpoint: Endpoint, kind: TransportQueueKind) -> Option<usize> {

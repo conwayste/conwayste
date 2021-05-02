@@ -2,14 +2,14 @@ use super::endpoint::EndpointData;
 use super::interface::{
     Packet,
     TransportCmd::{self, *},
-    TransportNotice, TransportRsp,
+    TransportNotice, TransportQueueKind, TransportRsp,
 };
 use super::udp_codec::{LinesCodec, NetwaystePacketCodec};
 use crate::common::Endpoint;
 use crate::settings::*;
 
-use std::net::SocketAddr;
 use std::time::Duration;
+use std::{net::SocketAddr, pin::Pin};
 
 use anyhow::Result;
 use futures::prelude::*;
@@ -81,7 +81,9 @@ impl Transport {
 
     pub async fn monitor(&mut self) -> Result<()> {
         let udp_stream_recv = &mut self.udp_stream_recv;
+        let udp_stream_send = &mut self.udp_stream_send;
         tokio::pin!(udp_stream_recv);
+        tokio::pin!(udp_stream_send);
 
         let transmit_interval = TokioTime::interval(Duration::from_millis(10));
         let mut transmit_interval_stream = IntervalStream::new(transmit_interval).fuse();
@@ -90,7 +92,7 @@ impl Transport {
             tokio::select! {
                 Some(cmd) = self.requests.recv() => {
                     trace!("Filter Request: {:?}", cmd);
-                    let opt_response = process_transport_command(&mut self.endpoints, cmd);
+                    let opt_response = process_transport_command(&mut self.endpoints, cmd, &mut udp_stream_send).await;
                     if let Some(response) = opt_response {
                         self.responses.send(response).await?;
                     }
@@ -113,7 +115,7 @@ impl Transport {
                     let (retry_packets, packet_timeouts) = self.endpoints.bisect_retries();
 
                     for (data_ref, endpoint) in retry_packets {
-                        self.udp_stream_send.send((data_ref.to_owned(), endpoint.0)).await?;
+                        udp_stream_send.send((data_ref.to_owned(), endpoint.0)).await?;
                     }
 
                     for (tid, endpoint) in packet_timeouts {
@@ -147,7 +149,11 @@ fn bind(opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket> {
     Ok(sock)
 }
 
-fn process_transport_command(endpoints: &mut EndpointData<String>, command: TransportCmd) -> Option<TransportRsp> {
+async fn process_transport_command(
+    endpoints: &mut EndpointData<String>,
+    command: TransportCmd,
+    udp_send: &mut Pin<&mut &mut SplitSink<UdpFramed<LinesCodec>, (std::string::String, std::net::SocketAddr)>>,
+) -> Option<TransportRsp> {
     match command {
         NewEndpoint { endpoint, timeout } => match endpoints.new_endpoint(endpoint, timeout) {
             Ok(()) => {
@@ -181,7 +187,32 @@ fn process_transport_command(endpoints: &mut EndpointData<String>, command: Tran
             endpoint,
             packet_infos,
             packets,
-        } => {}
+        } => {
+            // Send each one
+            let mut packet_stream = stream::iter(packets.clone().into_iter().map(|p| Ok((p, endpoint.0))));
+            udp_send
+                .send_all(&mut packet_stream)
+                .await
+                .unwrap_or_else(|_| error!("Could not send item to endpoint: {:?}", endpoint));
+
+            // Buffer it for retransmission until the filter says we can clear it
+            let mut error_reported = false;
+            packets.iter().zip(packet_infos.iter()).for_each(|(p, pi)| {
+                match endpoints.push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval, pi.retry_limit) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        error!("{}", e.to_string());
+                        error_reported = true;
+                    }
+                }
+            });
+
+            if error_reported {
+                return Some(TransportRsp::EndpointNotFound);
+            } else {
+                return Some(TransportRsp::Accepted);
+            }
+        }
         DropEndpoint { endpoint } => {
             if let Ok(_) = endpoints.drop_endpoint(endpoint) {
                 return Some(TransportRsp::Accepted);
@@ -189,7 +220,12 @@ fn process_transport_command(endpoints: &mut EndpointData<String>, command: Tran
                 return Some(TransportRsp::EndpointNotFound);
             }
         }
-        CancelTransmitQueue { endpoint } => {}
+        CancelTransmitQueue { endpoint } => match endpoints.clear_queue(endpoint, TransportQueueKind::Transmit) {
+            Ok(()) => return Some(TransportRsp::Accepted),
+            Err(e) => {
+                error!("{}", e.to_string());
+                return Some(TransportRsp::EndpointNotFound);
+            }
+        },
     }
-    None
 }

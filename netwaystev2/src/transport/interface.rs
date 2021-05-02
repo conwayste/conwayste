@@ -26,7 +26,8 @@ pub enum TransportCmd {
     SendPackets {
         endpoint:     Endpoint,
         packet_infos: Vec<PacketInfo>,
-        packets:      Vec<Packet>,
+        // PR_GATE Change String to Packet
+        packets:      Vec<String>,
     },
     DropEndpoint {
         endpoint: Endpoint,
@@ -75,9 +76,9 @@ pub enum TransportNotice {
 
 #[derive(Debug)]
 pub struct PacketInfo {
-    tid:            usize,
-    retry_count:    u16,
-    retry_interval: usize,
+    pub tid:            usize,
+    pub retry_limit:    usize,
+    pub retry_interval: Duration,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
