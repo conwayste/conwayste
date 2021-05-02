@@ -244,24 +244,35 @@ impl<T> EndpointData<T> {
         let mut exhausted: Vec<(usize, Endpoint)> = vec![];
 
         for (endpoint, t_metadata) in &mut self.transmit_meta {
+            // Split packets into those that can be retried and those that ran out
             let (mut has_retries, retries_exhausted): (Vec<(usize, TransmitMeta)>, Vec<(usize, TransmitMeta)>) =
                 t_metadata
                     .iter()
                     .partition(|(_tid, metadata)| (metadata.retry_count < metadata.max_retries));
 
+            // Find retriable packets that have timed-out
             retry_qualified.extend(has_retries.iter_mut().filter_map(|(tid, metadata)| {
                 if Instant::now() - metadata.last_transmit > metadata.packet_timeout {
-                    metadata.retry_count += 1;
-                    metadata.last_transmit = Instant::now();
                     Some((*tid, *endpoint))
                 } else {
                     None
                 }
             }));
 
+            // Advance the retry
+            for (retry_tid, _) in retry_qualified.iter() {
+                for (update_tid, update_meta) in t_metadata.iter_mut() {
+                    if retry_tid == update_tid {
+                        update_meta.last_transmit = Instant::now();
+                        update_meta.retry_count += 1;
+                    }
+                }
+            }
+
             exhausted.extend(retries_exhausted.iter().map(|(tid, _metadata)| (*tid, *endpoint)));
         }
 
+        // Map packets that can be retried into their data and destination
         let mut retry_datagrams = vec![];
         for (retry_tid, endpoint) in retry_qualified {
             if let Some(data_pairs) = self.transmit.get(&endpoint) {

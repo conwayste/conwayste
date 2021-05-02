@@ -5,7 +5,7 @@ extern crate log;
 
 use netwaystev2::common::Endpoint;
 use netwaystev2::transport::Transport;
-use netwaystev2::transport::{TransportCmd, TransportNotice, TransportQueueKind, TransportRsp};
+use netwaystev2::transport::{PacketInfo, TransportCmd, TransportNotice, TransportQueueKind, TransportRsp};
 
 use anyhow::Result;
 use std::io::Write;
@@ -40,6 +40,20 @@ async fn main() -> Result<()> {
         .send(TransportCmd::NewEndpoint {
             endpoint: Endpoint("127.0.0.1:2017".parse().unwrap()),
             timeout:  Duration::new(5, 0), // PR_GATE make this configurable and reasonably valued
+        })
+        .await?;
+
+    transport_cmd_tx
+        .send(TransportCmd::SendPackets {
+            endpoint:     Endpoint("127.0.0.1:2017".parse().unwrap()),
+            packets:      vec!["fire-metal".to_owned(), "fight".to_owned(), "frunk".to_owned()],
+            packet_infos: (0..3)
+                .map(|i| PacketInfo {
+                    tid:            i,
+                    retry_limit:    5,
+                    retry_interval: Duration::new(10, 0),
+                })
+                .collect::<Vec<PacketInfo>>(),
         })
         .await?;
 
