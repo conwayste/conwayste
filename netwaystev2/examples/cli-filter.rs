@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
 
     let (mut transport, transport_cmd_tx, mut transport_rsp_rx, mut transport_notice_rx) = Transport::new(None, None)?;
 
-    tokio::spawn(async move { transport.monitor().await });
+    tokio::spawn(async move { transport.run().await });
     info!("Transport initialized!");
 
     transport_cmd_tx
