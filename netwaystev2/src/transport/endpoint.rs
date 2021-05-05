@@ -238,8 +238,8 @@ impl<T> EndpointData<T> {
         }
     }
 
-    // Splits the packet transmission data group into those that need retries and those that have exhausted all retries
-    pub fn bisect_retries(&mut self) -> (Vec<(&T, Endpoint)>, Vec<(usize, Endpoint)>) {
+    /// Splits the packet transmission data group into those that need retries and those that have exhausted all retries
+    pub fn separate_into_retriable_and_timed_out(&mut self) -> (Vec<(&T, Endpoint)>, Vec<(usize, Endpoint)>) {
         let mut retry_qualified: Vec<(usize, Endpoint)> = vec![];
         let mut exhausted: Vec<(usize, Endpoint)> = vec![];
 
