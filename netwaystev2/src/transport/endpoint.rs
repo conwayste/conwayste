@@ -5,7 +5,7 @@ use anyhow::{anyhow, Result};
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 struct TransmitMeta {
     packet_timeout: Duration,
     last_transmit:  Instant,
@@ -253,6 +253,7 @@ impl<P> EndpointData<P> {
             let (mut has_retries, retries_exhausted): (Vec<(usize, TransmitMeta)>, Vec<(usize, TransmitMeta)>) =
                 t_metadata
                     .iter()
+                    .cloned()
                     .partition(|(_tid, metadata)| metadata.retry_count < metadata.max_retries);
 
             // Find retriable packets that have timed-out
