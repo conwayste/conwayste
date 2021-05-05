@@ -49,10 +49,14 @@ pub enum TransportRsp {
         kind:     TransportQueueKind,
         count:    usize,
     },
-    UnknownPacketTid,
     BufferFull,
-    ExceedsMtu,
-    EndpointNotFound,
+    ExceedsMtu {
+        tid: usize,
+    },
+    EndpointNotFound {
+        endpoint: Endpoint,
+    },
+    SendPacketsLengthMismatch,
 }
 
 #[derive(Debug)]
@@ -74,10 +78,13 @@ pub enum TransportNotice {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PacketInfo {
+    /// Transmit ID, a unique identifier used to sync packet transactions between the filter and transport layers
     pub tid:            usize,
+    /// The maximum number of retries for a Packet
     pub retry_limit:    usize,
+    /// The length of time in between each retry attempt
     pub retry_interval: Duration,
 }
 

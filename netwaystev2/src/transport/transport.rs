@@ -1,6 +1,6 @@
 use super::endpoint::EndpointData;
 use super::interface::{
-    Packet,
+    Packet, PacketInfo,
     TransportCmd::{self, *},
     TransportNotice, TransportQueueKind, TransportRsp,
 };
@@ -35,6 +35,9 @@ type TransportInit = (Transport, TransportCmdSend, TransportRspRecv, TransportNo
 
 //type TransportItem = (Packet, SocketAddr);
 type TransportItem = (String, SocketAddr);
+
+// https://serverfault.com/questions/645890/tcpdump-truncates-to-1472-bytes-useful-data-in-udp-packets-during-the-capture/645892#645892
+const UDP_MTU_SIZE: usize = 1472;
 
 pub struct Transport {
     requests:        TransportCmdRecv,
@@ -92,8 +95,7 @@ impl Transport {
             tokio::select! {
                 Some(cmd) = self.requests.recv() => {
                     trace!("Filter Request: {:?}", cmd);
-                    let opt_response = process_transport_command(&mut self.endpoints, cmd, &mut udp_stream_send).await;
-                    if let Some(response) = opt_response {
+                    for response in process_transport_command(&mut self.endpoints, cmd, &mut udp_stream_send).await {
                         self.responses.send(response).await?;
                     }
                 }
@@ -153,34 +155,34 @@ async fn process_transport_command(
     endpoints: &mut EndpointData<String>,
     command: TransportCmd,
     udp_send: &mut Pin<&mut &mut SplitSink<UdpFramed<LinesCodec>, (std::string::String, std::net::SocketAddr)>>,
-) -> Option<TransportRsp> {
+) -> Vec<TransportRsp> {
     match command {
         NewEndpoint { endpoint, timeout } => match endpoints.new_endpoint(endpoint, timeout) {
             Ok(()) => {
-                return Some(TransportRsp::Accepted);
+                return vec![TransportRsp::Accepted];
             }
             Err(e) => {
                 error!("{}", e);
-                return Some(TransportRsp::EndpointNotFound);
+                return vec![TransportRsp::EndpointNotFound { endpoint }];
             }
         },
         GetQueueCount { endpoint, kind } => {
             if let Some(count) = endpoints.queue_count(endpoint, kind) {
-                return Some(TransportRsp::QueueCount { endpoint, kind, count });
+                return vec![TransportRsp::QueueCount { endpoint, kind, count }];
             } else {
-                return Some(TransportRsp::EndpointNotFound);
+                return vec![TransportRsp::EndpointNotFound { endpoint }];
             }
         }
         TakeReceivePackets { endpoint } => match endpoints.drain_receive_queue(endpoint) {
             Ok(packets) if !packets.is_empty() => {
-                return Some(TransportRsp::TakenPackets { packets });
+                return vec![TransportRsp::TakenPackets { packets }];
             }
             Ok(_) => {
-                return None;
+                return vec![];
             }
             Err(e) => {
                 error!("{}", e.to_string());
-                return Some(TransportRsp::EndpointNotFound);
+                return vec![TransportRsp::EndpointNotFound { endpoint }];
             }
         },
         SendPackets {
@@ -188,43 +190,55 @@ async fn process_transport_command(
             packet_infos,
             packets,
         } => {
-            // Send each one
-            let mut packet_stream = stream::iter(packets.clone().into_iter().map(|p| Ok((p, endpoint.0))));
-            udp_send
-                .send_all(&mut packet_stream)
-                .await
-                .unwrap_or_else(|_| error!("Could not send item to endpoint: {:?}", endpoint));
+            if packets.len() != packet_infos.len() {
+                return vec![TransportRsp::SendPacketsLengthMismatch];
+            }
 
-            // Buffer it for retransmission until the filter says we can clear it
-            let mut error_reported = false;
-            packets.iter().zip(packet_infos.iter()).for_each(|(p, pi)| {
-                match endpoints.push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval, pi.retry_limit) {
-                    Ok(()) => {}
-                    Err(e) => {
-                        error!("{}", e.to_string());
-                        error_reported = true;
-                    }
+            let mut errors = vec![];
+
+            for (i, p) in packets.iter().enumerate() {
+                let pi = packet_infos.get(i).unwrap(); // Unwrap safe b/c of length check above
+
+                if std::mem::size_of_val(p) < UDP_MTU_SIZE {
+                    let _result = udp_send.send((p.clone(), endpoint.0)).await.and_then(|_| {
+                        match endpoints.push_transmit_queue(
+                            endpoint,
+                            pi.tid,
+                            p.to_owned(),
+                            pi.retry_interval,
+                            pi.retry_limit,
+                        ) {
+                            Ok(()) => {}
+                            Err(e) => {
+                                error!("{}", e.to_string());
+                                errors.push(TransportRsp::EndpointNotFound { endpoint })
+                            }
+                        }
+                        Ok(())
+                    });
+                } else {
+                    errors.push(TransportRsp::ExceedsMtu { tid: pi.tid });
                 }
-            });
+            }
 
-            if error_reported {
-                return Some(TransportRsp::EndpointNotFound);
+            if errors.is_empty() {
+                return vec![TransportRsp::Accepted];
             } else {
-                return Some(TransportRsp::Accepted);
+                return errors;
             }
         }
-        DropEndpoint { endpoint } => {
-            if let Ok(_) = endpoints.drop_endpoint(endpoint) {
-                return Some(TransportRsp::Accepted);
-            } else {
-                return Some(TransportRsp::EndpointNotFound);
-            }
-        }
-        CancelTransmitQueue { endpoint } => match endpoints.clear_queue(endpoint, TransportQueueKind::Transmit) {
-            Ok(()) => return Some(TransportRsp::Accepted),
+        DropEndpoint { endpoint } => match endpoints.drop_endpoint(endpoint) {
+            Ok(()) => return vec![TransportRsp::Accepted],
             Err(e) => {
                 error!("{}", e.to_string());
-                return Some(TransportRsp::EndpointNotFound);
+                return vec![TransportRsp::EndpointNotFound { endpoint }];
+            }
+        },
+        CancelTransmitQueue { endpoint } => match endpoints.clear_queue(endpoint, TransportQueueKind::Transmit) {
+            Ok(()) => return vec![TransportRsp::Accepted],
+            Err(e) => {
+                error!("{}", e.to_string());
+                return vec![TransportRsp::EndpointNotFound { endpoint }];
             }
         },
     }

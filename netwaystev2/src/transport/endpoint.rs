@@ -231,6 +231,10 @@ impl<T> EndpointData<T> {
             invalid_endpoint.insert(endpoint);
         }
 
+        if let None = self.endpoint_meta.remove(&endpoint) {
+            invalid_endpoint.insert(endpoint);
+        }
+
         if invalid_endpoint.len() != 0 {
             Err(anyhow!("Endpoint not found during drop: {:?}", invalid_endpoint))
         } else {
@@ -248,7 +252,7 @@ impl<T> EndpointData<T> {
             let (mut has_retries, retries_exhausted): (Vec<(usize, TransmitMeta)>, Vec<(usize, TransmitMeta)>) =
                 t_metadata
                     .iter()
-                    .partition(|(_tid, metadata)| (metadata.retry_count < metadata.max_retries));
+                    .partition(|(_tid, metadata)| metadata.retry_count < metadata.max_retries);
 
             // Find retriable packets that have timed-out
             retry_qualified.extend(has_retries.iter_mut().filter_map(|(tid, metadata)| {

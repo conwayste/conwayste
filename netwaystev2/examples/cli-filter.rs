@@ -43,17 +43,18 @@ async fn main() -> Result<()> {
         })
         .await?;
 
+    let packets_to_send = vec!["fire-metal".to_owned(), "fight".to_owned(), "frunk".to_owned()];
     transport_cmd_tx
         .send(TransportCmd::SendPackets {
             endpoint:     Endpoint("127.0.0.1:2017".parse().unwrap()),
-            packets:      vec!["fire-metal".to_owned(), "fight".to_owned(), "frunk".to_owned()],
-            packet_infos: (0..3)
+            packet_infos: (0..packets_to_send.len())
                 .map(|i| PacketInfo {
                     tid:            i,
                     retry_limit:    5,
                     retry_interval: Duration::new(10, 0),
                 })
                 .collect::<Vec<PacketInfo>>(),
+            packets:      packets_to_send,
         })
         .await?;
 
@@ -77,19 +78,19 @@ async fn main() -> Result<()> {
                                 trace!("Took packet: {:?}", p);
                             }
                         }
-                        TransportRsp::UnknownPacketTid => {
-                            // XXX
+                        TransportRsp::SendPacketsLengthMismatch => {
+                            error!("Packet and PacketInfo data did not align")
                         }
                         TransportRsp::BufferFull => {
                             // XXX
                             error!("Transmit buffer is full");
                         }
-                        TransportRsp::ExceedsMtu => {
+                        TransportRsp::ExceedsMtu {tid} => {
                             // XXX
-                            error!("Packet exceeds MTU size");
+                            error!("Packet exceeds MTU size. Tid={}", tid);
                         }
-                        TransportRsp::EndpointNotFound => {
-                            error!("Endpoint not found for previous Transport Command");
+                        TransportRsp::EndpointNotFound {endpoint} => {
+                            error!("Endpoint not found for previous Transport Command: {:?}", endpoint);
                         }
                     }
                 }
@@ -101,7 +102,6 @@ async fn main() -> Result<()> {
                             endpoint,
                         } => {
                             info!("Packets Available for Endpoint {:?}.", endpoint);
-                            // XXX Take received packets
                             transport_cmd_tx.send(TransportCmd::GetQueueCount{
                                 endpoint,
                                 kind: TransportQueueKind::Receive
