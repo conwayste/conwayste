@@ -38,14 +38,15 @@ impl EndpointMeta {
     }
 }
 
-pub(in crate::transport) struct EndpointData<T> {
+/// The data for an endpoint, where P is the type of the packet.
+pub(in crate::transport) struct EndpointData<P> {
     endpoint_meta: HashMap<Endpoint, EndpointMeta>,
-    receive:       HashMap<Endpoint, VecDeque<T>>,
-    transmit:      HashMap<Endpoint, VecDeque<(usize, T)>>,
+    receive:       HashMap<Endpoint, VecDeque<P>>,
+    transmit:      HashMap<Endpoint, VecDeque<(usize, P)>>,
     transmit_meta: HashMap<Endpoint, VecDeque<(usize, TransmitMeta)>>,
 }
 
-impl<T> EndpointData<T> {
+impl<P> EndpointData<P> {
     pub fn new() -> Self {
         EndpointData {
             endpoint_meta: HashMap::new(),
@@ -89,7 +90,7 @@ impl<T> EndpointData<T> {
         Ok(())
     }
 
-    pub fn push_receive_queue(&mut self, endpoint: Endpoint, item: T) -> Result<()> {
+    pub fn push_receive_queue(&mut self, endpoint: Endpoint, item: P) -> Result<()> {
         match self.receive.entry(endpoint) {
             Entry::Vacant(_) => {
                 return Err(anyhow!("Receive Queue push failed. Endpoint not found: {:?}", endpoint));
@@ -115,7 +116,7 @@ impl<T> EndpointData<T> {
         &mut self,
         endpoint: Endpoint,
         tid: usize,
-        item: T,
+        item: P,
         packet_timeout: Duration,
         max_retries: usize,
     ) -> Result<()> {
@@ -147,7 +148,7 @@ impl<T> EndpointData<T> {
         Ok(())
     }
 
-    pub fn drain_receive_queue(&mut self, endpoint: Endpoint) -> Result<Vec<T>> {
+    pub fn drain_receive_queue(&mut self, endpoint: Endpoint) -> Result<Vec<P>> {
         match self.receive.entry(endpoint) {
             Entry::Vacant(_) => Err(anyhow!(
                 "Receieve Queue drain failed. Endpoint not found: {:?}",
@@ -157,7 +158,7 @@ impl<T> EndpointData<T> {
         }
     }
 
-    pub fn pop_transmit_queue(&mut self, endpoint: Endpoint) -> Result<Option<(usize, T)>> {
+    pub fn pop_transmit_queue(&mut self, endpoint: Endpoint) -> Result<Option<(usize, P)>> {
         match self.transmit.entry(endpoint) {
             Entry::Vacant(_) => Err(anyhow!("Transmit Queue pop failed. Endpoint not found: {:?}", endpoint)),
             Entry::Occupied(mut entry) => Ok(entry.get_mut().pop_front()),
@@ -242,8 +243,8 @@ impl<T> EndpointData<T> {
         }
     }
 
-    // Splits the packet transmission data group into those that need retries and those that have exhausted all retries
-    pub fn bisect_retries(&mut self) -> (Vec<(&T, Endpoint)>, Vec<(usize, Endpoint)>) {
+    /// Splits the packet transmission data group into those that need retries and those that have exhausted all retries
+    pub fn separate_into_retriable_and_timed_out(&mut self) -> (Vec<(&P, Endpoint)>, Vec<(usize, Endpoint)>) {
         let mut retry_qualified: Vec<(usize, Endpoint)> = vec![];
         let mut exhausted: Vec<(usize, Endpoint)> = vec![];
 
