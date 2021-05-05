@@ -69,6 +69,7 @@ async fn main() -> Result<()> {
                             trace!("Transport Command Accepted");
                         }
                         TransportRsp::QueueCount{endpoint, kind: _, count: _} => {
+                            // XXX Take received packets
                             transport_cmd_tx.send(TransportCmd::TakeReceivePackets{
                                 endpoint,
                             }).await?;

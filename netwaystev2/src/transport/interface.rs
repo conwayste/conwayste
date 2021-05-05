@@ -78,7 +78,7 @@ pub enum TransportNotice {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PacketInfo {
     /// Transmit ID, a unique identifier used to sync packet transactions between the filter and transport layers
     pub tid:            usize,
