@@ -32,6 +32,10 @@ pub enum TransportCmd {
     DropEndpoint {
         endpoint: Endpoint,
     },
+    DropPacket {
+        endpoint: Endpoint,
+        tid:      usize,
+    },
     CancelTransmitQueue {
         endpoint: Endpoint,
     },

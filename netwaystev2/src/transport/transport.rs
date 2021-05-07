@@ -234,6 +234,14 @@ async fn process_transport_command(
                 return vec![TransportRsp::EndpointNotFound { endpoint }];
             }
         },
+        DropPacket { endpoint, tid } => match endpoints.drop_packet(endpoint, tid) {
+            Ok(()) => return vec![TransportRsp::Accepted],
+            Err(e) => {
+                // XXX fix this, probably should be returning specific errors instead of a general EndpointNotFound
+                error!("{}", e.to_string());
+                return vec![TransportRsp::EndpointNotFound { endpoint }];
+            }
+        },
         CancelTransmitQueue { endpoint } => match endpoints.clear_queue(endpoint, TransportQueueKind::Transmit) {
             Ok(()) => return vec![TransportRsp::Accepted],
             Err(e) => {

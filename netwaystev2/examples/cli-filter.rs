@@ -50,8 +50,8 @@ async fn main() -> Result<()> {
             packet_infos: (0..packets_to_send.len())
                 .map(|i| PacketInfo {
                     tid:            i,
-                    retry_limit:    5,
-                    retry_interval: Duration::new(10, 0),
+                    retry_limit:    2,
+                    retry_interval: Duration::new(1, 0),
                 })
                 .collect::<Vec<PacketInfo>>(),
             packets:      packets_to_send,
@@ -111,14 +111,15 @@ async fn main() -> Result<()> {
                         TransportNotice::EndpointTimeout {
                             endpoint,
                         } => {
-                            info!("Endpoint {:?} Timed-out. Dropping.", endpoint);
+                            info!("Endpoint {:?} timed-out. Dropping.", endpoint);
                             transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await?;
                         }
                         TransportNotice::PacketTimeout {
                             endpoint,
                             tid,
                         } => {
-                            // XXX drop the packet
+                            info!("Packet (tid = {}) timed-out for {:?}. Dropping.", tid, endpoint);
+                            transport_cmd_tx.send(TransportCmd::DropPacket{endpoint, tid}).await?;
                         }
                     }
                 }

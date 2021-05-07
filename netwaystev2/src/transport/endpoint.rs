@@ -201,6 +201,7 @@ impl<P> EndpointData<P> {
     }
 
     pub fn queue_count(&mut self, endpoint: Endpoint, kind: TransportQueueKind) -> Option<usize> {
+        // XXX handle when endpoint not found
         match kind {
             TransportQueueKind::Transmit => self.transmit.get(&endpoint).map(|queue| queue.len()),
             TransportQueueKind::Receive => self.receive.get(&endpoint).map(|queue| queue.len()),
@@ -237,10 +238,49 @@ impl<P> EndpointData<P> {
         }
 
         if invalid_endpoint.len() != 0 {
-            Err(anyhow!("Endpoint not found during drop: {:?}", invalid_endpoint))
+            Err(anyhow!(
+                "Endpoint not found during endpoint drop: {:?}",
+                invalid_endpoint
+            ))
         } else {
             Ok(())
         }
+    }
+
+    pub fn drop_packet(&mut self, endpoint: Endpoint, tid: usize) -> Result<()> {
+        let mut queue_index = None;
+        if let Some(tx_queue) = self.transmit.get(&endpoint) {
+            queue_index = tx_queue
+                .iter()
+                .position(|(dropping_tid, _pkt_data)| *dropping_tid == tid);
+        }
+
+        // Queue index should be identical for the transmit and transmit meta queues, otherwise we're going to have a bad time
+        if let Some(index) = queue_index {
+            self.transmit.get_mut(&endpoint).unwrap().remove(index).map_or(
+                Err(anyhow!(
+                    "Could not remove packet from TX queue. {:?} tid: {} queue_index: {}",
+                    endpoint,
+                    tid,
+                    index
+                )),
+                |_| Ok(()),
+            )?;
+
+            self.transmit_meta.get_mut(&endpoint).unwrap().remove(index).map_or(
+                Err(anyhow!(
+                    "Could not remove packet from TX meta queue. {:?} tid: {} queue_index: {}",
+                    endpoint,
+                    tid,
+                    index
+                )),
+                |_| Ok(()),
+            )?;
+
+            return Ok(());
+        }
+
+        return Err(anyhow!("Endpoint not found during packet drop: {:?}", endpoint));
     }
 
     /// Splits the packet transmission data group into those that need retries and those that have exhausted all retries
