@@ -98,7 +98,7 @@ Nope! We are using the [`ggez`](https://github.com/ggez/ggez) engine and give ma
 
 ### When will this be ready?
 
-The developers have busy lives and enjoy working on this in their spare time. If you are waiting for a release, then you I encourage you to contribute :smile:.
+The developers have busy lives and enjoy working on this in their spare time. If you are waiting for a release, then I encourage you to contribute :smile:. This could take the form of bug reports or design feedback as well as lines of code.
 
 ### My installation fails in Linux. What should I do?
 
