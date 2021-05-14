@@ -5,7 +5,7 @@ extern crate log;
 
 use netwaystev2::common::Endpoint;
 use netwaystev2::transport::Transport;
-use netwaystev2::transport::{PacketInfo, TransportCmd, TransportNotice, TransportQueueKind, TransportRsp};
+use netwaystev2::transport::{PacketSettings, TransportCmd, TransportNotice, TransportQueueKind, TransportRsp};
 
 use anyhow::Result;
 use std::io::Write;
@@ -48,12 +48,12 @@ async fn main() -> Result<()> {
         .send(TransportCmd::SendPackets {
             endpoint:     Endpoint("127.0.0.1:2017".parse().unwrap()),
             packet_infos: (0..packets_to_send.len())
-                .map(|i| PacketInfo {
+                .map(|i| PacketSettings {
                     tid:            i,
                     retry_limit:    2,
                     retry_interval: Duration::new(1, 0),
                 })
-                .collect::<Vec<PacketInfo>>(),
+                .collect::<Vec<PacketSettings>>(),
             packets:      packets_to_send,
         })
         .await?;
@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
                             }
                         }
                         TransportRsp::SendPacketsLengthMismatch => {
-                            error!("Packet and PacketInfo data did not align")
+                            error!("Packet and PacketSettings data did not align")
                         }
                         TransportRsp::BufferFull => {
                             // XXX

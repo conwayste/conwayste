@@ -6,16 +6,16 @@ use std::collections::{hash_map::Entry, HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 #[derive(Clone)]
-struct TransmitMeta {
+struct PacketInfo {
     packet_timeout: Duration,
     last_transmit:  Instant,
     max_retries:    usize,
     retry_count:    usize,
 }
 
-impl TransmitMeta {
+impl PacketInfo {
     pub fn new(packet_timeout: Duration, max_retries: usize) -> Self {
-        TransmitMeta {
+        PacketInfo {
             packet_timeout,
             last_transmit: Instant::now(),
             max_retries,
@@ -38,12 +38,24 @@ impl EndpointMeta {
     }
 }
 
+#[derive(Clone)]
+struct PacketContainer<P> {
+    tid:    usize,
+    packet: P,
+    info:   PacketInfo,
+}
+
+impl<P> PacketContainer<P> {
+    pub fn new(tid: usize, packet: P, info: PacketInfo) -> Self {
+        PacketContainer { tid, packet, info }
+    }
+}
+
 /// The data for an endpoint, where P is the type of the packet.
 pub(in crate::transport) struct EndpointData<P> {
     endpoint_meta: HashMap<Endpoint, EndpointMeta>,
     receive:       HashMap<Endpoint, VecDeque<P>>,
-    transmit:      HashMap<Endpoint, VecDeque<(usize, P)>>,
-    transmit_meta: HashMap<Endpoint, VecDeque<(usize, TransmitMeta)>>,
+    transmit:      HashMap<Endpoint, VecDeque<PacketContainer<P>>>,
 }
 
 impl<P> EndpointData<P> {
@@ -52,7 +64,6 @@ impl<P> EndpointData<P> {
             endpoint_meta: HashMap::new(),
             receive:       HashMap::new(),
             transmit:      HashMap::new(),
-            transmit_meta: HashMap::new(),
         }
     }
 
@@ -62,15 +73,6 @@ impl<P> EndpointData<P> {
                 entry.insert(VecDeque::new());
             }
             Entry::Occupied(entry) => return Err(anyhow!("Endpoint {:?} exists in Transmit Queue", entry.key()).into()),
-        }
-
-        match self.transmit_meta.entry(endpoint) {
-            Entry::Vacant(entry) => {
-                entry.insert(VecDeque::new());
-            }
-            Entry::Occupied(entry) => {
-                return Err(anyhow!("Endpoint {:?} exists in Transmit Meta Queue", entry.key()).into())
-            }
         }
 
         match self.receive.entry(endpoint) {
@@ -127,24 +129,13 @@ impl<P> EndpointData<P> {
                     endpoint
                 ))
             }
-            Entry::Occupied(mut entry) => {
-                entry.get_mut().push_back((tid, item));
-            }
+            Entry::Occupied(mut entry) => entry.get_mut().push_back(PacketContainer::new(
+                tid,
+                item,
+                PacketInfo::new(packet_timeout, max_retries),
+            )),
         }
 
-        match self.transmit_meta.entry(endpoint) {
-            Entry::Vacant(_) => {
-                return Err(anyhow!(
-                    "Transmit Metadata Queue push failed. Endpoint not found: {:?}",
-                    endpoint
-                ))
-            }
-            Entry::Occupied(mut entry) => {
-                entry
-                    .get_mut()
-                    .push_back((tid, TransmitMeta::new(packet_timeout, max_retries)));
-            }
-        }
         Ok(())
     }
 
@@ -158,13 +149,6 @@ impl<P> EndpointData<P> {
         }
     }
 
-    pub fn pop_transmit_queue(&mut self, endpoint: Endpoint) -> Result<Option<(usize, P)>> {
-        match self.transmit.entry(endpoint) {
-            Entry::Vacant(_) => Err(anyhow!("Transmit Queue pop failed. Endpoint not found: {:?}", endpoint)),
-            Entry::Occupied(mut entry) => Ok(entry.get_mut().pop_front()),
-        }
-    }
-
     pub fn clear_queue(&mut self, endpoint: Endpoint, kind: TransportQueueKind) -> Result<()> {
         match kind {
             TransportQueueKind::Transmit => {
@@ -173,15 +157,6 @@ impl<P> EndpointData<P> {
                 } else {
                     return Err(anyhow!(
                         "Transmit Queue clear failed. Endpoint not found: {:?}",
-                        endpoint
-                    ));
-                }
-
-                if let Some(tx_meta_queue) = self.transmit_meta.get_mut(&endpoint) {
-                    tx_meta_queue.clear()
-                } else {
-                    return Err(anyhow!(
-                        "Transmit Meta Queue clear failed. Endpoint not found: {:?}",
                         endpoint
                     ));
                 }
@@ -229,9 +204,6 @@ impl<P> EndpointData<P> {
         if let None = self.receive.remove(&endpoint) {
             invalid_endpoint.insert(endpoint);
         }
-        if let None = self.transmit_meta.remove(&endpoint) {
-            invalid_endpoint.insert(endpoint);
-        }
 
         if let None = self.endpoint_meta.remove(&endpoint) {
             invalid_endpoint.insert(endpoint);
@@ -252,24 +224,13 @@ impl<P> EndpointData<P> {
         if let Some(tx_queue) = self.transmit.get(&endpoint) {
             queue_index = tx_queue
                 .iter()
-                .position(|(dropping_tid, _pkt_data)| *dropping_tid == tid);
+                .position(|PacketContainer { tid: drop_tid, .. }| *drop_tid == tid);
         }
 
-        // Queue index should be identical for the transmit and transmit meta queues, otherwise we're going to have a bad time
         if let Some(index) = queue_index {
             self.transmit.get_mut(&endpoint).unwrap().remove(index).map_or(
                 Err(anyhow!(
                     "Could not remove packet from TX queue. {:?} tid: {} queue_index: {}",
-                    endpoint,
-                    tid,
-                    index
-                )),
-                |_| Ok(()),
-            )?;
-
-            self.transmit_meta.get_mut(&endpoint).unwrap().remove(index).map_or(
-                Err(anyhow!(
-                    "Could not remove packet from TX meta queue. {:?} tid: {} queue_index: {}",
                     endpoint,
                     tid,
                     index
@@ -283,55 +244,40 @@ impl<P> EndpointData<P> {
         return Err(anyhow!("Endpoint not found during packet drop: {:?}", endpoint));
     }
 
-    /// Splits the packet transmission data group into those that need retries and those that have exhausted all retries
-    pub fn separate_into_retriable_and_timed_out(&mut self) -> (Vec<(&P, Endpoint)>, Vec<(usize, Endpoint)>) {
-        let mut retry_qualified: Vec<(usize, Endpoint)> = vec![];
-        let mut exhausted: Vec<(usize, Endpoint)> = vec![];
+    /// Gather a list of all packets that can be retried
+    pub fn get_retriable(&mut self) -> Vec<(&P, Endpoint)> {
+        let mut retry_qualified = vec![];
 
-        for (endpoint, t_metadata) in &mut self.transmit_meta {
-            // Split packets into those that can be retried and those that ran out
-            let (mut has_retries, retries_exhausted): (Vec<(usize, TransmitMeta)>, Vec<(usize, TransmitMeta)>) =
-                t_metadata
-                    .iter()
-                    .cloned()
-                    .partition(|(_tid, metadata)| metadata.retry_count < metadata.max_retries);
+        for (endpoint, container) in &mut self.transmit {
+            retry_qualified.extend(container.iter_mut().filter_map(|PacketContainer { packet, info, .. }| {
+                if info.retry_count < info.max_retries {
+                    if Instant::now() - info.last_transmit > info.packet_timeout {
+                        info.last_transmit = Instant::now();
+                        info.retry_count += 1;
+                        Some((&*packet, *endpoint))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }));
+        }
 
-            // Find retriable packets that have timed-out
-            retry_qualified.extend(has_retries.iter_mut().filter_map(|(tid, metadata)| {
-                if Instant::now() - metadata.last_transmit > metadata.packet_timeout {
+        retry_qualified
+    }
+
+    pub fn get_timed_out(&mut self) -> Vec<(usize, Endpoint)> {
+        let mut timed_out = vec![];
+        for (endpoint, container) in &mut self.transmit {
+            timed_out.extend(container.iter().filter_map(|PacketContainer { tid, info, .. }| {
+                if info.retry_count >= info.max_retries {
                     Some((*tid, *endpoint))
                 } else {
                     None
                 }
             }));
-
-            // Advance the retry
-            for (retry_tid, _) in retry_qualified.iter() {
-                for (update_tid, update_meta) in t_metadata.iter_mut() {
-                    if retry_tid == update_tid {
-                        update_meta.last_transmit = Instant::now();
-                        update_meta.retry_count += 1;
-                    }
-                }
-            }
-
-            exhausted.extend(retries_exhausted.iter().map(|(tid, _metadata)| (*tid, *endpoint)));
         }
-
-        // Map packets that can be retried into their data and destination
-        let mut retry_datagrams = vec![];
-        for (retry_tid, endpoint) in retry_qualified {
-            if let Some(data_pairs) = self.transmit.get(&endpoint) {
-                retry_datagrams.extend(data_pairs.into_iter().filter_map(|(tid, data)| {
-                    if retry_tid == *tid {
-                        Some((data, endpoint))
-                    } else {
-                        None
-                    }
-                }));
-            }
-        }
-
-        (retry_datagrams, exhausted)
+        timed_out
     }
 }

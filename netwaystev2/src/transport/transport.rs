@@ -1,10 +1,9 @@
 use super::endpoint::EndpointData;
 use super::interface::{
-    Packet, PacketInfo,
     TransportCmd::{self, *},
     TransportNotice, TransportQueueKind, TransportRsp,
 };
-use super::udp_codec::{LinesCodec, NetwaystePacketCodec};
+use super::udp_codec::LinesCodec; // PR_GATE use NetwaystePacketCodec once bring-up is complete
 use crate::common::Endpoint;
 use crate::settings::*;
 
@@ -48,7 +47,7 @@ pub struct Transport {
     udp_stream_send: SplitSink<UdpFramed<LinesCodec>, TransportItem>,
     udp_stream_recv: Fuse<SplitStream<UdpFramed<LinesCodec>>>,
 
-    //endpoints: EndpointData<PacketInfo>,
+    //endpoints: EndpointData<PacketSettings>,
     endpoints: EndpointData<String>,
 }
 
@@ -114,12 +113,13 @@ impl Transport {
                 }
                 _ = transmit_interval_stream.select_next_some() => {
                     // Resend any packets in the transmit queue at their retry interval or send PacketTimeout
-                    let (retry_packets, packet_timeouts) = self.endpoints.separate_into_retriable_and_timed_out();
+                    let retry_packets = self.endpoints.get_retriable();
 
                     for (data_ref, endpoint) in retry_packets {
                         udp_stream_send.send((data_ref.to_owned(), endpoint.0)).await?;
                     }
 
+                    let packet_timeouts = self.endpoints.get_timed_out();
                     for (tid, endpoint) in packet_timeouts {
                         self.notifications.send(TransportNotice::PacketTimeout {
                             endpoint, tid

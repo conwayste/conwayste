@@ -25,7 +25,7 @@ pub enum TransportCmd {
     },
     SendPackets {
         endpoint:     Endpoint,
-        packet_infos: Vec<PacketInfo>,
+        packet_infos: Vec<PacketSettings>,
         // PR_GATE Change String to Packet
         packets:      Vec<String>,
     },
@@ -82,8 +82,9 @@ pub enum TransportNotice {
     },
 }
 
+/// Used by the filter layer to inform the transport layer of packet settings
 #[derive(Debug)]
-pub struct PacketInfo {
+pub struct PacketSettings {
     /// Transmit ID, a unique identifier used to sync packet transactions between the filter and transport layers
     pub tid:            usize,
     /// The maximum number of retries for a Packet
