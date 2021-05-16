@@ -10,6 +10,7 @@ pub enum TransportQueueKind {
     Receive,
 }
 
+/// Filter layer sends these commands to the Transport Layer to manage endpoints and their packets
 #[derive(Debug)]
 pub enum TransportCmd {
     NewEndpoint {
@@ -41,6 +42,7 @@ pub enum TransportCmd {
     },
 }
 
+/// Transport layer sends these response codes for each Filter layer command (see `TransportCmd`)
 #[derive(Debug)]
 pub enum TransportRsp {
     Accepted,
@@ -63,6 +65,7 @@ pub enum TransportRsp {
     SendPacketsLengthMismatch,
 }
 
+/// Used by the Transport layer to inform the Filter layer of a packet or endpoint event
 #[derive(Debug)]
 pub enum TransportNotice {
     /// There are packets available on this endpoint
@@ -82,10 +85,10 @@ pub enum TransportNotice {
     },
 }
 
-/// Used by the filter layer to inform the transport layer of packet settings
+/// Used by the Filter layer to inform the Transport layer of packet settings
 #[derive(Debug)]
 pub struct PacketSettings {
-    /// Transmit ID, a unique identifier used to sync packet transactions between the filter and transport layers
+    /// Transmit ID, a unique identifier used to sync packet transactions between the filter and Transport layers
     pub tid:            usize,
     /// The maximum number of retries for a Packet
     pub retry_limit:    usize,

@@ -113,13 +113,13 @@ impl Transport {
                 }
                 _ = transmit_interval_stream.select_next_some() => {
                     // Resend any packets in the transmit queue at their retry interval or send PacketTimeout
-                    let retry_packets = self.endpoints.get_retriable();
+                    let retry_packets = self.endpoints.retriable_packets();
 
                     for (data_ref, endpoint) in retry_packets {
                         udp_stream_send.send((data_ref.to_owned(), endpoint.0)).await?;
                     }
 
-                    let packet_timeouts = self.endpoints.get_timed_out();
+                    let packet_timeouts = self.endpoints.timed_out_packets();
                     for (tid, endpoint) in packet_timeouts {
                         self.notifications.send(TransportNotice::PacketTimeout {
                             endpoint, tid

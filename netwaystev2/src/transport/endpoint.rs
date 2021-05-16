@@ -5,6 +5,7 @@ use anyhow::{anyhow, Result};
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
+/// Transport layers uses this to track packet-specific retries and timeouts
 #[derive(Clone)]
 struct PacketInfo {
     packet_timeout: Duration,
@@ -24,6 +25,7 @@ impl PacketInfo {
     }
 }
 
+/// Transport layer uses this to determine if an endpoint is still active
 struct EndpointMeta {
     endpoint_timeout: Duration,
     last_receive:     Option<Instant>,
@@ -38,6 +40,7 @@ impl EndpointMeta {
     }
 }
 
+/// Used by the Transport layer to group a transmit id with the associated packet, for transmit
 #[derive(Clone)]
 struct PacketContainer<P> {
     tid:    usize,
@@ -51,7 +54,7 @@ impl<P> PacketContainer<P> {
     }
 }
 
-/// The data for an endpoint, where P is the type of the packet.
+/// The data for an endpoint, where P is the generic type of the thing to send (Packet).
 pub(in crate::transport) struct EndpointData<P> {
     endpoint_meta: HashMap<Endpoint, EndpointMeta>,
     receive:       HashMap<Endpoint, VecDeque<P>>,
@@ -67,6 +70,8 @@ impl<P> EndpointData<P> {
         }
     }
 
+    /// Create a new endpoint to transmit and receive data to and from.
+    /// Will report an error if an entry for the endpoint already exists.
     pub fn new_endpoint(&mut self, endpoint: Endpoint, timeout: Duration) -> Result<()> {
         match self.transmit.entry(endpoint) {
             Entry::Vacant(entry) => {
@@ -92,6 +97,8 @@ impl<P> EndpointData<P> {
         Ok(())
     }
 
+    /// Enqueues data packets `item` to the received queue for the endpoint.
+    /// Will report an error if the endpoint does not exist.
     pub fn push_receive_queue(&mut self, endpoint: Endpoint, item: P) -> Result<()> {
         match self.receive.entry(endpoint) {
             Entry::Vacant(_) => {
@@ -114,6 +121,10 @@ impl<P> EndpointData<P> {
         Ok(())
     }
 
+    /// Enqueues data packets `item` to the transmit queue for the endpoint. Each packet is assigned a transmit id (tid)
+    /// by the Filter layer. Each packet may have a different timeout and retry limits depending on the semantic
+    /// priority of the packet.
+    /// Will report an error if the endpoint does not exist.
     pub fn push_transmit_queue(
         &mut self,
         endpoint: Endpoint,
@@ -139,6 +150,8 @@ impl<P> EndpointData<P> {
         Ok(())
     }
 
+    /// Pops all received data packets from the receive queue for the endpoint.
+    /// Will report an error if the endpoint does not exist.
     pub fn drain_receive_queue(&mut self, endpoint: Endpoint) -> Result<Vec<P>> {
         match self.receive.entry(endpoint) {
             Entry::Vacant(_) => Err(anyhow!(
@@ -149,6 +162,8 @@ impl<P> EndpointData<P> {
         }
     }
 
+    /// Drops all data packets in a queue for the endpoint.
+    /// Will report an error if the endpoint does not exist.
     pub fn clear_queue(&mut self, endpoint: Endpoint, kind: TransportQueueKind) -> Result<()> {
         match kind {
             TransportQueueKind::Transmit => {
@@ -175,6 +190,8 @@ impl<P> EndpointData<P> {
         Ok(())
     }
 
+    /// Requested by the Filter layer to probe the active length of the queue-kind.
+    /// Will report an error if the endpoint does not exist.
     pub fn queue_count(&mut self, endpoint: Endpoint, kind: TransportQueueKind) -> Option<usize> {
         // XXX handle when endpoint not found
         match kind {
@@ -183,6 +200,8 @@ impl<P> EndpointData<P> {
         }
     }
 
+    /// Returns a vector of endpoints that have timed-out
+    /// If the vector is empty, all endpoints still maintain active connections.
     pub fn timed_out_endpoints(&mut self) -> Vec<Endpoint> {
         let mut timed_out = vec![];
         for (endpoint, endpoint_meta) in &self.endpoint_meta {
@@ -195,6 +214,8 @@ impl<P> EndpointData<P> {
         timed_out
     }
 
+    /// Requested by the Filter layer to remove an endpoint.
+    /// Will report an error if the endpoint does not exist.
     pub fn drop_endpoint(&mut self, endpoint: Endpoint) -> Result<()> {
         let mut invalid_endpoint = std::collections::HashSet::new();
 
@@ -219,18 +240,25 @@ impl<P> EndpointData<P> {
         }
     }
 
+    /// Requested by the Filter layer to remove a packet from the transmit queue. One use-case is if a packet is
+    /// needs to be cancelled.
+    /// Will report an error if the endpoint does not exist.
+    /// Will report an error if the tid does not exist.
+    /// Will report an error if the packet could not be removed.
     pub fn drop_packet(&mut self, endpoint: Endpoint, tid: usize) -> Result<()> {
-        let mut queue_index = None;
+        let queue_index;
         if let Some(tx_queue) = self.transmit.get(&endpoint) {
             queue_index = tx_queue
                 .iter()
                 .position(|PacketContainer { tid: drop_tid, .. }| *drop_tid == tid);
+        } else {
+            return Err(anyhow!("Endpoint not found during packet drop: {:?}", endpoint));
         }
 
         if let Some(index) = queue_index {
             self.transmit.get_mut(&endpoint).unwrap().remove(index).map_or(
                 Err(anyhow!(
-                    "Could not remove packet from TX queue. {:?} tid: {} queue_index: {}",
+                    "Could not remove packet from transmit queue. {:?} tid: {} queue_index: {}",
                     endpoint,
                     tid,
                     index
@@ -239,13 +267,13 @@ impl<P> EndpointData<P> {
             )?;
 
             return Ok(());
+        } else {
+            return Err(anyhow!("tid {} not found for endpoint {:?}", tid, endpoint));
         }
-
-        return Err(anyhow!("Endpoint not found during packet drop: {:?}", endpoint));
     }
 
-    /// Gather a list of all packets that can be retried
-    pub fn get_retriable(&mut self) -> Vec<(&P, Endpoint)> {
+    /// Returns a list of packets that can be retried across all endpoints.
+    pub fn retriable_packets(&mut self) -> Vec<(&P, Endpoint)> {
         let mut retry_qualified = vec![];
 
         for (endpoint, container) in &mut self.transmit {
@@ -267,7 +295,8 @@ impl<P> EndpointData<P> {
         retry_qualified
     }
 
-    pub fn get_timed_out(&mut self) -> Vec<(usize, Endpoint)> {
+    /// Returns a list of packets (via transmit id) that have timed-out across all endpoints.
+    pub fn timed_out_packets(&mut self) -> Vec<(usize, Endpoint)> {
         let mut timed_out = vec![];
         for (endpoint, container) in &mut self.transmit {
             timed_out.extend(container.iter().filter_map(|PacketContainer { tid, info, .. }| {
