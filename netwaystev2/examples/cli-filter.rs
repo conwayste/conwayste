@@ -90,8 +90,8 @@ async fn main() -> Result<()> {
                             // XXX
                             error!("Packet exceeds MTU size. Tid={}", tid);
                         }
-                        TransportRsp::EndpointNotFound {endpoint} => {
-                            error!("Endpoint not found for previous Transport Command: {:?}", endpoint);
+                        TransportRsp::EndpointError {error} => {
+                            error!("Transport Layer error: {:?}", error);
                         }
                     }
                 }

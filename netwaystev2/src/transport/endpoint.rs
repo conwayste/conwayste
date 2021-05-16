@@ -1,4 +1,4 @@
-use super::interface::TransportQueueKind;
+use super::interface::{EndpointDataError, TransportQueueKind};
 use crate::common::Endpoint;
 use anyhow::{anyhow, Result};
 
@@ -77,21 +77,39 @@ impl<P> EndpointData<P> {
             Entry::Vacant(entry) => {
                 entry.insert(VecDeque::new());
             }
-            Entry::Occupied(entry) => return Err(anyhow!("Endpoint {:?} exists in Transmit Queue", entry.key()).into()),
+            Entry::Occupied(entry) => {
+                return Err(anyhow!(EndpointDataError::EndpointExists {
+                    queue_kind: TransportQueueKind::Transmit,
+                    endpoint,
+                    entry_found: *entry.key()
+                }))
+            }
         }
 
         match self.receive.entry(endpoint) {
             Entry::Vacant(entry) => {
                 entry.insert(VecDeque::new());
             }
-            Entry::Occupied(entry) => return Err(anyhow!("Endpoint {:?} exists in Receive Queue", entry.key()).into()),
+            Entry::Occupied(entry) => {
+                return Err(anyhow!(EndpointDataError::EndpointExists {
+                    queue_kind: TransportQueueKind::Receive,
+                    endpoint,
+                    entry_found: *entry.key()
+                }))
+            }
         }
 
         match self.endpoint_meta.entry(endpoint) {
             Entry::Vacant(entry) => {
                 entry.insert(EndpointMeta::new(timeout));
             }
-            Entry::Occupied(entry) => return Err(anyhow!("Endpoint {:?} exists Transmission Info", entry.key()).into()),
+            Entry::Occupied(entry) => {
+                return Err(anyhow!(EndpointDataError::EndpointExists {
+                    queue_kind: TransportQueueKind::Meta,
+                    endpoint,
+                    entry_found: *entry.key()
+                }))
+            }
         }
 
         Ok(())
@@ -102,7 +120,11 @@ impl<P> EndpointData<P> {
     pub fn push_receive_queue(&mut self, endpoint: Endpoint, item: P) -> Result<()> {
         match self.receive.entry(endpoint) {
             Entry::Vacant(_) => {
-                return Err(anyhow!("Receive Queue push failed. Endpoint not found: {:?}", endpoint));
+                return Err(anyhow!(EndpointDataError::EndpointNotFound {
+                    queue_kind: TransportQueueKind::Receive,
+                    endpoint,
+                    message: "Failed to push packet".to_owned(),
+                }));
             }
             Entry::Occupied(mut entry) => {
                 entry.get_mut().push_back(item);
@@ -111,10 +133,11 @@ impl<P> EndpointData<P> {
 
         match self.endpoint_meta.entry(endpoint) {
             Entry::Vacant(_) => {
-                return Err(anyhow!(
-                    "Receive Queue last receive timestamp update failed. Endpoint not found: {:?}",
-                    endpoint
-                ));
+                return Err(anyhow!(EndpointDataError::EndpointNotFound {
+                    queue_kind: TransportQueueKind::Meta,
+                    endpoint,
+                    message: "Failed to update last receive timestamp".to_owned(),
+                }));
             }
             Entry::Occupied(mut entry) => entry.get_mut().last_receive = Some(Instant::now()),
         }
@@ -135,10 +158,11 @@ impl<P> EndpointData<P> {
     ) -> Result<()> {
         match self.transmit.entry(endpoint) {
             Entry::Vacant(_) => {
-                return Err(anyhow!(
-                    "Transport Queue push failed. Endpoint not found: {:?}",
-                    endpoint
-                ))
+                return Err(anyhow!(EndpointDataError::EndpointNotFound {
+                    queue_kind: TransportQueueKind::Transmit,
+                    endpoint,
+                    message: format!("Failed to push packet with tid {}", tid),
+                }));
             }
             Entry::Occupied(mut entry) => entry.get_mut().push_back(PacketContainer::new(
                 tid,
@@ -154,10 +178,13 @@ impl<P> EndpointData<P> {
     /// Will report an error if the endpoint does not exist.
     pub fn drain_receive_queue(&mut self, endpoint: Endpoint) -> Result<Vec<P>> {
         match self.receive.entry(endpoint) {
-            Entry::Vacant(_) => Err(anyhow!(
-                "Receieve Queue drain failed. Endpoint not found: {:?}",
-                endpoint
-            )),
+            Entry::Vacant(_) => {
+                return Err(anyhow!(EndpointDataError::EndpointNotFound {
+                    queue_kind: TransportQueueKind::Receive,
+                    endpoint,
+                    message: "Failed to drain all packets".to_owned(),
+                }))
+            }
             Entry::Occupied(mut entry) => Ok(entry.get_mut().drain(..).collect()),
         }
     }
@@ -170,33 +197,48 @@ impl<P> EndpointData<P> {
                 if let Some(tx_queue) = self.transmit.get_mut(&endpoint) {
                     tx_queue.clear()
                 } else {
-                    return Err(anyhow!(
-                        "Transmit Queue clear failed. Endpoint not found: {:?}",
-                        endpoint
-                    ));
+                    return Err(anyhow!(EndpointDataError::EndpointNotFound {
+                        queue_kind: TransportQueueKind::Transmit,
+                        endpoint,
+                        message: "Failed to clear queue".to_owned(),
+                    }));
                 }
             }
             TransportQueueKind::Receive => {
                 if let Some(rx_queue) = self.receive.get_mut(&endpoint) {
                     rx_queue.clear()
                 } else {
-                    return Err(anyhow!(
-                        "Receive Queue clear failed. Endpoint not found: {:?}",
-                        endpoint
-                    ));
+                    return Err(anyhow!(EndpointDataError::EndpointNotFound {
+                        queue_kind: TransportQueueKind::Receive,
+                        endpoint,
+                        message: "Failed to clear queue".to_owned(),
+                    }));
                 }
             }
+            TransportQueueKind::Meta => return Err(anyhow!(EndpointDataError::InvalidQueueKind { kind })),
         }
         Ok(())
     }
 
     /// Requested by the Filter layer to probe the active length of the queue-kind.
     /// Will report an error if the endpoint does not exist.
-    pub fn queue_count(&mut self, endpoint: Endpoint, kind: TransportQueueKind) -> Option<usize> {
-        // XXX handle when endpoint not found
+    pub fn queue_count(&mut self, endpoint: Endpoint, kind: TransportQueueKind) -> Result<usize> {
         match kind {
-            TransportQueueKind::Transmit => self.transmit.get(&endpoint).map(|queue| queue.len()),
-            TransportQueueKind::Receive => self.receive.get(&endpoint).map(|queue| queue.len()),
+            TransportQueueKind::Transmit => self.transmit.get(&endpoint).map(|queue| queue.len()).ok_or(anyhow!(
+                EndpointDataError::EndpointNotFound {
+                    queue_kind: TransportQueueKind::Transmit,
+                    endpoint,
+                    message: "Failed to get queue count".to_owned()
+                }
+            )),
+            TransportQueueKind::Receive => self.receive.get(&endpoint).map(|queue| queue.len()).ok_or(anyhow!(
+                EndpointDataError::EndpointNotFound {
+                    queue_kind: TransportQueueKind::Receive,
+                    endpoint,
+                    message: "Failed to get queue count".to_owned()
+                }
+            )),
+            TransportQueueKind::Meta => Err(anyhow!(EndpointDataError::InvalidQueueKind { kind })),
         }
     }
 
@@ -218,23 +260,27 @@ impl<P> EndpointData<P> {
     /// Will report an error if the endpoint does not exist.
     pub fn drop_endpoint(&mut self, endpoint: Endpoint) -> Result<()> {
         let mut invalid_endpoint = std::collections::HashSet::new();
+        let mut error_message = String::new();
 
         if let None = self.transmit.remove(&endpoint) {
             invalid_endpoint.insert(endpoint);
+            error_message.push_str("not found in transmit queue, ");
         }
         if let None = self.receive.remove(&endpoint) {
             invalid_endpoint.insert(endpoint);
+            error_message.push_str("not found in receive queue, ");
         }
 
         if let None = self.endpoint_meta.remove(&endpoint) {
             invalid_endpoint.insert(endpoint);
+            error_message.push_str("not found in meta queue, ");
         }
 
-        if invalid_endpoint.len() != 0 {
-            Err(anyhow!(
-                "Endpoint not found during endpoint drop: {:?}",
-                invalid_endpoint
-            ))
+        if !invalid_endpoint.is_empty() {
+            Err(anyhow!(EndpointDataError::EndpointDropFailed {
+                endpoint,
+                message: error_message,
+            }))
         } else {
             Ok(())
         }
@@ -252,23 +298,27 @@ impl<P> EndpointData<P> {
                 .iter()
                 .position(|PacketContainer { tid: drop_tid, .. }| *drop_tid == tid);
         } else {
-            return Err(anyhow!("Endpoint not found during packet drop: {:?}", endpoint));
+            return Err(anyhow!(EndpointDataError::EndpointNotFound {
+                queue_kind: TransportQueueKind::Transmit,
+                endpoint,
+                message: format!("Failed to drop packet with tid {}", tid),
+            }));
         }
 
         if let Some(index) = queue_index {
             self.transmit.get_mut(&endpoint).unwrap().remove(index).map_or(
-                Err(anyhow!(
-                    "Could not remove packet from transmit queue. {:?} tid: {} queue_index: {}",
+                Err(anyhow!(EndpointDataError::PacketRemovalFailure {
+                    queue_kind: TransportQueueKind::Transmit,
                     endpoint,
                     tid,
                     index
-                )),
+                })),
                 |_| Ok(()),
             )?;
 
             return Ok(());
         } else {
-            return Err(anyhow!("tid {} not found for endpoint {:?}", tid, endpoint));
+            return Err(anyhow!(EndpointDataError::TransmitIDNotFound { endpoint, tid }));
         }
     }
 

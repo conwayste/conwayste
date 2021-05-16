@@ -156,98 +156,78 @@ async fn process_transport_command(
     command: TransportCmd,
     udp_send: &mut Pin<&mut &mut SplitSink<UdpFramed<LinesCodec>, (std::string::String, std::net::SocketAddr)>>,
 ) -> Vec<TransportRsp> {
+    let mut cmd_responses = vec![];
     match command {
-        NewEndpoint { endpoint, timeout } => match endpoints.new_endpoint(endpoint, timeout) {
-            Ok(()) => {
-                return vec![TransportRsp::Accepted];
-            }
-            Err(e) => {
-                error!("{}", e);
-                return vec![TransportRsp::EndpointNotFound { endpoint }];
-            }
-        },
-        GetQueueCount { endpoint, kind } => {
-            if let Some(count) = endpoints.queue_count(endpoint, kind) {
-                return vec![TransportRsp::QueueCount { endpoint, kind, count }];
-            } else {
-                return vec![TransportRsp::EndpointNotFound { endpoint }];
-            }
-        }
-        TakeReceivePackets { endpoint } => match endpoints.drain_receive_queue(endpoint) {
-            Ok(packets) if !packets.is_empty() => {
-                return vec![TransportRsp::TakenPackets { packets }];
-            }
-            Ok(_) => {
-                return vec![];
-            }
-            Err(e) => {
-                error!("{}", e.to_string());
-                return vec![TransportRsp::EndpointNotFound { endpoint }];
-            }
-        },
+        NewEndpoint { endpoint, timeout } => cmd_responses.push(endpoints.new_endpoint(endpoint, timeout).map_or_else(
+            |error| TransportRsp::EndpointError { error },
+            |()| TransportRsp::Accepted,
+        )),
+        GetQueueCount { endpoint, kind } => cmd_responses.push(endpoints.queue_count(endpoint, kind).map_or_else(
+            |error| TransportRsp::EndpointError { error },
+            |count| TransportRsp::QueueCount { endpoint, kind, count },
+        )),
+        TakeReceivePackets { endpoint } => cmd_responses.push(endpoints.drain_receive_queue(endpoint).map_or_else(
+            |error| TransportRsp::EndpointError { error },
+            |packets| {
+                if !packets.is_empty() {
+                    TransportRsp::TakenPackets { packets }
+                } else {
+                    TransportRsp::Accepted
+                }
+            },
+        )),
         SendPackets {
             endpoint,
             packet_infos,
             packets,
         } => {
             if packets.len() != packet_infos.len() {
-                return vec![TransportRsp::SendPacketsLengthMismatch];
-            }
+                cmd_responses.push(TransportRsp::SendPacketsLengthMismatch);
+            } else {
+                for (i, p) in packets.iter().enumerate() {
+                    let pi = packet_infos.get(i).unwrap(); // Unwrap safe b/c of length check above
 
-            let mut errors = vec![];
-
-            for (i, p) in packets.iter().enumerate() {
-                let pi = packet_infos.get(i).unwrap(); // Unwrap safe b/c of length check above
-
-                if std::mem::size_of_val(p) < UDP_MTU_SIZE {
-                    let _result = udp_send.send((p.clone(), endpoint.0)).await.and_then(|_| {
-                        match endpoints.push_transmit_queue(
-                            endpoint,
-                            pi.tid,
-                            p.to_owned(),
-                            pi.retry_interval,
-                            pi.retry_limit,
-                        ) {
-                            Ok(()) => {}
-                            Err(e) => {
-                                error!("{}", e.to_string());
-                                errors.push(TransportRsp::EndpointNotFound { endpoint })
-                            }
-                        }
-                        Ok(())
-                    });
-                } else {
-                    errors.push(TransportRsp::ExceedsMtu { tid: pi.tid });
+                    if std::mem::size_of_val(p) < UDP_MTU_SIZE {
+                        let _result = udp_send.send((p.clone(), endpoint.0)).await.and_then(|_| {
+                            cmd_responses.push(
+                                endpoints
+                                    .push_transmit_queue(
+                                        endpoint,
+                                        pi.tid,
+                                        p.to_owned(),
+                                        pi.retry_interval,
+                                        pi.retry_limit,
+                                    )
+                                    .map_or_else(
+                                        |error| TransportRsp::EndpointError { error },
+                                        |()| TransportRsp::Accepted,
+                                    ),
+                            );
+                            Ok(())
+                        });
+                    } else {
+                        cmd_responses.push(TransportRsp::ExceedsMtu { tid: pi.tid });
+                    }
                 }
             }
-
-            if errors.is_empty() {
-                return vec![TransportRsp::Accepted];
-            } else {
-                return errors;
-            }
         }
-        DropEndpoint { endpoint } => match endpoints.drop_endpoint(endpoint) {
-            Ok(()) => return vec![TransportRsp::Accepted],
-            Err(e) => {
-                error!("{}", e.to_string());
-                return vec![TransportRsp::EndpointNotFound { endpoint }];
-            }
-        },
-        DropPacket { endpoint, tid } => match endpoints.drop_packet(endpoint, tid) {
-            Ok(()) => return vec![TransportRsp::Accepted],
-            Err(e) => {
-                // XXX fix this, probably should be returning specific errors instead of a general EndpointNotFound
-                error!("{}", e.to_string());
-                return vec![TransportRsp::EndpointNotFound { endpoint }];
-            }
-        },
-        CancelTransmitQueue { endpoint } => match endpoints.clear_queue(endpoint, TransportQueueKind::Transmit) {
-            Ok(()) => return vec![TransportRsp::Accepted],
-            Err(e) => {
-                error!("{}", e.to_string());
-                return vec![TransportRsp::EndpointNotFound { endpoint }];
-            }
-        },
+        DropEndpoint { endpoint } => cmd_responses.push(endpoints.drop_endpoint(endpoint).map_or_else(
+            |error| TransportRsp::EndpointError { error },
+            |()| TransportRsp::Accepted,
+        )),
+        DropPacket { endpoint, tid } => cmd_responses.push(endpoints.drop_packet(endpoint, tid).map_or_else(
+            |error| TransportRsp::EndpointError { error },
+            |()| TransportRsp::Accepted,
+        )),
+        CancelTransmitQueue { endpoint } => cmd_responses.push(
+            endpoints
+                .clear_queue(endpoint, TransportQueueKind::Transmit)
+                .map_or_else(
+                    |error| TransportRsp::EndpointError { error },
+                    |()| TransportRsp::Accepted,
+                ),
+        ),
     }
+
+    cmd_responses
 }

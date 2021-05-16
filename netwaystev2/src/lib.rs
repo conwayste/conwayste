@@ -1,9 +1,10 @@
 extern crate anyhow;
+extern crate bincode;
 extern crate env_logger;
 #[macro_use]
 extern crate log;
-extern crate bincode;
 extern crate serde;
+extern crate thiserror;
 
 pub mod common;
 mod settings;

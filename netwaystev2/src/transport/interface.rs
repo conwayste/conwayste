@@ -8,6 +8,7 @@ use std::time::Duration;
 pub enum TransportQueueKind {
     Transmit,
     Receive,
+    Meta,
 }
 
 /// Filter layer sends these commands to the Transport Layer to manage endpoints and their packets
@@ -59,8 +60,8 @@ pub enum TransportRsp {
     ExceedsMtu {
         tid: usize,
     },
-    EndpointNotFound {
-        endpoint: Endpoint,
+    EndpointError {
+        error: anyhow::Error,
     },
     SendPacketsLengthMismatch,
 }
@@ -100,4 +101,33 @@ pub struct PacketSettings {
 pub struct Packet {
     /// PR_GATE Add additional fields here.
     data: [u8; 10],
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum EndpointDataError {
+    #[error("{endpoint:?} not found in {queue_kind:?} queue: {message}")]
+    EndpointNotFound {
+        queue_kind: TransportQueueKind,
+        endpoint:   Endpoint,
+        message:    String,
+    },
+    #[error("{endpoint:?} entry exists in {queue_kind:?} queue: {entry_found:?}")]
+    EndpointExists {
+        queue_kind:  TransportQueueKind,
+        endpoint:    Endpoint,
+        entry_found: Endpoint,
+    },
+    #[error("Transmit ID {tid} not found for {endpoint:?} in Transmit queue")]
+    TransmitIDNotFound { endpoint: Endpoint, tid: usize },
+    #[error("Could not remove packet at index {index} from {queue_kind:?} queue with tid {tid} for {endpoint:?}")]
+    PacketRemovalFailure {
+        queue_kind: TransportQueueKind,
+        endpoint:   Endpoint,
+        tid:        usize,
+        index:      usize,
+    },
+    #[error("Invalid queue-kind {kind:?}")]
+    InvalidQueueKind { kind: TransportQueueKind },
+    #[error("{endpoint:?} could not be dropped : {message}")]
+    EndpointDropFailed { endpoint: Endpoint, message: String },
 }
