@@ -8,6 +8,8 @@ use std::time::{Duration, Instant};
 /// Transport layers uses this to track packet-specific retries and timeouts
 #[derive(Clone)]
 struct PacketInfo {
+    // FIXME: what does this timeout mean exactly (what happens when the timeout has been
+    // exceeded)?
     packet_timeout: Duration,
     last_transmit:  Instant,
     max_retries:    usize,
@@ -323,39 +325,36 @@ impl<P> EndpointData<P> {
     }
 
     /// Returns a list of packets that can be retried across all endpoints.
+    /// Side effect: updates last_transmit and retry_count on any packets that can be retried.
     pub fn retriable_packets(&mut self) -> Vec<(&P, Endpoint)> {
         let mut retry_qualified = vec![];
 
         for (endpoint, container) in &mut self.transmit {
-            retry_qualified.extend(container.iter_mut().filter_map(|PacketContainer { packet, info, .. }| {
-                if info.retry_count < info.max_retries {
-                    if Instant::now() - info.last_transmit > info.packet_timeout {
-                        info.last_transmit = Instant::now();
-                        info.retry_count += 1;
-                        Some((&*packet, *endpoint))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
+            for PacketContainer { packet, info, .. } in container {
+                // If there are retries available and the time since last transmission exceeds the
+                // packet timeout duraion, then set the last transmission time, increment the retry
+                // count, and select this packet.
+                if info.retry_count < info.max_retries && Instant::now() - info.last_transmit > info.packet_timeout {
+                    info.last_transmit = Instant::now();
+                    info.retry_count += 1;
+                    retry_qualified.push((&*packet, *endpoint));
                 }
-            }));
+            }
         }
 
         retry_qualified
     }
 
     /// Returns a list of packets (via transmit id) that have timed-out across all endpoints.
-    pub fn timed_out_packets(&mut self) -> Vec<(usize, Endpoint)> {
+    pub fn timed_out_packets(&self) -> Vec<(usize, Endpoint)> {
         let mut timed_out = vec![];
-        for (endpoint, container) in &mut self.transmit {
-            timed_out.extend(container.iter().filter_map(|PacketContainer { tid, info, .. }| {
+        for (endpoint, container) in &self.transmit {
+            for PacketContainer { tid, info, .. } in container {
+                // FIXME PR_GATE: do we need to also check the packet_timeout here?
                 if info.retry_count >= info.max_retries {
-                    Some((*tid, *endpoint))
-                } else {
-                    None
+                    timed_out.push((*tid, *endpoint));
                 }
-            }));
+            }
         }
         timed_out
     }
