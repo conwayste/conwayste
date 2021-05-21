@@ -10,16 +10,16 @@ use std::time::{Duration, Instant};
 struct PacketInfo {
     // FIXME: what does this timeout mean exactly (what happens when the timeout has been
     // exceeded)?
-    packet_timeout: Duration,
-    last_transmit:  Instant,
-    max_retries:    usize,
-    retry_count:    usize,
+    transmit_interval: Duration,
+    last_transmit:     Instant,
+    max_retries:       usize,
+    retry_count:       usize,
 }
 
 impl PacketInfo {
-    pub fn new(packet_timeout: Duration, max_retries: usize) -> Self {
+    pub fn new(transmit_interval: Duration, max_retries: usize) -> Self {
         PacketInfo {
-            packet_timeout,
+            transmit_interval,
             last_transmit: Instant::now(),
             max_retries,
             retry_count: 0,
@@ -155,7 +155,7 @@ impl<P> EndpointData<P> {
         endpoint: Endpoint,
         tid: usize,
         item: P,
-        packet_timeout: Duration,
+        transmit_interval: Duration,
         max_retries: usize,
     ) -> Result<()> {
         match self.transmit.entry(endpoint) {
@@ -169,7 +169,7 @@ impl<P> EndpointData<P> {
             Entry::Occupied(mut entry) => entry.get_mut().push_back(PacketContainer::new(
                 tid,
                 item,
-                PacketInfo::new(packet_timeout, max_retries),
+                PacketInfo::new(transmit_interval, max_retries),
             )),
         }
 
@@ -334,7 +334,7 @@ impl<P> EndpointData<P> {
                 // If there are retries available and the time since last transmission exceeds the
                 // packet timeout duraion, then set the last transmission time, increment the retry
                 // count, and select this packet.
-                if info.retry_count < info.max_retries && Instant::now() - info.last_transmit > info.packet_timeout {
+                if info.retry_count < info.max_retries && Instant::now() - info.last_transmit > info.transmit_interval {
                     info.last_transmit = Instant::now();
                     info.retry_count += 1;
                     retry_qualified.push((&*packet, *endpoint));
@@ -350,7 +350,7 @@ impl<P> EndpointData<P> {
         let mut timed_out = vec![];
         for (endpoint, container) in &self.transmit {
             for PacketContainer { tid, info, .. } in container {
-                // FIXME PR_GATE: do we need to also check the packet_timeout here?
+                // FIXME PR_GATE: do we need to also check the transmit_interval here?
                 if info.retry_count >= info.max_retries {
                     timed_out.push((*tid, *endpoint));
                 }
