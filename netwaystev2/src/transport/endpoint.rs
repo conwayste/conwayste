@@ -331,9 +331,8 @@ impl<P> EndpointData<P> {
 
         for (endpoint, container) in &mut self.transmit {
             for PacketContainer { packet, info, .. } in container {
-                // If there are retries available and the time since last transmission exceeds the
-                // packet timeout duraion, then set the last transmission time, increment the retry
-                // count, and select this packet.
+                // Add the packet to the list of retriable packets if enough time has passed since the last transmission,
+                // and not all retries have been exhausted.
                 if info.retry_count < info.max_retries && Instant::now() - info.last_transmit > info.transmit_interval {
                     info.last_transmit = Instant::now();
                     info.retry_count += 1;
@@ -346,11 +345,11 @@ impl<P> EndpointData<P> {
     }
 
     /// Returns a list of packets (via transmit id) that have timed-out across all endpoints.
+    /// These packets have no more retries left to consume.
     pub fn timed_out_packets(&self) -> Vec<(usize, Endpoint)> {
         let mut timed_out = vec![];
         for (endpoint, container) in &self.transmit {
             for PacketContainer { tid, info, .. } in container {
-                // FIXME PR_GATE: do we need to also check the transmit_interval here?
                 if info.retry_count >= info.max_retries {
                     timed_out.push((*tid, *endpoint));
                 }
