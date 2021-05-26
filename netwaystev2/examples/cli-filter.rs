@@ -4,8 +4,9 @@ extern crate env_logger;
 extern crate log;
 
 use netwaystev2::common::Endpoint;
+use netwaystev2::filter::Filter;
 use netwaystev2::transport::Transport;
-use netwaystev2::transport::{PacketSettings, TransportCmd, TransportNotice, TransportQueueKind, TransportRsp};
+use netwaystev2::transport::{PacketSettings, TransportCmd};
 
 use anyhow::Result;
 use std::io::Write;
@@ -31,7 +32,7 @@ async fn main() -> Result<()> {
         .target(env_logger::Target::Stdout)
         .init();
 
-    let (mut transport, transport_cmd_tx, mut transport_rsp_rx, mut transport_notice_rx) = Transport::new(None, None)?;
+    let (mut transport, transport_cmd_tx, transport_rsp_rx, transport_notice_rx) = Transport::new(None, None)?;
 
     tokio::spawn(async move { transport.run().await });
     info!("Transport initialized!");
@@ -58,72 +59,10 @@ async fn main() -> Result<()> {
         })
         .await?;
 
-    loop {
-        tokio::select! {
-            response = transport_rsp_rx.recv() => {
-                // trace!("Transport Response: {:?}", response);
+    let mut filter = Filter::new(transport_cmd_tx, transport_rsp_rx, transport_notice_rx);
 
-                if let Some(response) = response {
-                    match response {
-                        TransportRsp::Accepted => {
-                            trace!("Transport Command Accepted");
-                        }
-                        TransportRsp::QueueCount{endpoint, kind: _, count: _} => {
-                            // XXX Take received packets
-                            transport_cmd_tx.send(TransportCmd::TakeReceivePackets{
-                                endpoint,
-                            }).await?;
-                        }
-                        TransportRsp::TakenPackets{packets} => {
-                            for p in packets {
-                                trace!("Took packet: {:?}", p);
-                            }
-                        }
-                        TransportRsp::SendPacketsLengthMismatch => {
-                            error!("Packet and PacketSettings data did not align")
-                        }
-                        TransportRsp::BufferFull => {
-                            // XXX
-                            error!("Transmit buffer is full");
-                        }
-                        TransportRsp::ExceedsMtu {tid} => {
-                            // XXX
-                            error!("Packet exceeds MTU size. Tid={}", tid);
-                        }
-                        TransportRsp::EndpointError {error} => {
-                            error!("Transport Layer error: {:?}", error);
-                        }
-                    }
-                }
-            }
-            notice = transport_notice_rx.recv() => {
-                if let Some(notice) = notice {
-                    match notice {
-                        TransportNotice::PacketsAvailable {
-                            endpoint,
-                        } => {
-                            info!("Packets Available for Endpoint {:?}.", endpoint);
-                            transport_cmd_tx.send(TransportCmd::GetQueueCount{
-                                endpoint,
-                                kind: TransportQueueKind::Receive
-                            }).await?
-                        }
-                        TransportNotice::EndpointTimeout {
-                            endpoint,
-                        } => {
-                            info!("Endpoint {:?} timed-out. Dropping.", endpoint);
-                            transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await?;
-                        }
-                        TransportNotice::PacketTimeout {
-                            endpoint,
-                            tid,
-                        } => {
-                            info!("Packet (tid = {}) timed-out for {:?}. Dropping.", tid, endpoint);
-                            transport_cmd_tx.send(TransportCmd::DropPacket{endpoint, tid}).await?;
-                        }
-                    }
-                }
-            }
-        }
-    }
+    tokio::spawn(async move { filter.run().await });
+    info!("Filter initialized!");
+
+    loop {}
 }

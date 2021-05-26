@@ -7,6 +7,7 @@ extern crate serde;
 extern crate thiserror;
 
 pub mod common;
+pub mod filter;
 mod settings;
 pub mod transport;
 

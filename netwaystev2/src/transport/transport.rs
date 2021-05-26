@@ -21,14 +21,14 @@ use tokio::time as TokioTime;
 use tokio_stream::wrappers::IntervalStream;
 use tokio_util::udp::UdpFramed;
 
-type TransportCmdSend = Sender<TransportCmd>;
+pub type TransportCmdSend = Sender<TransportCmd>;
 type TransportCmdRecv = Receiver<TransportCmd>;
 
 type TransportRspSend = Sender<TransportRsp>;
-type TransportRspRecv = Receiver<TransportRsp>;
+pub type TransportRspRecv = Receiver<TransportRsp>;
 
 type TransportNotifySend = Sender<TransportNotice>;
-type TransportNotifyRecv = Receiver<TransportNotice>;
+pub type TransportNotifyRecv = Receiver<TransportNotice>;
 
 type TransportInit = (Transport, TransportCmdSend, TransportRspRecv, TransportNotifyRecv);
 
