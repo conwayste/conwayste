@@ -8,7 +8,7 @@ edition = "2018"
 #base64         = "0.13.0"
 #clap           = "2"
 #conway         = { path = "../libconway" }
-#rand           = "0.8.3"
+rand           = "0.8.3"
 #regex          = "1"
 #semver         = "0.11.0"
 #time           = "0.1"

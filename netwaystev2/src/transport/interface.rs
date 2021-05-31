@@ -1,8 +1,10 @@
 use crate::common::Endpoint;
-
-use serde::{Deserialize, Serialize};
+use crate::filter::Packet;
 
 use std::time::Duration;
+
+// https://serverfault.com/questions/645890/tcpdump-truncates-to-1472-bytes-useful-data-in-udp-packets-during-the-capture/645892#645892
+pub const UDP_MTU_SIZE: usize = 1472;
 
 #[derive(Debug, Copy, Clone)]
 pub enum TransportQueueKind {
@@ -28,8 +30,7 @@ pub enum TransportCmd {
     SendPackets {
         endpoint:     Endpoint,
         packet_infos: Vec<PacketSettings>,
-        // PR_GATE Change String to Packet
-        packets:      Vec<String>,
+        packets:      Vec<Packet>,
     },
     DropEndpoint {
         endpoint: Endpoint,
@@ -48,8 +49,7 @@ pub enum TransportCmd {
 pub enum TransportRsp {
     Accepted,
     TakenPackets {
-        // PR_GATE Change String to Packet
-        packets: Vec<String>,
+        packets: Vec<Packet>,
     },
     QueueCount {
         endpoint: Endpoint,
@@ -95,12 +95,6 @@ pub struct PacketSettings {
     pub retry_limit:    usize,
     /// The length of time in between each retry attempt
     pub retry_interval: Duration,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Packet {
-    /// PR_GATE Add additional fields here.
-    data: [u8; 10],
 }
 
 #[derive(Debug, thiserror::Error)]

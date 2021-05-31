@@ -1,14 +1,16 @@
+use super::interface::{FilterMode, Packet};
+use super::sortedbuffer::SortedBuffer;
 use crate::transport::{
     TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportQueueKind, TransportRsp,
     TransportRspRecv,
 };
-
 use anyhow::Result;
 
 pub struct Filter {
     transport_cmd_tx:    TransportCmdSend,
     transport_rsp_rx:    TransportRspRecv,
     transport_notice_rx: TransportNotifyRecv,
+    mode:                FilterMode,
 }
 
 impl Filter {
@@ -16,11 +18,13 @@ impl Filter {
         transport_cmd_tx: TransportCmdSend,
         transport_rsp_rx: TransportRspRecv,
         transport_notice_rx: TransportNotifyRecv,
+        mode: FilterMode,
     ) -> Self {
         Filter {
             transport_cmd_tx,
             transport_rsp_rx,
             transport_notice_rx,
+            mode,
         }
     }
 
@@ -31,6 +35,8 @@ impl Filter {
         tokio::pin!(transport_cmd_tx);
         tokio::pin!(transport_rsp_rx);
         tokio::pin!(transport_notice_rx);
+
+        let mut sorted_buffer = SortedBuffer::new(self.mode);
 
         loop {
             tokio::select! {
@@ -51,6 +57,7 @@ impl Filter {
                             TransportRsp::TakenPackets{packets} => {
                                 for p in packets {
                                     trace!("Took packet: {:?}", p);
+                                    sorted_buffer.incoming_push(p);
                                 }
                             }
                             TransportRsp::SendPacketsLengthMismatch => {

@@ -1,4 +1,4 @@
-use super::interface::Packet;
+use crate::filter::Packet;
 
 use bincode::{deserialize, serialize};
 use bytes::{Buf, BytesMut};

@@ -118,29 +118,19 @@ impl<P> EndpointData<P> {
     }
 
     /// Enqueues data packets `item` to the received queue for the endpoint.
-    /// Will report an error if the endpoint does not exist.
+    ///
+    /// If the endpoint does not exist, the Transport layer might be seeing a new connection.
+    /// New connection has five seconds to complete authentication by a higher layer or it will be dropped.
     pub fn push_receive_queue(&mut self, endpoint: Endpoint, item: P) -> Result<()> {
         match self.receive.entry(endpoint) {
-            Entry::Vacant(_) => {
-                return Err(anyhow!(EndpointDataError::EndpointNotFound {
-                    queue_kind: TransportQueueKind::Receive,
-                    endpoint,
-                    message: "Failed to push packet".to_owned(),
-                }));
-            }
+            Entry::Vacant(_) => self.new_endpoint(endpoint, Duration::from_secs(5))?,
             Entry::Occupied(mut entry) => {
                 entry.get_mut().push_back(item);
             }
         }
 
         match self.endpoint_meta.entry(endpoint) {
-            Entry::Vacant(_) => {
-                return Err(anyhow!(EndpointDataError::EndpointNotFound {
-                    queue_kind: TransportQueueKind::Meta,
-                    endpoint,
-                    message: "Failed to update last receive timestamp".to_owned(),
-                }));
-            }
+            Entry::Vacant(_) => self.new_endpoint(endpoint, Duration::from_secs(5))?,
             Entry::Occupied(mut entry) => entry.get_mut().last_receive = Some(Instant::now()),
         }
         Ok(())

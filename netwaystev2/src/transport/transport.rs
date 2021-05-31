@@ -1,10 +1,11 @@
 use super::endpoint::EndpointData;
 use super::interface::{
     TransportCmd::{self, *},
-    TransportNotice, TransportQueueKind, TransportRsp,
+    TransportNotice, TransportQueueKind, TransportRsp, UDP_MTU_SIZE,
 };
-use super::udp_codec::LinesCodec; // PR_GATE use NetwaystePacketCodec once bring-up is complete
+use super::udp_codec::NetwaystePacketCodec;
 use crate::common::Endpoint;
+use crate::filter::Packet;
 use crate::settings::*;
 
 use std::time::Duration;
@@ -32,23 +33,16 @@ pub type TransportNotifyRecv = Receiver<TransportNotice>;
 
 type TransportInit = (Transport, TransportCmdSend, TransportRspRecv, TransportNotifyRecv);
 
-//type TransportItem = (Packet, SocketAddr);
-type TransportItem = (String, SocketAddr);
-
-// https://serverfault.com/questions/645890/tcpdump-truncates-to-1472-bytes-useful-data-in-udp-packets-during-the-capture/645892#645892
-const UDP_MTU_SIZE: usize = 1472;
+type TransportItem = (Packet, SocketAddr);
 
 pub struct Transport {
     requests:        TransportCmdRecv,
     responses:       TransportRspSend,
     notifications:   TransportNotifySend,
-    //udp_stream_send: SplitSink<UdpFramed<NetwaystePacketCodec>, (Packet, SocketAddr)>,
-    //udp_stream_recv: Fuse<SplitStream<UdpFramed<NetwaystePacketCodec>>>,
-    udp_stream_send: SplitSink<UdpFramed<LinesCodec>, TransportItem>,
-    udp_stream_recv: Fuse<SplitStream<UdpFramed<LinesCodec>>>,
+    udp_stream_send: SplitSink<UdpFramed<NetwaystePacketCodec>, (Packet, SocketAddr)>,
+    udp_stream_recv: Fuse<SplitStream<UdpFramed<NetwaystePacketCodec>>>,
 
-    //endpoints: EndpointData<PacketSettings>,
-    endpoints: EndpointData<String>,
+    endpoints: EndpointData<Packet>,
 }
 
 impl Transport {
@@ -57,7 +51,7 @@ impl Transport {
         let udp_socket = bind(opt_host, opt_port)?;
 
         // Split the socket into a two-part stream
-        let udp_stream = UdpFramed::new(udp_socket, LinesCodec::new());
+        let udp_stream = UdpFramed::new(udp_socket, NetwaystePacketCodec);
         let (udp_stream_send, udp_stream_recv) = udp_stream.split();
         let udp_stream_recv = udp_stream_recv.fuse();
 
@@ -115,8 +109,8 @@ impl Transport {
                     // Resend any packets in the transmit queue at their retry interval or send PacketTimeout
                     let retry_packets = self.endpoints.retriable_packets();
 
-                    for (data_ref, endpoint) in retry_packets {
-                        udp_stream_send.send((data_ref.to_owned(), endpoint.0)).await?;
+                    for (packet_ref, endpoint) in retry_packets {
+                        udp_stream_send.send((packet_ref.to_owned(), endpoint.0)).await?;
                     }
 
                     let packet_timeouts = self.endpoints.timed_out_packets();
@@ -152,9 +146,9 @@ fn bind(opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket> {
 }
 
 async fn process_transport_command(
-    endpoints: &mut EndpointData<String>,
+    endpoints: &mut EndpointData<Packet>,
     command: TransportCmd,
-    udp_send: &mut Pin<&mut &mut SplitSink<UdpFramed<LinesCodec>, (std::string::String, std::net::SocketAddr)>>,
+    udp_send: &mut Pin<&mut &mut SplitSink<UdpFramed<NetwaystePacketCodec>, (Packet, std::net::SocketAddr)>>,
 ) -> Vec<TransportRsp> {
     let mut cmd_responses = vec![];
     match command {
@@ -170,6 +164,7 @@ async fn process_transport_command(
             |error| TransportRsp::EndpointError { error },
             |packets| {
                 if !packets.is_empty() {
+                    let packets = packets.into_iter().map(|pb| pb.into()).collect();
                     TransportRsp::TakenPackets { packets }
                 } else {
                     TransportRsp::Accepted
