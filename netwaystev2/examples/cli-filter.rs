@@ -11,6 +11,7 @@ use netwaystev2::transport::{PacketSettings, TransportCmd};
 use anyhow::Result;
 use std::io::Write;
 use std::time::Duration;
+use tokio::time::sleep;
 
 use chrono::Local;
 
@@ -54,5 +55,7 @@ async fn main() -> Result<()> {
     tokio::spawn(async move { filter.run().await });
     info!("Filter initialized!");
 
-    loop {}
+    // Sleep for a really really long time
+    sleep(Duration::from_secs(u64::max_value())).await;
+    Ok(())
 }

@@ -41,12 +41,12 @@ impl Filter {
         loop {
             tokio::select! {
                 response = transport_rsp_rx.recv() => {
-                    // trace!("Transport Response: {:?}", response);
+                    // trace!("FILTER: Transport Response: {:?}", response);
 
                     if let Some(response) = response {
                         match response {
                             TransportRsp::Accepted => {
-                                trace!("Transport Command Accepted");
+                                trace!("FILTER: Transport Command Accepted");
                             }
                             TransportRsp::QueueCount{endpoint, kind: _, count: _} => {
                                 // XXX Take received packets
@@ -56,7 +56,7 @@ impl Filter {
                             }
                             TransportRsp::TakenPackets{packets} => {
                                 for p in packets {
-                                    trace!("Took packet: {:?}", p);
+                                    trace!("FILTER: Took packet: {:?}", p);
                                     sorted_buffer.incoming_push(p);
                                 }
                             }
@@ -65,14 +65,14 @@ impl Filter {
                             }
                             TransportRsp::BufferFull => {
                                 // XXX
-                                error!("Transmit buffer is full");
+                                error!("FILTER: Transmit buffer is full");
                             }
                             TransportRsp::ExceedsMtu {tid} => {
                                 // XXX
-                                error!("Packet exceeds MTU size. Tid={}", tid);
+                                error!("FILTER: Packet exceeds MTU size. Tid={}", tid);
                             }
                             TransportRsp::EndpointError {error} => {
-                                error!("Transport Layer error: {:?}", error);
+                                error!("FILTER: Transport Layer error: {:?}", error);
                             }
                         }
                     }
@@ -83,7 +83,7 @@ impl Filter {
                             TransportNotice::PacketsAvailable {
                                 endpoint,
                             } => {
-                                info!("Packets Available for Endpoint {:?}.", endpoint);
+                                info!("FILTER: Packets Available for Endpoint {:?}.", endpoint);
                                 transport_cmd_tx.send(TransportCmd::GetQueueCount{
                                     endpoint,
                                     kind: TransportQueueKind::Receive
@@ -92,14 +92,14 @@ impl Filter {
                             TransportNotice::EndpointTimeout {
                                 endpoint,
                             } => {
-                                info!("Endpoint {:?} timed-out. Dropping.", endpoint);
+                                info!("FILTER: Endpoint {:?} timed-out. Dropping.", endpoint);
                                 transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await?;
                             }
                             TransportNotice::PacketTimeout {
                                 endpoint,
                                 tid,
                             } => {
-                                info!("Packet (tid = {}) timed-out for {:?}. Dropping.", tid, endpoint);
+                                info!("FILTER: Packet (tid = {}) timed-out for {:?}. Dropping.", tid, endpoint);
                                 transport_cmd_tx.send(TransportCmd::DropPacket{endpoint, tid}).await?;
                             }
                         }

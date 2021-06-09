@@ -86,7 +86,7 @@ impl LatencyFilter {
 
     pub fn update(&mut self) {
         if !self.in_progress {
-            error!("The LatencyFilter's start() was not called so a duration cannot be computed.");
+            error!("FILTER: The LatencyFilter's start() was not called so a duration cannot be computed.");
             let elapsed = self.start_timestamp.elapsed();
             error!(
                 "LatencyFilter.start_timestamp snapshot was {}.{:06} seconds ago.",
