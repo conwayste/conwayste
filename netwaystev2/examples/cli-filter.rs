@@ -33,11 +33,17 @@ async fn main() -> Result<()> {
         .target(env_logger::Target::Stdout)
         .init();
 
+    // The interesting stuff starts here!
+
+    // Create the lowest (Transport) layer, returning the layer itself plus three channel halves
+    // (one outgoing and two incoming) for communicating with it.
     let (mut transport, transport_cmd_tx, transport_rsp_rx, transport_notice_rx) = Transport::new(None, None)?;
 
+    // Start the transport's task in the background
     tokio::spawn(async move { transport.run().await });
     info!("Transport initialized!");
 
+    // Send a fake "NewEndpoint" command to the transport layer to kick things off
     transport_cmd_tx
         .send(TransportCmd::NewEndpoint {
             endpoint: Endpoint("127.0.0.1:2017".parse().unwrap()),
@@ -45,6 +51,8 @@ async fn main() -> Result<()> {
         })
         .await?;
 
+    // Create the second lowest (Filter) layer, passing in the channel halves that connect to the
+    // layer below it
     let mut filter = Filter::new(
         transport_cmd_tx,
         transport_rsp_rx,
@@ -52,10 +60,12 @@ async fn main() -> Result<()> {
         FilterMode::Server,
     );
 
+    // Start the filter's task in the background
     tokio::spawn(async move { filter.run().await });
     info!("Filter initialized!");
 
     // Sleep for a really really long time
+    // TODO: wait for shutdown signal, and then coordinate shutdown with all the layers
     sleep(Duration::from_secs(u64::max_value())).await;
     Ok(())
 }
