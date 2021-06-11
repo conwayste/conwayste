@@ -87,17 +87,17 @@ impl Transport {
         loop {
             tokio::select! {
                 Some(cmd) = self.requests.recv() => {
-                    trace!("TRANSPORT: Filter Request: {:?}", cmd);
+                    trace!("[TRANSPORT] Filter Request: {:?}", cmd);
                     for response in process_transport_command(&mut self.endpoints, cmd, &mut udp_stream_send).await {
                         self.responses.send(response).await?;
                     }
                 }
                 item_address_result = udp_stream_recv.select_next_some() => {
                     if let Ok((item, address)) = item_address_result {
-                        trace!("TRANSPORT: LinesCodec data: {:?}", item);
+                        trace!("[TRANSPORT] UDP Codec data: {:?}", item);
 
                         if let Err(e) = self.endpoints.push_receive_queue(Endpoint(address), item) {
-                            warn!("TRANSPORT: {}", e);
+                            warn!("[TRANSPORT] {}", e);
                         } else {
                             self.notifications.send(TransportNotice::PacketsAvailable{
                                 endpoint: Endpoint(address)
@@ -137,7 +137,7 @@ fn bind(opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket> {
     let port = if let Some(port) = opt_port { port } else { DEFAULT_PORT };
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
 
-    info!("TRANSPORT: Attempting to bind to {}", addr);
+    info!("[TRANSPORT] Attempting to bind to {}", addr);
 
     let sock_fut = UdpSocket::bind(&addr);
     let sock = futures::executor::block_on(sock_fut)?;
