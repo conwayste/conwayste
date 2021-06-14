@@ -160,7 +160,7 @@ async fn process_transport_command(
             |error| TransportRsp::EndpointError { error },
             |count| TransportRsp::QueueCount { endpoint, kind, count },
         )),
-        TakeReceivePackets { endpoint } => cmd_responses.push(endpoints.drain_receive_queue(endpoint).map_or_else(
+        TakeReceivedPackets { endpoint } => cmd_responses.push(endpoints.drain_receive_queue(endpoint).map_or_else(
             |error| TransportRsp::EndpointError { error },
             |packets| {
                 if !packets.is_empty() {

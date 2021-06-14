@@ -12,12 +12,12 @@ struct PacketInfo {
     // exceeded)?
     transmit_interval: Duration,
     last_transmit:     Instant,
-    max_retries:       usize,
+    max_retries:       Option<usize>,
     retry_count:       usize,
 }
 
 impl PacketInfo {
-    pub fn new(transmit_interval: Duration, max_retries: usize) -> Self {
+    pub fn new(transmit_interval: Duration, max_retries: Option<usize>) -> Self {
         PacketInfo {
             transmit_interval,
             last_transmit: Instant::now(),
@@ -146,7 +146,7 @@ impl<P> EndpointData<P> {
         tid: usize,
         item: P,
         transmit_interval: Duration,
-        max_retries: usize,
+        max_retries: Option<usize>,
     ) -> Result<()> {
         match self.transmit.entry(endpoint) {
             Entry::Vacant(_) => {
@@ -323,7 +323,12 @@ impl<P> EndpointData<P> {
             for PacketContainer { packet, info, .. } in container {
                 // Add the packet to the list of retriable packets if enough time has passed since the last transmission,
                 // and not all retries have been exhausted.
-                if info.retry_count < info.max_retries && Instant::now() - info.last_transmit > info.transmit_interval {
+                if Instant::now() - info.last_transmit > info.transmit_interval {
+                    if let Some(max_retries) = info.max_retries {
+                        if info.retry_count >= max_retries {
+                            continue;
+                        }
+                    }
                     info.last_transmit = Instant::now();
                     info.retry_count += 1;
                     retry_qualified.push((&*packet, *endpoint));
@@ -340,8 +345,10 @@ impl<P> EndpointData<P> {
         let mut timed_out = vec![];
         for (endpoint, container) in &self.transmit {
             for PacketContainer { tid, info, .. } in container {
-                if info.retry_count >= info.max_retries {
-                    timed_out.push((*tid, *endpoint));
+                if let Some(max_retries) = info.max_retries {
+                    if info.retry_count >= max_retries {
+                        timed_out.push((*tid, *endpoint));
+                    }
                 }
             }
         }

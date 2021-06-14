@@ -24,7 +24,7 @@ pub enum TransportCmd {
         endpoint: Endpoint,
         kind:     TransportQueueKind,
     },
-    TakeReceivePackets {
+    TakeReceivedPackets {
         endpoint: Endpoint,
     },
     SendPackets {
@@ -74,7 +74,7 @@ pub enum TransportNotice {
         endpoint: Endpoint,
     },
 
-    // The maximum time since a packet was received from this endpoint was exceeded.
+    /// The maximum time since a packet was received from this endpoint was exceeded.
     EndpointTimeout {
         endpoint: Endpoint,
     },
@@ -92,7 +92,7 @@ pub struct PacketSettings {
     /// Transmit ID, a unique identifier used to sync packet transactions between the filter and Transport layers
     pub tid:            usize,
     /// The maximum number of retries for a Packet
-    pub retry_limit:    usize,
+    pub retry_limit:    Option<usize>,
     /// The length of time in between each retry attempt
     pub retry_interval: Duration,
 }

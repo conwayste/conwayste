@@ -50,7 +50,7 @@ impl Filter {
                             }
                             TransportRsp::QueueCount{endpoint, kind: _, count: _} => {
                                 // XXX Take received packets
-                                transport_cmd_tx.send(TransportCmd::TakeReceivePackets{
+                                transport_cmd_tx.send(TransportCmd::TakeReceivedPackets{
                                     endpoint,
                                 }).await?;
                             }
