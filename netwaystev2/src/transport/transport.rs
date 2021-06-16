@@ -158,7 +158,7 @@ async fn process_transport_command(
             |packets| {
                 if !packets.is_empty() {
                     let packets = packets.into_iter().map(|pb| pb.into()).collect();
-                    TransportRsp::TakenPackets { packets }
+                    TransportRsp::TakenPackets { endpoint, packets }
                 } else {
                     TransportRsp::Accepted
                 }

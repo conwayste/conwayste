@@ -49,6 +49,7 @@ pub enum TransportCmd {
 pub enum TransportRsp {
     Accepted,
     TakenPackets {
+        endpoint: Endpoint,
         packets: Vec<Packet>,
     },
     QueueCount {

@@ -157,23 +157,6 @@ pub enum Packet {
     }, // Provide basic server information to the requester
 }
 
-impl Packet {
-    pub fn ordering(&self) -> u64 {
-        match self {
-            Packet::Request { sequence, .. } => *sequence,
-            Packet::Response { sequence, .. } => *sequence,
-            Packet::Update { .. } => {
-                // TODO:  Define Update ordering
-                0
-            }
-            _ => {
-                // All other variants of Packet have no strict ordering
-                unimplemented!()
-            }
-        }
-    }
-}
-
 impl Default for Packet {
     fn default() -> Self {
         Packet::Request {
@@ -185,27 +168,8 @@ impl Default for Packet {
     }
 }
 
-impl Ord for Packet {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.ordering().cmp(&other.ordering())
-    }
-}
 
-impl PartialEq for Packet {
-    fn eq(&self, other: &Self) -> bool {
-        self.ordering() == other.ordering()
-    }
-}
 
-impl PartialOrd for Packet {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-// Marker trait impl for Ord without needing to pass `Eq` down to all nested types of Packet (like RequestAction).
-impl Eq for Packet {
-}
 
 // chat messages sent from server to all clients other than originating client
 #[derive(Serialize, Deserialize, Debug, Clone)]
