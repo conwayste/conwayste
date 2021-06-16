@@ -12,16 +12,14 @@ struct PacketInfo {
     // exceeded)?
     transmit_interval: Duration,
     last_transmit:     Instant,
-    max_retries:       Option<usize>,
     retry_count:       usize,
 }
 
 impl PacketInfo {
-    pub fn new(transmit_interval: Duration, max_retries: Option<usize>) -> Self {
+    pub fn new(transmit_interval: Duration) -> Self {
         PacketInfo {
             transmit_interval,
             last_transmit: Instant::now(),
-            max_retries,
             retry_count: 0,
         }
     }
@@ -146,7 +144,6 @@ impl<P> EndpointData<P> {
         tid: usize,
         item: P,
         transmit_interval: Duration,
-        max_retries: Option<usize>,
     ) -> Result<()> {
         match self.transmit.entry(endpoint) {
             Entry::Vacant(_) => {
@@ -159,7 +156,7 @@ impl<P> EndpointData<P> {
             Entry::Occupied(mut entry) => entry.get_mut().push_back(PacketContainer::new(
                 tid,
                 item,
-                PacketInfo::new(transmit_interval, max_retries),
+                PacketInfo::new(transmit_interval),
             )),
         }
 
@@ -324,11 +321,6 @@ impl<P> EndpointData<P> {
                 // Add the packet to the list of retriable packets if enough time has passed since the last transmission,
                 // and not all retries have been exhausted.
                 if Instant::now() - info.last_transmit > info.transmit_interval {
-                    if let Some(max_retries) = info.max_retries {
-                        if info.retry_count >= max_retries {
-                            continue;
-                        }
-                    }
                     info.last_transmit = Instant::now();
                     info.retry_count += 1;
                     retry_qualified.push((&*packet, *endpoint));
@@ -337,21 +329,5 @@ impl<P> EndpointData<P> {
         }
 
         retry_qualified
-    }
-
-    /// Returns a list of packets (via transmit id) that have timed-out across all endpoints.
-    /// These packets have no more retries left to consume.
-    pub fn timed_out_packets(&self) -> Vec<(usize, Endpoint)> {
-        let mut timed_out = vec![];
-        for (endpoint, container) in &self.transmit {
-            for PacketContainer { tid, info, .. } in container {
-                if let Some(max_retries) = info.max_retries {
-                    if info.retry_count >= max_retries {
-                        timed_out.push((*tid, *endpoint));
-                    }
-                }
-            }
-        }
-        timed_out
     }
 }

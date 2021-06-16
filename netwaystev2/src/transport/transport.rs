@@ -113,13 +113,6 @@ impl Transport {
                         udp_stream_send.send((packet_ref.to_owned(), endpoint.0)).await?;
                     }
 
-                    let packet_timeouts = self.endpoints.timed_out_packets();
-                    for (tid, endpoint) in packet_timeouts {
-                        self.notifications.send(TransportNotice::PacketTimeout {
-                            endpoint, tid
-                        }).await?;
-                    }
-
                     // Notify filter of any endpoints that have timed-out
                     for endpoint in  self.endpoints.timed_out_endpoints() {
                         self.notifications.send(TransportNotice::EndpointTimeout {
@@ -191,7 +184,6 @@ async fn process_transport_command(
                                         pi.tid,
                                         p.to_owned(),
                                         pi.retry_interval,
-                                        pi.retry_limit,
                                     )
                                     .map_or_else(
                                         |error| TransportRsp::EndpointError { error },

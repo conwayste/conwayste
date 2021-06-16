@@ -95,13 +95,6 @@ impl Filter {
                                 info!("[FILTER] Endpoint {:?} timed-out. Dropping.", endpoint);
                                 transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await?;
                             }
-                            TransportNotice::PacketTimeout {
-                                endpoint,
-                                tid,
-                            } => {
-                                info!("[FILTER] Packet (tid = {}) timed-out for {:?}. Dropping.", tid, endpoint);
-                                transport_cmd_tx.send(TransportCmd::DropPacket{endpoint, tid}).await?;
-                            }
                         }
                     }
                 }

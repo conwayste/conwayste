@@ -78,12 +78,6 @@ pub enum TransportNotice {
     EndpointTimeout {
         endpoint: Endpoint,
     },
-
-    /// A packet in the tx queue for this endpoint has been resent the maximum number of times
-    PacketTimeout {
-        endpoint: Endpoint,
-        tid:      usize,
-    },
 }
 
 /// Used by the Filter layer to inform the Transport layer of packet settings
@@ -91,8 +85,6 @@ pub enum TransportNotice {
 pub struct PacketSettings {
     /// Transmit ID, a unique identifier used to sync packet transactions between the filter and Transport layers
     pub tid:            usize,
-    /// The maximum number of retries for a Packet
-    pub retry_limit:    Option<usize>,
     /// The length of time in between each retry attempt
     pub retry_interval: Duration,
 }
