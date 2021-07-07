@@ -11,4 +11,4 @@ env_logger = "0.8"
 log        = "0.4"
 rand       = "0.8"
 serde        = {version="1.0.126", features=["derive"]}
-custom_error = "1.8"
+custom_error = "1.9"
