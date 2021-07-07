@@ -10,7 +10,7 @@ chromatica   = "1.0.1"
 chrono       = "0.4.19"
 color-backtrace = "0.5"
 conway       = { path = "../libconway" }
-custom_error = "1.8"
+custom_error = "1.9"
 downcast-rs  = "1.2.0"
 enum-iterator = "0.6"
 env_logger   = "0.8.3"

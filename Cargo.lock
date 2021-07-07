@@ -922,9 +922,9 @@ dependencies = [
 
 [[package]]
 name = "custom_error"
-version = "1.8.0"
+version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51ac5e99a7fea3ee8a03fa4721a47e2efd3fbb38358fc61192a54d4c6f866c12"
+checksum = "4f8a51dd197fa6ba5b4dc98a990a43cc13693c23eb0089ebb0fcc1f04152bca6"
 
 [[package]]
 name = "darling"
