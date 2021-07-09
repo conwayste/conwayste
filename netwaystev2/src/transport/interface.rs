@@ -6,26 +6,12 @@ use std::time::Duration;
 // https://serverfault.com/questions/645890/tcpdump-truncates-to-1472-bytes-useful-data-in-udp-packets-during-the-capture/645892#645892
 pub const UDP_MTU_SIZE: usize = 1472;
 
-#[derive(Debug, Copy, Clone)]
-pub enum TransportQueueKind {
-    Transmit,
-    Receive,
-    Meta,
-}
-
 /// Filter layer sends these commands to the Transport Layer to manage endpoints and their packets
 #[derive(Debug)]
 pub enum TransportCmd {
     NewEndpoint {
         endpoint: Endpoint,
         timeout:  Duration,
-    },
-    GetQueueCount {
-        endpoint: Endpoint,
-        kind:     TransportQueueKind,
-    },
-    TakeReceivedPackets {
-        endpoint: Endpoint,
     },
     SendPackets {
         endpoint:     Endpoint,
@@ -48,15 +34,6 @@ pub enum TransportCmd {
 #[derive(Debug)]
 pub enum TransportRsp {
     Accepted,
-    TakenPackets {
-        endpoint: Endpoint,
-        packets: Vec<Packet>,
-    },
-    QueueCount {
-        endpoint: Endpoint,
-        kind:     TransportQueueKind,
-        count:    usize,
-    },
     BufferFull,
     ExceedsMtu {
         tid: usize,
@@ -70,9 +47,10 @@ pub enum TransportRsp {
 /// Used by the Transport layer to inform the Filter layer of a packet or endpoint event
 #[derive(Debug)]
 pub enum TransportNotice {
-    /// There are packets available on this endpoint
-    PacketsAvailable {
+    /// Here is the received packet for this endpoint
+    PacketDelivery {
         endpoint: Endpoint,
+        packet: Packet,
     },
 
     /// The maximum time since a packet was received from this endpoint was exceeded.
@@ -92,29 +70,24 @@ pub struct PacketSettings {
 
 #[derive(Debug, thiserror::Error)]
 pub enum EndpointDataError {
-    #[error("{endpoint:?} not found in {queue_kind:?} queue: {message}")]
+    #[error("{endpoint:?} not found in transmit queue: {message}")]
     EndpointNotFound {
-        queue_kind: TransportQueueKind,
         endpoint:   Endpoint,
         message:    String,
     },
-    #[error("{endpoint:?} entry exists in {queue_kind:?} queue: {entry_found:?}")]
+    #[error("{endpoint:?} entry exists in transmit queue: {entry_found:?}")]
     EndpointExists {
-        queue_kind:  TransportQueueKind,
         endpoint:    Endpoint,
         entry_found: Endpoint,
     },
     #[error("Transmit ID {tid} not found for {endpoint:?} in Transmit queue")]
     TransmitIDNotFound { endpoint: Endpoint, tid: usize },
-    #[error("Could not remove packet at index {index} from {queue_kind:?} queue with tid {tid} for {endpoint:?}")]
+    #[error("Could not remove packet at index {index} from transmit queue with tid {tid} for {endpoint:?}")]
     PacketRemovalFailure {
-        queue_kind: TransportQueueKind,
         endpoint:   Endpoint,
         tid:        usize,
         index:      usize,
     },
-    #[error("Invalid queue-kind {kind:?}")]
-    InvalidQueueKind { kind: TransportQueueKind },
     #[error("{endpoint:?} could not be dropped : {message}")]
     EndpointDropFailed { endpoint: Endpoint, message: String },
 }

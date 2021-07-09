@@ -1,10 +1,13 @@
 use anyhow::anyhow;
 use std::collections::HashMap;
-use super::interface::{FilterMode, Packet};
+use super::{
+    SequencedMinHeap,
+    EndpointData,
+    interface::{FilterMode, Packet, RequestAction},
+};
 use crate::common::Endpoint;
-use super::EndpointData;
 use crate::transport::{
-    TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportQueueKind, TransportRsp,
+    TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp,
     TransportRspRecv,
 };
 use anyhow::Result;
@@ -52,18 +55,6 @@ impl Filter {
                             TransportRsp::Accepted => {
                                 trace!("[FILTER] Transport Command Accepted");
                             }
-                            TransportRsp::QueueCount{endpoint, kind: _, count: _} => {
-                                // XXX Take received packets
-                                transport_cmd_tx.send(TransportCmd::TakeReceivedPackets{
-                                    endpoint,
-                                }).await?;
-                            }
-                            TransportRsp::TakenPackets{endpoint, packets} => {
-                                for p in packets {
-                                    trace!("[FILTER] Took packet: {:?}", p);
-                                    self.process_incoming_packet(endpoint, p)?; //XXX the "?" is wrong!
-                                }
-                            }
                             TransportRsp::SendPacketsLengthMismatch => {
                                 error!("Packet and PacketSettings data did not align")
                             }
@@ -84,14 +75,15 @@ impl Filter {
                 notice = transport_notice_rx.recv() => {
                     if let Some(notice) = notice {
                         match notice {
-                            TransportNotice::PacketsAvailable {
+                            TransportNotice::PacketDelivery{
                                 endpoint,
+                                packet,
                             } => {
-                                info!("[FILTER] Packets Available for Endpoint {:?}.", endpoint);
-                                transport_cmd_tx.send(TransportCmd::GetQueueCount{
-                                    endpoint,
-                                    kind: TransportQueueKind::Receive
-                                }).await?
+                                info!("[FILTER] Packet Taken from Endpoint {:?}.", endpoint);
+                                trace!("[FILTER] Took packet: {:?}", packet);
+                                if let Err(e) = self.process_incoming_packet(endpoint, packet) {
+                                    error!("[FILTER] error processing incoming packet: {:?}", e);
+                                }
                             }
                             TransportNotice::EndpointTimeout {
                                 endpoint,
@@ -108,8 +100,18 @@ impl Filter {
     }
 
     fn process_incoming_packet(&mut self, endpoint: Endpoint, packet: Packet) -> anyhow::Result<()> {
-        // TODO PR_GATE: have this per_endpoint struct created at
-        // logical endpoint creation instead.
+        // TODO: also create endpoint data entry on a filter command to initiate a connection
+        // (client mode only).
+        if !self.per_endpoint.contains_key(&endpoint) {
+            if self.mode == FilterMode::Server {
+                self.per_endpoint.insert(endpoint, EndpointData::OtherEndClient{
+                    request_actions: SequencedMinHeap::<RequestAction>::new(),
+                });
+            } else {
+                // wrong but don't spam logs
+                return Ok(())
+            }
+        }
         let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
         match packet {
             Packet::Request{sequence, action, ..} => {

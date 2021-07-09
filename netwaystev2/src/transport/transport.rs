@@ -1,7 +1,7 @@
 use super::endpoint::EndpointData;
 use super::interface::{
     TransportCmd::{self, *},
-    TransportNotice, TransportQueueKind, TransportRsp, UDP_MTU_SIZE,
+    TransportNotice, TransportRsp, UDP_MTU_SIZE,
 };
 use super::udp_codec::NetwaystePacketCodec;
 use crate::common::Endpoint;
@@ -96,11 +96,12 @@ impl Transport {
                     if let Ok((item, address)) = item_address_result {
                         trace!("[TRANSPORT] UDP Codec data: {:?}", item);
 
-                        if let Err(e) = self.endpoints.push_receive_queue(Endpoint(address), item) {
+                        if let Err(e) = self.endpoints.update_last_received(Endpoint(address)) {
                             warn!("[TRANSPORT] {}", e);
                         } else {
-                            self.notifications.send(TransportNotice::PacketsAvailable{
-                                endpoint: Endpoint(address)
+                            self.notifications.send(TransportNotice::PacketDelivery{
+                                endpoint: Endpoint(address),
+                                packet: item,
                             }).await?;
                         }
                     }
@@ -149,21 +150,6 @@ async fn process_transport_command(
             |error| TransportRsp::EndpointError { error },
             |()| TransportRsp::Accepted,
         )),
-        GetQueueCount { endpoint, kind } => cmd_responses.push(endpoints.queue_count(endpoint, kind).map_or_else(
-            |error| TransportRsp::EndpointError { error },
-            |count| TransportRsp::QueueCount { endpoint, kind, count },
-        )),
-        TakeReceivedPackets { endpoint } => cmd_responses.push(endpoints.drain_receive_queue(endpoint).map_or_else(
-            |error| TransportRsp::EndpointError { error },
-            |packets| {
-                if !packets.is_empty() {
-                    let packets = packets.into_iter().map(|pb| pb.into()).collect();
-                    TransportRsp::TakenPackets { endpoint, packets }
-                } else {
-                    TransportRsp::Accepted
-                }
-            },
-        )),
         SendPackets {
             endpoint,
             packet_infos,
@@ -208,7 +194,7 @@ async fn process_transport_command(
         )),
         CancelTransmitQueue { endpoint } => cmd_responses.push(
             endpoints
-                .clear_queue(endpoint, TransportQueueKind::Transmit)
+                .clear_queue(endpoint)
                 .map_or_else(
                     |error| TransportRsp::EndpointError { error },
                     |()| TransportRsp::Accepted,
