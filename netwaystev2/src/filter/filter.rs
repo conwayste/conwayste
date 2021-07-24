@@ -1,23 +1,21 @@
-use anyhow::anyhow;
-use std::collections::HashMap;
 use super::{
-    SequencedMinHeap,
-    EndpointData,
     interface::{FilterMode, Packet, RequestAction},
+    FilterEndpointData, SequencedMinHeap,
 };
 use crate::common::Endpoint;
 use crate::transport::{
-    TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp,
-    TransportRspRecv,
+    TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp, TransportRspRecv,
 };
+use anyhow::anyhow;
 use anyhow::Result;
+use std::collections::HashMap;
 
 pub struct Filter {
     transport_cmd_tx:    TransportCmdSend,
-    transport_rsp_rx:    Option<TransportRspRecv>, // TODO no option
+    transport_rsp_rx:    Option<TransportRspRecv>,    // TODO no option
     transport_notice_rx: Option<TransportNotifyRecv>, // TODO no option
     mode:                FilterMode,
-    per_endpoint: HashMap<Endpoint, EndpointData>,
+    per_endpoint:        HashMap<Endpoint, FilterEndpointData>,
 }
 
 impl Filter {
@@ -104,32 +102,35 @@ impl Filter {
         // (client mode only).
         if !self.per_endpoint.contains_key(&endpoint) {
             if self.mode == FilterMode::Server {
-                self.per_endpoint.insert(endpoint, EndpointData::OtherEndClient{
-                    request_actions: SequencedMinHeap::<RequestAction>::new(),
-                });
+                self.per_endpoint.insert(
+                    endpoint,
+                    FilterEndpointData::OtherEndClient {
+                        request_actions: SequencedMinHeap::<RequestAction>::new(),
+                    },
+                );
             } else {
                 // wrong but don't spam logs
-                return Ok(())
+                return Ok(());
             }
         }
         let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
         match packet {
-            Packet::Request{sequence, action, ..} => {
+            Packet::Request { sequence, action, .. } => {
                 match endpoint_data {
-                    EndpointData::OtherEndClient{request_actions} => {
+                    FilterEndpointData::OtherEndClient { request_actions } => {
                         request_actions.add(sequence, action);
                     }
-                    EndpointData::OtherEndServer{..} => {
+                    FilterEndpointData::OtherEndServer { .. } => {
                         return Err(anyhow!("wrong mode")); // TODO: thiserror
                     }
                 }
             }
-            Packet::Response{sequence, code, ..} => {
+            Packet::Response { sequence, code, .. } => {
                 match endpoint_data {
-                    EndpointData::OtherEndClient{..} => {
+                    FilterEndpointData::OtherEndClient { .. } => {
                         return Err(anyhow!("wrong mode")); // TODO: thiserror
                     }
-                    EndpointData::OtherEndServer{response_codes} => {
+                    FilterEndpointData::OtherEndServer { response_codes } => {
                         response_codes.add(sequence, code);
                     }
                 }

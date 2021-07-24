@@ -35,12 +35,8 @@ pub enum TransportCmd {
 pub enum TransportRsp {
     Accepted,
     BufferFull,
-    ExceedsMtu {
-        tid: usize,
-    },
-    EndpointError {
-        error: anyhow::Error,
-    },
+    ExceedsMtu { tid: usize },
+    EndpointError { error: anyhow::Error },
     SendPacketsLengthMismatch,
 }
 
@@ -48,15 +44,10 @@ pub enum TransportRsp {
 #[derive(Debug)]
 pub enum TransportNotice {
     /// Here is the received packet for this endpoint
-    PacketDelivery {
-        endpoint: Endpoint,
-        packet: Packet,
-    },
+    PacketDelivery { endpoint: Endpoint, packet: Packet },
 
     /// The maximum time since a packet was received from this endpoint was exceeded.
-    EndpointTimeout {
-        endpoint: Endpoint,
-    },
+    EndpointTimeout { endpoint: Endpoint },
 }
 
 /// Used by the Filter layer to inform the Transport layer of packet settings
@@ -69,12 +60,9 @@ pub struct PacketSettings {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum EndpointDataError {
+pub enum TransportEndpointDataError {
     #[error("{endpoint:?} not found in transmit queue: {message}")]
-    EndpointNotFound {
-        endpoint:   Endpoint,
-        message:    String,
-    },
+    EndpointNotFound { endpoint: Endpoint, message: String },
     #[error("{endpoint:?} entry exists in transmit queue: {entry_found:?}")]
     EndpointExists {
         endpoint:    Endpoint,
@@ -84,9 +72,9 @@ pub enum EndpointDataError {
     TransmitIDNotFound { endpoint: Endpoint, tid: usize },
     #[error("Could not remove packet at index {index} from transmit queue with tid {tid} for {endpoint:?}")]
     PacketRemovalFailure {
-        endpoint:   Endpoint,
-        tid:        usize,
-        index:      usize,
+        endpoint: Endpoint,
+        tid:      usize,
+        index:    usize,
     },
     #[error("{endpoint:?} could not be dropped : {message}")]
     EndpointDropFailed { endpoint: Endpoint, message: String },

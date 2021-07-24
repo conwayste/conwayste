@@ -1,4 +1,4 @@
-use super::endpoint::EndpointData;
+use super::endpoint::TransportEndpointData;
 use super::interface::{
     TransportCmd::{self, *},
     TransportNotice, TransportRsp, UDP_MTU_SIZE,
@@ -42,7 +42,7 @@ pub struct Transport {
     udp_stream_send: SplitSink<UdpFramed<NetwaystePacketCodec>, (Packet, SocketAddr)>,
     udp_stream_recv: Fuse<SplitStream<UdpFramed<NetwaystePacketCodec>>>,
 
-    endpoints: EndpointData<Packet>,
+    endpoints: TransportEndpointData<Packet>,
 }
 
 impl Transport {
@@ -67,7 +67,7 @@ impl Transport {
                 notifications: notice_tx,
                 udp_stream_send,
                 udp_stream_recv,
-                endpoints: EndpointData::new(),
+                endpoints: TransportEndpointData::new(),
             },
             cmd_tx,
             rsp_rx,
@@ -140,7 +140,7 @@ fn bind(opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket> {
 }
 
 async fn process_transport_command(
-    endpoints: &mut EndpointData<Packet>,
+    endpoints: &mut TransportEndpointData<Packet>,
     command: TransportCmd,
     udp_send: &mut Pin<&mut &mut SplitSink<UdpFramed<NetwaystePacketCodec>, (Packet, std::net::SocketAddr)>>,
 ) -> Vec<TransportRsp> {
@@ -165,12 +165,7 @@ async fn process_transport_command(
                         let _result = udp_send.send((p.clone(), endpoint.0)).await.and_then(|_| {
                             cmd_responses.push(
                                 endpoints
-                                    .push_transmit_queue(
-                                        endpoint,
-                                        pi.tid,
-                                        p.to_owned(),
-                                        pi.retry_interval,
-                                    )
+                                    .push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)
                                     .map_or_else(
                                         |error| TransportRsp::EndpointError { error },
                                         |()| TransportRsp::Accepted,
@@ -192,14 +187,10 @@ async fn process_transport_command(
             |error| TransportRsp::EndpointError { error },
             |()| TransportRsp::Accepted,
         )),
-        CancelTransmitQueue { endpoint } => cmd_responses.push(
-            endpoints
-                .clear_queue(endpoint)
-                .map_or_else(
-                    |error| TransportRsp::EndpointError { error },
-                    |()| TransportRsp::Accepted,
-                ),
-        ),
+        CancelTransmitQueue { endpoint } => cmd_responses.push(endpoints.clear_queue(endpoint).map_or_else(
+            |error| TransportRsp::EndpointError { error },
+            |()| TransportRsp::Accepted,
+        )),
     }
 
     cmd_responses

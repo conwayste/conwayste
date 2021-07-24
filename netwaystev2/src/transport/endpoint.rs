@@ -1,4 +1,4 @@
-use super::interface::EndpointDataError;
+use super::interface::TransportEndpointDataError;
 use crate::common::Endpoint;
 use anyhow::{anyhow, Result};
 
@@ -55,14 +55,14 @@ impl<P> PacketContainer<P> {
 }
 
 /// The data for an endpoint, where P is the generic type of the thing to send (Packet).
-pub(in crate::transport) struct EndpointData<P> {
+pub(in crate::transport) struct TransportEndpointData<P> {
     endpoint_meta: HashMap<Endpoint, EndpointMeta>,
     transmit:      HashMap<Endpoint, VecDeque<PacketContainer<P>>>,
 }
 
-impl<P> EndpointData<P> {
+impl<P> TransportEndpointData<P> {
     pub fn new() -> Self {
-        EndpointData {
+        TransportEndpointData {
             endpoint_meta: HashMap::new(),
             transmit:      HashMap::new(),
         }
@@ -76,7 +76,7 @@ impl<P> EndpointData<P> {
                 entry.insert(VecDeque::new());
             }
             Entry::Occupied(entry) => {
-                return Err(anyhow!(EndpointDataError::EndpointExists {
+                return Err(anyhow!(TransportEndpointDataError::EndpointExists {
                     endpoint,
                     entry_found: *entry.key()
                 }))
@@ -88,7 +88,7 @@ impl<P> EndpointData<P> {
                 entry.insert(EndpointMeta::new(timeout));
             }
             Entry::Occupied(entry) => {
-                return Err(anyhow!(EndpointDataError::EndpointExists {
+                return Err(anyhow!(TransportEndpointDataError::EndpointExists {
                     endpoint,
                     entry_found: *entry.key()
                 }))
@@ -124,16 +124,16 @@ impl<P> EndpointData<P> {
     ) -> Result<()> {
         match self.transmit.entry(endpoint) {
             Entry::Vacant(_) => {
-                return Err(anyhow!(EndpointDataError::EndpointNotFound {
+                return Err(anyhow!(TransportEndpointDataError::EndpointNotFound {
                     endpoint,
                     message: format!("Failed to push packet with tid {}", tid),
                 }));
             }
-            Entry::Occupied(mut entry) => entry.get_mut().push_back(PacketContainer::new(
-                tid,
-                item,
-                PacketInfo::new(transmit_interval),
-            )),
+            Entry::Occupied(mut entry) => {
+                entry
+                    .get_mut()
+                    .push_back(PacketContainer::new(tid, item, PacketInfo::new(transmit_interval)))
+            }
         }
 
         Ok(())
@@ -145,7 +145,7 @@ impl<P> EndpointData<P> {
         if let Some(tx_queue) = self.transmit.get_mut(&endpoint) {
             tx_queue.clear()
         } else {
-            return Err(anyhow!(EndpointDataError::EndpointNotFound {
+            return Err(anyhow!(TransportEndpointDataError::EndpointNotFound {
                 endpoint,
                 message: "Failed to clear queue".to_owned(),
             }));
@@ -184,7 +184,7 @@ impl<P> EndpointData<P> {
         }
 
         if !invalid_endpoint.is_empty() {
-            Err(anyhow!(EndpointDataError::EndpointDropFailed {
+            Err(anyhow!(TransportEndpointDataError::EndpointDropFailed {
                 endpoint,
                 message: error_message,
             }))
@@ -205,7 +205,7 @@ impl<P> EndpointData<P> {
                 .iter()
                 .position(|PacketContainer { tid: drop_tid, .. }| *drop_tid == tid);
         } else {
-            return Err(anyhow!(EndpointDataError::EndpointNotFound {
+            return Err(anyhow!(TransportEndpointDataError::EndpointNotFound {
                 endpoint,
                 message: format!("Failed to drop packet with tid {}", tid),
             }));
@@ -213,7 +213,7 @@ impl<P> EndpointData<P> {
 
         if let Some(index) = queue_index {
             self.transmit.get_mut(&endpoint).unwrap().remove(index).map_or(
-                Err(anyhow!(EndpointDataError::PacketRemovalFailure {
+                Err(anyhow!(TransportEndpointDataError::PacketRemovalFailure {
                     endpoint,
                     tid,
                     index
@@ -223,7 +223,10 @@ impl<P> EndpointData<P> {
 
             return Ok(());
         } else {
-            return Err(anyhow!(EndpointDataError::TransmitIDNotFound { endpoint, tid }));
+            return Err(anyhow!(TransportEndpointDataError::TransmitIDNotFound {
+                endpoint,
+                tid
+            }));
         }
     }
 
