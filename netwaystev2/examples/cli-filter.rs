@@ -6,7 +6,7 @@ extern crate log;
 use netwaystev2::common::Endpoint;
 use netwaystev2::filter::{Filter, FilterMode};
 use netwaystev2::transport::Transport;
-use netwaystev2::transport::{PacketSettings, TransportCmd};
+use netwaystev2::transport::TransportCmd;
 
 use anyhow::Result;
 use std::io::Write;

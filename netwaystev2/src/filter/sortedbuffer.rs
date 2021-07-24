@@ -23,6 +23,17 @@ impl<T> SequencedMinHeap<T> {
         false
     }
 
+    pub fn count_contiguous(&self, mut sequence: u64) -> usize {
+        let mut count = 0;
+        for tuple in &self.heap {
+            if tuple.0.0 == sequence {
+                count += 1;
+                sequence += 1;
+            }
+        }
+        return count;
+    }
+
     /// Add this T to the sequenced min-heap. Returns false if not added because
     /// this sequence is already in the min-heap; otherwise, returns true.
     pub fn add(&mut self, sequence: u64, t: T) -> bool {

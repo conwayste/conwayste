@@ -39,7 +39,7 @@ pub struct Transport {
     requests:        TransportCmdRecv,
     responses:       TransportRspSend,
     notifications:   TransportNotifySend,
-    udp_stream_send: SplitSink<UdpFramed<NetwaystePacketCodec>, (Packet, SocketAddr)>,
+    udp_stream_send: SplitSink<UdpFramed<NetwaystePacketCodec>, TransportItem>,
     udp_stream_recv: Fuse<SplitStream<UdpFramed<NetwaystePacketCodec>>>,
 
     endpoints: TransportEndpointData<Packet>,

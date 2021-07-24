@@ -1,6 +1,12 @@
 use super::ping::*;
+use super::sortedbuffer::SequencedMinHeap;
 
 use serde::{Deserialize, Serialize};
+
+use std::num::Wrapping;
+use std::time::Instant;
+
+type SeqNum = Wrapping<u64>;
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum FilterMode {
@@ -168,9 +174,6 @@ impl Default for Packet {
     }
 }
 
-
-
-
 // chat messages sent from server to all clients other than originating client
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BroadcastChatMessage {
@@ -206,4 +209,34 @@ pub struct RoomList {
     pub player_count: u8,
     // TODO: add support
     pub in_progress:  bool,
+}
+
+pub enum FilterEndpointData {
+    OtherEndClient {
+        request_actions:              SequencedMinHeap<RequestAction>,
+        last_request_sequence_seen:   Option<SeqNum>,
+        last_response_sequence_sent:  Option<SeqNum>,
+        last_request_seen_timestamp:  Option<Instant>,
+        last_response_sent_timestamp: Option<Instant>,
+    },
+    OtherEndServer {
+        response_codes:               SequencedMinHeap<ResponseCode>,
+        last_request_sequence_sent:   Option<SeqNum>,
+        last_response_sequence_seen:  Option<SeqNum>,
+        last_request_sent_timestamp:  Option<Instant>,
+        last_response_seen_timestamp: Option<Instant>,
+    },
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum FilterEndpointDataError {
+    #[error("Filter mode ({mode:?}) is not configured to receive {invalid_data}")]
+    UnexpectedData {
+        mode:         FilterMode,
+        invalid_data: String,
+    },
+    #[error("Filter observed duplicate or already processed request action: {sequence}")]
+    DuplicateRequest { sequence: u64 },
+    #[error("Filter observed duplicate or already process response code : {sequence}")]
+    DuplicateResponse { sequence: u64 },
 }
