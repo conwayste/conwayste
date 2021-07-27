@@ -151,11 +151,20 @@ impl Filter {
                     }
 
                     // Determine how many contiguous requests are available to send to the app layer
-                    let count = request_actions.count_contiguous(last_request_sequence_seen.unwrap().0);
-
-                    /* TODO: Send to application layer */
-                    for _ in 0..count {
-                        // NewRequestAction(endpoint, request_actions.take())
+                    let mut taken = false;
+                    loop {
+                        if let Some(sn) = request_actions.peek_sequence_number() {
+                            if let Some(mut lrsn) = last_request_sequence_seen {
+                                if lrsn.0 == sn {
+                                    /* TODO: Send to application layer */
+                                    // NewRequestAction(endpoint, request_actions.take())
+                                    lrsn += Wrapping(1);
+                                }
+                            }
+                        }
+                        if !taken {
+                            break;
+                        }
                     }
                 }
                 FilterEndpointData::OtherEndServer { .. } => {
@@ -192,11 +201,21 @@ impl Filter {
                     }
 
                     // Determine how many contiguous requests are available to send to the app layer
-                    let count = response_codes.count_contiguous(last_response_sequence_seen.unwrap().0);
-
-                    /* TODO: Send to application layer */
-                    for _ in 0..count {
-                        // NewResponseCode(endpoint, response_codes.take())
+                    let mut taken = false;
+                    loop {
+                        if let Some(sn) = response_codes.peek_sequence_number() {
+                            if let Some(mut lrsn) = last_response_sequence_seen {
+                                if lrsn.0 == sn {
+                                /* TODO: Send to application layer */
+                                // NewRequestAction(endpoint, request_actions.take())
+                                lrsn += Wrapping(1);
+                                taken = true;
+                                }
+                            }
+                        }
+                        if !taken {
+                            break;
+                        }
                     }
                 }
             },
@@ -215,8 +234,7 @@ fn advance_sequence_number(sequence: u64, last_seen: &mut Option<Wrapping<u64>>)
     if let Some(last_sn) = last_seen {
         let sequence_wrapped = Wrapping(sequence);
 
-        // TODO: Need to handle wrapping cases finder for when the actual wrap takes place and we are comparing
-        // sequence numbers on both sides 0
+        // TODO: Need to handle wrapping cases for when comparing sequence numbers on both sides 0
 
         if sequence_wrapped == *last_sn + Wrapping(1) {
             *last_seen = Some(sequence_wrapped);

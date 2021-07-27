@@ -15,23 +15,13 @@ impl<T> SequencedMinHeap<T> {
     }
 
     fn contains_sequence_number(&self, sequence: u64) -> bool {
+        // Searching takes place in arbitrary order
         for tuple in &self.heap {
             if tuple.0.0 == sequence {
                 return true
             }
         }
         false
-    }
-
-    pub fn count_contiguous(&self, mut sequence: u64) -> usize {
-        let mut count = 0;
-        for tuple in &self.heap {
-            if tuple.0.0 == sequence {
-                count += 1;
-                sequence += 1;
-            }
-        }
-        return count;
     }
 
     /// Add this T to the sequenced min-heap. Returns false if not added because
@@ -53,13 +43,6 @@ impl<T> SequencedMinHeap<T> {
     /// Takes the T with the lowest sequence number
     pub fn take(&mut self) -> Option<T> {
         self.heap.pop().map(|reversed_tup| reversed_tup.0.1)
-    }
-
-    #[cfg(test)]
-    pub fn print(&self) {
-        for tuple in &self.heap {
-            println!("Key: {}", tuple.0.0);
-        }
     }
 }
 
@@ -96,7 +79,6 @@ mod test {
         let smh = SequencedMinHeap::<usize>::new();
 
         assert_eq!(smh.contains_sequence_number(0), false);
-        assert_eq!(smh.count_contiguous(0), 0);
         assert_eq!(smh.peek_sequence_number(), None);
     }
 
@@ -109,7 +91,6 @@ mod test {
         }
 
         assert_eq!(smh.contains_sequence_number(0), false);
-        assert_eq!(smh.count_contiguous(0), 0);
         assert_eq!(smh.peek_sequence_number(), Some(2));
     }
 
@@ -129,14 +110,15 @@ mod test {
         }
 
         for i in 0..10 {
-            assert_eq!(smh.count_contiguous(0), 10 - i);
+            assert_eq!(smh.peek_sequence_number(), Some(i));
+            let _ = smh.take();
         }
     }
 
     #[test]
     fn seqminheap_insert_descending() {
         let mut smh = SequencedMinHeap::<usize>::new();
-        for i in 10..0 {
+        for i in (0..10).rev() {
             smh.add(i, 0);
         }
 
@@ -145,16 +127,14 @@ mod test {
         }
 
         for i in 0..10 {
-            assert_eq!(smh.count_contiguous(0), 10 - i);
+            assert_eq!(smh.peek_sequence_number(), Some(i));
+            let _ = smh.take();
         }
     }
 
     #[test]
     fn seqminheap_insert_sequential_with_gaps() {
-        use rand::distributions::{Distribution, Uniform};
-        let mut rng = rand::thread_rng();
-
-        let span = [1, 2, 5, 6, 9];
+        let span : Vec<u64> = vec![1, 2, 5, 6, 9];
 
         let mut smh = SequencedMinHeap::<usize>::new();
         for n in &span {
@@ -165,20 +145,14 @@ mod test {
             assert_eq!(smh.contains_sequence_number(*x), true);
         }
 
-        assert_eq!(smh.count_contiguous(0), 0);
-        assert_eq!(smh.count_contiguous(1), 2);
-        assert_eq!(smh.count_contiguous(2), 1);
-        assert_eq!(smh.count_contiguous(5), 2);
-        assert_eq!(smh.count_contiguous(6), 1);
-        assert_eq!(smh.count_contiguous(9), 1);
-        assert_eq!(smh.count_contiguous(10), 0);
+        for x in &span {
+            assert_eq!(smh.peek_sequence_number(), Some(*x));
+            let _ = smh.take();
+        }
     }
 
     #[test]
     fn seqminheap_insert_reverse_sequential_with_gaps() {
-        use rand::distributions::{Distribution, Uniform};
-        let mut rng = rand::thread_rng();
-
         let mut span : Vec<u64> = vec![1, 2, 5, 6, 9];
         span.reverse();
 
@@ -191,22 +165,16 @@ mod test {
             assert_eq!(smh.contains_sequence_number(*x), true);
         }
 
-        assert_eq!(smh.count_contiguous(0), 0);
-        assert_eq!(smh.count_contiguous(1), 2);
-        assert_eq!(smh.count_contiguous(2), 1);
-        assert_eq!(smh.count_contiguous(5), 2);
-        assert_eq!(smh.count_contiguous(6), 1);
-        assert_eq!(smh.count_contiguous(9), 1);
-        assert_eq!(smh.count_contiguous(10), 0);
+        span.reverse();
+        for x in &span {
+            assert_eq!(smh.peek_sequence_number(), Some(*x));
+            let _ = smh.take();
+        }
     }
 
     #[test]
     fn seqminheap_insert_out_of_order_with_gaps() {
-        use rand::distributions::{Distribution, Uniform};
-        let mut rng = rand::thread_rng();
-
-        let mut span : Vec<u64> = vec![1, 2, 5, 6, 9];
-        span.reverse();
+        let mut span : Vec<u64> = vec![2, 9, 1, 6, 5];
 
         let mut smh = SequencedMinHeap::<usize>::new();
         for n in &span {
@@ -217,22 +185,16 @@ mod test {
             assert_eq!(smh.contains_sequence_number(*x), true);
         }
 
-        smh.print();
-
-        assert_eq!(smh.count_contiguous(0), 0);
-        assert_eq!(smh.count_contiguous(1), 2);
-        assert_eq!(smh.count_contiguous(2), 1);
-        assert_eq!(smh.count_contiguous(5), 2);
-        assert_eq!(smh.count_contiguous(6), 1);
-        assert_eq!(smh.count_contiguous(9), 1);
-        assert_eq!(smh.count_contiguous(10), 0);
+        span.sort();
+        for x in &span {
+            assert_eq!(smh.peek_sequence_number(), Some(*x));
+            let _ = smh.take();
+        }
     }
 
+    #[test]
     fn seqminheap_insert_out_of_order_with_no_gaps() {
-        use rand::distributions::{Distribution, Uniform};
-        let mut rng = rand::thread_rng();
-
-        let mut span : Vec<u64> = vec![1, 2, 5, 6, 9];
+        let mut span : Vec<u64> = vec![2, 6, 1, 3, 5, 0, 4];
         span.reverse();
 
         let mut smh = SequencedMinHeap::<usize>::new();
@@ -244,8 +206,10 @@ mod test {
             assert_eq!(smh.contains_sequence_number(*x), true);
         }
 
-        for i in 0..10 {
-            assert_eq!(smh.count_contiguous(i), 10usize - i as usize);
+        span.sort();
+        for x in &span {
+            assert_eq!(smh.peek_sequence_number(), Some(*x));
+            let _ = smh.take();
         }
     }
 }
