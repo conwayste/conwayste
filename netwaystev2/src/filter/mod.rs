@@ -5,3 +5,4 @@ mod sortedbuffer;
 
 pub use filter::Filter;
 pub use interface::{FilterMode, Packet};
+pub use sortedbuffer::SequencedMinHeap;
