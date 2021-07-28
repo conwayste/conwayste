@@ -1,5 +1,5 @@
 use crate::common::Endpoint;
-use crate::filter::Packet;
+use crate::protocol::Packet;
 
 use std::time::Duration;
 

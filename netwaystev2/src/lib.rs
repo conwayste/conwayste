@@ -10,6 +10,7 @@ pub mod common;
 pub mod filter;
 mod settings;
 pub mod transport;
+pub(crate) mod protocol;
 
 #[cfg(test)]
 mod tests {

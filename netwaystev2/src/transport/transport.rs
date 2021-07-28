@@ -5,7 +5,7 @@ use super::interface::{
 };
 use super::udp_codec::NetwaystePacketCodec;
 use crate::common::Endpoint;
-use crate::filter::Packet;
+use crate::protocol::Packet;
 use crate::settings::*;
 
 use std::time::Duration;

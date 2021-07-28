@@ -1,5 +1,6 @@
-use super::interface::{FilterEndpointData, FilterEndpointDataError, FilterMode, Packet, RequestAction};
+use super::interface::{FilterMode, SeqNum};
 use super::sortedbuffer::SequencedMinHeap;
+use crate::protocol::{RequestAction, ResponseCode, Packet};
 use crate::common::Endpoint;
 use crate::transport::{
     TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp, TransportRspRecv,
@@ -13,6 +14,36 @@ enum SeqNumAdvancement {
     Contiguous,
     OutOfOrder,
     Duplicate,
+}
+
+pub enum FilterEndpointData {
+    OtherEndClient {
+        request_actions:              SequencedMinHeap<RequestAction>,
+        last_request_sequence_seen:   Option<SeqNum>,
+        last_response_sequence_sent:  Option<SeqNum>,
+        last_request_seen_timestamp:  Option<Instant>,
+        last_response_sent_timestamp: Option<Instant>,
+    },
+    OtherEndServer {
+        response_codes:               SequencedMinHeap<ResponseCode>,
+        last_request_sequence_sent:   Option<SeqNum>,
+        last_response_sequence_seen:  Option<SeqNum>,
+        last_request_sent_timestamp:  Option<Instant>,
+        last_response_seen_timestamp: Option<Instant>,
+    },
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum FilterEndpointDataError {
+    #[error("Filter mode ({mode:?}) is not configured to receive {invalid_data}")]
+    UnexpectedData {
+        mode:         FilterMode,
+        invalid_data: String,
+    },
+    #[error("Filter observed duplicate or already processed request action: {sequence}")]
+    DuplicateRequest { sequence: u64 },
+    #[error("Filter observed duplicate or already process response code : {sequence}")]
+    DuplicateResponse { sequence: u64 },
 }
 
 pub struct Filter {
@@ -228,7 +259,7 @@ impl Filter {
 }
 /// True if the sequence number is contiguous to the previously seen value
 /// False if the sequence number is out-of-order
-fn advance_sequence_number(sequence: u64, last_seen: &mut Option<Wrapping<u64>>) -> SeqNumAdvancement {
+fn advance_sequence_number(sequence: u64, last_seen: &mut Option<SeqNum>) -> SeqNumAdvancement {
     // Buffer the packet if it is received out-of-order, otherwise send it up to the app layer directly
     // for immediate processing
     if let Some(last_sn) = last_seen {
