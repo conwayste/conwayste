@@ -190,6 +190,7 @@ impl Filter {
                                     /* TODO: Send to application layer */
                                     // NewRequestAction(endpoint, request_actions.take())
                                     lrsn += Wrapping(1);
+                                    taken = true;
                                 }
                             }
                         }
@@ -231,14 +232,14 @@ impl Filter {
                         }
                     }
 
-                    // Determine how many contiguous requests are available to send to the app layer
+                    // Determine how many contiguous responses are available to send to the app layer
                     let mut taken = false;
                     loop {
                         if let Some(sn) = response_codes.peek_sequence_number() {
                             if let Some(mut lrsn) = last_response_sequence_seen {
                                 if lrsn.0 == sn {
                                 /* TODO: Send to application layer */
-                                // NewRequestAction(endpoint, request_actions.take())
+                                // NewResponseCode(endpoint, response_codes.take())
                                 lrsn += Wrapping(1);
                                 taken = true;
                                 }
