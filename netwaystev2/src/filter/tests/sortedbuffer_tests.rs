@@ -21,10 +21,6 @@ fn seqminheap_filled_checks() {
     assert_eq!(smh.peek_sequence_number(), Some(2));
 }
 
-/*
-* The next few tests fail because the underlying BinaryHeap makes no guarantee about iteration order. It's arbitrary.
-*/
-
 #[test]
 fn seqminheap_insert_ascending() {
     let mut smh = SequencedMinHeap::<usize>::new();

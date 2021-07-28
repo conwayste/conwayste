@@ -185,11 +185,11 @@ impl Filter {
                     let mut taken = false;
                     loop {
                         if let Some(sn) = request_actions.peek_sequence_number() {
-                            if let Some(mut lrsn) = last_request_sequence_seen {
+                            if let Some(ref mut lrsn) = last_request_sequence_seen {
                                 if lrsn.0 == sn {
                                     /* TODO: Send to application layer */
                                     // NewRequestAction(endpoint, request_actions.take())
-                                    lrsn += Wrapping(1);
+                                    *lrsn += Wrapping(1);
                                     taken = true;
                                 }
                             }
@@ -236,12 +236,12 @@ impl Filter {
                     let mut taken = false;
                     loop {
                         if let Some(sn) = response_codes.peek_sequence_number() {
-                            if let Some(mut lrsn) = last_response_sequence_seen {
+                            if let Some(ref mut lrsn) = last_response_sequence_seen {
                                 if lrsn.0 == sn {
-                                /* TODO: Send to application layer */
-                                // NewResponseCode(endpoint, response_codes.take())
-                                lrsn += Wrapping(1);
-                                taken = true;
+                                    /* TODO: Send to application layer */
+                                    // NewRequestAction(endpoint, request_actions.take())
+                                    *lrsn += Wrapping(1);
+                                    taken = true;
                                 }
                             }
                         }
