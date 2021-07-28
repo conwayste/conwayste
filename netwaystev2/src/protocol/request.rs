@@ -31,9 +31,7 @@ pub enum RequestAction {
     // TODO: add support ("auto_match" bool key, see issue #101)
     SetClientOptions {
         key: String,
-        /* PR_GATE add in later
         value: Option<ClientOptionValue>,
-        */
     },
     // TODO: add support
     // Draw the specified RLE Pattern with upper-left cell at position x, y.
@@ -51,4 +49,19 @@ pub enum RequestAction {
         w: u32,
         h: u32,
     },
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum ClientOptionValue {
+    Bool { value: bool },
+    U8 { value: u8 },
+    U16 { value: u16 },
+    U32 { value: u32 },
+    U64 { value: u64 },
+    I8 { value: i8 },
+    I16 { value: i16 },
+    I32 { value: i32 },
+    I64 { value: i64 },
+    Str { value: String },
+    List { value: Vec<ClientOptionValue> },
 }
