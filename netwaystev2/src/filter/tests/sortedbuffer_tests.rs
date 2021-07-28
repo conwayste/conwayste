@@ -1,5 +1,5 @@
 
-use netwaystev2::filter::SequencedMinHeap;
+use crate::filter::SequencedMinHeap;
 
 #[test]
 fn seqminheap_empty_checks() {
