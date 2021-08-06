@@ -28,6 +28,7 @@ pub enum TransportCmd {
     CancelTransmitQueue {
         endpoint: Endpoint,
     },
+    Shutdown,
 }
 
 /// Transport layer sends these response codes for each Filter layer command (see `TransportCmd`)

@@ -56,6 +56,7 @@ async fn basic_server_filter_flow() {
 
     let (_, timeout_result) =
         join!(
+            //XXX in async { sleep and send Shutdown to Filter } <--------------------------- important
             time::advance(Duration::from_secs(5)),
             timeout_at(expiration, transport_cmd_rx.recv()),
         );

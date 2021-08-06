@@ -88,8 +88,13 @@ impl Transport {
             tokio::select! {
                 Some(cmd) = self.requests.recv() => {
                     trace!("[TRANSPORT] Filter Request: {:?}", cmd);
-                    for response in process_transport_command(&mut self.endpoints, cmd, &mut udp_stream_send).await {
-                        self.responses.send(response).await?;
+                    if let Ok(responses) = process_transport_command(&mut self.endpoints, cmd, &mut udp_stream_send).await {
+                        for response in responses {
+                            self.responses.send(response).await?;
+                        }
+                    } else {
+                        info!("[TRANSPORT] Shutdown command received; exiting");
+                        return Ok(());
                     }
                 }
                 item_address_result = udp_stream_recv.select_next_some() => {
@@ -143,7 +148,7 @@ async fn process_transport_command(
     endpoints: &mut TransportEndpointData<Packet>,
     command: TransportCmd,
     udp_send: &mut Pin<&mut &mut SplitSink<UdpFramed<NetwaystePacketCodec>, (Packet, std::net::SocketAddr)>>,
-) -> Vec<TransportRsp> {
+) -> Result<Vec<TransportRsp>, ()> {
     let mut cmd_responses = vec![];
     match command {
         NewEndpoint { endpoint, timeout } => cmd_responses.push(endpoints.new_endpoint(endpoint, timeout).map_or_else(
@@ -191,7 +196,10 @@ async fn process_transport_command(
             |error| TransportRsp::EndpointError { error },
             |()| TransportRsp::Accepted,
         )),
+        Shutdown => {
+            return Err(())
+        }
     }
 
-    cmd_responses
+    Ok(cmd_responses)
 }

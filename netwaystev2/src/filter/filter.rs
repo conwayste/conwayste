@@ -1,4 +1,7 @@
-use super::interface::{FilterMode, SeqNum};
+use super::interface::{
+    FilterCmd::{self, *},
+    FilterMode, SeqNum,
+};
 use super::sortedbuffer::SequencedMinHeap;
 use crate::protocol::{RequestAction, ResponseCode, Packet};
 use crate::common::Endpoint;
@@ -8,6 +11,7 @@ use crate::transport::{
 use anyhow::anyhow;
 use anyhow::Result;
 use std::{collections::HashMap, num::Wrapping, time::Instant};
+use tokio::sync::mpsc::{self, Receiver, Sender};
 
 enum SeqNumAdvancement {
     BrandNew,
@@ -46,6 +50,11 @@ pub enum FilterEndpointDataError {
     DuplicateResponse { sequence: u64 },
 }
 
+pub type FilterCmdSend = Sender<FilterCmd>;
+type FilterCmdRecv = Receiver<FilterCmd>;
+
+type FilterInit = (Filter, FilterCmdSend); // PR_GATE TODO: add a Recv channel too
+
 pub struct Filter {
     transport_cmd_tx:    TransportCmdSend,
     transport_rsp_rx:    Option<TransportRspRecv>,    // TODO no option
@@ -60,7 +69,7 @@ impl Filter {
         transport_rsp_rx: TransportRspRecv,
         transport_notice_rx: TransportNotifyRecv,
         mode: FilterMode,
-    ) -> Self {
+    ) -> FilterInit {
         let per_endpoint = HashMap::new();
         Filter {
             transport_cmd_tx,
@@ -81,6 +90,7 @@ impl Filter {
 
         loop {
             tokio::select! {
+                //XXX receive from filter_cmd_rx and handle Shutdown, with TODO to handle other things
                 response = transport_rsp_rx.recv() => {
                     // trace!("[FILTER] Transport Response: {:?}", response);
 

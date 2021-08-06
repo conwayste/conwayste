@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
     info!("Filter initialized!");
 
     // Sleep for a really really long time
-    // TODO: wait for shutdown signal, and then coordinate shutdown with all the layers
+    // TODO: wait for some user-initated quit event (Ctrl-C maybe) and send Shutdown command to Filter
     sleep(Duration::from_secs(u64::max_value())).await;
     Ok(())
 }
