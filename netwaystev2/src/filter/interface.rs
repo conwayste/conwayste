@@ -1,17 +1,94 @@
 use std::num::Wrapping;
 
+use crate::{
+    common::Endpoint,
+    protocol::{BroadcastChatMessage, GameUpdate, GenStateDiffPart, RequestAction, ResponseCode},
+};
+
 pub type SeqNum = Wrapping<u64>;
-
-/// App layer sends these commands to the Filter layer.
-#[derive(Debug)]
-pub enum FilterCmd {
-    // PR_GATE TODO: many more commands go here: https://github.com/conwayste/conwayste/issues/153
-
-    Shutdown, //XXX
-}
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum FilterMode {
     Client,
     Server,
+}
+
+/// App layer sends these commands to the Filter Layer to send game events to a peer
+#[derive(Debug)]
+pub enum FilterCmd {
+    SendRequestAction {
+        endpoint: Endpoint,
+        action:   RequestAction,
+    },
+    SendResponseCode {
+        endpoint: Endpoint,
+        code:     ResponseCode,
+    },
+    SendChats {
+        endpoints: Vec<Endpoint>,
+        messages:  Vec<BroadcastChatMessage>,
+    },
+    SendGameUpdates {
+        endpoints: Vec<Endpoint>,
+        messages:  Vec<GameUpdate>,
+    },
+    Authenticated {
+        endpoint: Endpoint,
+    },
+    SendGenStateDiff {
+        endpoints: Vec<Endpoint>,
+        diff:      GenStateDiffPart,
+    },
+    AddPingEndpoints {
+        endpoints: Vec<Endpoint>,
+    },
+    ClearPingEndpoints,
+    DropEndpoint {
+        endpoint: Endpoint,
+    },
+    Shutdown {
+        graceful: bool,
+    },
+}
+
+/// Filter layer sends these responses to the Application Layer for each processed command
+#[derive(Debug)]
+pub enum FilterRsp {
+    Accepted,
+    NoSuchEndpoint { endpoint: Endpoint },
+}
+
+/// Used by the Filter layer to inform the Application layer of game update availability
+#[derive(Debug)]
+pub enum FilterNotice {
+    HasGeneration {
+        endpoints: Vec<Endpoint>,
+        gen_num:   u64,
+    },
+    NewGenStateDiff {
+        endpoint: Endpoint,
+        diff:     GenStateDiffPart,
+    },
+    PingResult {
+        latencies: Vec<(Endpoint, u64)>,
+    },
+    NewGameUpdates {
+        endpoint: Endpoint,
+        updates:  Vec<GameUpdate>,
+    },
+    NewChats {
+        endpoint: Endpoint,
+        messages: Vec<BroadcastChatMessage>,
+    },
+    NewRequestAction {
+        endpoint: Endpoint,
+        action:   RequestAction,
+    },
+    NewResponseCode {
+        endpoint: Endpoint,
+        code:     ResponseCode,
+    },
+    EndpointTimeout {
+        endpoint: Endpoint,
+    },
 }

@@ -8,13 +8,12 @@ extern crate thiserror;
 
 pub mod common;
 pub mod filter;
+pub mod protocol;
 mod settings;
 pub mod transport;
-pub(crate) mod protocol;
 
 #[cfg(test)]
 mod tests {
 
     // TODO: put tests here :)
-
 }

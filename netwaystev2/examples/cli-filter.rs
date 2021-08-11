@@ -4,7 +4,8 @@ extern crate env_logger;
 extern crate log;
 
 use netwaystev2::common::Endpoint;
-use netwaystev2::filter::{Filter, FilterMode};
+use netwaystev2::filter::{Filter, FilterCmd, FilterMode};
+use netwaystev2::protocol::RequestAction;
 use netwaystev2::transport::Transport;
 use netwaystev2::transport::TransportCmd;
 
@@ -51,14 +52,26 @@ async fn main() -> Result<()> {
         })
         .await?;
 
-    // Create the second lowest (Filter) layer, passing in the channel halves that connect to the
-    // layer below it
-    let mut filter = Filter::new(
+    // Create the three channels for communication between filter and application
+
+    // Create the second lowest (Filter) layer, passing in the channel halves that connect to the layer below it
+    let (mut filter, filter_cmd_tx, filter_rsp_rx, filter_notice_rx) = Filter::new(
         transport_cmd_tx,
         transport_rsp_rx,
         transport_notice_rx,
         FilterMode::Server,
     );
+    // TODO: Silence compiler warning until interface is implemented
+    let (_, _) = (filter_rsp_rx, filter_notice_rx);
+    filter_cmd_tx
+        .send(FilterCmd::SendRequestAction {
+            endpoint: Endpoint("127.0.0.1:2017".parse().unwrap()),
+            action:   RequestAction::Connect {
+                client_version: "0.0.0".to_owned(),
+                name:           "Siona".to_owned(),
+            },
+        })
+        .await?;
 
     // Start the filter's task in the background
     tokio::spawn(async move { filter.run().await });

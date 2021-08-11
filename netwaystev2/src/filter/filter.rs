@@ -1,17 +1,16 @@
-use super::interface::{
-    FilterCmd::{self, *},
-    FilterMode, SeqNum,
-};
+use super::interface::{FilterCmd, FilterMode, FilterNotice, FilterRsp, SeqNum};
 use super::sortedbuffer::SequencedMinHeap;
-use crate::protocol::{RequestAction, ResponseCode, Packet};
 use crate::common::Endpoint;
+use crate::protocol::{Packet, RequestAction, ResponseCode};
+use crate::settings::FILTER_CHANNEL_LEN;
 use crate::transport::{
     TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp, TransportRspRecv,
 };
 use anyhow::anyhow;
 use anyhow::Result;
-use std::{collections::HashMap, num::Wrapping, time::Instant};
 use tokio::sync::mpsc::{self, Receiver, Sender};
+
+use std::{collections::HashMap, num::Wrapping, time::Instant};
 
 enum SeqNumAdvancement {
     BrandNew,
@@ -48,17 +47,26 @@ pub enum FilterEndpointDataError {
     DuplicateRequest { sequence: u64 },
     #[error("Filter observed duplicate or already process response code : {sequence}")]
     DuplicateResponse { sequence: u64 },
+    #[error("Filter does not contain an entry for the endpoint: {endpoint:?}")]
+    EndpointNotFound { endpoint: Endpoint },
 }
 
 pub type FilterCmdSend = Sender<FilterCmd>;
 type FilterCmdRecv = Receiver<FilterCmd>;
+type FilterRspSend = Sender<FilterRsp>;
+pub type FilterRspRecv = Receiver<FilterRsp>;
+type FilterNotifySend = Sender<FilterNotice>;
+pub type FilterNotifyRecv = Receiver<FilterNotice>;
 
-type FilterInit = (Filter, FilterCmdSend); // PR_GATE TODO: add a Recv channel too
+pub type FilterInit = (Filter, FilterCmdSend, FilterRspRecv, FilterNotifyRecv);
 
 pub struct Filter {
     transport_cmd_tx:    TransportCmdSend,
     transport_rsp_rx:    Option<TransportRspRecv>,    // TODO no option
     transport_notice_rx: Option<TransportNotifyRecv>, // TODO no option
+    filter_cmd_rx:       Option<FilterCmdRecv>,       // TODO no option
+    filter_rsp_tx:       FilterRspSend,
+    filter_notice_tx:    FilterNotifySend,
     mode:                FilterMode,
     per_endpoint:        HashMap<Endpoint, FilterEndpointData>,
 }
@@ -70,14 +78,28 @@ impl Filter {
         transport_notice_rx: TransportNotifyRecv,
         mode: FilterMode,
     ) -> FilterInit {
+        let (filter_cmd_tx, filter_cmd_rx): (FilterCmdSend, FilterCmdRecv) = mpsc::channel(FILTER_CHANNEL_LEN);
+        let (filter_rsp_tx, filter_rsp_rx): (FilterRspSend, FilterRspRecv) = mpsc::channel(FILTER_CHANNEL_LEN);
+        let (filter_notice_tx, filter_notice_rx): (FilterNotifySend, FilterNotifyRecv) =
+            mpsc::channel(FILTER_CHANNEL_LEN);
+
         let per_endpoint = HashMap::new();
-        Filter {
-            transport_cmd_tx,
-            transport_rsp_rx: Some(transport_rsp_rx),
-            transport_notice_rx: Some(transport_notice_rx),
-            mode,
-            per_endpoint,
-        }
+
+        (
+            Filter {
+                transport_cmd_tx,
+                transport_rsp_rx: Some(transport_rsp_rx),
+                transport_notice_rx: Some(transport_notice_rx),
+                filter_cmd_rx: Some(filter_cmd_rx),
+                filter_rsp_tx,
+                filter_notice_tx,
+                mode,
+                per_endpoint,
+            },
+            filter_cmd_tx,
+            filter_rsp_rx,
+            filter_notice_rx,
+        )
     }
 
     pub async fn run(&mut self) -> Result<()> {
@@ -87,6 +109,13 @@ impl Filter {
         tokio::pin!(transport_cmd_tx);
         tokio::pin!(transport_rsp_rx);
         tokio::pin!(transport_notice_rx);
+
+        let filter_cmd_rx = self.filter_cmd_rx.take().unwrap();
+        let filter_rsp_tx = self.filter_rsp_tx.clone();
+        let filter_notice_tx = self.filter_notice_tx.clone();
+        tokio::pin!(filter_cmd_rx);
+        tokio::pin!(filter_rsp_tx);
+        tokio::pin!(filter_notice_tx);
 
         loop {
             tokio::select! {
@@ -139,6 +168,16 @@ impl Filter {
                         }
                     }
                 }
+                command = filter_cmd_rx.recv() => {
+                    if let Some(command) = command {
+                        trace!("[FILTER] New command: {:?}", command);
+
+                        if let Err(e) = self.process_filter_command(command) {
+                            error!("[FILTER] Filter command processing failed: {}", e);
+                        }
+                    }
+                    // Do the thing
+                }
             }
         }
     }
@@ -172,6 +211,12 @@ impl Filter {
         let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
         match packet {
             Packet::Request { sequence, action, .. } => match endpoint_data {
+                FilterEndpointData::OtherEndServer { .. } => {
+                    return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
+                        mode:         self.mode,
+                        invalid_data: "RequestAction".to_owned(),
+                    }));
+                }
                 FilterEndpointData::OtherEndClient {
                     request_actions,
                     last_request_sequence_seen,
@@ -208,12 +253,6 @@ impl Filter {
                             break;
                         }
                     }
-                }
-                FilterEndpointData::OtherEndServer { .. } => {
-                    return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
-                        mode:         self.mode,
-                        invalid_data: "RequestAction".to_owned(),
-                    }));
                 }
             },
             Packet::Response { sequence, code, .. } => match endpoint_data {
@@ -267,7 +306,28 @@ impl Filter {
 
         return Ok(());
     }
+
+    fn process_filter_command(&mut self, command: FilterCmd) -> anyhow::Result<()> {
+        match command {
+            FilterCmd::SendRequestAction { endpoint, action } => {
+                // PR_GATE: This will currently fail because the endpoint has not been created on an connect() event
+                check_endpoint_exists(&self.per_endpoint, endpoint)?;
+            }
+            FilterCmd::SendResponseCode { endpoint, code } => {}
+            FilterCmd::SendChats { endpoints, messages } => {}
+            FilterCmd::SendGameUpdates { endpoints, messages } => {}
+            FilterCmd::Authenticated { endpoint } => {}
+            FilterCmd::SendGenStateDiff { endpoints, diff } => {}
+            FilterCmd::AddPingEndpoints { endpoints } => {}
+            FilterCmd::ClearPingEndpoints => {}
+            FilterCmd::DropEndpoint { endpoint } => {}
+            FilterCmd::Shutdown { graceful } => {}
+        }
+
+        Ok(())
+    }
 }
+
 /// True if the sequence number is contiguous to the previously seen value
 /// False if the sequence number is out-of-order
 fn advance_sequence_number(sequence: u64, last_seen: &mut Option<SeqNum>) -> SeqNumAdvancement {
@@ -289,5 +349,19 @@ fn advance_sequence_number(sequence: u64, last_seen: &mut Option<SeqNum>) -> Seq
     } else {
         *last_seen = Some(Wrapping(sequence));
         return SeqNumAdvancement::BrandNew;
+    }
+}
+
+/// Returns an error if the endpoint is not known to the filter
+fn check_endpoint_exists(
+    per_endpoint: &HashMap<Endpoint, FilterEndpointData>,
+    endpoint: Endpoint,
+) -> anyhow::Result<()> {
+    if !per_endpoint.contains_key(&endpoint) {
+        Err(anyhow!(FilterEndpointDataError::EndpointNotFound {
+            endpoint: endpoint,
+        }))
+    } else {
+        Ok(())
     }
 }
