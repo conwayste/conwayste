@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::{self, Instant, timeout_at};
 use crate::common::Endpoint;
-use crate::filter::{Filter, FilterMode};
+use crate::filter::{Filter, FilterMode, FilterCmd};
 use crate::transport::{TransportCmd, TransportRsp, TransportNotice};
 use crate::settings::TRANSPORT_CHANNEL_LEN;
 use crate::protocol::{Packet, RequestAction};
@@ -32,12 +32,19 @@ async fn basic_server_filter_flow() {
     let (transport_rsp_tx, transport_rsp_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
     let (transport_notice_tx, transport_notice_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
 
-    let mut filter = Filter::new(
+    let (
+        mut filter,
+        filter_cmd_tx,
+        filter_rsp_rx,
+        filter_notify_rx,
+    ) = Filter::new(
         transport_cmd_tx,
         transport_rsp_rx,
         transport_notice_rx,
         FilterMode::Server,
     );
+
+    let filter_shutdown_watcher = filter.get_shutdown_watcher(); // No await; get the future
 
     // Start the filter's task in the background
     tokio::spawn(async move { filter.run().await });
@@ -52,19 +59,19 @@ async fn basic_server_filter_flow() {
     };
     transport_notice_tx.send(TransportNotice::PacketDelivery{endpoint, packet}).await.unwrap();
 
+    filter_cmd_tx.send(FilterCmd::Shutdown{graceful:false}).await;
+
     let expiration = Instant::now() + Duration::from_secs(3);
 
-    let (_, timeout_result) =
-        join!(
-            //XXX in async { sleep and send Shutdown to Filter } <--------------------------- important
-            time::advance(Duration::from_secs(5)),
-            timeout_at(expiration, transport_cmd_rx.recv()),
-        );
+    time::advance(Duration::from_secs(5)).await;
 
+    let timeout_result = timeout_at(expiration, transport_cmd_rx.recv()).await;
 
     assert!(timeout_result.is_err()); //TODO PR_GATE wrong, we should have a command, not a timeout! Requires filter reworking
 
     //XXX test for expected transport command(s) sent
+
+    filter_shutdown_watcher.await;
 }
 
 //XXX basic_client_filter_flow

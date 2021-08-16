@@ -9,8 +9,9 @@ use crate::transport::{
 use anyhow::anyhow;
 use anyhow::Result;
 use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::watch;
 
-use std::{collections::HashMap, num::Wrapping, time::Instant};
+use std::{collections::HashMap, future::Future, num::Wrapping, time::Instant};
 
 enum SeqNumAdvancement {
     BrandNew,
@@ -51,6 +52,12 @@ pub enum FilterEndpointDataError {
     EndpointNotFound { endpoint: Endpoint },
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum FilterCommandError {
+    #[error("Filter is shutting down")]
+    ShutdownRequested,
+}
+
 pub type FilterCmdSend = Sender<FilterCmd>;
 type FilterCmdRecv = Receiver<FilterCmd>;
 type FilterRspSend = Sender<FilterRsp>;
@@ -59,6 +66,13 @@ type FilterNotifySend = Sender<FilterNotice>;
 pub type FilterNotifyRecv = Receiver<FilterNotice>;
 
 pub type FilterInit = (Filter, FilterCmdSend, FilterRspRecv, FilterNotifyRecv);
+
+#[derive(Copy, Clone, Debug)]
+enum Phase {
+    Running,
+    ShutdownRequested,
+    ShutdownComplete,
+}
 
 pub struct Filter {
     transport_cmd_tx:    TransportCmdSend,
@@ -69,6 +83,8 @@ pub struct Filter {
     filter_notice_tx:    FilterNotifySend,
     mode:                FilterMode,
     per_endpoint:        HashMap<Endpoint, FilterEndpointData>,
+    phase_watch_tx:      Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
+    phase_watch_rx:      watch::Receiver<Phase>, // XXX gets cloned
 }
 
 impl Filter {
@@ -85,6 +101,8 @@ impl Filter {
 
         let per_endpoint = HashMap::new();
 
+        let (phase_watch_tx, phase_watch_rx) = watch::channel(Phase::Running);
+
         (
             Filter {
                 transport_cmd_tx,
@@ -95,6 +113,8 @@ impl Filter {
                 filter_notice_tx,
                 mode,
                 per_endpoint,
+                phase_watch_tx: Some(phase_watch_tx),
+                phase_watch_rx,
             },
             filter_cmd_tx,
             filter_rsp_rx,
@@ -106,6 +126,8 @@ impl Filter {
         let transport_cmd_tx = self.transport_cmd_tx.clone();
         let transport_rsp_rx = self.transport_rsp_rx.take().unwrap();
         let transport_notice_rx = self.transport_notice_rx.take().unwrap();
+        let mut phase = Phase::Running;
+        let mut phase_watch_tx = self.phase_watch_tx.take().unwrap();
         tokio::pin!(transport_cmd_tx);
         tokio::pin!(transport_rsp_rx);
         tokio::pin!(transport_notice_rx);
@@ -119,7 +141,6 @@ impl Filter {
 
         loop {
             tokio::select! {
-                //XXX receive from filter_cmd_rx and handle Shutdown, with TODO to handle other things
                 response = transport_rsp_rx.recv() => {
                     // trace!("[FILTER] Transport Response: {:?}", response);
 
@@ -173,10 +194,19 @@ impl Filter {
                         trace!("[FILTER] New command: {:?}", command);
 
                         if let Err(e) = self.process_filter_command(command) {
+                            if let Some(err) = e.downcast_ref::<FilterCommandError>() {
+                                match err {
+                                    FilterCommandError::ShutdownRequested => {
+                                        info!("[FILTER] shutting down");
+                                        phase = Phase::ShutdownComplete; // TODO: can do ShutdownRequested if it's a graceful shutdown
+                                        phase_watch_tx.send(phase).unwrap();
+                                        return Ok(());
+                                    }
+                                }
+                            }
                             error!("[FILTER] Filter command processing failed: {}", e);
                         }
                     }
-                    // Do the thing
                 }
             }
         }
@@ -321,10 +351,33 @@ impl Filter {
             FilterCmd::AddPingEndpoints { endpoints } => {}
             FilterCmd::ClearPingEndpoints => {}
             FilterCmd::DropEndpoint { endpoint } => {}
-            FilterCmd::Shutdown { graceful } => {}
+            FilterCmd::Shutdown { graceful } => {
+                // TODO: graceful
+                return Err(anyhow!(FilterCommandError::ShutdownRequested));
+            }
         }
 
         Ok(())
+    }
+
+    pub fn get_shutdown_watcher(&mut self) -> impl Future<Output=()> + 'static {
+        let mut phase_watch_rx = self.phase_watch_rx.clone();
+        async move {
+            loop {
+                let phase = *phase_watch_rx.borrow();
+                match phase {
+                    Phase::ShutdownComplete => {
+                        return;
+                    }
+                    _ => {}
+                }
+                if phase_watch_rx.changed().await.is_err() {
+                    // channel closed
+                    trace!("[FILTER] phase watch channel was dropped");
+                    return;
+                }
+            }
+        }
     }
 }
 

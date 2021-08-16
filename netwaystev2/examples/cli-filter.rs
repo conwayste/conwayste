@@ -12,6 +12,7 @@ use netwaystev2::transport::TransportCmd;
 use anyhow::Result;
 use std::io::Write;
 use std::time::Duration;
+use tokio::signal;
 use tokio::time::sleep;
 
 use chrono::Local;
@@ -77,8 +78,10 @@ async fn main() -> Result<()> {
     tokio::spawn(async move { filter.run().await });
     info!("Filter initialized!");
 
-    // Sleep for a really really long time
-    // TODO: wait for some user-initated quit event (Ctrl-C maybe) and send Shutdown command to Filter
-    sleep(Duration::from_secs(u64::max_value())).await;
+    signal::ctrl_c().await?;
+    info!("ctrl-c received!");
+
+    // Shutdown
+    filter_cmd_tx.send(FilterCmd::Shutdown{graceful: true}).await?;
     Ok(())
 }

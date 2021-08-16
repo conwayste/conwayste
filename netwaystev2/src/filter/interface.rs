@@ -58,6 +58,8 @@ pub enum FilterRsp {
     NoSuchEndpoint { endpoint: Endpoint },
 }
 
+// TODO: consider removing the Vec from some of these (might not be needed if the transport layer
+// isn't buffering things)
 /// Used by the Filter layer to inform the Application layer of game update availability
 #[derive(Debug)]
 pub enum FilterNotice {
