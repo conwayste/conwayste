@@ -1,4 +1,3 @@
-use futures::join;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -67,7 +66,7 @@ async fn basic_server_filter_flow() {
 
     let timeout_result = timeout_at(expiration, transport_cmd_rx.recv()).await;
 
-    assert!(timeout_result.is_err()); //TODO PR_GATE wrong, we should have a command, not a timeout! Requires filter reworking
+    assert!(timeout_result.is_ok()); //TODO PR_GATE wrong, we should have a command, not a timeout! Requires filter reworking
 
     //XXX test for expected transport command(s) sent
 

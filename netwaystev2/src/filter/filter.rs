@@ -22,17 +22,17 @@ enum SeqNumAdvancement {
 
 pub enum FilterEndpointData {
     OtherEndClient {
-        request_actions:              SequencedMinHeap<RequestAction>,
-        last_request_sequence_seen:   Option<SeqNum>,
-        last_response_sequence_sent:  Option<SeqNum>,
-        last_request_seen_timestamp:  Option<Instant>,
+        request_actions: SequencedMinHeap<RequestAction>,
+        last_request_sequence_seen: Option<SeqNum>,
+        last_response_sequence_sent: Option<SeqNum>,
+        last_request_seen_timestamp: Option<Instant>,
         last_response_sent_timestamp: Option<Instant>,
     },
     OtherEndServer {
-        response_codes:               SequencedMinHeap<ResponseCode>,
-        last_request_sequence_sent:   Option<SeqNum>,
-        last_response_sequence_seen:  Option<SeqNum>,
-        last_request_sent_timestamp:  Option<Instant>,
+        response_codes: SequencedMinHeap<ResponseCode>,
+        last_request_sequence_sent: Option<SeqNum>,
+        last_response_sequence_seen: Option<SeqNum>,
+        last_request_sent_timestamp: Option<Instant>,
         last_response_seen_timestamp: Option<Instant>,
     },
 }
@@ -40,10 +40,7 @@ pub enum FilterEndpointData {
 #[derive(Debug, thiserror::Error)]
 pub enum FilterEndpointDataError {
     #[error("Filter mode ({mode:?}) is not configured to receive {invalid_data}")]
-    UnexpectedData {
-        mode:         FilterMode,
-        invalid_data: String,
-    },
+    UnexpectedData { mode: FilterMode, invalid_data: String },
     #[error("Filter observed duplicate or already processed request action: {sequence}")]
     DuplicateRequest { sequence: u64 },
     #[error("Filter observed duplicate or already process response code : {sequence}")]
@@ -75,16 +72,16 @@ enum Phase {
 }
 
 pub struct Filter {
-    transport_cmd_tx:    TransportCmdSend,
-    transport_rsp_rx:    Option<TransportRspRecv>,    // TODO no option
+    transport_cmd_tx: TransportCmdSend,
+    transport_rsp_rx: Option<TransportRspRecv>,       // TODO no option
     transport_notice_rx: Option<TransportNotifyRecv>, // TODO no option
-    filter_cmd_rx:       Option<FilterCmdRecv>,       // TODO no option
-    filter_rsp_tx:       FilterRspSend,
-    filter_notice_tx:    FilterNotifySend,
-    mode:                FilterMode,
-    per_endpoint:        HashMap<Endpoint, FilterEndpointData>,
-    phase_watch_tx:      Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
-    phase_watch_rx:      watch::Receiver<Phase>, // XXX gets cloned
+    filter_cmd_rx: Option<FilterCmdRecv>,             // TODO no option
+    filter_rsp_tx: FilterRspSend,
+    filter_notice_tx: FilterNotifySend,
+    mode: FilterMode,
+    per_endpoint: HashMap<Endpoint, FilterEndpointData>,
+    phase_watch_tx: Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
+    phase_watch_rx: watch::Receiver<Phase>,       // XXX gets cloned
 }
 
 impl Filter {
@@ -221,10 +218,10 @@ impl Filter {
                     self.per_endpoint.insert(
                         endpoint,
                         FilterEndpointData::OtherEndClient {
-                            request_actions:              SequencedMinHeap::<RequestAction>::new(),
-                            last_request_sequence_seen:   None,
-                            last_response_sequence_sent:  None,
-                            last_request_seen_timestamp:  None,
+                            request_actions: SequencedMinHeap::<RequestAction>::new(),
+                            last_request_sequence_seen: None,
+                            last_response_sequence_sent: None,
+                            last_request_seen_timestamp: None,
                             last_response_sent_timestamp: None,
                         },
                     );
@@ -243,7 +240,7 @@ impl Filter {
             Packet::Request { sequence, action, .. } => match endpoint_data {
                 FilterEndpointData::OtherEndServer { .. } => {
                     return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
-                        mode:         self.mode,
+                        mode: self.mode,
                         invalid_data: "RequestAction".to_owned(),
                     }));
                 }
@@ -255,31 +252,36 @@ impl Filter {
                 } => {
                     *last_request_seen_timestamp = Some(Instant::now());
 
-                    match advance_sequence_number(sequence, last_request_sequence_seen) {
+                    match determine_seq_num_advancement(sequence, last_request_sequence_seen) {
                         SeqNumAdvancement::Duplicate => {
                             return Err(anyhow!(FilterEndpointDataError::DuplicateRequest {
                                 sequence: sequence,
                             }));
                         }
-                        _ => {
-                            request_actions.add(sequence, action);
+                        SeqNumAdvancement::BrandNew | SeqNumAdvancement::Contiguous => {
+                            println!("sequence: {}", sequence);
+                            *last_request_sequence_seen = Some(Wrapping(sequence));
+                        }
+                        SeqNumAdvancement::OutOfOrder => {
+                            // Nothing to do but add it to the heap in the next step
                         }
                     }
 
-                    // Determine how many contiguous requests are available to send to the app layer
-                    let mut taken = false;
+                    request_actions.add(sequence, action);
+
+                    // Loop over the heap, finding all requests which can be sent to the app layer based on their sequence number.
+                    // If any are found, send them to the app layer and advance the last seen sequence number.
+                    let ref mut last_seen_sn =
+                        last_request_sequence_seen.expect("sequence number cannot be None by this point");
                     loop {
                         if let Some(sn) = request_actions.peek_sequence_number() {
-                            if let Some(ref mut lrsn) = last_request_sequence_seen {
-                                if lrsn.0 == sn {
-                                    /* TODO: Send to application layer */
-                                    // NewRequestAction(endpoint, request_actions.take())
-                                    *lrsn += Wrapping(1);
-                                    taken = true;
-                                }
+                            if last_seen_sn.0 == sn {
+                                /* TODO: Send to application layer */
+                                *last_seen_sn += Wrapping(1);
+                            } else {
+                                break;
                             }
-                        }
-                        if !taken {
+                        } else {
                             break;
                         }
                     }
@@ -288,7 +290,7 @@ impl Filter {
             Packet::Response { sequence, code, .. } => match endpoint_data {
                 FilterEndpointData::OtherEndClient { .. } => {
                     return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
-                        mode:         self.mode,
+                        mode: self.mode,
                         invalid_data: "ResponseCode".to_owned(),
                     }));
                 }
@@ -300,31 +302,35 @@ impl Filter {
                 } => {
                     *last_response_seen_timestamp = Some(Instant::now());
 
-                    match advance_sequence_number(sequence, last_response_sequence_seen) {
+                    match determine_seq_num_advancement(sequence, last_response_sequence_seen) {
                         SeqNumAdvancement::Duplicate => {
                             return Err(anyhow!(FilterEndpointDataError::DuplicateResponse {
                                 sequence: sequence,
                             }));
                         }
-                        _ => {
-                            response_codes.add(sequence, code);
+                        SeqNumAdvancement::BrandNew | SeqNumAdvancement::Contiguous => {
+                            *last_response_sequence_seen = Some(Wrapping(sequence));
+                        }
+                        SeqNumAdvancement::OutOfOrder => {
+                            // Nothing to do but add it to the heap in the next step
                         }
                     }
 
-                    // Determine how many contiguous responses are available to send to the app layer
-                    let mut taken = false;
+                    response_codes.add(sequence, code);
+
+                    // Loop over the heap, finding all responses which can be sent to the app layer based on their sequence number.
+                    // If any are found, send them to the app layer and advance the last seen sequence number.
+                    let ref mut last_seen_sn =
+                        last_response_sequence_seen.expect("sequence number cannot be None by this point");
                     loop {
                         if let Some(sn) = response_codes.peek_sequence_number() {
-                            if let Some(ref mut lrsn) = last_response_sequence_seen {
-                                if lrsn.0 == sn {
-                                    /* TODO: Send to application layer */
-                                    // NewRequestAction(endpoint, request_actions.take())
-                                    *lrsn += Wrapping(1);
-                                    taken = true;
-                                }
+                            if last_seen_sn.0 == sn {
+                                /* TODO: Send to application layer */
+                                *last_seen_sn += Wrapping(1);
+                            } else {
+                                break;
                             }
-                        }
-                        if !taken {
+                        } else {
                             break;
                         }
                     }
@@ -360,7 +366,7 @@ impl Filter {
         Ok(())
     }
 
-    pub fn get_shutdown_watcher(&mut self) -> impl Future<Output=()> + 'static {
+    pub fn get_shutdown_watcher(&mut self) -> impl Future<Output = ()> + 'static {
         let mut phase_watch_rx = self.phase_watch_rx.clone();
         async move {
             loop {
@@ -383,16 +389,13 @@ impl Filter {
 
 /// True if the sequence number is contiguous to the previously seen value
 /// False if the sequence number is out-of-order
-fn advance_sequence_number(sequence: u64, last_seen: &mut Option<SeqNum>) -> SeqNumAdvancement {
-    // Buffer the packet if it is received out-of-order, otherwise send it up to the app layer directly
-    // for immediate processing
-    if let Some(last_sn) = last_seen {
-        let sequence_wrapped = Wrapping(sequence);
+fn determine_seq_num_advancement(pkt_sequence: u64, last_seen_sn: &mut Option<SeqNum>) -> SeqNumAdvancement {
+    if let Some(last_sn) = last_seen_sn {
+        let sequence_wrapped = Wrapping(pkt_sequence);
 
         // TODO: Need to handle wrapping cases for when comparing sequence numbers on both sides 0
 
         if sequence_wrapped == *last_sn + Wrapping(1) {
-            *last_seen = Some(sequence_wrapped);
             return SeqNumAdvancement::Contiguous;
         } else if sequence_wrapped <= *last_sn {
             return SeqNumAdvancement::Duplicate;
@@ -400,7 +403,6 @@ fn advance_sequence_number(sequence: u64, last_seen: &mut Option<SeqNum>) -> Seq
             return SeqNumAdvancement::OutOfOrder;
         }
     } else {
-        *last_seen = Some(Wrapping(sequence));
         return SeqNumAdvancement::BrandNew;
     }
 }
