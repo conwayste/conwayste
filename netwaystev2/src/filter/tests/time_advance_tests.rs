@@ -58,15 +58,17 @@ async fn basic_server_filter_flow() {
     };
     transport_notice_tx.send(TransportNotice::PacketDelivery{endpoint, packet}).await.unwrap();
 
-    filter_cmd_tx.send(FilterCmd::Shutdown{graceful:false}).await;
+    filter_cmd_tx.send(FilterCmd::Shutdown{graceful:false}).await.unwrap();
 
     let expiration = Instant::now() + Duration::from_secs(3);
 
     time::advance(Duration::from_secs(5)).await;
 
     let timeout_result = timeout_at(expiration, transport_cmd_rx.recv()).await;
+    let transport_cmd = timeout_result.expect("we should not have timed out getting a transport command");
 
-    assert!(timeout_result.is_ok()); //TODO PR_GATE wrong, we should have a command, not a timeout! Requires filter reworking
+    let transport_cmd = transport_cmd.expect("channel should not have been closed");
+    println!("transport_cmd: {:?}", transport_cmd);
 
     //XXX test for expected transport command(s) sent
 

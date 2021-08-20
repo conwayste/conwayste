@@ -7,7 +7,6 @@ use crate::transport::{
     TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp, TransportRspRecv,
 };
 use anyhow::anyhow;
-use anyhow::Result;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::watch;
 
@@ -119,7 +118,7 @@ impl Filter {
         )
     }
 
-    pub async fn run(&mut self) -> Result<()> {
+    pub async fn run(&mut self) {
         let transport_cmd_tx = self.transport_cmd_tx.clone();
         let transport_rsp_rx = self.transport_rsp_rx.take().unwrap();
         let transport_notice_rx = self.transport_notice_rx.take().unwrap();
@@ -181,7 +180,7 @@ impl Filter {
                             } => {
                                 info!("[FILTER] Endpoint {:?} timed-out. Dropping.", endpoint);
                                 self.per_endpoint.remove(&endpoint);
-                                transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await?;
+                                transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await.expect("transport cmd receiver should not be dropped");
                             }
                         }
                     }
@@ -197,7 +196,7 @@ impl Filter {
                                         info!("[FILTER] shutting down");
                                         phase = Phase::ShutdownComplete; // TODO: can do ShutdownRequested if it's a graceful shutdown
                                         phase_watch_tx.send(phase).unwrap();
-                                        return Ok(());
+                                        return;
                                     }
                                 }
                             }
@@ -259,7 +258,6 @@ impl Filter {
                             }));
                         }
                         SeqNumAdvancement::BrandNew | SeqNumAdvancement::Contiguous => {
-                            println!("sequence: {}", sequence);
                             *last_request_sequence_seen = Some(Wrapping(sequence));
                         }
                         SeqNumAdvancement::OutOfOrder => {
@@ -273,14 +271,10 @@ impl Filter {
                     // If any are found, send them to the app layer and advance the last seen sequence number.
                     let ref mut last_seen_sn =
                         last_request_sequence_seen.expect("sequence number cannot be None by this point");
-                    loop {
-                        if let Some(sn) = request_actions.peek_sequence_number() {
-                            if last_seen_sn.0 == sn {
-                                /* TODO: Send to application layer */
-                                *last_seen_sn += Wrapping(1);
-                            } else {
-                                break;
-                            }
+                    while let Some(sn) = request_actions.peek_sequence_number() {
+                        if last_seen_sn.0 == sn {
+                            request_actions.take();  // TODO: Send to application layer rather than discarding
+                            *last_seen_sn += Wrapping(1);
                         } else {
                             break;
                         }
