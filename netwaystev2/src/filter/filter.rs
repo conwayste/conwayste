@@ -12,7 +12,8 @@ use tokio::sync::watch;
 
 use std::{collections::HashMap, future::Future, num::Wrapping, time::Instant};
 
-enum SeqNumAdvancement {
+#[derive(PartialEq, Debug)]
+pub(crate) enum SeqNumAdvancement {
     BrandNew,
     Contiguous,
     OutOfOrder,
@@ -273,7 +274,7 @@ impl Filter {
                         last_request_sequence_seen.expect("sequence number cannot be None by this point");
                     while let Some(sn) = request_actions.peek_sequence_number() {
                         if last_seen_sn.0 == sn {
-                            request_actions.take();  // TODO: Send to application layer rather than discarding
+                            request_actions.take(); // TODO: Send to application layer rather than discarding
                             *last_seen_sn += Wrapping(1);
                         } else {
                             break;
@@ -381,18 +382,38 @@ impl Filter {
     }
 }
 
-/// True if the sequence number is contiguous to the previously seen value
-/// False if the sequence number is out-of-order
-fn determine_seq_num_advancement(pkt_sequence: u64, last_seen_sn: &mut Option<SeqNum>) -> SeqNumAdvancement {
+// I've deemed 'far away' to mean the half of the max value of the type.
+fn is_seq_sufficiently_far_away(a: u64, b: u64) -> bool {
+    static HALFWAYPOINT: u64 = u64::max_value() / 2;
+    if a > b {
+        a - b > HALFWAYPOINT
+    } else {
+        b - a > HALFWAYPOINT
+    }
+}
+
+/// `pkt_sequence` is the sequence number of the packet under process by the filter layer
+/// `last_seen_sn` is the last seen sequence number for either a request OR a response, depending on the context
+/// Returns a `SeqNumAdvancement` which determines if the inbound packet will need to be buffered (`OutOfOrder`) or
+/// if it can be sent to the application layer immediately (`Contiguous`). Packet sequence numbers that are smaller in
+/// value than `last_seen_sn` are considered `Duplicate`. The exception to this is if the sequence numbers are
+/// about to wrap from `u64::MAX` to zero; these are still considered `OutOfOrder` by examining the distance between the
+/// two numbers.
+pub(crate) fn determine_seq_num_advancement(pkt_sequence: u64, last_seen_sn: &mut Option<SeqNum>) -> SeqNumAdvancement {
     if let Some(last_sn) = last_seen_sn {
         let sequence_wrapped = Wrapping(pkt_sequence);
-
-        // TODO: Need to handle wrapping cases for when comparing sequence numbers on both sides 0
 
         if sequence_wrapped == *last_sn + Wrapping(1) {
             return SeqNumAdvancement::Contiguous;
         } else if sequence_wrapped <= *last_sn {
-            return SeqNumAdvancement::Duplicate;
+            if is_seq_sufficiently_far_away(sequence_wrapped.0, last_sn.0)
+            {
+                return SeqNumAdvancement::OutOfOrder;
+            }
+            else
+            {
+                return SeqNumAdvancement::Duplicate;
+            }
         } else {
             return SeqNumAdvancement::OutOfOrder;
         }
