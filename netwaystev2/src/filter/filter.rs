@@ -172,7 +172,7 @@ impl Filter {
                             } => {
                                 info!("[FILTER] Packet Taken from Endpoint {:?}.", endpoint);
                                 trace!("[FILTER] Took packet: {:?}", packet);
-                                if let Err(e) = self.process_transport_packet(endpoint, packet) {
+                                if let Err(e) = self.process_transport_packet(endpoint, packet, &mut filter_notice_tx).await {
                                     error!("[FILTER] error processing incoming packet: {:?}", e);
                                 }
                             }
@@ -209,22 +209,37 @@ impl Filter {
         }
     }
 
-    fn process_transport_packet(&mut self, endpoint: Endpoint, packet: Packet) -> anyhow::Result<()> {
+    async fn process_transport_packet(
+        &mut self,
+        endpoint: Endpoint,
+        packet: Packet,
+        filter_notice_tx: &mut FilterNotifySend,
+    ) -> anyhow::Result<()> {
         // TODO: also create endpoint data entry on a filter command to initiate a connection
         // (client mode only).
         if !self.per_endpoint.contains_key(&endpoint) {
             if self.mode == FilterMode::Server {
-                if let Packet::Request { .. } = packet {
-                    self.per_endpoint.insert(
-                        endpoint,
-                        FilterEndpointData::OtherEndClient {
-                            request_actions: SequencedMinHeap::<RequestAction>::new(),
-                            last_request_sequence_seen: None,
-                            last_response_sequence_sent: None,
-                            last_request_seen_timestamp: None,
-                            last_response_sent_timestamp: None,
-                        },
-                    );
+                // Add a new endpoint record if the client connects with a `None` cookie
+                if let Packet::Request { action, cookie, .. } = &packet {
+                    if let RequestAction::Connect { .. } = action {
+                        if cookie.is_none() {
+                            self.per_endpoint.insert(
+                                endpoint,
+                                FilterEndpointData::OtherEndClient {
+                                    request_actions: SequencedMinHeap::<RequestAction>::new(),
+                                    last_request_sequence_seen: None,
+                                    last_response_sequence_sent: None,
+                                    last_request_seen_timestamp: None,
+                                    last_response_sent_timestamp: None,
+                                },
+                            );
+                        } else {
+                            return Ok(());
+                        }
+                    } else {
+                        // wrong but don't spam logs
+                        return Ok(());
+                    }
                 } else {
                     // wrong but don't spam logs
                     return Ok(());
@@ -274,7 +289,11 @@ impl Filter {
                         last_request_sequence_seen.expect("sequence number cannot be None by this point");
                     while let Some(sn) = request_actions.peek_sequence_number() {
                         if last_seen_sn.0 == sn {
-                            request_actions.take(); // TODO: Send to application layer rather than discarding
+                            // Unwrap okay because peeking provides us with a Some(sequence_number)
+                            filter_notice_tx.send(FilterNotice::NewRequestAction {
+                                endpoint,
+                                action: request_actions.take().unwrap(),
+                            }).await?;
                             *last_seen_sn += Wrapping(1);
                         } else {
                             break;
@@ -320,7 +339,11 @@ impl Filter {
                     loop {
                         if let Some(sn) = response_codes.peek_sequence_number() {
                             if last_seen_sn.0 == sn {
-                                /* TODO: Send to application layer */
+                            // Unwrap okay because peeking provides us with a Some(sequence_number)
+                            filter_notice_tx.send(FilterNotice::NewResponseCode {
+                                endpoint,
+                                code: response_codes.take().unwrap(),
+                            }).await?;
                                 *last_seen_sn += Wrapping(1);
                             } else {
                                 break;
@@ -406,12 +429,9 @@ pub(crate) fn determine_seq_num_advancement(pkt_sequence: u64, last_seen_sn: &mu
         if sequence_wrapped == *last_sn + Wrapping(1) {
             return SeqNumAdvancement::Contiguous;
         } else if sequence_wrapped <= *last_sn {
-            if is_seq_sufficiently_far_away(sequence_wrapped.0, last_sn.0)
-            {
+            if is_seq_sufficiently_far_away(sequence_wrapped.0, last_sn.0) {
                 return SeqNumAdvancement::OutOfOrder;
-            }
-            else
-            {
+            } else {
                 return SeqNumAdvancement::Duplicate;
             }
         } else {
