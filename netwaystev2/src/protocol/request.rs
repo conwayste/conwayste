@@ -30,7 +30,7 @@ pub enum RequestAction {
     LeaveRoom,
     // TODO: add support ("auto_match" bool key, see issue #101)
     SetClientOptions {
-        key: String,
+        key:   String,
         value: Option<ClientOptionValue>,
     },
     // TODO: add support

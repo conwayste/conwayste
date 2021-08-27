@@ -1,12 +1,12 @@
+use crate::common::Endpoint;
+use crate::filter::{Filter, FilterCmd, FilterMode};
+use crate::protocol::{Packet, RequestAction};
+use crate::settings::TRANSPORT_CHANNEL_LEN;
+use crate::transport::{TransportCmd, TransportNotice, TransportRsp};
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tokio::time::{self, Instant, timeout_at};
-use crate::common::Endpoint;
-use crate::filter::{Filter, FilterMode, FilterCmd};
-use crate::transport::{TransportCmd, TransportRsp, TransportNotice};
-use crate::settings::TRANSPORT_CHANNEL_LEN;
-use crate::protocol::{Packet, RequestAction};
+use tokio::time::{self, timeout_at, Instant};
 
 #[tokio::test]
 async fn time_advancing_works() {
@@ -31,12 +31,7 @@ async fn basic_server_filter_flow() {
     let (transport_rsp_tx, transport_rsp_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
     let (transport_notice_tx, transport_notice_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
 
-    let (
-        mut filter,
-        filter_cmd_tx,
-        filter_rsp_rx,
-        filter_notify_rx,
-    ) = Filter::new(
+    let (mut filter, filter_cmd_tx, filter_rsp_rx, filter_notify_rx) = Filter::new(
         transport_cmd_tx,
         transport_rsp_rx,
         transport_notice_rx,
@@ -50,15 +45,24 @@ async fn basic_server_filter_flow() {
 
     // Send a mock transport notification
     let endpoint = Endpoint(("1.2.3.4", 5678).to_socket_addrs().unwrap().next().unwrap());
-    let packet = Packet::Request{
-        sequence: 1,
+    let packet = Packet::Request {
+        sequence:     1,
         response_ack: None,
-        cookie: None,
-        action: RequestAction::Connect{name: "Sheeana".to_owned(), client_version: "0.3.2".to_owned()},
+        cookie:       None,
+        action:       RequestAction::Connect {
+            name:           "Sheeana".to_owned(),
+            client_version: "0.3.2".to_owned(),
+        },
     };
-    transport_notice_tx.send(TransportNotice::PacketDelivery{endpoint, packet}).await.unwrap();
+    transport_notice_tx
+        .send(TransportNotice::PacketDelivery { endpoint, packet })
+        .await
+        .unwrap();
 
-    filter_cmd_tx.send(FilterCmd::Shutdown{graceful:false}).await.unwrap();
+    filter_cmd_tx
+        .send(FilterCmd::Shutdown { graceful: false })
+        .await
+        .unwrap();
 
     let expiration = Instant::now() + Duration::from_secs(3);
 

@@ -82,6 +82,6 @@ async fn main() -> Result<()> {
     info!("ctrl-c received!");
 
     // Shutdown
-    filter_cmd_tx.send(FilterCmd::Shutdown{graceful: true}).await?;
+    filter_cmd_tx.send(FilterCmd::Shutdown { graceful: true }).await?;
     Ok(())
 }

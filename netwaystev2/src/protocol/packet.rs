@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
 use super::request::RequestAction;
 use super::response::ResponseCode;
 use super::update::{BroadcastChatMessage, GameUpdate, GenPartInfo, UniUpdate};
 use crate::filter::PingPong;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Packet {
@@ -30,7 +30,7 @@ pub enum Packet {
         game_update_seq: Option<u64>,
         game_updates:    Vec<GameUpdate>, // Information pertaining to a game tick update.
         universe_update: UniUpdate,       // TODO: add support
-        ping:            PingPong, // Used for server-to-client latency measurement (no room needed)
+        ping:            PingPong,        // Used for server-to-client latency measurement (no room needed)
     },
     UpdateReply {
         // in-game: sent by client in reply to server
@@ -39,7 +39,7 @@ pub enum Packet {
         last_game_update_seq: Option<u64>, // seq. number of latest game update from server
         last_full_gen:        Option<u64>, // generation number client is currently at
         partial_gen:          Option<GenPartInfo>, // partial gen info, if some but not all GenStateDiffParts recv'd
-        pong:                 PingPong, // Used for server-to-client latency measurement
+        pong:                 PingPong,    // Used for server-to-client latency measurement
     },
     GetStatus {
         ping: PingPong, // Used for client-to-server latency measurement

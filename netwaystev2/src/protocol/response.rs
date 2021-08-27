@@ -42,7 +42,6 @@ pub enum ResponseCode {
     KeepAlive, // Server's heart is beating
 }
 
-
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct RoomList {
     pub room_name:    String,

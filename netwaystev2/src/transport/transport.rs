@@ -55,8 +55,8 @@ pub struct Transport {
     notifications:   TransportNotifySend,
     udp_stream_send: SplitSink<UdpFramed<NetwaystePacketCodec>, TransportItem>,
     udp_stream_recv: Fuse<SplitStream<UdpFramed<NetwaystePacketCodec>>>,
-    phase_watch_tx:      Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
-    phase_watch_rx:      watch::Receiver<Phase>, // XXX gets cloned
+    phase_watch_tx:  Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
+    phase_watch_rx:  watch::Receiver<Phase>,       // XXX gets cloned
 
     endpoints: TransportEndpointData<Packet>,
 }
@@ -165,7 +165,7 @@ impl Transport {
         }
     }
 
-    pub fn get_shutdown_watcher(&mut self) -> impl Future<Output=()> + 'static {
+    pub fn get_shutdown_watcher(&mut self) -> impl Future<Output = ()> + 'static {
         let mut phase_watch_rx = self.phase_watch_rx.clone();
         async move {
             loop {
@@ -251,9 +251,7 @@ async fn process_transport_command(
             |error| TransportRsp::EndpointError { error },
             |()| TransportRsp::Accepted,
         )),
-        Shutdown => {
-            return Err(anyhow!(TransportCommandError::ShutdownRequested))
-        }
+        Shutdown => return Err(anyhow!(TransportCommandError::ShutdownRequested)),
     }
 
     Ok(cmd_responses)

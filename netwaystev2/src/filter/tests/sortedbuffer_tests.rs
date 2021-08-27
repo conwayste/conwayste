@@ -1,4 +1,3 @@
-
 use crate::filter::SequencedMinHeap;
 
 #[test]
@@ -57,7 +56,7 @@ fn seqminheap_insert_descending() {
 
 #[test]
 fn seqminheap_insert_sequential_with_gaps() {
-    let span : Vec<u64> = vec![1, 2, 5, 6, 9];
+    let span: Vec<u64> = vec![1, 2, 5, 6, 9];
 
     let mut smh = SequencedMinHeap::<usize>::new();
     for n in &span {
@@ -76,7 +75,7 @@ fn seqminheap_insert_sequential_with_gaps() {
 
 #[test]
 fn seqminheap_insert_reverse_sequential_with_gaps() {
-    let mut span : Vec<u64> = vec![1, 2, 5, 6, 9];
+    let mut span: Vec<u64> = vec![1, 2, 5, 6, 9];
     span.reverse();
 
     let mut smh = SequencedMinHeap::<usize>::new();
@@ -97,7 +96,7 @@ fn seqminheap_insert_reverse_sequential_with_gaps() {
 
 #[test]
 fn seqminheap_insert_out_of_order_with_gaps() {
-    let mut span : Vec<u64> = vec![2, 9, 1, 6, 5];
+    let mut span: Vec<u64> = vec![2, 9, 1, 6, 5];
 
     let mut smh = SequencedMinHeap::<usize>::new();
     for n in &span {
@@ -117,7 +116,7 @@ fn seqminheap_insert_out_of_order_with_gaps() {
 
 #[test]
 fn seqminheap_insert_out_of_order_with_no_gaps() {
-    let mut span : Vec<u64> = vec![2, 6, 1, 3, 5, 0, 4];
+    let mut span: Vec<u64> = vec![2, 6, 1, 3, 5, 0, 4];
     span.reverse();
 
     let mut smh = SequencedMinHeap::<usize>::new();

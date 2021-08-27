@@ -1,5 +1,4 @@
 ///! A sorted buffer which maintains ordering and uniqueness in the buffer.
-
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
@@ -17,8 +16,8 @@ impl<T> SequencedMinHeap<T> {
     pub fn contains_sequence_number(&self, sequence: u64) -> bool {
         // Searching takes place in arbitrary order
         for tuple in &self.heap {
-            if tuple.0.0 == sequence {
-                return true
+            if tuple.0 .0 == sequence {
+                return true;
             }
         }
         false
@@ -37,12 +36,12 @@ impl<T> SequencedMinHeap<T> {
     /// Gets the minimum sequence number in the min-heap. This is the sequence number of
     /// what we would .take()
     pub fn peek_sequence_number(&self) -> Option<u64> {
-        self.heap.peek().map(|reversed_tup| reversed_tup.0.0)
+        self.heap.peek().map(|reversed_tup| reversed_tup.0 .0)
     }
 
     /// Takes the T with the lowest sequence number
     pub fn take(&mut self) -> Option<T> {
-        self.heap.pop().map(|reversed_tup| reversed_tup.0.1)
+        self.heap.pop().map(|reversed_tup| reversed_tup.0 .1)
     }
 }
 

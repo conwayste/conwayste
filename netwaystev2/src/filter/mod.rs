@@ -8,8 +8,8 @@ mod tests;
 
 pub use filter::{Filter, FilterCmdSend};
 pub use interface::{FilterCmd, FilterMode};
-pub use sortedbuffer::SequencedMinHeap;
 pub(crate) use ping::PingPong;
+pub use sortedbuffer::SequencedMinHeap;
 
 #[cfg(test)]
-pub(crate) use filter::{SeqNumAdvancement, determine_seq_num_advancement};
+pub(crate) use filter::{determine_seq_num_advancement, SeqNumAdvancement};
