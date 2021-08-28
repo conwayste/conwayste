@@ -2,7 +2,7 @@ use super::interface::{FilterCmd, FilterMode, FilterNotice, FilterRsp, SeqNum};
 use super::sortedbuffer::SequencedMinHeap;
 use crate::common::Endpoint;
 use crate::protocol::{Packet, RequestAction, ResponseCode};
-use crate::settings::{DEFAULT_RETRY_INTERVAL, FILTER_CHANNEL_LEN};
+use crate::settings::{DEFAULT_RETRY_INTERVAL_US, FILTER_CHANNEL_LEN};
 use crate::transport::{
     PacketSettings, TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp,
     TransportRspRecv,
@@ -12,6 +12,7 @@ use snowflake::ProcessUniqueId;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::watch;
 
+use std::time::Duration;
 use std::{collections::HashMap, future::Future, num::Wrapping, time::Instant};
 
 #[derive(PartialEq, Debug)]
@@ -192,7 +193,7 @@ impl Filter {
                     if let Some(command) = command {
                         trace!("[FILTER] New command: {:?}", command);
 
-                        if let Err(e) = self.process_filter_command(command) {
+                        if let Err(e) = self.process_filter_command(command).await {
                             if let Some(err) = e.downcast_ref::<FilterCommandError>() {
                                 match err {
                                     FilterCommandError::ShutdownRequested => {
@@ -365,6 +366,8 @@ impl Filter {
     }
 
     async fn process_filter_command(&mut self, command: FilterCmd) -> anyhow::Result<()> {
+        let retry_interval = Duration::new(0, DEFAULT_RETRY_INTERVAL_US);
+
         match command {
             FilterCmd::SendRequestAction { endpoint, action } => {
                 // PR_GATE: This will currently fail because the endpoint has not been created on an connect() event
