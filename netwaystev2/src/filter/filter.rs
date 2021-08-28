@@ -386,6 +386,8 @@ impl Filter {
                         last_response_sequence_seen,
                         ..
                     } => {
+                        *last_request_sent_timestamp = Some(Instant::now());
+
                         if let Some(sn) = last_request_sequence_sent {
                             *sn += Wrapping(1u64);
                         } else {
@@ -409,7 +411,7 @@ impl Filter {
 
                         let packet_infos = vec![PacketSettings {
                             tid: ProcessUniqueId::new(),
-                            retry_interval: DEFAULT_RETRY_INTERVAL,
+                            retry_interval,
                         }];
 
                         self.transport_cmd_tx
@@ -422,7 +424,54 @@ impl Filter {
                     }
                 }
             }
-            FilterCmd::SendResponseCode { endpoint, code } => {}
+            FilterCmd::SendResponseCode { endpoint, code } => {
+                match self.per_endpoint.get_mut(&endpoint).unwrap() {
+                    FilterEndpointData::OtherEndServer { .. } => {
+                        return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
+                            mode: self.mode,
+                            invalid_data: "ResponseCodes are not sent to servers".to_owned(),
+                        }));
+                    }
+                    FilterEndpointData::OtherEndClient {
+                        last_response_sequence_sent,
+                        last_response_sent_timestamp,
+                        last_request_sequence_seen,
+                        ..
+                    } => {
+                        *last_response_sent_timestamp = Some(Instant::now());
+
+                        if let Some(sn) = last_response_sequence_sent {
+                            *sn += Wrapping(1u64);
+                        } else {
+                            *last_response_sequence_sent = Some(Wrapping(1));
+                        }
+
+                        // Unwrap ok b/c the immediate check above guarantees Some(..)
+                        let sequence = last_response_sequence_sent.unwrap().0;
+
+                        let request_ack = last_request_sequence_seen.map(|request_sn| request_sn.0);
+
+                        let packets = vec![Packet::Response {
+                            code,
+                            sequence,
+                            request_ack,
+                        }];
+
+                        let packet_infos = vec![PacketSettings {
+                            tid: ProcessUniqueId::new(),
+                            retry_interval,
+                        }];
+
+                        self.transport_cmd_tx
+                            .send(TransportCmd::SendPackets {
+                                endpoint,
+                                packet_infos,
+                                packets,
+                            })
+                            .await?;
+                    }
+                }
+            }
             FilterCmd::SendChats { endpoints, messages } => {}
             FilterCmd::SendGameUpdates { endpoints, messages } => {}
             FilterCmd::Authenticated { endpoint } => {}
