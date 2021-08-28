@@ -127,7 +127,7 @@ impl Filter {
         let transport_rsp_rx = self.transport_rsp_rx.take().unwrap();
         let transport_notice_rx = self.transport_notice_rx.take().unwrap();
         let mut phase = Phase::Running;
-        let mut phase_watch_tx = self.phase_watch_tx.take().unwrap();
+        let phase_watch_tx = self.phase_watch_tx.take().unwrap();
         tokio::pin!(transport_cmd_tx);
         tokio::pin!(transport_rsp_rx);
         tokio::pin!(transport_notice_rx);
@@ -221,34 +221,31 @@ impl Filter {
         // TODO: also create endpoint data entry on a filter command to initiate a connection
         // (client mode only).
         if !self.per_endpoint.contains_key(&endpoint) {
+            let mut valid_new_conn = false;
             if self.mode == FilterMode::Server {
                 // Add a new endpoint record if the client connects with a `None` cookie
                 if let Packet::Request { action, cookie, .. } = &packet {
                     if let RequestAction::Connect { .. } = action {
                         if cookie.is_none() {
+                            valid_new_conn = true;
+
                             self.per_endpoint.insert(
                                 endpoint,
                                 FilterEndpointData::OtherEndClient {
-                                    request_actions:              SequencedMinHeap::<RequestAction>::new(),
-                                    last_request_sequence_seen:   None,
-                                    last_response_sequence_sent:  None,
-                                    last_request_seen_timestamp:  None,
+                                    request_actions: SequencedMinHeap::<RequestAction>::new(),
+                                    last_request_sequence_seen: None,
+                                    last_response_sequence_sent: None,
+                                    last_request_seen_timestamp: None,
                                     last_response_sent_timestamp: None,
                                 },
                             );
-                        } else {
-                            return Ok(());
                         }
-                    } else {
-                        // wrong but don't spam logs
-                        return Ok(());
                     }
-                } else {
-                    // wrong but don't spam logs
-                    return Ok(());
                 }
-            } else {
-                // wrong but don't spam logs
+            }
+
+            if !valid_new_conn {
+                // The connection was not accepted for this new endpoint. No need to log it.
                 return Ok(());
             }
         }

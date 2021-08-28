@@ -20,6 +20,7 @@ impl BroadcastChatMessage {
         }
     }
 
+    #[allow(unused)]
     fn sequence_number(&self) -> u64 {
         if let Some(v) = self.chat_seq {
             v

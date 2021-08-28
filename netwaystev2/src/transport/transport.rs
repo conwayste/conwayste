@@ -99,7 +99,7 @@ impl Transport {
         let udp_stream_recv = &mut self.udp_stream_recv;
         let udp_stream_send = &mut self.udp_stream_send;
         let mut phase = Phase::Running;
-        let mut phase_watch_tx = self.phase_watch_tx.take().unwrap();
+        let phase_watch_tx = self.phase_watch_tx.take().unwrap();
         tokio::pin!(udp_stream_recv);
         tokio::pin!(udp_stream_send);
 
