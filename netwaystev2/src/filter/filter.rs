@@ -2,11 +2,13 @@ use super::interface::{FilterCmd, FilterMode, FilterNotice, FilterRsp, SeqNum};
 use super::sortedbuffer::SequencedMinHeap;
 use crate::common::Endpoint;
 use crate::protocol::{Packet, RequestAction, ResponseCode};
-use crate::settings::FILTER_CHANNEL_LEN;
+use crate::settings::{DEFAULT_RETRY_INTERVAL, FILTER_CHANNEL_LEN};
 use crate::transport::{
-    TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp, TransportRspRecv,
+    PacketSettings, TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp,
+    TransportRspRecv,
 };
 use anyhow::anyhow;
+use snowflake::ProcessUniqueId;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::watch;
 
@@ -22,17 +24,17 @@ pub(crate) enum SeqNumAdvancement {
 
 pub enum FilterEndpointData {
     OtherEndClient {
-        request_actions:              SequencedMinHeap<RequestAction>,
-        last_request_sequence_seen:   Option<SeqNum>,
-        last_response_sequence_sent:  Option<SeqNum>,
-        last_request_seen_timestamp:  Option<Instant>,
+        request_actions: SequencedMinHeap<RequestAction>,
+        last_request_sequence_seen: Option<SeqNum>,
+        last_response_sequence_sent: Option<SeqNum>,
+        last_request_seen_timestamp: Option<Instant>,
         last_response_sent_timestamp: Option<Instant>,
     },
     OtherEndServer {
-        response_codes:               SequencedMinHeap<ResponseCode>,
-        last_request_sequence_sent:   Option<SeqNum>,
-        last_response_sequence_seen:  Option<SeqNum>,
-        last_request_sent_timestamp:  Option<Instant>,
+        response_codes: SequencedMinHeap<ResponseCode>,
+        last_request_sequence_sent: Option<SeqNum>,
+        last_response_sequence_seen: Option<SeqNum>,
+        last_request_sent_timestamp: Option<Instant>,
         last_response_seen_timestamp: Option<Instant>,
     },
 }
@@ -40,10 +42,7 @@ pub enum FilterEndpointData {
 #[derive(Debug, thiserror::Error)]
 pub enum FilterEndpointDataError {
     #[error("Filter mode ({mode:?}) is not configured to receive {invalid_data}")]
-    UnexpectedData {
-        mode:         FilterMode,
-        invalid_data: String,
-    },
+    UnexpectedData { mode: FilterMode, invalid_data: String },
     #[error("Filter observed duplicate or already processed request action: {sequence}")]
     DuplicateRequest { sequence: u64 },
     #[error("Filter observed duplicate or already process response code : {sequence}")]
@@ -75,16 +74,16 @@ enum Phase {
 }
 
 pub struct Filter {
-    transport_cmd_tx:    TransportCmdSend,
-    transport_rsp_rx:    Option<TransportRspRecv>,    // TODO no option
+    transport_cmd_tx: TransportCmdSend,
+    transport_rsp_rx: Option<TransportRspRecv>,       // TODO no option
     transport_notice_rx: Option<TransportNotifyRecv>, // TODO no option
-    filter_cmd_rx:       Option<FilterCmdRecv>,       // TODO no option
-    filter_rsp_tx:       FilterRspSend,
-    filter_notice_tx:    FilterNotifySend,
-    mode:                FilterMode,
-    per_endpoint:        HashMap<Endpoint, FilterEndpointData>,
-    phase_watch_tx:      Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
-    phase_watch_rx:      watch::Receiver<Phase>,       // XXX gets cloned
+    filter_cmd_rx: Option<FilterCmdRecv>,             // TODO no option
+    filter_rsp_tx: FilterRspSend,
+    filter_notice_tx: FilterNotifySend,
+    mode: FilterMode,
+    per_endpoint: HashMap<Endpoint, FilterEndpointData>,
+    phase_watch_tx: Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
+    phase_watch_rx: watch::Receiver<Phase>,       // XXX gets cloned
 }
 
 impl Filter {
@@ -255,7 +254,7 @@ impl Filter {
             Packet::Request { sequence, action, .. } => match endpoint_data {
                 FilterEndpointData::OtherEndServer { .. } => {
                     return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
-                        mode:         self.mode,
+                        mode: self.mode,
                         invalid_data: "RequestAction".to_owned(),
                     }));
                 }
@@ -306,7 +305,7 @@ impl Filter {
             Packet::Response { sequence, code, .. } => match endpoint_data {
                 FilterEndpointData::OtherEndClient { .. } => {
                     return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
-                        mode:         self.mode,
+                        mode: self.mode,
                         invalid_data: "ResponseCode".to_owned(),
                     }));
                 }
@@ -365,11 +364,60 @@ impl Filter {
         return Ok(());
     }
 
-    fn process_filter_command(&mut self, command: FilterCmd) -> anyhow::Result<()> {
+    async fn process_filter_command(&mut self, command: FilterCmd) -> anyhow::Result<()> {
         match command {
             FilterCmd::SendRequestAction { endpoint, action } => {
                 // PR_GATE: This will currently fail because the endpoint has not been created on an connect() event
                 check_endpoint_exists(&self.per_endpoint, endpoint)?;
+
+                match self.per_endpoint.get_mut(&endpoint).unwrap() {
+                    FilterEndpointData::OtherEndClient { .. } => {
+                        return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
+                            mode: self.mode,
+                            invalid_data: "RequestActions are not sent to clients".to_owned(),
+                        }));
+                    }
+                    FilterEndpointData::OtherEndServer {
+                        last_request_sequence_sent,
+                        last_request_sent_timestamp,
+                        last_response_sequence_seen,
+                        ..
+                    } => {
+                        if let Some(sn) = last_request_sequence_sent {
+                            *sn += Wrapping(1u64);
+                        } else {
+                            *last_request_sequence_sent = Some(Wrapping(1));
+                        }
+
+                        // Unwrap ok b/c the immediate check above guarantees Some(..)
+                        let sequence = last_request_sequence_sent.unwrap().0;
+
+                        let response_ack = last_response_sequence_seen.map(|response_sn| response_sn.0);
+
+                        // TODO: Get cookie from app layer
+                        let cookie = None;
+
+                        let packets = vec![Packet::Request {
+                            action,
+                            cookie,
+                            sequence,
+                            response_ack,
+                        }];
+
+                        let packet_infos = vec![PacketSettings {
+                            tid: ProcessUniqueId::new(),
+                            retry_interval: DEFAULT_RETRY_INTERVAL,
+                        }];
+
+                        self.transport_cmd_tx
+                            .send(TransportCmd::SendPackets {
+                                endpoint,
+                                packet_infos,
+                                packets,
+                            })
+                            .await?;
+                    }
+                }
             }
             FilterCmd::SendResponseCode { endpoint, code } => {}
             FilterCmd::SendChats { endpoints, messages } => {}

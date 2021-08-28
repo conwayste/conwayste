@@ -1,6 +1,7 @@
 use super::interface::TransportEndpointDataError;
 use crate::common::Endpoint;
 use anyhow::{anyhow, Result};
+use snowflake::ProcessUniqueId;
 
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
 use std::time::{Duration, Instant};
@@ -43,13 +44,13 @@ impl EndpointMeta {
 /// Used by the Transport layer to group a transmit id with the associated packet, for transmit
 #[derive(Clone)]
 struct PacketContainer<P> {
-    tid:    usize,
+    tid:    ProcessUniqueId,
     packet: P,
     info:   PacketInfo,
 }
 
 impl<P> PacketContainer<P> {
-    pub fn new(tid: usize, packet: P, info: PacketInfo) -> Self {
+    pub fn new(tid: ProcessUniqueId, packet: P, info: PacketInfo) -> Self {
         PacketContainer { tid, packet, info }
     }
 }
@@ -118,7 +119,7 @@ impl<P> TransportEndpointData<P> {
     pub fn push_transmit_queue(
         &mut self,
         endpoint: Endpoint,
-        tid: usize,
+        tid: ProcessUniqueId,
         item: P,
         transmit_interval: Duration,
     ) -> Result<()> {
@@ -198,7 +199,7 @@ impl<P> TransportEndpointData<P> {
     /// Will report an error if the endpoint does not exist.
     /// Will report an error if the tid does not exist.
     /// Will report an error if the packet could not be removed.
-    pub fn drop_packet(&mut self, endpoint: Endpoint, tid: usize) -> Result<()> {
+    pub fn drop_packet(&mut self, endpoint: Endpoint, tid: ProcessUniqueId) -> Result<()> {
         let queue_index;
         if let Some(tx_queue) = self.transmit.get(&endpoint) {
             queue_index = tx_queue
