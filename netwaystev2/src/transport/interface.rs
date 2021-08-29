@@ -13,19 +13,19 @@ pub const UDP_MTU_SIZE: usize = 1472;
 pub enum TransportCmd {
     NewEndpoint {
         endpoint: Endpoint,
-        timeout: Duration,
+        timeout:  Duration,
     },
     SendPackets {
-        endpoint: Endpoint,
+        endpoint:     Endpoint,
         packet_infos: Vec<PacketSettings>,
-        packets: Vec<Packet>,
+        packets:      Vec<Packet>,
     },
     DropEndpoint {
         endpoint: Endpoint,
     },
     DropPacket {
         endpoint: Endpoint,
-        tid: ProcessUniqueId,
+        tid:      ProcessUniqueId,
     },
     CancelTransmitQueue {
         endpoint: Endpoint,
@@ -57,7 +57,7 @@ pub enum TransportNotice {
 #[derive(Debug)]
 pub struct PacketSettings {
     /// Transmit ID, a unique identifier used to sync packet transactions between the filter and Transport layers
-    pub tid: ProcessUniqueId,
+    pub tid:            ProcessUniqueId,
     /// The length of time in between each retry attempt
     pub retry_interval: Duration,
 }
@@ -67,14 +67,20 @@ pub enum TransportEndpointDataError {
     #[error("{endpoint:?} not found in transmit queue: {message}")]
     EndpointNotFound { endpoint: Endpoint, message: String },
     #[error("{endpoint:?} entry exists in transmit queue: {entry_found:?}")]
-    EndpointExists { endpoint: Endpoint, entry_found: Endpoint },
+    EndpointExists {
+        endpoint:    Endpoint,
+        entry_found: Endpoint,
+    },
     #[error("Transmit ID {tid} not found for {endpoint:?} in Transmit queue")]
-    TransmitIDNotFound { endpoint: Endpoint, tid: ProcessUniqueId },
+    TransmitIDNotFound {
+        endpoint: Endpoint,
+        tid:      ProcessUniqueId,
+    },
     #[error("Could not remove packet at index {index} from transmit queue with tid {tid} for {endpoint:?}")]
     PacketRemovalFailure {
         endpoint: Endpoint,
-        tid: ProcessUniqueId,
-        index: usize,
+        tid:      ProcessUniqueId,
+        index:    usize,
     },
     #[error("{endpoint:?} could not be dropped : {message}")]
     EndpointDropFailed { endpoint: Endpoint, message: String },

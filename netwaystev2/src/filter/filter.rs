@@ -25,17 +25,17 @@ pub(crate) enum SeqNumAdvancement {
 
 pub enum FilterEndpointData {
     OtherEndClient {
-        request_actions: SequencedMinHeap<RequestAction>,
-        last_request_sequence_seen: Option<SeqNum>,
-        last_response_sequence_sent: Option<SeqNum>,
-        last_request_seen_timestamp: Option<Instant>,
+        request_actions:              SequencedMinHeap<RequestAction>,
+        last_request_sequence_seen:   Option<SeqNum>,
+        last_response_sequence_sent:  Option<SeqNum>,
+        last_request_seen_timestamp:  Option<Instant>,
         last_response_sent_timestamp: Option<Instant>,
     },
     OtherEndServer {
-        response_codes: SequencedMinHeap<ResponseCode>,
-        last_request_sequence_sent: Option<SeqNum>,
-        last_response_sequence_seen: Option<SeqNum>,
-        last_request_sent_timestamp: Option<Instant>,
+        response_codes:               SequencedMinHeap<ResponseCode>,
+        last_request_sequence_sent:   Option<SeqNum>,
+        last_response_sequence_seen:  Option<SeqNum>,
+        last_request_sent_timestamp:  Option<Instant>,
         last_response_seen_timestamp: Option<Instant>,
     },
 }
@@ -43,7 +43,10 @@ pub enum FilterEndpointData {
 #[derive(Debug, thiserror::Error)]
 pub enum FilterEndpointDataError {
     #[error("Filter mode ({mode:?}) is not configured to receive {invalid_data}")]
-    UnexpectedData { mode: FilterMode, invalid_data: String },
+    UnexpectedData {
+        mode:         FilterMode,
+        invalid_data: String,
+    },
     #[error("Filter observed duplicate or already processed request action: {sequence}")]
     DuplicateRequest { sequence: u64 },
     #[error("Filter observed duplicate or already process response code : {sequence}")]
@@ -75,16 +78,16 @@ enum Phase {
 }
 
 pub struct Filter {
-    transport_cmd_tx: TransportCmdSend,
-    transport_rsp_rx: Option<TransportRspRecv>,       // TODO no option
+    transport_cmd_tx:    TransportCmdSend,
+    transport_rsp_rx:    Option<TransportRspRecv>,    // TODO no option
     transport_notice_rx: Option<TransportNotifyRecv>, // TODO no option
-    filter_cmd_rx: Option<FilterCmdRecv>,             // TODO no option
-    filter_rsp_tx: FilterRspSend,
-    filter_notice_tx: FilterNotifySend,
-    mode: FilterMode,
-    per_endpoint: HashMap<Endpoint, FilterEndpointData>,
-    phase_watch_tx: Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
-    phase_watch_rx: watch::Receiver<Phase>,       // XXX gets cloned
+    filter_cmd_rx:       Option<FilterCmdRecv>,       // TODO no option
+    filter_rsp_tx:       FilterRspSend,
+    filter_notice_tx:    FilterNotifySend,
+    mode:                FilterMode,
+    per_endpoint:        HashMap<Endpoint, FilterEndpointData>,
+    phase_watch_tx:      Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
+    phase_watch_rx:      watch::Receiver<Phase>,       // XXX gets cloned
 }
 
 impl Filter {
@@ -232,10 +235,10 @@ impl Filter {
                             self.per_endpoint.insert(
                                 endpoint,
                                 FilterEndpointData::OtherEndClient {
-                                    request_actions: SequencedMinHeap::<RequestAction>::new(),
-                                    last_request_sequence_seen: None,
-                                    last_response_sequence_sent: None,
-                                    last_request_seen_timestamp: None,
+                                    request_actions:              SequencedMinHeap::<RequestAction>::new(),
+                                    last_request_sequence_seen:   None,
+                                    last_response_sequence_sent:  None,
+                                    last_request_seen_timestamp:  None,
                                     last_response_sent_timestamp: None,
                                 },
                             );
@@ -255,7 +258,7 @@ impl Filter {
             Packet::Request { sequence, action, .. } => match endpoint_data {
                 FilterEndpointData::OtherEndServer { .. } => {
                     return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
-                        mode: self.mode,
+                        mode:         self.mode,
                         invalid_data: "RequestAction".to_owned(),
                     }));
                 }
@@ -306,7 +309,7 @@ impl Filter {
             Packet::Response { sequence, code, .. } => match endpoint_data {
                 FilterEndpointData::OtherEndClient { .. } => {
                     return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
-                        mode: self.mode,
+                        mode:         self.mode,
                         invalid_data: "ResponseCode".to_owned(),
                     }));
                 }
@@ -376,7 +379,7 @@ impl Filter {
                 match self.per_endpoint.get_mut(&endpoint).unwrap() {
                     FilterEndpointData::OtherEndClient { .. } => {
                         return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
-                            mode: self.mode,
+                            mode:         self.mode,
                             invalid_data: "RequestActions are not sent to clients".to_owned(),
                         }));
                     }
@@ -428,7 +431,7 @@ impl Filter {
                 match self.per_endpoint.get_mut(&endpoint).unwrap() {
                     FilterEndpointData::OtherEndServer { .. } => {
                         return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
-                            mode: self.mode,
+                            mode:         self.mode,
                             invalid_data: "ResponseCodes are not sent to servers".to_owned(),
                         }));
                     }
