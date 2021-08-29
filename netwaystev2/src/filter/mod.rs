@@ -7,7 +7,7 @@ mod sortedbuffer;
 mod tests;
 
 pub use filter::{Filter, FilterCmdSend};
-pub use interface::{FilterCmd, FilterMode};
+pub use interface::{FilterCmd, FilterMode, FilterNotice};
 pub(crate) use ping::PingPong;
 pub use sortedbuffer::SequencedMinHeap;
 
