@@ -56,7 +56,7 @@ pub struct Transport {
     udp_stream_send: SplitSink<UdpFramed<NetwaystePacketCodec>, TransportItem>,
     udp_stream_recv: Fuse<SplitStream<UdpFramed<NetwaystePacketCodec>>>,
     phase_watch_tx:  Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
-    phase_watch_rx:  watch::Receiver<Phase>,       // XXX gets cloned
+    phase_watch_rx:  watch::Receiver<Phase>,
 
     endpoints: TransportEndpointData<Packet>,
 }

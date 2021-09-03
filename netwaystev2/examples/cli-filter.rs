@@ -40,6 +40,7 @@ async fn main() -> Result<()> {
     // Create the lowest (Transport) layer, returning the layer itself plus three channel halves
     // (one outgoing and two incoming) for communicating with it.
     let (mut transport, transport_cmd_tx, transport_rsp_rx, transport_notice_rx) = Transport::new(None, None)?;
+    let transport_shutdown_watcher = transport.get_shutdown_watcher();
 
     // Start the transport's task in the background
     tokio::spawn(async move { transport.run().await });
@@ -57,11 +58,12 @@ async fn main() -> Result<()> {
 
     // Create the second lowest (Filter) layer, passing in the channel halves that connect to the layer below it
     let (mut filter, filter_cmd_tx, filter_rsp_rx, filter_notice_rx) = Filter::new(
-        transport_cmd_tx,
+        transport_cmd_tx.clone(),
         transport_rsp_rx,
         transport_notice_rx,
         FilterMode::Server,
     );
+    let filter_shutdown_watcher = filter.get_shutdown_watcher();
     // TODO: Silence compiler warning until interface is implemented
     let (_, _) = (filter_rsp_rx, filter_notice_rx);
     filter_cmd_tx
@@ -83,5 +85,8 @@ async fn main() -> Result<()> {
 
     // Shutdown
     filter_cmd_tx.send(FilterCmd::Shutdown { graceful: true }).await?;
+    // Note: no need to explicitly shutdown the Transport layer, since the Filter will pass it down
+    filter_shutdown_watcher.await;
+    transport_shutdown_watcher.await;
     Ok(())
 }

@@ -87,7 +87,7 @@ pub struct Filter {
     mode:                FilterMode,
     per_endpoint:        HashMap<Endpoint, FilterEndpointData>,
     phase_watch_tx:      Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
-    phase_watch_rx:      watch::Receiver<Phase>,       // XXX gets cloned
+    phase_watch_rx:      watch::Receiver<Phase>,
 }
 
 impl Filter {
@@ -493,21 +493,24 @@ impl Filter {
 
     pub fn get_shutdown_watcher(&mut self) -> impl Future<Output = ()> + 'static {
         let mut phase_watch_rx = self.phase_watch_rx.clone();
+        let transport_cmd_tx = self.transport_cmd_tx.clone();
         async move {
             loop {
                 let phase = *phase_watch_rx.borrow();
                 match phase {
                     Phase::ShutdownComplete => {
-                        return;
+                        break;
                     }
                     _ => {}
                 }
                 if phase_watch_rx.changed().await.is_err() {
                     // channel closed
                     trace!("[FILTER] phase watch channel was dropped");
-                    return;
+                    break;
                 }
             }
+            // Also shutdown the layer below
+            let _ = transport_cmd_tx.send(TransportCmd::Shutdown).await;
         }
     }
 }

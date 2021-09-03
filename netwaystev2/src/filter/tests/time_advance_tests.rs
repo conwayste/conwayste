@@ -1,8 +1,9 @@
 use crate::common::Endpoint;
-use crate::filter::{Filter, FilterCmd, FilterMode, FilterNotice};
+use crate::filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotice, FilterNotifyRecv, FilterRspRecv};
 use crate::protocol::{Packet, RequestAction, ResponseCode};
 use crate::settings::TRANSPORT_CHANNEL_LEN;
 use crate::transport::{TransportCmd, TransportNotice, TransportRsp};
+use std::future::Future;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -17,15 +18,18 @@ async fn time_advancing_works() {
     assert_eq!(end - start, Duration::from_secs(5));
 }
 
-#[tokio::test]
-async fn basic_server_filter_flow() {
+/// This is a helper to simplify setting up the filter layer in server mode with one client connection. Call like this:
+///
+/// ```rust
+/// let (filter_cmd_tx, filter_rsp_rx, filter_notify_rx, filter_shutdown_watcher) = setup_server().await;
+/// ```
+async fn setup_server() -> (
+    FilterCmdSend,
+    FilterRspRecv,
+    FilterNotifyRecv,
+    impl Future<Output = ()> + 'static,
+) {
     time::pause();
-    /*
-    XXX
-    pub type TransportCmdSend = Sender<TransportCmd>;
-    pub type TransportRspRecv = Receiver<TransportRsp>;
-    pub type TransportNotifyRecv = Receiver<TransportNotice>;
-    */
     // Mock transport channels
     let (transport_cmd_tx, mut transport_cmd_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
     let (transport_rsp_tx, transport_rsp_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
@@ -131,6 +135,12 @@ async fn basic_server_filter_flow() {
         }
         _ => panic!("expected a Packet::Response, got {:?}", packet_to_client),
     }
+    (filter_cmd_tx, filter_rsp_rx, filter_notify_rx, filter_shutdown_watcher)
+}
+
+#[tokio::test]
+async fn basic_server_filter_flow() {
+    let (filter_cmd_tx, _filter_rsp_rx, _filter_notify_rx, filter_shutdown_watcher) = setup_server().await;
 
     // Shut down
     filter_cmd_tx
