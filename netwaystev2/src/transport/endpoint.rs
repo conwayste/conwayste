@@ -194,8 +194,9 @@ impl<P> TransportEndpointData<P> {
         }
     }
 
-    /// Requested by the Filter layer to remove a packet from the transmit queue. One use-case is if a packet is
-    /// needs to be cancelled.
+    /// Requested by the Filter layer to remove a packet from the transmit queue. This is necessary
+    /// to prevent the packet from being resent. It should be performed when the packet has been
+    /// acknowledged by the other end (only the Filter layer knows when this happens).
     /// Will report an error if the endpoint does not exist.
     /// Will report an error if the tid does not exist.
     /// Will report an error if the packet could not be removed.
