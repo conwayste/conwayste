@@ -98,7 +98,6 @@ impl Transport {
     pub async fn run(&mut self) -> Result<()> {
         let udp_stream_recv = &mut self.udp_stream_recv;
         let udp_stream_send = &mut self.udp_stream_send;
-        let mut phase = Phase::Running;
         let phase_watch_tx = self.phase_watch_tx.take().unwrap();
         tokio::pin!(udp_stream_recv);
         tokio::pin!(udp_stream_send);
@@ -121,7 +120,7 @@ impl Transport {
                                 match err {
                                     TransportCommandError::ShutdownRequested => {
                                         info!("[TRANSPORT] shutting down");
-                                        phase = Phase::ShutdownComplete;
+                                        let phase = Phase::ShutdownComplete;
                                         phase_watch_tx.send(phase).unwrap();
                                         return Ok(());
                                     }

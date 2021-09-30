@@ -13,7 +13,6 @@ use anyhow::Result;
 use std::io::Write;
 use std::time::Duration;
 use tokio::signal;
-use tokio::time::sleep;
 
 use chrono::Local;
 

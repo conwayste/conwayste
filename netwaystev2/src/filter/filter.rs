@@ -57,8 +57,8 @@ pub enum FilterEndpointDataError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum FilterCommandError {
-    #[error("Filter is shutting down")]
-    ShutdownRequested,
+    #[error("Filter is shutting down. Graceful: {graceful}")]
+    ShutdownRequested{graceful: bool},
 }
 
 pub type FilterCmdSend = Sender<FilterCmd>;
@@ -73,7 +73,7 @@ pub type FilterInit = (Filter, FilterCmdSend, FilterRspRecv, FilterNotifyRecv);
 #[derive(Copy, Clone, Debug)]
 enum Phase {
     Running,
-    ShutdownRequested,
+    ShutdownInProgress,
     ShutdownComplete,
 }
 
@@ -129,7 +129,6 @@ impl Filter {
         let transport_cmd_tx = self.transport_cmd_tx.clone();
         let transport_rsp_rx = self.transport_rsp_rx.take().unwrap();
         let transport_notice_rx = self.transport_notice_rx.take().unwrap();
-        let mut phase = Phase::Running;
         let phase_watch_tx = self.phase_watch_tx.take().unwrap();
         tokio::pin!(transport_cmd_tx);
         tokio::pin!(transport_rsp_rx);
@@ -199,9 +198,14 @@ impl Filter {
                         if let Err(e) = self.process_filter_command(command).await {
                             if let Some(err) = e.downcast_ref::<FilterCommandError>() {
                                 match err {
-                                    FilterCommandError::ShutdownRequested => {
+                                    FilterCommandError::ShutdownRequested{graceful} => {
                                         info!("[FILTER] shutting down");
-                                        phase = Phase::ShutdownComplete; // TODO: can do ShutdownRequested if it's a graceful shutdown
+                                        let phase;
+                                        if *graceful {
+                                            phase = Phase::ShutdownComplete;
+                                        } else {
+                                            phase = Phase::ShutdownInProgress
+                                        }
                                         phase_watch_tx.send(phase).unwrap();
                                         return;
                                     }
@@ -483,8 +487,7 @@ impl Filter {
             FilterCmd::ClearPingEndpoints => {}
             FilterCmd::DropEndpoint { endpoint } => {}
             FilterCmd::Shutdown { graceful } => {
-                // TODO: graceful
-                return Err(anyhow!(FilterCommandError::ShutdownRequested));
+                return Err(anyhow!(FilterCommandError::ShutdownRequested{graceful}));
             }
         }
 
