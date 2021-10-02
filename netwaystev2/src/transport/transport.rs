@@ -31,12 +31,12 @@ pub enum TransportCommandError {
 }
 
 pub type TransportCmdSend = Sender<TransportCmd>;
-type TransportCmdRecv = Receiver<TransportCmd>;
+pub type TransportCmdRecv = Receiver<TransportCmd>;
 
 type TransportRspSend = Sender<TransportRsp>;
 pub type TransportRspRecv = Receiver<TransportRsp>;
 
-type TransportNotifySend = Sender<TransportNotice>;
+pub type TransportNotifySend = Sender<TransportNotice>;
 pub type TransportNotifyRecv = Receiver<TransportNotice>;
 
 type TransportInit = (Transport, TransportCmdSend, TransportRspRecv, TransportNotifyRecv);

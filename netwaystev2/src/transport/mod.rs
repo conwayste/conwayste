@@ -4,4 +4,6 @@ mod transport;
 mod udp_codec;
 
 pub use interface::{PacketSettings, TransportCmd, TransportNotice, TransportRsp};
-pub use transport::{Transport, TransportCmdSend, TransportNotifyRecv, TransportRspRecv};
+pub use transport::{
+    Transport, TransportCmdRecv, TransportCmdSend, TransportNotifyRecv, TransportNotifySend, TransportRspRecv,
+};

@@ -13,7 +13,12 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::watch;
 
 use std::time::Duration;
-use std::{collections::HashMap, future::Future, num::Wrapping, time::Instant};
+use std::{
+    collections::{HashMap, VecDeque},
+    future::Future,
+    num::Wrapping,
+    time::Instant,
+};
 
 #[derive(PartialEq, Debug)]
 pub(crate) enum SeqNumAdvancement {
@@ -30,6 +35,7 @@ pub enum FilterEndpointData {
         last_response_sequence_sent:  Option<SeqNum>,
         last_request_seen_timestamp:  Option<Instant>,
         last_response_sent_timestamp: Option<Instant>,
+        unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>,
     },
     OtherEndServer {
         response_codes:               SequencedMinHeap<ResponseCode>,
@@ -37,6 +43,7 @@ pub enum FilterEndpointData {
         last_response_sequence_seen:  Option<SeqNum>,
         last_request_sent_timestamp:  Option<Instant>,
         last_response_seen_timestamp: Option<Instant>,
+        unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>,
     },
 }
 
@@ -58,7 +65,7 @@ pub enum FilterEndpointDataError {
 #[derive(Debug, thiserror::Error)]
 pub enum FilterCommandError {
     #[error("Filter is shutting down. Graceful: {graceful}")]
-    ShutdownRequested{graceful: bool},
+    ShutdownRequested { graceful: bool },
 }
 
 pub type FilterCmdSend = Sender<FilterCmd>;
@@ -244,6 +251,7 @@ impl Filter {
                                     last_response_sequence_sent:  None,
                                     last_request_seen_timestamp:  None,
                                     last_response_sent_timestamp: None,
+                                    unacked_outgoing_packet_tids: VecDeque::new(),
                                 },
                             );
                         }
@@ -259,7 +267,12 @@ impl Filter {
 
         let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
         match packet {
-            Packet::Request { sequence, action, .. } => match endpoint_data {
+            Packet::Request {
+                sequence,
+                action,
+                response_ack,
+                ..
+            } => match endpoint_data {
                 FilterEndpointData::OtherEndServer { .. } => {
                     return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
                         mode:         self.mode,
@@ -270,6 +283,7 @@ impl Filter {
                     request_actions,
                     last_request_sequence_seen,
                     last_request_seen_timestamp,
+                    unacked_outgoing_packet_tids,
                     ..
                 } => {
                     *last_request_seen_timestamp = Some(Instant::now());
@@ -288,10 +302,24 @@ impl Filter {
                         }
                     }
 
+                    let mut tids_to_drop = vec![];
+                    if let Some(response_ack) = response_ack {
+                        tids_to_drop = take_tids_to_drop(unacked_outgoing_packet_tids, Wrapping(response_ack));
+                    }
+                    for tid_to_drop in tids_to_drop {
+                        self.transport_cmd_tx
+                            .send(TransportCmd::DropPacket {
+                                endpoint,
+                                tid: tid_to_drop,
+                            })
+                            .await?;
+                    }
+
                     request_actions.add(sequence, action);
 
                     // Loop over the heap, finding all requests which can be sent to the app layer based on their sequence number.
                     // If any are found, send them to the app layer and advance the last seen sequence number.
+                    // TODO: unit test wrapping logic and deduplicate with below
                     let ref mut last_seen_sn =
                         last_request_sequence_seen.expect("sequence number cannot be None by this point");
                     while let Some(sn) = request_actions.peek_sequence_number() {
@@ -310,7 +338,11 @@ impl Filter {
                     }
                 }
             },
-            Packet::Response { sequence, code, .. } => match endpoint_data {
+            Packet::Response {
+                sequence,
+                request_ack,
+                code,
+            } => match endpoint_data {
                 FilterEndpointData::OtherEndClient { .. } => {
                     return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
                         mode:         self.mode,
@@ -321,6 +353,7 @@ impl Filter {
                     response_codes,
                     last_response_sequence_seen,
                     last_response_seen_timestamp,
+                    unacked_outgoing_packet_tids,
                     ..
                 } => {
                     *last_response_seen_timestamp = Some(Instant::now());
@@ -339,10 +372,24 @@ impl Filter {
                         }
                     }
 
+                    let mut tids_to_drop = vec![];
+                    if let Some(request_ack) = request_ack {
+                        tids_to_drop = take_tids_to_drop(unacked_outgoing_packet_tids, Wrapping(request_ack));
+                    }
+                    for tid_to_drop in tids_to_drop {
+                        self.transport_cmd_tx
+                            .send(TransportCmd::DropPacket {
+                                endpoint,
+                                tid: tid_to_drop,
+                            })
+                            .await?;
+                    }
+
                     response_codes.add(sequence, code);
 
                     // Loop over the heap, finding all responses which can be sent to the app layer based on their sequence number.
                     // If any are found, send them to the app layer and advance the last seen sequence number.
+                    // TODO: unit test wrapping logic
                     let ref mut last_seen_sn =
                         last_response_sequence_seen.expect("sequence number cannot be None by this point");
                     loop {
@@ -391,6 +438,7 @@ impl Filter {
                         last_request_sequence_sent,
                         last_request_sent_timestamp,
                         last_response_sequence_seen,
+                        unacked_outgoing_packet_tids,
                         ..
                     } => {
                         *last_request_sent_timestamp = Some(Instant::now());
@@ -416,10 +464,9 @@ impl Filter {
                             response_ack,
                         }];
 
-                        let packet_infos = vec![PacketSettings {
-                            tid: ProcessUniqueId::new(),
-                            retry_interval,
-                        }];
+                        let tid = ProcessUniqueId::new();
+                        unacked_outgoing_packet_tids.push_back((Wrapping(sequence), tid));
+                        let packet_infos = vec![PacketSettings { tid, retry_interval }];
 
                         self.transport_cmd_tx
                             .send(TransportCmd::SendPackets {
@@ -443,6 +490,7 @@ impl Filter {
                         last_response_sequence_sent,
                         last_response_sent_timestamp,
                         last_request_sequence_seen,
+                        unacked_outgoing_packet_tids,
                         ..
                     } => {
                         *last_response_sent_timestamp = Some(Instant::now());
@@ -464,10 +512,9 @@ impl Filter {
                             request_ack,
                         }];
 
-                        let packet_infos = vec![PacketSettings {
-                            tid: ProcessUniqueId::new(),
-                            retry_interval,
-                        }];
+                        let tid = ProcessUniqueId::new();
+                        unacked_outgoing_packet_tids.push_back((Wrapping(sequence), tid));
+                        let packet_infos = vec![PacketSettings { tid, retry_interval }];
 
                         self.transport_cmd_tx
                             .send(TransportCmd::SendPackets {
@@ -479,6 +526,7 @@ impl Filter {
                     }
                 }
             }
+            // TODO: implement these
             FilterCmd::SendChats { endpoints, messages } => {}
             FilterCmd::SendGameUpdates { endpoints, messages } => {}
             FilterCmd::Authenticated { endpoint } => {}
@@ -487,7 +535,7 @@ impl Filter {
             FilterCmd::ClearPingEndpoints => {}
             FilterCmd::DropEndpoint { endpoint } => {}
             FilterCmd::Shutdown { graceful } => {
-                return Err(anyhow!(FilterCommandError::ShutdownRequested{graceful}));
+                return Err(anyhow!(FilterCommandError::ShutdownRequested { graceful }));
             }
         }
 
@@ -566,5 +614,26 @@ fn check_endpoint_exists(
         }))
     } else {
         Ok(())
+    }
+}
+
+fn take_tids_to_drop(
+    unacked_outgoing_packet_tids: &mut VecDeque<(SeqNum, ProcessUniqueId)>,
+    ack_seq: Wrapping<u64>,
+) -> Vec<ProcessUniqueId> {
+    let mut tids_to_drop = vec![];
+    loop {
+        if unacked_outgoing_packet_tids.len() == 0 {
+            return tids_to_drop;
+        }
+        // unwraps OK below because of above length check
+        let seq_at_front = unacked_outgoing_packet_tids.front().unwrap().0;
+        if seq_at_front <= ack_seq
+            || (is_seq_sufficiently_far_away(seq_at_front.0, ack_seq.0) && (seq_at_front >= ack_seq))
+        {
+            tids_to_drop.push(unacked_outgoing_packet_tids.pop_front().unwrap().1);
+        } else {
+            return tids_to_drop;
+        }
     }
 }

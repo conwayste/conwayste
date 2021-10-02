@@ -1,13 +1,19 @@
 use crate::common::Endpoint;
 use crate::filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotice, FilterNotifyRecv, FilterRspRecv};
-use crate::protocol::{Packet, RequestAction, ResponseCode};
+use crate::protocol::{BroadcastChatMessage, Packet, RequestAction, ResponseCode};
 use crate::settings::TRANSPORT_CHANNEL_LEN;
-use crate::transport::{TransportCmd, TransportNotice, TransportRsp};
+use crate::transport::{TransportCmd, TransportCmdRecv, TransportNotice, TransportNotifySend, TransportRsp};
+use lazy_static::lazy_static;
+use snowflake::ProcessUniqueId;
 use std::future::Future;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::{self, timeout_at, Instant};
+
+lazy_static! {
+    static ref CLIENT_ENDPOINT: Endpoint = Endpoint(("1.2.3.4", 5678).to_socket_addrs().unwrap().next().unwrap());
+}
 
 #[tokio::test]
 async fn time_advancing_works() {
@@ -18,15 +24,76 @@ async fn time_advancing_works() {
     assert_eq!(end - start, Duration::from_secs(5));
 }
 
+#[tokio::test]
+async fn basic_server_filter_flow() {
+    let (
+        transport_notice_tx,
+        mut transport_cmd_rx,
+        filter_cmd_tx,
+        _filter_rsp_rx,
+        _filter_notify_rx,
+        logged_in_resp_pkt_tid,
+        filter_shutdown_watcher,
+    ) = setup_server().await;
+
+    // The logged_in_resp_pkt_tid is the transport ID of the LoggedIn packet sent by the server's
+    // filter layer down to the transport layer, for sending to the client. Once the server's
+    // filter layer receives acknowledgement from the client, the transport layer should receive a
+    // DropPacket transport command with that transport ID.
+    let action = RequestAction::KeepAlive {
+        latest_response_ack: 1, // Must match the sequence sent in last Response server sent to this client (LoggedIn)
+    };
+    let packet = Packet::Request {
+        sequence: 2,
+        response_ack: Some(1), // Must match the sequence sent in last Response server sent to this client (LoggedIn)
+        cookie: Some("fakecookie".to_owned()),
+        action,
+    };
+    transport_notice_tx
+        .send(TransportNotice::PacketDelivery {
+            endpoint: *CLIENT_ENDPOINT,
+            packet,
+        })
+        .await
+        .unwrap();
+
+    // Check for DropPacket (this should happen before response comes down from app layer)
+    let expiration = Instant::now() + Duration::from_secs(3);
+    time::advance(Duration::from_secs(5)).await;
+    let transport_cmd = timeout_at(expiration, transport_cmd_rx.recv())
+        .await
+        .expect("we should not have timed out getting a transport cmd from filter layer");
+    let transport_cmd = transport_cmd.expect("should have gotten a TransportCmd from Filter");
+    match transport_cmd {
+        TransportCmd::DropPacket { endpoint, tid } => {
+            assert_eq!(endpoint, *CLIENT_ENDPOINT);
+            assert_eq!(tid, logged_in_resp_pkt_tid);
+        }
+        _ => panic!("unexpected transport command {:?}", transport_cmd),
+    }
+
+    // Shut down
+    filter_cmd_tx
+        .send(FilterCmd::Shutdown { graceful: false })
+        .await
+        .unwrap();
+    filter_shutdown_watcher.await;
+}
+
+// TODO: basic_client_filter_flow
+
 /// This is a helper to simplify setting up the filter layer in server mode with one client connection. Call like this:
 ///
 /// ```rust
-/// let (filter_cmd_tx, filter_rsp_rx, filter_notify_rx, filter_shutdown_watcher) = setup_server().await;
+/// let (transport_notice_tx, transport_cmd_rx, filter_cmd_tx, filter_rsp_rx, filter_notify_rx, logged_in_resp_pkt_tid, filter_shutdown_watcher) = setup_server().await;
 /// ```
 async fn setup_server() -> (
+    TransportNotifySend,
+    TransportCmdRecv,
     FilterCmdSend,
     FilterRspRecv,
     FilterNotifyRecv,
+    ProcessUniqueId,
     impl Future<Output = ()> + 'static,
 ) {
     time::pause();
@@ -48,7 +115,6 @@ async fn setup_server() -> (
     tokio::spawn(async move { filter.run().await });
 
     // Send a mock transport notification
-    let endpoint = Endpoint(("1.2.3.4", 5678).to_socket_addrs().unwrap().next().unwrap());
     let request_action_from_client = RequestAction::Connect {
         name:           "Sheeana".to_owned(),
         client_version: "0.3.2".to_owned(),
@@ -62,8 +128,8 @@ async fn setup_server() -> (
     };
     transport_notice_tx
         .send(TransportNotice::PacketDelivery {
-            endpoint,
-            packet: packet_from_client,
+            endpoint: *CLIENT_ENDPOINT,
+            packet:   packet_from_client,
         })
         .await
         .unwrap();
@@ -83,7 +149,7 @@ async fn setup_server() -> (
             endpoint: _endpoint,
             action: _request_action,
         } => {
-            assert_eq!(endpoint, _endpoint);
+            assert_eq!(*CLIENT_ENDPOINT, _endpoint);
             assert_eq!(request_action_from_client, _request_action);
         }
         _ => panic!("Unexpected filter notification: {:?}", filter_notification),
@@ -96,8 +162,8 @@ async fn setup_server() -> (
     };
     filter_cmd_tx
         .send(FilterCmd::SendResponseCode {
-            endpoint,
-            code: resp_code_for_client.clone(),
+            endpoint: *CLIENT_ENDPOINT,
+            code:     resp_code_for_client.clone(),
         })
         .await
         .expect("should successfully send a command from App layer down to Filter layer");
@@ -108,18 +174,25 @@ async fn setup_server() -> (
         .await
         .expect("should have gotten a TransportCmd from Filter");
     let packet_to_client;
+    let logged_in_resp_pkt_tid;
     match transport_cmd {
         TransportCmd::SendPackets {
             endpoint: _endpoint,
             packets,
-            ..
+            packet_infos,
         } => {
-            assert_eq!(endpoint, _endpoint);
+            assert_eq!(*CLIENT_ENDPOINT, _endpoint);
             // No need to test packet_infos
             packet_to_client = packets
                 .into_iter()
                 .next()
                 .expect("expected at least one packet for Transport layer");
+            assert_eq!(
+                packet_infos.len(),
+                1,
+                "multiple packets sent when one was expected for LoggedIn response"
+            );
+            logged_in_resp_pkt_tid = packet_infos[0].tid;
         }
         _ => panic!("unexpected TransportCmd"),
     };
@@ -135,19 +208,13 @@ async fn setup_server() -> (
         }
         _ => panic!("expected a Packet::Response, got {:?}", packet_to_client),
     }
-    (filter_cmd_tx, filter_rsp_rx, filter_notify_rx, filter_shutdown_watcher)
+    (
+        transport_notice_tx,
+        transport_cmd_rx,
+        filter_cmd_tx,
+        filter_rsp_rx,
+        filter_notify_rx,
+        logged_in_resp_pkt_tid,
+        filter_shutdown_watcher,
+    )
 }
-
-#[tokio::test]
-async fn basic_server_filter_flow() {
-    let (filter_cmd_tx, _filter_rsp_rx, _filter_notify_rx, filter_shutdown_watcher) = setup_server().await;
-
-    // Shut down
-    filter_cmd_tx
-        .send(FilterCmd::Shutdown { graceful: false })
-        .await
-        .unwrap();
-    filter_shutdown_watcher.await;
-}
-
-//XXX basic_client_filter_flow
