@@ -320,21 +320,16 @@ impl Filter {
                     // Loop over the heap, finding all requests which can be sent to the app layer based on their sequence number.
                     // If any are found, send them to the app layer and advance the last seen sequence number.
                     // TODO: unit test wrapping logic and deduplicate with below
-                    let ref mut last_seen_sn =
+                    let ref mut expected_seq_num =
                         last_request_sequence_seen.expect("sequence number cannot be None by this point");
-                    while let Some(sn) = request_actions.peek_sequence_number() {
-                        if last_seen_sn.0 == sn {
-                            // Unwrap okay because peeking provides us with a Some(sequence_number)
-                            filter_notice_tx
-                                .send(FilterNotice::NewRequestAction {
-                                    endpoint,
-                                    action: request_actions.take().unwrap(),
-                                })
-                                .await?;
-                            *last_seen_sn += Wrapping(1);
-                        } else {
-                            break;
-                        }
+                    while let Some(request_action) = request_actions.take_if_matching(expected_seq_num.0) {
+                        filter_notice_tx
+                            .send(FilterNotice::NewRequestAction {
+                                endpoint,
+                                action: request_action,
+                            })
+                            .await?;
+                        *expected_seq_num += Wrapping(1);
                     }
                 }
             },
@@ -390,25 +385,16 @@ impl Filter {
                     // Loop over the heap, finding all responses which can be sent to the app layer based on their sequence number.
                     // If any are found, send them to the app layer and advance the last seen sequence number.
                     // TODO: unit test wrapping logic
-                    let ref mut last_seen_sn =
+                    let ref mut expected_seq_num =
                         last_response_sequence_seen.expect("sequence number cannot be None by this point");
-                    loop {
-                        if let Some(sn) = response_codes.peek_sequence_number() {
-                            if last_seen_sn.0 == sn {
-                                // Unwrap okay because peeking provides us with a Some(sequence_number)
-                                filter_notice_tx
-                                    .send(FilterNotice::NewResponseCode {
-                                        endpoint,
-                                        code: response_codes.take().unwrap(),
-                                    })
-                                    .await?;
-                                *last_seen_sn += Wrapping(1);
-                            } else {
-                                break;
-                            }
-                        } else {
-                            break;
-                        }
+                    while let Some(response_code) = response_codes.take_if_matching(expected_seq_num.0) {
+                        filter_notice_tx
+                            .send(FilterNotice::NewResponseCode {
+                                endpoint,
+                                code: response_code,
+                            })
+                            .await?;
+                        *expected_seq_num += Wrapping(1);
                     }
                 }
             },

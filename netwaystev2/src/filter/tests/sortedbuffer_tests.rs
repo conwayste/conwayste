@@ -2,10 +2,13 @@ use crate::filter::SequencedMinHeap;
 
 #[test]
 fn seqminheap_empty_checks() {
-    let smh = SequencedMinHeap::<usize>::new();
+    let mut smh = SequencedMinHeap::<usize>::new();
 
     assert_eq!(smh.contains_sequence_number(0), false);
-    assert_eq!(smh.peek_sequence_number(), None);
+    assert_eq!(smh.take_if_matching(0), None);
+    assert_eq!(smh.take_if_matching(1), None);
+    assert_eq!(smh.take_if_matching(0x8000000000000000), None);
+    assert_eq!(smh.take_if_matching(0xffffffffffffffff), None);
 }
 
 #[test]
@@ -13,18 +16,21 @@ fn seqminheap_filled_checks() {
     let mut smh = SequencedMinHeap::<usize>::new();
 
     for i in 2..4 {
-        smh.add(i, 0);
+        smh.add(i, i as usize);
     }
 
     assert_eq!(smh.contains_sequence_number(0), false);
-    assert_eq!(smh.peek_sequence_number(), Some(2));
+    assert_eq!(smh.take_if_matching(4), None);
+    assert_eq!(smh.take_if_matching(3), None);
+    assert_eq!(smh.take_if_matching(2), Some(2));
+    assert_eq!(smh.take_if_matching(3), Some(3));
 }
 
 #[test]
 fn seqminheap_insert_ascending() {
     let mut smh = SequencedMinHeap::<usize>::new();
     for i in 0..10 {
-        smh.add(i, 0);
+        smh.add(i, i as usize);
     }
 
     for i in 0..10 {
@@ -32,8 +38,27 @@ fn seqminheap_insert_ascending() {
     }
 
     for i in 0..10 {
-        assert_eq!(smh.peek_sequence_number(), Some(i));
-        let _ = smh.take();
+        assert_eq!(smh.take_if_matching(i), Some(i as usize));
+    }
+}
+
+#[test]
+fn seqminheap_insert_ascending_with_wrapping() {
+    let mut smh = SequencedMinHeap::<usize>::new();
+
+    smh.add(u64::max_value(), usize::max_value());
+    for i in 0..10 {
+        smh.add(i, i as usize);
+    }
+
+    assert_eq!(smh.contains_sequence_number(u64::max_value()), true);
+    for i in 0..10 {
+        assert_eq!(smh.contains_sequence_number(i), true);
+    }
+
+    assert_eq!(smh.take_if_matching(u64::max_value()), Some(usize::max_value()));
+    for i in 0..10 {
+        assert_eq!(smh.take_if_matching(i), Some(i as usize));
     }
 }
 
@@ -41,7 +66,7 @@ fn seqminheap_insert_ascending() {
 fn seqminheap_insert_descending() {
     let mut smh = SequencedMinHeap::<usize>::new();
     for i in (0..10).rev() {
-        smh.add(i, 0);
+        smh.add(i, i as usize);
     }
 
     for i in 0..10 {
@@ -49,68 +74,7 @@ fn seqminheap_insert_descending() {
     }
 
     for i in 0..10 {
-        assert_eq!(smh.peek_sequence_number(), Some(i));
-        let _ = smh.take();
-    }
-}
-
-#[test]
-fn seqminheap_insert_sequential_with_gaps() {
-    let span: Vec<u64> = vec![1, 2, 5, 6, 9];
-
-    let mut smh = SequencedMinHeap::<usize>::new();
-    for n in &span {
-        smh.add(*n, 0);
-    }
-
-    for x in &span {
-        assert_eq!(smh.contains_sequence_number(*x), true);
-    }
-
-    for x in &span {
-        assert_eq!(smh.peek_sequence_number(), Some(*x));
-        let _ = smh.take();
-    }
-}
-
-#[test]
-fn seqminheap_insert_reverse_sequential_with_gaps() {
-    let mut span: Vec<u64> = vec![1, 2, 5, 6, 9];
-    span.reverse();
-
-    let mut smh = SequencedMinHeap::<usize>::new();
-    for n in &span {
-        smh.add(*n, 0);
-    }
-
-    for x in &span {
-        assert_eq!(smh.contains_sequence_number(*x), true);
-    }
-
-    span.reverse();
-    for x in &span {
-        assert_eq!(smh.peek_sequence_number(), Some(*x));
-        let _ = smh.take();
-    }
-}
-
-#[test]
-fn seqminheap_insert_out_of_order_with_gaps() {
-    let mut span: Vec<u64> = vec![2, 9, 1, 6, 5];
-
-    let mut smh = SequencedMinHeap::<usize>::new();
-    for n in &span {
-        smh.add(*n, 0);
-    }
-
-    for x in &span {
-        assert_eq!(smh.contains_sequence_number(*x), true);
-    }
-
-    span.sort();
-    for x in &span {
-        assert_eq!(smh.peek_sequence_number(), Some(*x));
-        let _ = smh.take();
+        assert_eq!(smh.take_if_matching(i), Some(i as usize));
     }
 }
 
@@ -121,7 +85,7 @@ fn seqminheap_insert_out_of_order_with_no_gaps() {
 
     let mut smh = SequencedMinHeap::<usize>::new();
     for n in &span {
-        smh.add(*n, 0);
+        smh.add(*n, *n as usize);
     }
 
     for x in &span {
@@ -130,7 +94,6 @@ fn seqminheap_insert_out_of_order_with_no_gaps() {
 
     span.sort();
     for x in &span {
-        assert_eq!(smh.peek_sequence_number(), Some(*x));
-        let _ = smh.take();
+        assert_eq!(smh.take_if_matching(*x), Some(*x as usize));
     }
 }
