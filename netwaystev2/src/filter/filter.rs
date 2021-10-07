@@ -54,10 +54,8 @@ pub enum FilterEndpointDataError {
         mode:         FilterMode,
         invalid_data: String,
     },
-    #[error("Filter observed duplicate or already processed request action: {sequence}")]
-    DuplicateRequest { sequence: u64 },
-    #[error("Filter observed duplicate or already process response code : {sequence}")]
-    DuplicateResponse { sequence: u64 },
+    #[error("Internal Filter layer error: {problem}")]
+    InternalError { problem: String },
     #[error("Filter does not contain an entry for the endpoint: {endpoint:?}")]
     EndpointNotFound { endpoint: Endpoint },
 }
@@ -290,9 +288,8 @@ impl Filter {
 
                     match determine_seq_num_advancement(sequence, last_request_sequence_seen) {
                         SeqNumAdvancement::Duplicate => {
-                            return Err(anyhow!(FilterEndpointDataError::DuplicateRequest {
-                                sequence: sequence,
-                            }));
+                            // This can happen under normal network conditions
+                            return Ok(());
                         }
                         SeqNumAdvancement::BrandNew | SeqNumAdvancement::Contiguous => {
                             *last_request_sequence_seen = Some(Wrapping(sequence));
@@ -320,8 +317,14 @@ impl Filter {
                     // Loop over the heap, finding all requests which can be sent to the app layer based on their sequence number.
                     // If any are found, send them to the app layer and advance the last seen sequence number.
                     // TODO: unit test wrapping logic and deduplicate with below
+                    if last_request_sequence_seen.is_none() {
+                        // Shouldn't be possible; if we hit this, it's a bug somewhere above
+                        return Err(anyhow!(FilterEndpointDataError::InternalError {
+                            problem: "sequence number should not be None at this point".to_owned(),
+                        }));
+                    }
                     let ref mut expected_seq_num =
-                        last_request_sequence_seen.expect("sequence number cannot be None by this point");
+                        last_request_sequence_seen.expect("sequence number cannot be None by this point"); // expect OK because of above check
                     while let Some(request_action) = request_actions.take_if_matching(expected_seq_num.0) {
                         filter_notice_tx
                             .send(FilterNotice::NewRequestAction {
@@ -355,9 +358,8 @@ impl Filter {
 
                     match determine_seq_num_advancement(sequence, last_response_sequence_seen) {
                         SeqNumAdvancement::Duplicate => {
-                            return Err(anyhow!(FilterEndpointDataError::DuplicateResponse {
-                                sequence: sequence,
-                            }));
+                            // This can happen under normal network conditions
+                            return Ok(());
                         }
                         SeqNumAdvancement::BrandNew | SeqNumAdvancement::Contiguous => {
                             *last_response_sequence_seen = Some(Wrapping(sequence));
@@ -385,8 +387,14 @@ impl Filter {
                     // Loop over the heap, finding all responses which can be sent to the app layer based on their sequence number.
                     // If any are found, send them to the app layer and advance the last seen sequence number.
                     // TODO: unit test wrapping logic
+                    if last_response_sequence_seen.is_none() {
+                        // Shouldn't be possible; if we hit this, it's a bug somewhere above
+                        return Err(anyhow!(FilterEndpointDataError::InternalError {
+                            problem: "sequence number should not be None at this point".to_owned(),
+                        }));
+                    }
                     let ref mut expected_seq_num =
-                        last_response_sequence_seen.expect("sequence number cannot be None by this point");
+                        last_response_sequence_seen.expect("sequence number cannot be None by this point"); // expect OK because of above check
                     while let Some(response_code) = response_codes.take_if_matching(expected_seq_num.0) {
                         filter_notice_tx
                             .send(FilterNotice::NewResponseCode {
@@ -410,8 +418,23 @@ impl Filter {
 
         match command {
             FilterCmd::SendRequestAction { endpoint, action } => {
-                // PR_GATE: This will currently fail because the endpoint has not been created on an connect() event
-                check_endpoint_exists(&self.per_endpoint, endpoint)?;
+                check_endpoint_exists(&self.per_endpoint, endpoint).or_else(|err| match action {
+                    RequestAction::Connect { .. } => {
+                        self.per_endpoint.insert(
+                            endpoint,
+                            FilterEndpointData::OtherEndServer {
+                                response_codes:               SequencedMinHeap::<ResponseCode>::new(),
+                                last_request_sequence_sent:   None,
+                                last_response_sequence_seen:  None,
+                                last_request_sent_timestamp:  None,
+                                last_response_seen_timestamp: None,
+                                unacked_outgoing_packet_tids: VecDeque::new(),
+                            },
+                        );
+                        Ok(())
+                    }
+                    _ => Err(err),
+                })?;
 
                 match self.per_endpoint.get_mut(&endpoint).unwrap() {
                     FilterEndpointData::OtherEndClient { .. } => {
