@@ -1,16 +1,22 @@
 use super::interface::TransportEndpointDataError;
 use crate::common::Endpoint;
+use crate::settings::TRANSPORT_MAX_RETRY_COUNT;
 use anyhow::{anyhow, Result};
 use snowflake::ProcessUniqueId;
 
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
-/// Transport layers uses this to track packet-specific retries and timeouts
+/// Transport layers uses this to track packet-specific retries and timeouts.
+///
+/// The transmit interval describes the minimum time between packets retries. Each retry will consume one attempt every
+/// transmit interval. Packets retries are tracked using the retry count. No more retries are attempted after the retry
+/// count has reached the limit defined by (`TRANSPORT_MAX_RETRY_COUNT`).
+///
+/// A transmit interval or retry count equal to zero indicates the packet will only be sent once on the initial
+/// transmission. No retries are attempted. A non-zero transmit interval indicates the period between each retry.
 #[derive(Clone)]
 struct PacketInfo {
-    // FIXME: what does this timeout mean exactly (what happens when the timeout has been
-    // exceeded)?
     transmit_interval: Duration,
     last_transmit:     Instant,
     retry_count:       usize,
@@ -241,7 +247,10 @@ impl<P> TransportEndpointData<P> {
             for PacketContainer { packet, info, .. } in container {
                 // Add the packet to the list of retriable packets if enough time has passed since the last transmission,
                 // and not all retries have been exhausted.
-                if Instant::now() - info.last_transmit > info.transmit_interval {
+                if info.retry_count < TRANSPORT_MAX_RETRY_COUNT
+                    && info.transmit_interval != Duration::ZERO
+                    && Instant::now() - info.last_transmit > info.transmit_interval
+                {
                     info.last_transmit = Instant::now();
                     info.retry_count += 1;
                     retry_qualified.push((&*packet, *endpoint));
