@@ -1,5 +1,7 @@
 use super::interface::{FilterCmd, FilterMode, FilterNotice, FilterRsp, SeqNum};
+use super::ping::LatencyFilter;
 use super::sortedbuffer::SequencedMinHeap;
+use super::PingPong;
 use crate::common::Endpoint;
 use crate::protocol::{Packet, RequestAction, ResponseCode};
 use crate::settings::{DEFAULT_RETRY_INTERVAL_US, FILTER_CHANNEL_LEN};
@@ -93,6 +95,7 @@ pub struct Filter {
     per_endpoint:        HashMap<Endpoint, FilterEndpointData>,
     phase_watch_tx:      Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
     phase_watch_rx:      watch::Receiver<Phase>,
+    ping_endpoints:      HashMap<Endpoint, (LatencyFilter, PingPong, Option<ProcessUniqueId>)>,
 }
 
 impl Filter {
@@ -108,6 +111,7 @@ impl Filter {
             mpsc::channel(FILTER_CHANNEL_LEN);
 
         let per_endpoint = HashMap::new();
+        let ping_endpoints = HashMap::new();
 
         let (phase_watch_tx, phase_watch_rx) = watch::channel(Phase::Running);
 
@@ -123,6 +127,7 @@ impl Filter {
                 per_endpoint,
                 phase_watch_tx: Some(phase_watch_tx),
                 phase_watch_rx,
+                ping_endpoints,
             },
             filter_cmd_tx,
             filter_rsp_rx,
@@ -145,6 +150,8 @@ impl Filter {
         tokio::pin!(filter_cmd_rx);
         tokio::pin!(filter_rsp_tx);
         tokio::pin!(filter_notice_tx);
+
+        let mut ping_interval_stream = tokio::time::interval(Duration::new(2, 0));
 
         loop {
             tokio::select! {
@@ -220,6 +227,11 @@ impl Filter {
                         }
                     }
                 }
+                _instant = ping_interval_stream.tick() => {
+                    if let Err(e) = self.send_pings().await {
+                        error!("[FILTER] Failed to send pings: {}", e);
+                    }
+                }
             }
         }
     }
@@ -254,6 +266,11 @@ impl Filter {
                             );
                         }
                     }
+                }
+            } else {
+                // FilterMode::Client
+                if self.ping_endpoints.contains_key(&endpoint) {
+                    valid_new_conn = true;
                 }
             }
 
@@ -406,6 +423,49 @@ impl Filter {
                     }
                 }
             },
+            Packet::Status {
+                player_count,
+                ref pong,
+                room_count,
+                server_name,
+                server_version,
+            } => {
+                if let Some((latency_filter, pingpong, ping_tid)) = self.ping_endpoints.get_mut(&endpoint) {
+                    // Update the round-trip time
+                    if pingpong == pong {
+                        latency_filter.update();
+                    }
+
+                    // Produce a latency after the filter has seen enough data
+                    let mut latency = 0;
+                    if let Some(average_latency_ms) = latency_filter.average_latency_ms {
+                        latency = average_latency_ms;
+                    }
+
+                    // Tell the Transport layer to drop the ping packet
+                    if let Some(tid) = ping_tid {
+                        self.transport_cmd_tx
+                            .send(TransportCmd::DropPacket { endpoint, tid: *tid })
+                            .await?;
+                    } else {
+                        return Err(anyhow!(FilterEndpointDataError::InternalError {
+                            problem: "ping tid is None on Pong. Should not be None at this point".to_owned(),
+                        }));
+                    }
+
+                    // Notify App layer of the Server information and population
+                    filter_notice_tx
+                        .send(FilterNotice::PingResult {
+                            endpoint,
+                            latency,
+                            server_name,
+                            server_version,
+                            room_count,
+                            player_count,
+                        })
+                        .await?;
+                }
+            }
             // TODO: Add handling for Update and UpdateReply!!!!!!!
             _ => {}
         }
@@ -540,8 +600,34 @@ impl Filter {
             FilterCmd::SendGameUpdates { endpoints, messages } => {}
             FilterCmd::Authenticated { endpoint } => {}
             FilterCmd::SendGenStateDiff { endpoints, diff } => {}
-            FilterCmd::AddPingEndpoints { endpoints } => {}
-            FilterCmd::ClearPingEndpoints => {}
+            FilterCmd::AddPingEndpoints { endpoints } => {
+                for e in endpoints {
+                    // An hashmap insert for an existing key will override the value. This would obsolete any ping
+                    // already underway.
+                    if self.ping_endpoints.contains_key(&e) {
+                        continue;
+                    }
+
+                    // TIDs are assigned when the ping is sent to the transport layer
+                    let opt_tid = None;
+                    self.ping_endpoints
+                        .insert(e, (LatencyFilter::new(), PingPong::ping(), opt_tid));
+                }
+            }
+            FilterCmd::ClearPingEndpoints => {
+                // Cancel any in progress pings
+                for (endpoint, (_, _, opt_tid)) in self.ping_endpoints.iter() {
+                    if let Some(tid) = opt_tid {
+                        self.transport_cmd_tx
+                            .send(TransportCmd::DropPacket {
+                                endpoint: *endpoint,
+                                tid:      *tid,
+                            })
+                            .await?;
+                    }
+                }
+                self.ping_endpoints.clear();
+            }
             FilterCmd::DropEndpoint { endpoint } => {}
             FilterCmd::Shutdown { graceful } => {
                 return Err(anyhow!(FilterCommandError::ShutdownRequested { graceful }));
@@ -572,6 +658,32 @@ impl Filter {
             // Also shutdown the layer below
             let _ = transport_cmd_tx.send(TransportCmd::Shutdown).await;
         }
+    }
+
+    async fn send_pings(&mut self) -> anyhow::Result<()> {
+        for (endpoint, (latency_filter, pingpong, opt_tid)) in self.ping_endpoints.iter_mut() {
+            if opt_tid.is_some() {
+                // There's an active ping in progress
+                continue;
+            }
+
+            let tid = ProcessUniqueId::new();
+            let pi = PacketSettings {
+                retry_interval: Duration::ZERO,
+                tid,
+            };
+            *opt_tid = Some(tid);
+
+            self.transport_cmd_tx
+                .send(TransportCmd::SendPackets {
+                    endpoint:     *endpoint,
+                    packet_infos: vec![pi],
+                    packets:      vec![Packet::GetStatus { ping: *pingpong }],
+                })
+                .await?;
+            latency_filter.start();
+        }
+        Ok(())
     }
 }
 

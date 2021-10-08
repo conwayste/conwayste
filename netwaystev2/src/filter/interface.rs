@@ -72,7 +72,12 @@ pub enum FilterNotice {
         diff:     GenStateDiffPart,
     },
     PingResult {
-        latencies: Vec<(Endpoint, u64)>,
+        endpoint:       Endpoint,
+        latency:        u64,
+        server_name:    String,
+        server_version: String,
+        room_count:     u64,
+        player_count:   u64,
     },
     NewGameUpdates {
         endpoint: Endpoint,

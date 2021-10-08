@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 /// meaningful average.
 const LATENCY_FILTER_DEPTH: usize = 12;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct PingPong {
     pub nonce: u64,
 }
