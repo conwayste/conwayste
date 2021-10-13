@@ -4,7 +4,7 @@ use super::sortedbuffer::SequencedMinHeap;
 use super::PingPong;
 use crate::common::Endpoint;
 use crate::protocol::{Packet, RequestAction, ResponseCode};
-use crate::settings::{DEFAULT_RETRY_INTERVAL_US, FILTER_CHANNEL_LEN};
+use crate::settings::{DEFAULT_RETRY_INTERVAL_NS, FILTER_CHANNEL_LEN};
 use crate::transport::{
     PacketSettings, TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp,
     TransportRspRecv,
@@ -474,7 +474,7 @@ impl Filter {
     }
 
     async fn process_filter_command(&mut self, command: FilterCmd) -> anyhow::Result<()> {
-        let retry_interval = Duration::new(0, DEFAULT_RETRY_INTERVAL_US);
+        let retry_interval = Duration::new(0, DEFAULT_RETRY_INTERVAL_NS);
 
         match command {
             FilterCmd::SendRequestAction { endpoint, action } => {
