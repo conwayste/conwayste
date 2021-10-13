@@ -79,11 +79,15 @@ impl LatencyFilter {
         *in_progress = false;
     }
 
+    /// Call this when you send a PingPong
     pub fn start(&mut self) {
         self.start_timestamp = Instant::now();
         self.in_progress = true;
     }
 
+    /// Call this when you receive a response to your PingPing. Once it has been called
+    /// `LATENCY_FILTER_DEPTH` times, the `average_latency_ms` field will contain the one-way (1/2
+    /// RTT) ping time in millisecnds.
     pub fn update(&mut self) {
         if !self.in_progress {
             error!("[FILTER] The LatencyFilter's start() was not called so a duration cannot be computed.");
