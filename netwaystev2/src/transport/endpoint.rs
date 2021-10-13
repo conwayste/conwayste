@@ -1,6 +1,6 @@
 use super::interface::TransportEndpointDataError;
 use crate::common::Endpoint;
-use crate::settings::TRANSPORT_MAX_RETRY_COUNT;
+use crate::settings::TRANSPORT_RETRY_COUNT_LOG_THRESHOLD;
 use anyhow::{anyhow, Result};
 use snowflake::ProcessUniqueId;
 
@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 /// Transport layers uses this to track packet-specific retries and timeouts.
 ///
 /// The transmit interval describes the minimum time between packets retries. Each retry will consume one attempt every
-/// transmit interval. Packets retries are tracked using the retry count. No more retries are attempted after the retry
-/// count has reached the limit defined by (`TRANSPORT_MAX_RETRY_COUNT`).
+/// transmit interval. Packets retries are tracked using the retry count and will incur a log statement after surpassing
+/// `TRANSPORT_RETRY_COUNT_LOG_THRESHOLD`.
 ///
 /// A transmit interval or retry count equal to zero indicates the packet will only be sent once on the initial
 /// transmission. No retries are attempted. A non-zero transmit interval indicates the period between each retry.
@@ -20,6 +20,7 @@ struct PacketInfo {
     transmit_interval: Duration,
     last_transmit:     Instant,
     retry_count:       usize,
+    retry_logged:      bool,
 }
 
 impl PacketInfo {
@@ -28,6 +29,7 @@ impl PacketInfo {
             transmit_interval,
             last_transmit: Instant::now(),
             retry_count: 0,
+            retry_logged: false,
         }
     }
 }
@@ -244,16 +246,20 @@ impl<P> TransportEndpointData<P> {
         let mut retry_qualified = vec![];
 
         for (endpoint, container) in &mut self.transmit {
-            for PacketContainer { packet, info, .. } in container {
-                // Add the packet to the list of retriable packets if enough time has passed since the last transmission,
-                // and not all retries have been exhausted.
-                if info.retry_count < TRANSPORT_MAX_RETRY_COUNT
-                    && info.transmit_interval != Duration::ZERO
-                    && Instant::now() - info.last_transmit > info.transmit_interval
+            for PacketContainer { packet, info, tid } in container {
+                // Add the packet to the list of retriable packets if enough time has passed since the last transmission
+                if info.transmit_interval != Duration::ZERO
+                    && Instant::now().duration_since(info.last_transmit) > info.transmit_interval
                 {
                     info.last_transmit = Instant::now();
                     info.retry_count += 1;
                     retry_qualified.push((&*packet, *endpoint));
+                    println!("Retry incremented");
+                }
+
+                if info.retry_count >= TRANSPORT_RETRY_COUNT_LOG_THRESHOLD && !info.retry_logged {
+                    info.retry_logged = true;
+                    warn!("Retry logging threshold exceeded for endpoint {:?}, tid {}", endpoint, tid);
                 }
             }
         }
