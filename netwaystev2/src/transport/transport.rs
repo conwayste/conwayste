@@ -215,26 +215,25 @@ async fn process_transport_command(
             packets,
         } => {
             if packets.len() != packet_infos.len() {
-                cmd_responses.push(TransportRsp::SendPacketsLengthMismatch);
-            } else {
-                for (i, p) in packets.iter().enumerate() {
-                    let pi = packet_infos.get(i).unwrap(); // Unwrap safe b/c of length check above
+                return Ok(vec![TransportRsp::SendPacketsLengthMismatch]);
+            }
+            for (i, p) in packets.iter().enumerate() {
+                let pi = packet_infos.get(i).unwrap(); // Unwrap safe b/c of length check above
 
-                    if std::mem::size_of_val(p) < UDP_MTU_SIZE {
-                        let _result = udp_send.send((p.clone(), endpoint.0)).await.and_then(|_| {
-                            cmd_responses.push(
-                                endpoints
-                                    .push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)
-                                    .map_or_else(
-                                        |error| TransportRsp::EndpointError { error },
-                                        |()| TransportRsp::Accepted,
-                                    ),
-                            );
-                            Ok(())
-                        });
-                    } else {
-                        cmd_responses.push(TransportRsp::ExceedsMtu { tid: pi.tid });
-                    }
+                if std::mem::size_of_val(p) < UDP_MTU_SIZE {
+                    let _result = udp_send.send((p.clone(), endpoint.0)).await.and_then(|_| {
+                        cmd_responses.push(
+                            endpoints
+                                .push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)
+                                .map_or_else(
+                                    |error| TransportRsp::EndpointError { error },
+                                    |()| TransportRsp::Accepted,
+                                ),
+                        );
+                        Ok(())
+                    });
+                } else {
+                    cmd_responses.push(TransportRsp::ExceedsMtu { tid: pi.tid });
                 }
             }
         }
