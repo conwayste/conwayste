@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 // chat messages sent from server to all clients other than originating client
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct BroadcastChatMessage {
     pub chat_seq:    Option<u64>, // Some(<number>) when sent to clients (starts at 0 for first
     // chat message sent to this client in this room); None when

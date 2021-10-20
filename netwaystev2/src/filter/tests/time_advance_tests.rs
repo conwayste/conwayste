@@ -1,5 +1,7 @@
 use crate::common::Endpoint;
-use crate::filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotice, FilterNotifyRecv, FilterRspRecv};
+use crate::filter::{
+    Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotice, FilterNotifyRecv, FilterRspRecv, PingPong,
+};
 use crate::protocol::{BroadcastChatMessage, Packet, RequestAction, ResponseCode};
 use crate::settings::TRANSPORT_CHANNEL_LEN;
 use crate::transport::{TransportCmd, TransportCmdRecv, TransportNotice, TransportNotifySend, TransportRsp};
@@ -80,6 +82,112 @@ async fn basic_server_filter_flow() {
     filter_shutdown_watcher.await;
 }
 
+#[ignore] // TODO: PR_GATE: once more of the Update/UpdateReply stuff is written, re-enable this test
+#[tokio::test]
+async fn server_send_chats_with_ack_should_drop() {
+    let (
+        transport_notice_tx,
+        mut transport_cmd_rx,
+        filter_cmd_tx,
+        _filter_rsp_rx,
+        _filter_notify_rx,
+        _,
+        filter_shutdown_watcher,
+    ) = setup_server().await;
+
+    let chat = BroadcastChatMessage {
+        chat_seq:    Some(0),
+        player_name: "Teg".to_owned(),
+        message:     "text from another player!".to_owned(),
+    };
+    filter_cmd_tx
+        .send(FilterCmd::SendChats {
+            endpoints: vec![*CLIENT_ENDPOINT],
+            messages:  vec![chat.clone()],
+        })
+        .await
+        .expect("sending a command down to Filter layer should succeed");
+
+    let transport_cmd = transport_cmd_rx
+        .recv()
+        .await
+        .expect("should have gotten a transport command");
+    let packet_to_client;
+    let update_pkt_tid;
+    match transport_cmd {
+        TransportCmd::SendPackets {
+            endpoint: _endpoint,
+            packets,
+            packet_infos,
+        } => {
+            assert_eq!(*CLIENT_ENDPOINT, _endpoint);
+            // No need to test packet_infos
+            packet_to_client = packets
+                .into_iter()
+                .next()
+                .expect("expected at least one packet for Transport layer");
+            assert_eq!(
+                packet_infos.len(),
+                1,
+                "multiple packets sent when one was expected for Update message to client"
+            );
+            update_pkt_tid = packet_infos[0].tid;
+        }
+        _ => panic!("unexpected TransportCmd"),
+    }
+    match packet_to_client {
+        Packet::Update { chats, .. } => {
+            assert_eq!(
+                chats.len(),
+                1,
+                "expected a single chat message from Filter layer (server mode)"
+            );
+            assert_eq!(chats[0], chat);
+        }
+        _ => panic!("expected a Packet::Update, got {:?}", packet_to_client),
+    }
+
+    // Simulate an UpdateReply from the client that acks the chat message
+    let packet_from_client = Packet::UpdateReply {
+        cookie:               "fakecookie".to_owned(),
+        last_chat_seq:        Some(0), // should match chat_seq from BroadcastChatMessage above
+        last_game_update_seq: None,
+        last_full_gen:        None,
+        partial_gen:          None,
+        pong:                 PingPong { nonce: 0 },
+    };
+    transport_notice_tx
+        .send(TransportNotice::PacketDelivery {
+            endpoint: *CLIENT_ENDPOINT,
+            packet:   packet_from_client,
+        })
+        .await
+        .expect("sending packets from Transport up to Filter should succeed");
+
+    // Verify the Filter layer sent a DropPacket for the Update packet it sent earlier with the
+    // acked chat message
+    let expiration = Instant::now() + Duration::from_secs(3);
+    time::advance(Duration::from_secs(5)).await;
+    let transport_cmd = timeout_at(expiration, transport_cmd_rx.recv())
+        .await
+        .expect("we should not have timed out getting a transport cmd from filter layer");
+    let transport_cmd = transport_cmd.expect("should have gotten a TransportCmd from Filter");
+    match transport_cmd {
+        TransportCmd::DropPacket { endpoint, tid } => {
+            assert_eq!(endpoint, *CLIENT_ENDPOINT);
+            assert_eq!(tid, update_pkt_tid);
+        }
+        _ => panic!("unexpected transport command {:?}", transport_cmd),
+    }
+
+    // Shut down
+    filter_cmd_tx
+        .send(FilterCmd::Shutdown { graceful: false })
+        .await
+        .unwrap();
+    filter_shutdown_watcher.await;
+}
+
 // TODO: basic_client_filter_flow
 
 /// This is a helper to simplify setting up the filter layer in server mode with one client connection. Call like this:
@@ -135,7 +243,8 @@ async fn setup_server() -> (
         .unwrap();
 
     let expiration = Instant::now() + Duration::from_secs(3);
-    time::advance(Duration::from_secs(5)).await; // TODO: once we add a test for a timing out flow, we can move this to that test and the timeout_at below
+    // Advance the time so that we can call timeout_at() below, which reduces the chance of a bug causing this test to block forever.
+    time::advance(Duration::from_secs(5)).await;
 
     // Check that we got a filter notification
     let timeout_result = timeout_at(expiration, filter_notify_rx.recv()).await;
