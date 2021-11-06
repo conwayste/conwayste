@@ -2,6 +2,7 @@ mod filter;
 mod interface;
 mod ping;
 mod sortedbuffer;
+mod update;
 
 #[cfg(test)]
 mod tests;
