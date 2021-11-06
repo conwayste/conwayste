@@ -10,26 +10,6 @@ pub struct BroadcastChatMessage {
     pub message:     String, // should not contain newlines
 }
 
-impl BroadcastChatMessage {
-    #[allow(unused)]
-    pub fn new(sequence: u64, name: String, msg: String) -> BroadcastChatMessage {
-        BroadcastChatMessage {
-            chat_seq:    Some(sequence),
-            player_name: name,
-            message:     msg,
-        }
-    }
-
-    #[allow(unused)]
-    fn sequence_number(&self) -> u64 {
-        if let Some(v) = self.chat_seq {
-            v
-        } else {
-            0
-        }
-    }
-}
-
 // TODO: add support
 // The server doesn't have to send all GameUpdates to all clients because that would entail keeping
 // them all for the lifetime of the room, and sending that arbitrarily large list to clients upon
