@@ -15,6 +15,7 @@ use tokio::time::{self, timeout_at, Instant};
 
 lazy_static! {
     static ref CLIENT_ENDPOINT: Endpoint = Endpoint(("1.2.3.4", 5678).to_socket_addrs().unwrap().next().unwrap());
+    static ref SERVER_ENDPOINT: Endpoint = Endpoint(("2.4.6.8", 5678).to_socket_addrs().unwrap().next().unwrap());
 }
 
 #[tokio::test]
@@ -190,6 +191,143 @@ async fn server_send_chats_with_ack_should_drop() {
 
 // TODO: basic_client_filter_flow
 
+#[tokio::test]
+async fn client_measure_latency_to_server() {
+    let (
+        transport_notice_tx,
+        mut transport_cmd_rx,
+        filter_cmd_tx,
+        _filter_rsp_rx,
+        mut filter_notify_rx,
+        filter_shutdown_watcher,
+    ) = setup_client().await;
+
+    filter_cmd_tx
+        .send(FilterCmd::AddPingEndpoints {
+            endpoints: vec![*SERVER_ENDPOINT],
+        })
+        .await
+        .expect("sending a command down to Filter layer should succeed");
+
+    println!("Sent filter cmd");
+
+    // Allow for one ping interval stream tick to occur
+    let expiration = Instant::now() + Duration::from_secs(3);
+    time::advance(Duration::from_secs(5)).await;
+    let transport_cmd = timeout_at(expiration, transport_cmd_rx.recv())
+        .await
+        .expect("we should not have timed out getting a transport cmd from filter layer");
+
+    let transport_cmd = transport_cmd
+        .expect("should have gotten a transport command");
+    let packet_to_server;
+    let pong;
+    let pingpong_tid;
+    match transport_cmd {
+        TransportCmd::SendPackets {
+            endpoint: _endpoint,
+            packets,
+            packet_infos,
+        } => {
+            assert_eq!(*SERVER_ENDPOINT, _endpoint);
+            // No need to test packet_infos
+            packet_to_server = packets
+                .into_iter()
+                .next()
+                .expect("expected at least one packet for Transport layer");
+            assert_eq!(
+                packet_infos.len(),
+                1,
+                "multiple packets sent when one was expected for GetStatus message to server"
+            );
+            pingpong_tid = packet_infos[0].tid;
+        }
+        _ => panic!("unexpected TransportCmd"),
+    }
+    match packet_to_server {
+        Packet::GetStatus { ping } => {
+            pong = ping;
+        }
+        _ => panic!("expected a Packet::GetStatus, got {:?}", packet_to_server),
+    }
+
+    println!("Sent GetStatus cmd");
+
+    // Simulate an Status from the Server with the Ping's Pong
+    let server_player_count = 10;
+    let server_room_count = 20;
+    let server_name = "Chapterhouse".to_owned();
+    let server_version = "1.2.3".to_owned();
+    let packet_from_server = Packet::Status {
+        player_count: server_player_count,
+        room_count: server_room_count,
+        server_name: server_name.clone(),
+        server_version: server_version.clone(),
+        pong,
+    };
+    transport_notice_tx
+        .send(TransportNotice::PacketDelivery {
+            endpoint: *SERVER_ENDPOINT,
+            packet:   packet_from_server,
+        })
+        .await
+        .expect("sending packets from Transport up to Filter should succeed");
+
+    println!("Sent PacketDelivery cmd");
+
+    // Verify the Filter layer sent a DropPacket for the Update packet it sent earlier with the
+    // acked chat message
+    let expiration = Instant::now() + Duration::from_secs(3);
+    time::advance(Duration::from_secs(5)).await;
+    let transport_cmd = timeout_at(expiration, transport_cmd_rx.recv())
+        .await
+        .expect("we should not have timed out getting a transport cmd from filter layer");
+    let transport_cmd = transport_cmd.expect("should have gotten a TransportCmd from Filter");
+    match transport_cmd {
+        TransportCmd::DropPacket { endpoint, tid } => {
+            assert_eq!(endpoint, *CLIENT_ENDPOINT);
+            assert_eq!(tid, pingpong_tid);
+        }
+        _ => panic!("unexpected transport command {:?}", transport_cmd),
+    }
+
+    println!("Transport cmd received");
+
+    // Verify that the Filter layer sent a message to the App layer with the ping result. The ping result produce no
+    // latency measurement after one cycle.
+    let expiration = Instant::now() + Duration::from_secs(3);
+    time::advance(Duration::from_secs(5)).await;
+    let filter_notification = timeout_at(expiration, filter_notify_rx.recv())
+        .await
+        .expect("we should not have timed out getting a notification from the filter layer");
+    let filter_notification = filter_notification.expect("should have gotten a FilterNotice from Filter");
+    match filter_notification {
+        FilterNotice::PingResult {
+            endpoint,
+            latency,
+            player_count,
+            room_count,
+            server_name: name,
+            server_version: version,
+        } => {
+            assert_eq!(endpoint, *SERVER_ENDPOINT);
+            assert_eq!(latency, 0);
+            assert_eq!(player_count, server_player_count);
+            assert_eq!(room_count, server_room_count);
+            assert_eq!(name, server_name);
+            assert_eq!(version, server_version)
+        }
+        _ => panic!("unexpected transport command {:?}", transport_cmd),
+    }
+
+    // Shut down
+    filter_cmd_tx
+        .send(FilterCmd::Shutdown { graceful: false })
+        .await
+        .unwrap();
+    filter_shutdown_watcher.await;
+}
+
 /// This is a helper to simplify setting up the filter layer in server mode with one client connection. Call like this:
 ///
 /// ```rust
@@ -324,6 +462,47 @@ async fn setup_server() -> (
         filter_rsp_rx,
         filter_notify_rx,
         logged_in_resp_pkt_tid,
+        filter_shutdown_watcher,
+    )
+}
+
+/// This is a helper to simplify setting up the filter layer in client mode with one server connection. Call like this:
+///
+/// ```rust
+/// let (transport_notice_tx, transport_cmd_rx, filter_cmd_tx, filter_rsp_rx, filter_notify_rx, logged_in_resp_pkt_tid, filter_shutdown_watcher) = setup_client().await;
+/// ```
+async fn setup_client() -> (
+    TransportNotifySend,
+    TransportCmdRecv,
+    FilterCmdSend,
+    FilterRspRecv,
+    FilterNotifyRecv,
+    impl Future<Output = ()> + 'static,
+) {
+    time::pause();
+    // Mock transport channels
+    let (transport_cmd_tx, mut transport_cmd_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
+    let (transport_rsp_tx, transport_rsp_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
+    let (transport_notice_tx, transport_notice_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
+
+    let (mut filter, filter_cmd_tx, filter_rsp_rx, mut filter_notify_rx) = Filter::new(
+        transport_cmd_tx,
+        transport_rsp_rx,
+        transport_notice_rx,
+        FilterMode::Client,
+    );
+
+    let filter_shutdown_watcher = filter.get_shutdown_watcher(); // No await; get the future
+
+    // Start the filter's task in the background
+    tokio::spawn(async move { filter.run().await });
+
+    (
+        transport_notice_tx,
+        transport_cmd_rx,
+        filter_cmd_tx,
+        filter_rsp_rx,
+        filter_notify_rx,
         filter_shutdown_watcher,
     )
 }

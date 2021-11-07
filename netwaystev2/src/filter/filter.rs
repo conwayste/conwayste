@@ -156,6 +156,7 @@ impl Filter {
         tokio::pin!(filter_notice_tx);
 
         let mut ping_interval_stream = tokio::time::interval(Duration::new(2, 0));
+        ping_interval_stream.tick().await;
 
         loop {
             tokio::select! {
@@ -232,6 +233,7 @@ impl Filter {
                     }
                 }
                 _instant = ping_interval_stream.tick() => {
+                    println!("ping interval stream");
                     if let Err(e) = self.send_pings().await {
                         error!("[FILTER] Failed to send pings: {}", e);
                     }
