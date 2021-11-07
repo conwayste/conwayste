@@ -31,22 +31,26 @@ pub(crate) enum SeqNumAdvancement {
 }
 
 pub enum FilterEndpointData {
-    OtherEndClient {
-        request_actions:              SequencedMinHeap<RequestAction>,
-        last_request_sequence_seen:   Option<SeqNum>,
-        last_response_sequence_sent:  Option<SeqNum>,
-        last_request_seen_timestamp:  Option<Instant>,
-        last_response_sent_timestamp: Option<Instant>,
-        unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>,
-    },
-    OtherEndServer {
-        response_codes:               SequencedMinHeap<ResponseCode>,
-        last_request_sequence_sent:   Option<SeqNum>,
-        last_response_sequence_seen:  Option<SeqNum>,
-        last_request_sent_timestamp:  Option<Instant>,
-        last_response_seen_timestamp: Option<Instant>,
-        unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>,
-    },
+    OtherEndClient(OtherEndClient),
+    OtherEndServer(OtherEndServer),
+}
+
+pub struct OtherEndClient {
+    request_actions:              SequencedMinHeap<RequestAction>,
+    last_request_sequence_seen:   Option<SeqNum>,
+    last_response_sequence_sent:  Option<SeqNum>,
+    last_request_seen_timestamp:  Option<Instant>,
+    last_response_sent_timestamp: Option<Instant>,
+    unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>,
+}
+
+pub struct OtherEndServer {
+    response_codes:               SequencedMinHeap<ResponseCode>,
+    last_request_sequence_sent:   Option<SeqNum>,
+    last_response_sequence_seen:  Option<SeqNum>,
+    last_request_sent_timestamp:  Option<Instant>,
+    last_response_seen_timestamp: Option<Instant>,
+    unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -255,14 +259,14 @@ impl Filter {
 
                             self.per_endpoint.insert(
                                 endpoint,
-                                FilterEndpointData::OtherEndClient {
+                                FilterEndpointData::OtherEndClient(OtherEndClient {
                                     request_actions:              SequencedMinHeap::<RequestAction>::new(),
                                     last_request_sequence_seen:   None,
                                     last_response_sequence_sent:  None,
                                     last_request_seen_timestamp:  None,
                                     last_response_sent_timestamp: None,
                                     unacked_outgoing_packet_tids: VecDeque::new(),
-                                },
+                                }),
                             );
                         }
                     }
@@ -287,142 +291,140 @@ impl Filter {
                 action,
                 response_ack,
                 ..
-            } => match endpoint_data {
-                FilterEndpointData::OtherEndServer { .. } => {
-                    return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
-                        mode:         self.mode,
-                        invalid_data: "RequestAction".to_owned(),
-                    }));
-                }
-                FilterEndpointData::OtherEndClient {
-                    request_actions,
-                    last_request_sequence_seen,
-                    last_request_seen_timestamp,
-                    unacked_outgoing_packet_tids,
-                    ..
-                } => {
-                    *last_request_seen_timestamp = Some(Instant::now());
-
-                    match determine_seq_num_advancement(sequence, last_request_sequence_seen) {
-                        SeqNumAdvancement::Duplicate => {
-                            // This can happen under normal network conditions
-                            return Ok(());
-                        }
-                        SeqNumAdvancement::BrandNew | SeqNumAdvancement::Contiguous => {
-                            *last_request_sequence_seen = Some(Wrapping(sequence));
-                        }
-                        SeqNumAdvancement::OutOfOrder => {
-                            // Nothing to do but add it to the heap in the next step
-                        }
-                    }
-
-                    let mut tids_to_drop = vec![];
-                    if let Some(response_ack) = response_ack {
-                        tids_to_drop = take_tids_to_drop(unacked_outgoing_packet_tids, Wrapping(response_ack));
-                    }
-                    for tid_to_drop in tids_to_drop {
-                        self.transport_cmd_tx
-                            .send(TransportCmd::DropPacket {
-                                endpoint,
-                                tid: tid_to_drop,
-                            })
-                            .await?;
-                    }
-
-                    request_actions.add(sequence, action);
-
-                    // Loop over the heap, finding all requests which can be sent to the app layer based on their sequence number.
-                    // If any are found, send them to the app layer and advance the last seen sequence number.
-                    // TODO: unit test wrapping logic and deduplicate with below
-                    if last_request_sequence_seen.is_none() {
-                        // Shouldn't be possible; if we hit this, it's a bug somewhere above
-                        return Err(anyhow!(FilterEndpointDataError::InternalError {
-                            problem: "sequence number should not be None at this point".to_owned(),
+            } => {
+                let client;
+                match endpoint_data {
+                    FilterEndpointData::OtherEndServer { .. } => {
+                        return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
+                            mode:         self.mode,
+                            invalid_data: "RequestAction".to_owned(),
                         }));
                     }
-                    let ref mut expected_seq_num =
-                        last_request_sequence_seen.expect("sequence number cannot be None by this point"); // expect OK because of above check
-                    while let Some(request_action) = request_actions.take_if_matching(expected_seq_num.0) {
-                        filter_notice_tx
-                            .send(FilterNotice::NewRequestAction {
-                                endpoint,
-                                action: request_action,
-                            })
-                            .await?;
-                        *expected_seq_num += Wrapping(1);
+                    FilterEndpointData::OtherEndClient(other_end_client) => {
+                        client = other_end_client;
                     }
                 }
-            },
+                client.last_request_seen_timestamp = Some(Instant::now());
+
+                match determine_seq_num_advancement(sequence, client.last_request_sequence_seen) {
+                    SeqNumAdvancement::Duplicate => {
+                        // This can happen under normal network conditions
+                        return Ok(());
+                    }
+                    SeqNumAdvancement::BrandNew | SeqNumAdvancement::Contiguous => {
+                        client.last_request_sequence_seen = Some(Wrapping(sequence));
+                    }
+                    SeqNumAdvancement::OutOfOrder => {
+                        // Nothing to do but add it to the heap in the next step
+                    }
+                }
+
+                let mut tids_to_drop = vec![];
+                if let Some(response_ack) = response_ack {
+                    tids_to_drop = take_tids_to_drop(&mut client.unacked_outgoing_packet_tids, Wrapping(response_ack));
+                }
+                for tid_to_drop in tids_to_drop {
+                    self.transport_cmd_tx
+                        .send(TransportCmd::DropPacket {
+                            endpoint,
+                            tid: tid_to_drop,
+                        })
+                        .await?;
+                }
+
+                client.request_actions.add(sequence, action);
+
+                // Loop over the heap, finding all requests which can be sent to the app layer based on their sequence number.
+                // If any are found, send them to the app layer and advance the last seen sequence number.
+                // TODO: unit test wrapping logic and deduplicate with below
+                if client.last_request_sequence_seen.is_none() {
+                    // Shouldn't be possible; if we hit this, it's a bug somewhere above
+                    return Err(anyhow!(FilterEndpointDataError::InternalError {
+                        problem: "sequence number should not be None at this point".to_owned(),
+                    }));
+                }
+                let ref mut expected_seq_num = client
+                    .last_request_sequence_seen
+                    .expect("sequence number cannot be None by this point"); // expect OK because of above check
+                while let Some(request_action) = client.request_actions.take_if_matching(expected_seq_num.0) {
+                    filter_notice_tx
+                        .send(FilterNotice::NewRequestAction {
+                            endpoint,
+                            action: request_action,
+                        })
+                        .await?;
+                    *expected_seq_num += Wrapping(1);
+                }
+            }
             Packet::Response {
                 sequence,
                 request_ack,
                 code,
-            } => match endpoint_data {
-                FilterEndpointData::OtherEndClient { .. } => {
-                    return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
-                        mode:         self.mode,
-                        invalid_data: "ResponseCode".to_owned(),
-                    }));
-                }
-                FilterEndpointData::OtherEndServer {
-                    response_codes,
-                    last_response_sequence_seen,
-                    last_response_seen_timestamp,
-                    unacked_outgoing_packet_tids,
-                    ..
-                } => {
-                    *last_response_seen_timestamp = Some(Instant::now());
-
-                    match determine_seq_num_advancement(sequence, last_response_sequence_seen) {
-                        SeqNumAdvancement::Duplicate => {
-                            // This can happen under normal network conditions
-                            return Ok(());
-                        }
-                        SeqNumAdvancement::BrandNew | SeqNumAdvancement::Contiguous => {
-                            *last_response_sequence_seen = Some(Wrapping(sequence));
-                        }
-                        SeqNumAdvancement::OutOfOrder => {
-                            // Nothing to do but add it to the heap in the next step
-                        }
-                    }
-
-                    let mut tids_to_drop = vec![];
-                    if let Some(request_ack) = request_ack {
-                        tids_to_drop = take_tids_to_drop(unacked_outgoing_packet_tids, Wrapping(request_ack));
-                    }
-                    for tid_to_drop in tids_to_drop {
-                        self.transport_cmd_tx
-                            .send(TransportCmd::DropPacket {
-                                endpoint,
-                                tid: tid_to_drop,
-                            })
-                            .await?;
-                    }
-
-                    response_codes.add(sequence, code);
-
-                    // Loop over the heap, finding all responses which can be sent to the app layer based on their sequence number.
-                    // If any are found, send them to the app layer and advance the last seen sequence number.
-                    // TODO: unit test wrapping logic
-                    if last_response_sequence_seen.is_none() {
-                        // Shouldn't be possible; if we hit this, it's a bug somewhere above
-                        return Err(anyhow!(FilterEndpointDataError::InternalError {
-                            problem: "sequence number should not be None at this point".to_owned(),
+            } => {
+                let server;
+                match endpoint_data {
+                    FilterEndpointData::OtherEndClient { .. } => {
+                        return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
+                            mode:         self.mode,
+                            invalid_data: "ResponseCode".to_owned(),
                         }));
                     }
-                    let ref mut expected_seq_num =
-                        last_response_sequence_seen.expect("sequence number cannot be None by this point"); // expect OK because of above check
-                    while let Some(response_code) = response_codes.take_if_matching(expected_seq_num.0) {
-                        filter_notice_tx
-                            .send(FilterNotice::NewResponseCode {
-                                endpoint,
-                                code: response_code,
-                            })
-                            .await?;
-                        *expected_seq_num += Wrapping(1);
+                    FilterEndpointData::OtherEndServer(other_end_server) => {
+                        server = other_end_server;
                     }
                 }
-            },
+                server.last_response_seen_timestamp = Some(Instant::now());
+
+                match determine_seq_num_advancement(sequence, server.last_response_sequence_seen) {
+                    SeqNumAdvancement::Duplicate => {
+                        // This can happen under normal network conditions
+                        return Ok(());
+                    }
+                    SeqNumAdvancement::BrandNew | SeqNumAdvancement::Contiguous => {
+                        server.last_response_sequence_seen = Some(Wrapping(sequence));
+                    }
+                    SeqNumAdvancement::OutOfOrder => {
+                        // Nothing to do but add it to the heap in the next step
+                    }
+                }
+
+                let mut tids_to_drop = vec![];
+                if let Some(request_ack) = request_ack {
+                    tids_to_drop = take_tids_to_drop(&mut server.unacked_outgoing_packet_tids, Wrapping(request_ack));
+                }
+                for tid_to_drop in tids_to_drop {
+                    self.transport_cmd_tx
+                        .send(TransportCmd::DropPacket {
+                            endpoint,
+                            tid: tid_to_drop,
+                        })
+                        .await?;
+                }
+
+                server.response_codes.add(sequence, code);
+
+                // Loop over the heap, finding all responses which can be sent to the app layer based on their sequence number.
+                // If any are found, send them to the app layer and advance the last seen sequence number.
+                // TODO: unit test wrapping logic
+                if server.last_response_sequence_seen.is_none() {
+                    // Shouldn't be possible; if we hit this, it's a bug somewhere above
+                    return Err(anyhow!(FilterEndpointDataError::InternalError {
+                        problem: "sequence number should not be None at this point".to_owned(),
+                    }));
+                }
+                let ref mut expected_seq_num = server
+                    .last_response_sequence_seen
+                    .expect("sequence number cannot be None by this point"); // expect OK because of above check
+                while let Some(response_code) = server.response_codes.take_if_matching(expected_seq_num.0) {
+                    filter_notice_tx
+                        .send(FilterNotice::NewResponseCode {
+                            endpoint,
+                            code: response_code,
+                        })
+                        .await?;
+                    *expected_seq_num += Wrapping(1);
+                }
+            }
             Packet::Status {
                 player_count,
                 ref pong,
@@ -482,72 +484,69 @@ impl Filter {
                     RequestAction::Connect { .. } => {
                         self.per_endpoint.insert(
                             endpoint,
-                            FilterEndpointData::OtherEndServer {
+                            FilterEndpointData::OtherEndServer(OtherEndServer {
                                 response_codes:               SequencedMinHeap::<ResponseCode>::new(),
                                 last_request_sequence_sent:   None,
                                 last_response_sequence_seen:  None,
                                 last_request_sent_timestamp:  None,
                                 last_response_seen_timestamp: None,
                                 unacked_outgoing_packet_tids: VecDeque::new(),
-                            },
+                            }),
                         );
                         Ok(())
                     }
                     _ => Err(err),
                 })?;
 
+                let server;
                 match self.per_endpoint.get_mut(&endpoint).unwrap() {
-                    FilterEndpointData::OtherEndClient { .. } => {
+                    FilterEndpointData::OtherEndClient(..) => {
                         return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
                             mode:         self.mode,
                             invalid_data: "RequestActions are not sent to clients".to_owned(),
                         }));
                     }
-                    FilterEndpointData::OtherEndServer {
-                        last_request_sequence_sent,
-                        last_request_sent_timestamp,
-                        last_response_sequence_seen,
-                        unacked_outgoing_packet_tids,
-                        ..
-                    } => {
-                        *last_request_sent_timestamp = Some(Instant::now());
-
-                        if let Some(sn) = last_request_sequence_sent {
-                            *sn += Wrapping(1u64);
-                        } else {
-                            *last_request_sequence_sent = Some(Wrapping(1));
-                        }
-
-                        // Unwrap ok b/c the immediate check above guarantees Some(..)
-                        let sequence = last_request_sequence_sent.unwrap().0;
-
-                        let response_ack = last_response_sequence_seen.map(|response_sn| response_sn.0);
-
-                        // TODO: Get cookie from app layer
-                        let cookie = None;
-
-                        let packets = vec![Packet::Request {
-                            action,
-                            cookie,
-                            sequence,
-                            response_ack,
-                        }];
-
-                        let tid = ProcessUniqueId::new();
-                        unacked_outgoing_packet_tids.push_back((Wrapping(sequence), tid));
-                        let packet_infos = vec![PacketSettings { tid, retry_interval }];
-
-                        self.transport_cmd_tx
-                            .send(TransportCmd::SendPackets {
-                                endpoint,
-                                packet_infos,
-                                packets,
-                            })
-                            .await?;
+                    FilterEndpointData::OtherEndServer(other_end_server) => {
+                        server = other_end_server;
                     }
                 }
+                server.last_request_sent_timestamp = Some(Instant::now());
+
+                if let Some(ref mut sn) = server.last_request_sequence_sent {
+                    *sn += Wrapping(1u64);
+                } else {
+                    server.last_request_sequence_sent = Some(Wrapping(1));
+                }
+
+                // Unwrap ok b/c the immediate check above guarantees Some(..)
+                let sequence = server.last_request_sequence_sent.unwrap().0;
+
+                let response_ack = server.last_response_sequence_seen.map(|response_sn| response_sn.0);
+
+                // TODO: Get cookie from app layer
+                let cookie = None;
+
+                let packets = vec![Packet::Request {
+                    action,
+                    cookie,
+                    sequence,
+                    response_ack,
+                }];
+
+                let tid = ProcessUniqueId::new();
+                server.unacked_outgoing_packet_tids.push_back((Wrapping(sequence), tid));
+                let packet_infos = vec![PacketSettings { tid, retry_interval }];
+
+                self.transport_cmd_tx
+                    .send(TransportCmd::SendPackets {
+                        endpoint,
+                        packet_infos,
+                        packets,
+                    })
+                    .await?;
             }
             FilterCmd::SendResponseCode { endpoint, code } => {
+                let client;
                 match self.per_endpoint.get_mut(&endpoint).unwrap() {
                     FilterEndpointData::OtherEndServer { .. } => {
                         return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
@@ -555,45 +554,40 @@ impl Filter {
                             invalid_data: "ResponseCodes are not sent to servers".to_owned(),
                         }));
                     }
-                    FilterEndpointData::OtherEndClient {
-                        last_response_sequence_sent,
-                        last_response_sent_timestamp,
-                        last_request_sequence_seen,
-                        unacked_outgoing_packet_tids,
-                        ..
-                    } => {
-                        *last_response_sent_timestamp = Some(Instant::now());
-
-                        if let Some(sn) = last_response_sequence_sent {
-                            *sn += Wrapping(1u64);
-                        } else {
-                            *last_response_sequence_sent = Some(Wrapping(1));
-                        }
-
-                        // Unwrap ok b/c the immediate check above guarantees Some(..)
-                        let sequence = last_response_sequence_sent.unwrap().0;
-
-                        let request_ack = last_request_sequence_seen.map(|request_sn| request_sn.0);
-
-                        let packets = vec![Packet::Response {
-                            code,
-                            sequence,
-                            request_ack,
-                        }];
-
-                        let tid = ProcessUniqueId::new();
-                        unacked_outgoing_packet_tids.push_back((Wrapping(sequence), tid));
-                        let packet_infos = vec![PacketSettings { tid, retry_interval }];
-
-                        self.transport_cmd_tx
-                            .send(TransportCmd::SendPackets {
-                                endpoint,
-                                packet_infos,
-                                packets,
-                            })
-                            .await?;
+                    FilterEndpointData::OtherEndClient(other_end_client) => {
+                        client = other_end_client;
                     }
                 }
+                client.last_response_sent_timestamp = Some(Instant::now());
+
+                if let Some(ref mut sn) = client.last_response_sequence_sent {
+                    *sn += Wrapping(1u64);
+                } else {
+                    client.last_response_sequence_sent = Some(Wrapping(1));
+                }
+
+                // Unwrap ok b/c the immediate check above guarantees Some(..)
+                let sequence = client.last_response_sequence_sent.unwrap().0;
+
+                let request_ack = client.last_request_sequence_seen.map(|request_sn| request_sn.0);
+
+                let packets = vec![Packet::Response {
+                    code,
+                    sequence,
+                    request_ack,
+                }];
+
+                let tid = ProcessUniqueId::new();
+                client.unacked_outgoing_packet_tids.push_back((Wrapping(sequence), tid));
+                let packet_infos = vec![PacketSettings { tid, retry_interval }];
+
+                self.transport_cmd_tx
+                    .send(TransportCmd::SendPackets {
+                        endpoint,
+                        packet_infos,
+                        packets,
+                    })
+                    .await?;
             }
             // TODO: implement these
             FilterCmd::SendChats { endpoints, messages } => {}
@@ -704,13 +698,13 @@ fn is_seq_sufficiently_far_away(a: u64, b: u64) -> bool {
 /// value than `last_seen_sn` are considered `Duplicate`. The exception to this is if the sequence numbers are
 /// about to wrap from `u64::MAX` to zero; these are still considered `OutOfOrder` by examining the distance between the
 /// two numbers.
-pub(crate) fn determine_seq_num_advancement(pkt_sequence: u64, last_seen_sn: &mut Option<SeqNum>) -> SeqNumAdvancement {
+pub(crate) fn determine_seq_num_advancement(pkt_sequence: u64, last_seen_sn: Option<SeqNum>) -> SeqNumAdvancement {
     if let Some(last_sn) = last_seen_sn {
         let sequence_wrapped = Wrapping(pkt_sequence);
 
-        if sequence_wrapped == *last_sn + Wrapping(1) {
+        if sequence_wrapped == last_sn + Wrapping(1) {
             return SeqNumAdvancement::Contiguous;
-        } else if sequence_wrapped <= *last_sn {
+        } else if sequence_wrapped <= last_sn {
             if is_seq_sufficiently_far_away(sequence_wrapped.0, last_sn.0) {
                 return SeqNumAdvancement::OutOfOrder;
             } else {
