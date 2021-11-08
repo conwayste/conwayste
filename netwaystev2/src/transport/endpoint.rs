@@ -254,7 +254,6 @@ impl<P> TransportEndpointData<P> {
                     info.last_transmit = Instant::now();
                     info.retry_count += 1;
                     retry_qualified.push((&*packet, *endpoint));
-                    println!("Retry incremented");
                 }
 
                 if info.retry_count >= TRANSPORT_RETRY_COUNT_LOG_THRESHOLD && !info.retry_logged {
