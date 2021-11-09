@@ -213,7 +213,14 @@ async fn client_measure_latency_to_server() {
 
     // Allow for one ping interval stream tick to occur
     let expiration = Instant::now() + Duration::from_secs(3);
+
+    // The first yield allows the spawned task to run until the interval tick awaits
+    tokio::task::yield_now().await;
+    // Advance the time so that the interval stream produces a tick
     time::advance(Duration::from_secs(5)).await;
+    // Yield once more to allow the spawn task to `select!` on the interval timer
+    tokio::task::yield_now().await;
+
     let transport_cmd = timeout_at(expiration, transport_cmd_rx.recv())
         .await
         .expect("we should not have timed out getting a transport cmd from filter layer");
@@ -276,9 +283,11 @@ async fn client_measure_latency_to_server() {
     println!("Sent PacketDelivery cmd");
 
     // Verify the Filter layer sent a DropPacket for the Update packet it sent earlier with the
-    // acked chat message
+    // acked chat message. The yield is used to give time to the spawned task to run.
     let expiration = Instant::now() + Duration::from_secs(3);
     time::advance(Duration::from_secs(5)).await;
+    tokio::task::yield_now().await;
+
     let transport_cmd = timeout_at(expiration, transport_cmd_rx.recv())
         .await
         .expect("we should not have timed out getting a transport cmd from filter layer");
@@ -297,6 +306,8 @@ async fn client_measure_latency_to_server() {
     // latency measurement after one cycle.
     let expiration = Instant::now() + Duration::from_secs(3);
     time::advance(Duration::from_secs(5)).await;
+    tokio::task::yield_now().await;
+
     let filter_notification = timeout_at(expiration, filter_notify_rx.recv())
         .await
         .expect("we should not have timed out getting a notification from the filter layer");
