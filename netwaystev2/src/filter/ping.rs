@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 /// This indicates the number of samples needed by the latency filter to calculate a statistically
 /// meaningful average.
-const LATENCY_FILTER_DEPTH: usize = 12;
+pub(crate) const LATENCY_FILTER_DEPTH: usize = 12;
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct PingPong {

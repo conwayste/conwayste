@@ -209,126 +209,132 @@ async fn client_measure_latency_to_server() {
         .await
         .expect("sending a command down to Filter layer should succeed");
 
-    println!("Sent filter cmd");
-
-    // Allow for one ping interval stream tick to occur
-    let expiration = Instant::now() + Duration::from_secs(3);
-
-    // The first yield allows the spawned task to run until the interval tick awaits
-    tokio::task::yield_now().await;
-    // Advance the time so that the interval stream produces a tick
-    time::advance(Duration::from_secs(5)).await;
-    // Yield once more to allow the spawn task to `select!` on the interval timer
-    tokio::task::yield_now().await;
-
-    let transport_cmd = timeout_at(expiration, transport_cmd_rx.recv())
-        .await
-        .expect("we should not have timed out getting a transport cmd from filter layer");
-
-    let transport_cmd = transport_cmd
-        .expect("should have gotten a transport command");
-    let packet_to_server;
-    let pong;
-    let pingpong_tid;
-    match transport_cmd {
-        TransportCmd::SendPackets {
-            endpoint: _endpoint,
-            packets,
-            packet_infos,
-        } => {
-            assert_eq!(*SERVER_ENDPOINT, _endpoint);
-            // No need to test packet_infos
-            packet_to_server = packets
-                .into_iter()
-                .next()
-                .expect("expected at least one packet for Transport layer");
-            assert_eq!(
-                packet_infos.len(),
-                1,
-                "multiple packets sent when one was expected for GetStatus message to server"
-            );
-            pingpong_tid = packet_infos[0].tid;
-        }
-        _ => panic!("unexpected TransportCmd"),
-    }
-    match packet_to_server {
-        Packet::GetStatus { ping } => {
-            pong = ping;
-        }
-        _ => panic!("expected a Packet::GetStatus, got {:?}", packet_to_server),
+    use crate::filter::ping::LATENCY_FILTER_DEPTH;
+    let mut latencies = (0..LATENCY_FILTER_DEPTH + 1).map(|_| 0 as usize).collect::<Vec<usize>>();
+    if let Some(latency) = latencies.last_mut() {
+        // A non-zero value since I don't think we can (or should) pin a discrete time for this test
+        *latency = 1;
     }
 
-    println!("Sent GetStatus cmd");
+    for measurement in latencies {
+        // Allow for one ping interval stream tick to occur
+        let expiration = Instant::now() + Duration::from_secs(3);
 
-    // Simulate an Status from the Server with the Ping's Pong
-    let server_player_count = 10;
-    let server_room_count = 20;
-    let server_name = "Chapterhouse".to_owned();
-    let server_version = "1.2.3".to_owned();
-    let packet_from_server = Packet::Status {
-        player_count: server_player_count,
-        room_count: server_room_count,
-        server_name: server_name.clone(),
-        server_version: server_version.clone(),
-        pong,
-    };
-    transport_notice_tx
-        .send(TransportNotice::PacketDelivery {
-            endpoint: *SERVER_ENDPOINT,
-            packet:   packet_from_server,
-        })
-        .await
-        .expect("sending packets from Transport up to Filter should succeed");
+        // The first yield allows the spawned task to run until the interval tick awaits
+        tokio::task::yield_now().await;
+        // Advance the time so that the interval stream produces a tick
+        time::advance(Duration::from_secs(5)).await;
+        // Yield once more to allow the spawn task to `select!` on the interval timer
+        tokio::task::yield_now().await;
 
-    println!("Sent PacketDelivery cmd");
+        let transport_cmd = timeout_at(expiration, transport_cmd_rx.recv())
+            .await
+            .expect("we should not have timed out getting a transport cmd from filter layer");
 
-    // Verify the Filter layer sent a DropPacket for the Update packet it sent earlier with the
-    // acked chat message. The yield is used to give time to the spawned task to run.
-    let expiration = Instant::now() + Duration::from_secs(3);
-    time::advance(Duration::from_secs(5)).await;
-    tokio::task::yield_now().await;
-
-    let transport_cmd = timeout_at(expiration, transport_cmd_rx.recv())
-        .await
-        .expect("we should not have timed out getting a transport cmd from filter layer");
-    let transport_cmd = transport_cmd.expect("should have gotten a TransportCmd from Filter");
-    match transport_cmd {
-        TransportCmd::DropPacket { endpoint, tid } => {
-            assert_eq!(endpoint, *CLIENT_ENDPOINT);
-            assert_eq!(tid, pingpong_tid);
+        let transport_cmd = transport_cmd.expect("should have gotten a transport command");
+        let packet_to_server;
+        let pong;
+        let pingpong_tid;
+        match transport_cmd {
+            TransportCmd::SendPackets {
+                endpoint: _endpoint,
+                packets,
+                packet_infos,
+            } => {
+                assert_eq!(*SERVER_ENDPOINT, _endpoint);
+                // No need to test packet_infos
+                packet_to_server = packets
+                    .into_iter()
+                    .next()
+                    .expect("expected at least one packet for Transport layer");
+                assert_eq!(
+                    packet_infos.len(),
+                    1,
+                    "multiple packets sent when one was expected for GetStatus message to server"
+                );
+                pingpong_tid = packet_infos[0].tid;
+            }
+            _ => panic!("unexpected TransportCmd"),
         }
-        _ => panic!("unexpected transport command {:?}", transport_cmd),
-    }
-
-    println!("Transport cmd received");
-
-    // Verify that the Filter layer sent a message to the App layer with the ping result. The ping result produce no
-    // latency measurement after one cycle.
-    let expiration = Instant::now() + Duration::from_secs(3);
-    time::advance(Duration::from_secs(5)).await;
-    tokio::task::yield_now().await;
-
-    let filter_notification = timeout_at(expiration, filter_notify_rx.recv())
-        .await
-        .expect("we should not have timed out getting a notification from the filter layer");
-    let filter_notification = filter_notification.expect("should have gotten a FilterNotice from Filter");
-    match filter_notification {
-        FilterNotice::PingResult {
-            endpoint,
-            latency,
-            player_count,
-            room_count,
-            server_name: name,
-            server_version: version,
-        } => {
-            assert_eq!(endpoint, *SERVER_ENDPOINT);
-            assert_eq!(latency, 0);
-            assert_eq!(player_count, server_player_count);
-            assert_eq!(room_count, server_room_count);
-            assert_eq!(name, server_name);
-            assert_eq!(version, server_version)
+        match packet_to_server {
+            Packet::GetStatus { ping } => {
+                pong = ping;
+            }
+            _ => panic!("expected a Packet::GetStatus, got {:?}", packet_to_server),
         }
-        _ => panic!("unexpected transport command {:?}", transport_cmd),
+
+        // Simulate an Status from the Server with the Ping's Pong
+        let server_player_count = 10;
+        let server_room_count = 20;
+        let server_name = "Chapterhouse".to_owned();
+        let server_version = "1.2.3".to_owned();
+        let packet_from_server = Packet::Status {
+            player_count: server_player_count,
+            room_count: server_room_count,
+            server_name: server_name.clone(),
+            server_version: server_version.clone(),
+            pong,
+        };
+        transport_notice_tx
+            .send(TransportNotice::PacketDelivery {
+                endpoint: *SERVER_ENDPOINT,
+                packet:   packet_from_server,
+            })
+            .await
+            .expect("sending packets from Transport up to Filter should succeed");
+
+        // Verify the Filter layer sent a DropPacket for the Update packet it sent earlier with the
+        // acked chat message. The yield is used to give time to the spawned task to run.
+        let expiration = Instant::now() + Duration::from_secs(3);
+        time::advance(Duration::from_secs(5)).await;
+        tokio::task::yield_now().await;
+
+        let transport_cmd = timeout_at(expiration, transport_cmd_rx.recv())
+            .await
+            .expect("we should not have timed out getting a transport cmd from filter layer");
+        let transport_cmd = transport_cmd.expect("should have gotten a TransportCmd from Filter");
+        match transport_cmd {
+            TransportCmd::DropPacket { endpoint, tid } => {
+                assert_eq!(endpoint, *SERVER_ENDPOINT);
+                assert_eq!(tid, pingpong_tid);
+            }
+            _ => panic!("unexpected transport command {:?}", transport_cmd),
+        }
+
+        // Verify that the Filter layer sent a message to the App layer with the ping result. The ping result produce no
+        // latency measurement after one cycle.
+        let expiration = Instant::now() + Duration::from_secs(3);
+        time::advance(Duration::from_secs(5)).await;
+        tokio::task::yield_now().await;
+
+        let filter_notification = timeout_at(expiration, filter_notify_rx.recv())
+            .await
+            .expect("we should not have timed out getting a notification from the filter layer");
+        let filter_notification = filter_notification.expect("should have gotten a FilterNotice from Filter");
+        match filter_notification {
+            FilterNotice::PingResult {
+                endpoint,
+                latency,
+                player_count,
+                room_count,
+                server_name: name,
+                server_version: version,
+            } => {
+                assert_eq!(endpoint, *SERVER_ENDPOINT);
+                assert_eq!(player_count, server_player_count);
+                assert_eq!(room_count, server_room_count);
+                assert_eq!(name, server_name);
+                assert_eq!(version, server_version);
+
+                // The latency filter should yield a non-zero value after enough samples
+                if measurement != 0 {
+                    assert_ne!(latency, 0);
+                } else {
+                    assert_eq!(latency, measurement as u64);
+                }
+            }
+            _ => panic!("unexpected transport command {:?}", transport_cmd),
+        }
     }
 
     // Shut down

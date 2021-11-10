@@ -232,7 +232,6 @@ impl Filter {
                     }
                 }
                 _instant = ping_interval_stream.tick() => {
-                    println!("ping interval stream");
                     if let Err(e) = self.send_pings().await {
                         error!("[FILTER] Failed to send pings: {}", e);
                     }
@@ -285,7 +284,6 @@ impl Filter {
             }
         }
 
-        let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
         match packet {
             Packet::Request {
                 sequence,
@@ -294,6 +292,7 @@ impl Filter {
                 ..
             } => {
                 let client;
+                let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
                 match endpoint_data {
                     FilterEndpointData::OtherEndServer { .. } => {
                         return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
@@ -363,6 +362,7 @@ impl Filter {
                 code,
             } => {
                 let server;
+                let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
                 match endpoint_data {
                     FilterEndpointData::OtherEndClient { .. } => {
                         return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
@@ -433,7 +433,7 @@ impl Filter {
                 server_name,
                 server_version,
             } => {
-                if let Some((latency_filter, pingpong, ping_tid)) = self.ping_endpoints.get_mut(&endpoint) {
+                if let Some((latency_filter, pingpong, opt_ping_tid)) = self.ping_endpoints.get_mut(&endpoint) {
                     // Update the round-trip time
                     if pingpong == pong {
                         latency_filter.update();
@@ -446,10 +446,11 @@ impl Filter {
                     }
 
                     // Tell the Transport layer to drop the ping packet
-                    if let Some(tid) = ping_tid {
+                    if let Some(tid) = opt_ping_tid {
                         self.transport_cmd_tx
                             .send(TransportCmd::DropPacket { endpoint, tid: *tid })
                             .await?;
+                        *opt_ping_tid = None;
                     } else {
                         return Err(anyhow!(FilterEndpointDataError::InternalError {
                             problem: "ping tid is None on Pong. Should not be None at this point".to_owned(),
