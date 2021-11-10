@@ -4,7 +4,7 @@ use crate::filter::{
 };
 use crate::protocol::{BroadcastChatMessage, Packet, RequestAction, ResponseCode};
 use crate::settings::TRANSPORT_CHANNEL_LEN;
-use crate::transport::{TransportCmd, TransportCmdRecv, TransportNotice, TransportNotifySend, TransportRsp};
+use crate::transport::{TransportCmd, TransportCmdRecv, TransportNotice, TransportNotifySend};
 use lazy_static::lazy_static;
 use snowflake::ProcessUniqueId;
 use std::future::Future;
@@ -362,7 +362,7 @@ async fn setup_server() -> (
     time::pause();
     // Mock transport channels
     let (transport_cmd_tx, mut transport_cmd_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
-    let (transport_rsp_tx, transport_rsp_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
+    let (_transport_rsp_tx, transport_rsp_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
     let (transport_notice_tx, transport_notice_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
 
     let (mut filter, filter_cmd_tx, filter_rsp_rx, mut filter_notify_rx) = Filter::new(
@@ -498,11 +498,11 @@ async fn setup_client() -> (
 ) {
     time::pause();
     // Mock transport channels
-    let (transport_cmd_tx, mut transport_cmd_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
-    let (transport_rsp_tx, transport_rsp_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
+    let (transport_cmd_tx, transport_cmd_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
+    let (_transport_rsp_tx, transport_rsp_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
     let (transport_notice_tx, transport_notice_rx) = mpsc::channel(TRANSPORT_CHANNEL_LEN);
 
-    let (mut filter, filter_cmd_tx, filter_rsp_rx, mut filter_notify_rx) = Filter::new(
+    let (mut filter, filter_cmd_tx, filter_rsp_rx, filter_notify_rx) = Filter::new(
         transport_cmd_tx,
         transport_rsp_rx,
         transport_notice_rx,

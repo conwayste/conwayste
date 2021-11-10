@@ -149,10 +149,10 @@ impl Filter {
         tokio::pin!(transport_notice_rx);
 
         let filter_cmd_rx = self.filter_cmd_rx.take().unwrap();
-        let filter_rsp_tx = self.filter_rsp_tx.clone();
+        let _filter_rsp_tx = self.filter_rsp_tx.clone();
         let filter_notice_tx = self.filter_notice_tx.clone();
         tokio::pin!(filter_cmd_rx);
-        tokio::pin!(filter_rsp_tx);
+        tokio::pin!(_filter_rsp_tx);
         tokio::pin!(filter_notice_tx);
 
         let mut ping_interval_stream = tokio::time::interval(Duration::new(2, 0));
