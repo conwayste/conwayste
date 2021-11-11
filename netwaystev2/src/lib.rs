@@ -10,6 +10,7 @@ extern crate thiserror;
 pub mod common;
 pub mod filter;
 pub mod protocol;
+pub mod app;
 mod settings;
 pub mod transport;
 

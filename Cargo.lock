@@ -2431,6 +2431,7 @@ dependencies = [
  "lazy_static",
  "log",
  "rand 0.8.3",
+ "reqwest",
  "serde",
  "snowflake",
  "thiserror",
