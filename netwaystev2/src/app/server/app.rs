@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::{app::server::interface::{UniGenCmd, UniGenNotice, UniGenRsp}, app::server::registry::{self, REGISTER_INTERVAL_IN_US}, filter::{FilterCmd, FilterCmdSend, FilterNotifyRecv, FilterRspRecv}, settings::APP_CHANNEL_LEN};
+use crate::{app::server::interface::{UniGenCmd, UniGenNotice, UniGenRsp}, app::server::registry::{self, REGISTER_INTERVAL_IN_MS}, filter::{FilterCmd, FilterCmdSend, FilterNotifyRecv, FilterRspRecv}, settings::APP_CHANNEL_LEN};
 
 use futures::Future;
 use tokio::sync::{
@@ -84,7 +84,7 @@ impl AppServer {
         tokio::pin!(unigen_rsp_rx);
         tokio::pin!(unigen_notice_rx);
 
-        let mut register_interval_stream = tokio::time::interval(Duration::from_millis(REGISTER_INTERVAL_IN_US));
+        let mut register_interval_stream = tokio::time::interval(Duration::from_millis(REGISTER_INTERVAL_IN_MS));
 
         loop {
             tokio::select! {

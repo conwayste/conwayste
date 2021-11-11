@@ -5,7 +5,7 @@ use std::time::Duration;
 use thiserror;
 use tokio::time as TokioTime;
 
-pub const REGISTER_INTERVAL_IN_US: u64 = 10_000_000;
+pub const REGISTER_INTERVAL_IN_MS: u64 = 10_000_000;
 pub const REGISTER_RETRIES: usize = 3;
 pub const REGISTER_RETRY_SLEEP: Duration = Duration::from_millis(5000);
 pub const REGISTRY_DEFAULT_URL: &str = "https://registry.conwayste.rs/addServer";
