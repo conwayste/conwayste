@@ -1,5 +1,7 @@
 use std::num::Wrapping;
 
+use conway::universe::GenStateDiff;
+
 use crate::{
     common::Endpoint,
     protocol::{BroadcastChatMessage, GameUpdate, GenStateDiffPart, RequestAction, ResponseCode},
@@ -39,16 +41,6 @@ pub enum FilterCmd {
         endpoints: Vec<Endpoint>,
         diff:      GenStateDiffPart,
     },
-    /// Not passed on below the Filter layer to the Transport layer. The client app layer sends
-    /// this when the complete generations it has for the current game changes, which usually
-    /// happens when it successfully applies a GenStateDiff received from the filter layer -- in
-    /// this case, newest_have_gen would increase and probably oldest_have_gen would increase by
-    /// the same amount due to the oldest generations being purged to make room (see libconway for
-    /// more on this).
-    SetGenerationRange {
-        oldest_have_gen: u32,
-        newest_have_gen: u32,
-    },
     AddPingEndpoints {
         endpoints: Vec<Endpoint>,
     },
@@ -79,7 +71,7 @@ pub enum FilterNotice {
     },
     NewGenStateDiff {
         endpoint: Endpoint,
-        diff:     GenStateDiffPart,
+        diff:     GenStateDiff,
     },
     PingResult {
         endpoint:       Endpoint,

@@ -452,12 +452,16 @@ impl Filter {
                     }
                 }
                 //XXX send NewGenStateDiff/NewGameUpdates/NewChats as needed (if new)
-                // when checking if it's a new GenStateDiff:
-                //     using oldest_have_gen & newest_have_gen from game info of server:
-                //       clear out any incoming GenStateDiff data with gen0 < oldest_have_gen or gen1 <= newest_have_gen
-                //     if this GenStateDiffPart makes it past this _and_ it completes the GenStateDiff,
-                //       send it up
-                //       remove it from game info of server
+                if let Some(ref mut room) = server.room {
+                    if let Some(ref mut game) = room.game {
+                        if let Some(gen_state_diff) = game.process_genstate_diff_part(universe_update)? {
+                            filter_notice_tx.send(FilterNotice::NewGenStateDiff{
+                                diff: gen_state_diff,
+                                endpoint: endpoint,
+                            }).await?;
+                        }
+                    }
+                }
             }
             Packet::Status {
                 player_count,
@@ -528,8 +532,7 @@ impl Filter {
                                 last_response_seen_timestamp: None,
                                 unacked_outgoing_packet_tids: VecDeque::new(),
                                 update_reply_tid:             None,
-                                seen_gen_state_diffs: HashSet::new(),
-                                diff_parts: HashMap::new(),
+                                room:                         None,
                             }),
                         );
                         Ok(())
@@ -649,10 +652,6 @@ impl Filter {
             FilterCmd::SendGameUpdates { endpoints, messages } => {}
             FilterCmd::Authenticated { endpoint } => {} //XXX should probably have player_name as part of this
             FilterCmd::SendGenStateDiff { endpoints, diff } => {}
-            FilterCmd::SetGenerationRange { oldest_have_gen, newest_have_gen } => {
-                //XXX store these two numbers in the game info of OtherEndServer
-                //XXX can probably also send an UpdateReply at this point
-            }
             FilterCmd::AddPingEndpoints { endpoints } => {
                 for e in endpoints {
                     // An hashmap insert for an existing key will override the value. This would obsolete any ping

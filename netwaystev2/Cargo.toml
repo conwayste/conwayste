@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 #base64         = "0.13.0"
 #clap           = "2"
-#conway         = { path = "../libconway" }
+conway         = { path = "../libconway" }
 rand           = "0.8.3"
 #regex          = "1"
 #semver         = "0.11.0"

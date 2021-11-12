@@ -8,4 +8,4 @@ mod update;
 pub use packet::Packet;
 pub use request::RequestAction;
 pub use response::ResponseCode;
-pub use update::{BroadcastChatMessage, GameUpdate, GenStateDiffPart};
+pub use update::*;
