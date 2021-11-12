@@ -2,8 +2,9 @@ use super::interface::{FilterCmd, FilterMode, FilterNotice, FilterRsp, SeqNum};
 use super::ping::LatencyFilter;
 use super::sortedbuffer::SequencedMinHeap;
 use super::PingPong;
+use super::client_update::{ClientGame, ClientRoom};
 use crate::common::Endpoint;
-use crate::protocol::{Packet, RequestAction, ResponseCode};
+use crate::protocol::{Packet, RequestAction, ResponseCode, GenStateDiffPart};
 use crate::settings::{DEFAULT_RETRY_INTERVAL_NS, FILTER_CHANNEL_LEN};
 use crate::transport::{
     PacketSettings, TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp,
@@ -16,7 +17,7 @@ use tokio::sync::watch;
 
 use std::time::Duration;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     future::Future,
     num::Wrapping,
     time::Instant,
@@ -41,16 +42,20 @@ pub struct OtherEndClient {
     last_response_sequence_sent:  Option<SeqNum>,
     last_request_seen_timestamp:  Option<Instant>,
     last_response_sent_timestamp: Option<Instant>,
-    unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>,
+    unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>, // Tracks outgoing Responses
 }
 
 pub struct OtherEndServer {
+    // Request/Response below
     response_codes:               SequencedMinHeap<ResponseCode>,
     last_request_sequence_sent:   Option<SeqNum>,
     last_response_sequence_seen:  Option<SeqNum>,
     last_request_sent_timestamp:  Option<Instant>,
     last_response_seen_timestamp: Option<Instant>,
-    unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>,
+    unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>, // Tracks outgoing Requests
+    // Update/UpdateReply below
+    room: Option<ClientRoom>,
+    update_reply_tid: Option<ProcessUniqueId>, // At most one outgoing UpdateReply at a time
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -171,11 +176,11 @@ impl Filter {
                                 error!("Packet and PacketSettings data did not align")
                             }
                             TransportRsp::BufferFull => {
-                                // XXX
+                                // TODO
                                 error!("[FILTER] Transmit buffer is full");
                             }
                             TransportRsp::ExceedsMtu {tid} => {
-                                // XXX
+                                // TODO
                                 error!("[FILTER] Packet exceeds MTU size. Tid={}", tid);
                             }
                             TransportRsp::EndpointError {error} => {
@@ -426,6 +431,34 @@ impl Filter {
                     *expected_seq_num += Wrapping(1);
                 }
             }
+            Packet::Update{
+                chats,
+                game_update_seq,
+                game_updates,
+                universe_update,
+                ping,
+            } => {
+                let server;
+                let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
+                match endpoint_data {
+                    FilterEndpointData::OtherEndClient { .. } => {
+                        return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
+                            mode:         self.mode,
+                            invalid_data: "Update".to_owned(),
+                        }));
+                    }
+                    FilterEndpointData::OtherEndServer(other_end_server) => {
+                        server = other_end_server;
+                    }
+                }
+                //XXX send NewGenStateDiff/NewGameUpdates/NewChats as needed (if new)
+                // when checking if it's a new GenStateDiff:
+                //     using oldest_have_gen & newest_have_gen from game info of server:
+                //       clear out any incoming GenStateDiff data with gen0 < oldest_have_gen or gen1 <= newest_have_gen
+                //     if this GenStateDiffPart makes it past this _and_ it completes the GenStateDiff,
+                //       send it up
+                //       remove it from game info of server
+            }
             Packet::Status {
                 player_count,
                 ref pong,
@@ -433,6 +466,7 @@ impl Filter {
                 server_name,
                 server_version,
             } => {
+                // TODO: error if OtherEndClient
                 if let Some((latency_filter, pingpong, opt_ping_tid)) = self.ping_endpoints.get_mut(&endpoint) {
                     // Update the round-trip time
                     if pingpong == pong {
@@ -493,6 +527,9 @@ impl Filter {
                                 last_request_sent_timestamp:  None,
                                 last_response_seen_timestamp: None,
                                 unacked_outgoing_packet_tids: VecDeque::new(),
+                                update_reply_tid:             None,
+                                seen_gen_state_diffs: HashSet::new(),
+                                diff_parts: HashMap::new(),
                             }),
                         );
                         Ok(())
@@ -591,11 +628,31 @@ impl Filter {
                     })
                     .await?;
             }
+            FilterCmd::SendChats { endpoints, messages } => {
+                for endpoint in endpoints {
+                    match self.per_endpoint.get_mut(&endpoint).unwrap() {
+                        FilterEndpointData::OtherEndServer { .. } => {
+                            return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
+                                mode:         self.mode,
+                                invalid_data: "ResponseCodes are not sent to servers".to_owned(),
+                            }));
+                        }
+                        FilterEndpointData::OtherEndClient {
+                            ..
+                        } => {
+                            //XXX ????
+                        }
+                    }
+                }
+            }
             // TODO: implement these
-            FilterCmd::SendChats { endpoints, messages } => {}
             FilterCmd::SendGameUpdates { endpoints, messages } => {}
-            FilterCmd::Authenticated { endpoint } => {}
+            FilterCmd::Authenticated { endpoint } => {} //XXX should probably have player_name as part of this
             FilterCmd::SendGenStateDiff { endpoints, diff } => {}
+            FilterCmd::SetGenerationRange { oldest_have_gen, newest_have_gen } => {
+                //XXX store these two numbers in the game info of OtherEndServer
+                //XXX can probably also send an UpdateReply at this point
+            }
             FilterCmd::AddPingEndpoints { endpoints } => {
                 for e in endpoints {
                     // An hashmap insert for an existing key will override the value. This would obsolete any ping
