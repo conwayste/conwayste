@@ -210,7 +210,9 @@ async fn client_measure_latency_to_server() {
         .expect("sending a command down to Filter layer should succeed");
 
     use crate::filter::ping::LATENCY_FILTER_DEPTH;
-    let mut latencies = (0..LATENCY_FILTER_DEPTH + 1).map(|_| 0 as usize).collect::<Vec<usize>>();
+    let mut latencies = (0..LATENCY_FILTER_DEPTH + 1)
+        .map(|_| 0 as usize)
+        .collect::<Vec<usize>>();
     if let Some(latency) = latencies.last_mut() {
         // A non-zero value since I don't think we can (or should) pin a discrete time for this test
         *latency = 1;

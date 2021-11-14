@@ -1,9 +1,9 @@
+mod client_update;
 mod filter;
 mod interface;
 mod ping;
-mod sortedbuffer;
-mod client_update;
 mod server_update;
+mod sortedbuffer;
 
 #[cfg(test)]
 mod tests;

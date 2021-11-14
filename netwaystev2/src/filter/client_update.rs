@@ -1,16 +1,30 @@
 use anyhow::{anyhow, Result};
 use std::collections::{hash_map::Entry, HashMap};
 
-use crate::protocol::{GenStateDiffPart, UniUpdate};
-use conway::{rle::Pattern, universe::{GenStateDiff, Universe}};
+use crate::protocol::{GameUpdate, GenPartInfo, GenStateDiffPart, UniUpdate};
+use conway::{
+    rle::Pattern,
+    universe::{GenStateDiff, Universe},
+};
 
 pub struct ClientRoom {
-    pub game: Option<ClientGame>,
+    player_name:       String, // Duplicate of player_name from OtherEndServer (parent) struct
+    pub game:          Option<ClientGame>,
+    pub last_chat_seq: Option<u64>, // sequence number of latest chat msg. received from server
 }
 
 pub struct ClientGame {
-    diff_parts: HashMap<(u32, u32), Vec<Option<String>>>,
-    universe:   Universe,
+    player_id:         usize,
+    diff_parts:        HashMap<(u32, u32), Vec<Option<String>>>,
+    universe:          Universe,
+    pub last_full_gen: Option<u64>, // generation number client is currently at
+    pub partial_gen:   Option<GenPartInfo>,
+}
+
+impl ClientRoom {
+    pub fn process_game_update(&mut self, game_update: &GameUpdate) -> Result<()> {
+        Ok(()) //XXX
+    }
 }
 
 impl ClientGame {
@@ -73,10 +87,19 @@ impl ClientGame {
 
         if all_parts_are_some {
             let genstatediff = GenStateDiff {
-                gen0: gen0 as usize,
-                gen1: gen1 as usize,
+                gen0:    gen0 as usize,
+                gen1:    gen1 as usize,
                 pattern: Pattern(diff),
             };
+            let opt_gen = self.universe.apply(&genstatediff, Some(self.player_id))?;
+            if let Some(latest_gen) = opt_gen {
+                //XXX store this
+            }
+            //XXX error handling
+
+            self.diff_parts.remove(&(gen0, gen1));
+            //XXX delete stuff from diff_parts
+
             return Ok(Some(genstatediff));
         }
 

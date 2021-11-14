@@ -1,6 +1,6 @@
-use bincode::serialize;
 use crate::filter::PingPong;
 use crate::protocol::Packet;
+use bincode::serialize;
 
 // IMPORTANT: if these two tests break, it's likely the Go registrar is broken as well.
 #[test]

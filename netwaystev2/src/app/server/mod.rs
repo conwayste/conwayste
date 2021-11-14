@@ -1,5 +1,5 @@
 extern crate reqwest;
 
-pub mod interface;
 mod app;
+pub mod interface;
 mod registry;

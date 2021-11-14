@@ -1,6 +1,11 @@
 use std::time::Duration;
 
-use crate::{app::server::interface::{UniGenCmd, UniGenNotice, UniGenRsp}, app::server::registry::{self, REGISTER_INTERVAL}, filter::{FilterCmd, FilterCmdSend, FilterNotifyRecv, FilterRspRecv}, settings::APP_CHANNEL_LEN};
+use crate::{
+    app::server::interface::{UniGenCmd, UniGenNotice, UniGenRsp},
+    app::server::registry::{self, REGISTER_INTERVAL},
+    filter::{FilterCmd, FilterCmdSend, FilterNotifyRecv, FilterRspRecv},
+    settings::APP_CHANNEL_LEN,
+};
 
 use futures::Future;
 use tokio::sync::{
@@ -135,7 +140,7 @@ impl AppServer {
                 }
             }
             // Also shutdown the layer below
-            let _ = filter_cmd_tx.send(FilterCmd::Shutdown{graceful: true}).await;
+            let _ = filter_cmd_tx.send(FilterCmd::Shutdown { graceful: true }).await;
         }
     }
 }

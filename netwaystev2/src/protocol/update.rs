@@ -42,7 +42,8 @@ pub enum GameUpdate {
     GameFinish {
         outcome: GameOutcome,
     },
-    /// Kicks user back to lobby.
+    /// Kicks user back to lobby. When it appears in an Update packet, it should be the last update
+    /// in that packet.
     RoomDeleted,
     /// New match. Server suggests we join this room.
     /// NOTE: this is the only variant that can happen in a lobby.

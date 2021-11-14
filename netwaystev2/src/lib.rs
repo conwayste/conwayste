@@ -8,10 +8,10 @@ extern crate serde;
 extern crate snowflake;
 extern crate thiserror;
 
+pub mod app;
 pub mod common;
 pub mod filter;
 pub mod protocol;
-pub mod app;
 mod settings;
 pub mod transport;
 

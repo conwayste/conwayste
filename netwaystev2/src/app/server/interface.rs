@@ -1,15 +1,8 @@
+#[derive(Debug, PartialEq)]
+pub enum UniGenCmd {}
 
 #[derive(Debug, PartialEq)]
-pub enum UniGenCmd {
-
-}
+pub enum UniGenRsp {}
 
 #[derive(Debug, PartialEq)]
-pub enum UniGenRsp {
-
-}
-
-#[derive(Debug, PartialEq)]
-pub enum UniGenNotice {
-
-}
+pub enum UniGenNotice {}

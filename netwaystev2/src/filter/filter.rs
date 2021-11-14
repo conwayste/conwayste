@@ -1,10 +1,10 @@
+use super::client_update::{ClientGame, ClientRoom};
 use super::interface::{FilterCmd, FilterMode, FilterNotice, FilterRsp, SeqNum};
 use super::ping::LatencyFilter;
 use super::sortedbuffer::SequencedMinHeap;
 use super::PingPong;
-use super::client_update::{ClientGame, ClientRoom};
 use crate::common::Endpoint;
-use crate::protocol::{Packet, RequestAction, ResponseCode, GenStateDiffPart};
+use crate::protocol::{GameUpdate, GenStateDiffPart, Packet, RequestAction, ResponseCode};
 use crate::settings::{DEFAULT_RETRY_INTERVAL_NS, FILTER_CHANNEL_LEN};
 use crate::transport::{
     PacketSettings, TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp,
@@ -46,16 +46,19 @@ pub struct OtherEndClient {
 }
 
 pub struct OtherEndServer {
+    player_name: String,
     // Request/Response below
-    response_codes:               SequencedMinHeap<ResponseCode>,
-    last_request_sequence_sent:   Option<SeqNum>,
-    last_response_sequence_seen:  Option<SeqNum>,
-    last_request_sent_timestamp:  Option<Instant>,
+    response_codes: SequencedMinHeap<ResponseCode>,
+    last_request_sequence_sent: Option<SeqNum>,
+    last_response_sequence_seen: Option<SeqNum>,
+    last_request_sent_timestamp: Option<Instant>,
     last_response_seen_timestamp: Option<Instant>,
     unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>, // Tracks outgoing Requests
     // Update/UpdateReply below
     room: Option<ClientRoom>,
     update_reply_tid: Option<ProcessUniqueId>, // At most one outgoing UpdateReply at a time
+    game_update_seq: Option<u64>,              // When a player enters or leaves a room, this gets reset to None
+    server_ping: PingPong,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -173,7 +176,7 @@ impl Filter {
                                 trace!("[FILTER] Transport Command Accepted");
                             }
                             TransportRsp::SendPacketsLengthMismatch => {
-                                error!("Packet and PacketSettings data did not align")
+                                error!("[FILTER] Packet and PacketSettings data did not align")
                             }
                             TransportRsp::BufferFull => {
                                 // TODO
@@ -422,6 +425,17 @@ impl Filter {
                     .last_response_sequence_seen
                     .expect("sequence number cannot be None by this point"); // expect OK because of above check
                 while let Some(response_code) = server.response_codes.take_if_matching(expected_seq_num.0) {
+                    // When joining or leaving a room, the game_updates are reset
+                    match response_code {
+                        ResponseCode::JoinedRoom { .. } => {
+                            server.game_update_seq = None;
+                        }
+                        ResponseCode::LeaveRoom => {
+                            server.game_update_seq = None;
+                        }
+                        _ => {}
+                    }
+
                     filter_notice_tx
                         .send(FilterNotice::NewResponseCode {
                             endpoint,
@@ -431,7 +445,7 @@ impl Filter {
                     *expected_seq_num += Wrapping(1);
                 }
             }
-            Packet::Update{
+            Packet::Update {
                 chats,
                 game_update_seq,
                 game_updates,
@@ -451,17 +465,87 @@ impl Filter {
                         server = other_end_server;
                     }
                 }
-                //XXX send NewGenStateDiff/NewGameUpdates/NewChats as needed (if new)
                 if let Some(ref mut room) = server.room {
                     if let Some(ref mut game) = room.game {
                         if let Some(gen_state_diff) = game.process_genstate_diff_part(universe_update)? {
-                            filter_notice_tx.send(FilterNotice::NewGenStateDiff{
-                                diff: gen_state_diff,
-                                endpoint: endpoint,
-                            }).await?;
+                            filter_notice_tx
+                                .send(FilterNotice::NewGenStateDiff {
+                                    diff: gen_state_diff,
+                                    endpoint,
+                                })
+                                .await?;
                         }
                     }
                 }
+
+                let mut start_idx = None;
+                match (server.game_update_seq, game_update_seq) {
+                    (None, None) => {} // No-op
+                    (Some(_), None) => {
+                        // We previously had Some(...), but the server just sent None -- reset!
+                        debug!("[FILTER] reset game_update_seq");
+                        server.game_update_seq = None;
+                    }
+                    (None, Some(recvd_seq)) => {
+                        start_idx = Some(0);
+                    }
+                    (Some(seen_seq), Some(recvd_seq)) => {
+                        // recvd_seq is the offset of `game_updates` in the sequence that's shared
+                        // between client and server.
+                        // seen_seq  |  recvd_seq | meaning
+                        //    5            7          can't do anything with this -- missing GameUpdate #6
+                        //    5            6          start processing at index 0 in game_updates
+                        //    5            5          overlap -- already got GameUpdate #5; start processing at index 1
+                        //    5            1          overlap -- already got GameUpdate #5; start processing at index 5
+                        if seen_seq + 1 >= recvd_seq {
+                            let i = seen_seq + 1 - recvd_seq;
+                            start_idx = if i as usize >= game_updates.len() {
+                                // All of these updates were already processed
+                                None
+                            } else {
+                                Some(i)
+                            };
+                        } else {
+                            // The start of the `game_updates` server just sent us is missing one
+                            // or more that we need next -- in other words, it's too far ahead.
+                            start_idx = None;
+                        }
+                    }
+                }
+                if let Some(_start_idx) = start_idx {
+                    if server.room.is_none() {
+                        if game_updates.len() == 1 {
+                            let game_update = &game_updates[0];
+                            match game_update {
+                                GameUpdate::Match { room, expire_secs } => {
+                                    server.process_match(&room, *expire_secs)?;
+                                    server.game_update_seq.as_mut().map(|seq| *seq += 1);
+                                    // Increment
+                                }
+                                _ => {
+                                    return Err(anyhow!("we are in the lobby and got a non-Match game update"));
+                                }
+                            }
+                        } else {
+                            return Err(anyhow!(
+                                "we are in the lobby and getting more than one game update at a time"
+                            ));
+                        }
+                    }
+                    for i in (_start_idx as usize)..game_updates.len() {
+                        if let Some(ref mut room) = server.room {
+                            if let Err(e) = room.process_game_update(&game_updates[i]) {
+                                error!("[FILTER] failed to process game update {:?}: {}", game_updates[i], e);
+                            }
+                        }
+                        server.game_update_seq.as_mut().map(|seq| *seq += 1); // Increment
+                    }
+                }
+
+                //XXX NewChats
+
+                // At this point, it's likely we will need a new UpdateReply packet
+                server.new_update_reply(endpoint, &mut self.transport_cmd_tx).await?;
             }
             Packet::Status {
                 player_count,
@@ -520,19 +604,22 @@ impl Filter {
 
         match command {
             FilterCmd::SendRequestAction { endpoint, action } => {
-                check_endpoint_exists(&self.per_endpoint, endpoint).or_else(|err| match action {
-                    RequestAction::Connect { .. } => {
+                check_endpoint_exists(&self.per_endpoint, endpoint).or_else(|err| match &action {
+                    RequestAction::Connect { name, .. } => {
                         self.per_endpoint.insert(
                             endpoint,
                             FilterEndpointData::OtherEndServer(OtherEndServer {
-                                response_codes:               SequencedMinHeap::<ResponseCode>::new(),
-                                last_request_sequence_sent:   None,
-                                last_response_sequence_seen:  None,
-                                last_request_sent_timestamp:  None,
+                                player_name: name.clone(),
+                                response_codes: SequencedMinHeap::<ResponseCode>::new(),
+                                last_request_sequence_sent: None,
+                                last_response_sequence_seen: None,
+                                last_request_sent_timestamp: None,
                                 last_response_seen_timestamp: None,
                                 unacked_outgoing_packet_tids: VecDeque::new(),
-                                update_reply_tid:             None,
-                                room:                         None,
+                                update_reply_tid: None,
+                                room: None,
+                                game_update_seq: None,
+                                server_ping: PingPong::pong(0),
                             }),
                         );
                         Ok(())
@@ -640,17 +727,15 @@ impl Filter {
                                 invalid_data: "ResponseCodes are not sent to servers".to_owned(),
                             }));
                         }
-                        FilterEndpointData::OtherEndClient {
-                            ..
-                        } => {
-                            //XXX ????
+                        FilterEndpointData::OtherEndClient { .. } => {
+                            // TODO: send all the messages to this client
                         }
                     }
                 }
             }
             // TODO: implement these
             FilterCmd::SendGameUpdates { endpoints, messages } => {}
-            FilterCmd::Authenticated { endpoint } => {} //XXX should probably have player_name as part of this
+            FilterCmd::Authenticated { endpoint } => {} // TODO: should probably have player_name as part of this
             FilterCmd::SendGenStateDiff { endpoints, diff } => {}
             FilterCmd::AddPingEndpoints { endpoints } => {
                 for e in endpoints {
@@ -808,5 +893,62 @@ fn take_tids_to_drop(
         } else {
             return tids_to_drop;
         }
+    }
+}
+
+impl OtherEndServer {
+    fn process_match(&mut self, room: &str, expire_secs: u32) -> anyhow::Result<()> {
+        // TODO
+        unimplemented!();
+    }
+
+    async fn new_update_reply(
+        &mut self,
+        server_endpoint: Endpoint,
+        transport_cmd_tx: &mut TransportCmdSend,
+    ) -> anyhow::Result<()> {
+        let retry_interval = Duration::new(0, DEFAULT_RETRY_INTERVAL_NS);
+
+        // Drop the old one
+        if let Some(update_reply_tid) = self.update_reply_tid.take() {
+            transport_cmd_tx
+                .send(TransportCmd::DropPacket {
+                    endpoint: server_endpoint,
+                    tid:      update_reply_tid,
+                })
+                .await?;
+        }
+
+        // Send a new one
+        let mut last_chat_seq = None;
+        let mut last_full_gen = None;
+        let mut partial_gen = None;
+        if let Some(ref room) = self.room {
+            last_chat_seq = room.last_chat_seq;
+            if let Some(ref game) = room.game {
+                last_full_gen = game.last_full_gen;
+                partial_gen = game.partial_gen.clone();
+            }
+        }
+        let packets = vec![Packet::UpdateReply {
+            cookie: "".to_owned(), //TODO: Get cookie
+            last_chat_seq,
+            last_game_update_seq: self.game_update_seq,
+            last_full_gen,
+            partial_gen,
+            pong: self.server_ping,
+        }];
+
+        let tid = ProcessUniqueId::new();
+        self.update_reply_tid = Some(tid);
+        let packet_infos = vec![PacketSettings { tid, retry_interval }];
+        transport_cmd_tx
+            .send(TransportCmd::SendPackets {
+                endpoint: server_endpoint,
+                packet_infos,
+                packets,
+            })
+            .await?;
+        Ok(())
     }
 }
