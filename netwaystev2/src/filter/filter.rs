@@ -84,7 +84,7 @@ pub type FilterCmdSend = Sender<FilterCmd>;
 type FilterCmdRecv = Receiver<FilterCmd>;
 type FilterRspSend = Sender<FilterRsp>;
 pub type FilterRspRecv = Receiver<FilterRsp>;
-type FilterNotifySend = Sender<FilterNotice>;
+pub type FilterNotifySend = Sender<FilterNotice>;
 pub type FilterNotifyRecv = Receiver<FilterNotice>;
 
 pub type FilterInit = (Filter, FilterCmdSend, FilterRspRecv, FilterNotifyRecv);
@@ -428,6 +428,7 @@ impl Filter {
                     // When joining or leaving a room, the game_updates are reset
                     match response_code {
                         ResponseCode::JoinedRoom { .. } => {
+                            server.room = Some(ClientRoom::new(server.player_name.clone()));
                             server.game_update_seq = None;
                         }
                         ResponseCode::LeaveRoom => {
@@ -436,6 +437,7 @@ impl Filter {
                         _ => {}
                     }
 
+                    // Send the ResponseCode up to the app layer
                     filter_notice_tx
                         .send(FilterNotice::NewResponseCode {
                             endpoint,
@@ -486,7 +488,7 @@ impl Filter {
                         debug!("[FILTER] reset game_update_seq");
                         server.game_update_seq = None;
                     }
-                    (None, Some(recvd_seq)) => {
+                    (None, Some(_)) => {
                         start_idx = Some(0);
                     }
                     (Some(seen_seq), Some(recvd_seq)) => {
@@ -534,8 +536,23 @@ impl Filter {
                     }
                     for i in (_start_idx as usize)..game_updates.len() {
                         if let Some(ref mut room) = server.room {
-                            if let Err(e) = room.process_game_update(&game_updates[i]) {
+                            if let Err(e) = room
+                                .process_game_update(endpoint, &game_updates[i], filter_notice_tx)
+                                .await
+                            {
                                 error!("[FILTER] failed to process game update {:?}: {}", game_updates[i], e);
+                            }
+
+                            match &game_updates[i] {
+                                GameUpdate::RoomDeleted => {
+                                    if i != game_updates.len() {
+                                        warn!("got a RoomDeleted; but it wasn't the last game update -- the rest will be ignored");
+                                        server.room = None;
+                                        server.game_update_seq = None;
+                                        break;
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                         server.game_update_seq.as_mut().map(|seq| *seq += 1); // Increment
@@ -543,6 +560,8 @@ impl Filter {
                 }
 
                 //XXX NewChats
+
+                server.server_ping = ping;
 
                 // At this point, it's likely we will need a new UpdateReply packet
                 server.new_update_reply(endpoint, &mut self.transport_cmd_tx).await?;
@@ -608,19 +627,7 @@ impl Filter {
                     RequestAction::Connect { name, .. } => {
                         self.per_endpoint.insert(
                             endpoint,
-                            FilterEndpointData::OtherEndServer(OtherEndServer {
-                                player_name: name.clone(),
-                                response_codes: SequencedMinHeap::<ResponseCode>::new(),
-                                last_request_sequence_sent: None,
-                                last_response_sequence_seen: None,
-                                last_request_sent_timestamp: None,
-                                last_response_seen_timestamp: None,
-                                unacked_outgoing_packet_tids: VecDeque::new(),
-                                update_reply_tid: None,
-                                room: None,
-                                game_update_seq: None,
-                                server_ping: PingPong::pong(0),
-                            }),
+                            FilterEndpointData::OtherEndServer(OtherEndServer::new(name.clone())),
                         );
                         Ok(())
                     }
@@ -897,7 +904,23 @@ fn take_tids_to_drop(
 }
 
 impl OtherEndServer {
-    fn process_match(&mut self, room: &str, expire_secs: u32) -> anyhow::Result<()> {
+    fn new(player_name: String) -> Self {
+        OtherEndServer {
+            player_name,
+            response_codes: SequencedMinHeap::<ResponseCode>::new(),
+            last_request_sequence_sent: None,
+            last_response_sequence_seen: None,
+            last_request_sent_timestamp: None,
+            last_response_seen_timestamp: None,
+            unacked_outgoing_packet_tids: VecDeque::new(),
+            update_reply_tid: None,
+            room: None,
+            game_update_seq: None,
+            server_ping: PingPong::pong(0),
+        }
+    }
+
+    fn process_match(&mut self, _room: &str, _expire_secs: u32) -> anyhow::Result<()> {
         // TODO
         unimplemented!();
     }

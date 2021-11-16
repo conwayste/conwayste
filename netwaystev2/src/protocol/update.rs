@@ -1,3 +1,4 @@
+use conway::universe::Region;
 use serde::{Deserialize, Serialize};
 
 // chat messages sent from server to all clients other than originating client
@@ -92,27 +93,38 @@ pub struct GameOutcome {
 // TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GameOptions {
-    width:           u32,
-    height:          u32,
-    history:         u16,
-    player_writable: Vec<NetRegion>,
-    fog_radius:      u32,
+    pub width:           u32,
+    pub height:          u32,
+    pub history:         u16,
+    pub player_writable: Vec<NetRegion>,
+    pub fog_radius:      u32,
 }
 
 /// Net-safe version of a libconway Region
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct NetRegion {
-    left:   i32,
-    top:    i32,
-    width:  u32,
-    height: u32,
+    pub left:   i32,
+    pub top:    i32,
+    pub width:  u32,
+    pub height: u32,
+}
+
+impl Into<Region> for NetRegion {
+    fn into(self) -> Region {
+        Region {
+            left:   self.left as isize,
+            top:    self.top as isize,
+            width:  self.width as usize,
+            height: self.height as usize,
+        }
+    }
 }
 
 // TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct PlayerInfo {
     /// Name of the player.
-    name:  String,
+    pub name:  String,
     /// Index of player in Universe; None means this player is a lurker (non-participant)
-    index: Option<u64>,
+    pub index: Option<u64>,
 }

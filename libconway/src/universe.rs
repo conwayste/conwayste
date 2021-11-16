@@ -1750,10 +1750,10 @@ impl CharGrid for Universe {
 /// Rectangular area within a `Universe`.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Debug)]
 pub struct Region {
-    left:   isize,
-    top:    isize,
-    width:  usize,
-    height: usize,
+    pub left:   isize,
+    pub top:    isize,
+    pub width:  usize,
+    pub height: usize,
 }
 
 /// A region is a rectangular area within a `Universe`. All coordinates are game coordinates.

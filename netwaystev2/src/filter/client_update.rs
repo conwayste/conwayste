@@ -1,20 +1,24 @@
 use anyhow::{anyhow, Result};
 use std::collections::{hash_map::Entry, HashMap};
 
+use super::{FilterNotice, FilterNotifySend};
+use crate::common::Endpoint;
 use crate::protocol::{GameUpdate, GenPartInfo, GenStateDiffPart, UniUpdate};
 use conway::{
     rle::Pattern,
-    universe::{GenStateDiff, Universe},
+    universe::{BigBang, GenStateDiff, PlayerBuilder, Region, Universe},
 };
 
 pub struct ClientRoom {
     player_name:       String, // Duplicate of player_name from OtherEndServer (parent) struct
+    player_id:         Option<usize>, // If player is not a lurker, must be Some(...) before the first GenStateDiff
+    other_players:     HashMap<String, Option<usize>>, // Other players: player_name => player_id (None means lurker)
     pub game:          Option<ClientGame>,
     pub last_chat_seq: Option<u64>, // sequence number of latest chat msg. received from server
 }
 
 pub struct ClientGame {
-    player_id:         usize,
+    player_id:         Option<usize>, // Duplicate of player_id from ClientRoom
     diff_parts:        HashMap<(u32, u32), Vec<Option<String>>>,
     universe:          Universe,
     pub last_full_gen: Option<u64>, // generation number client is currently at
@@ -22,8 +26,111 @@ pub struct ClientGame {
 }
 
 impl ClientRoom {
-    pub fn process_game_update(&mut self, game_update: &GameUpdate) -> Result<()> {
-        Ok(()) //XXX
+    pub async fn process_game_update(
+        &mut self,
+        server_endpoint: Endpoint,
+        game_update: &GameUpdate,
+        filter_notice_tx: &mut FilterNotifySend,
+    ) -> Result<()> {
+        use GameUpdate::*;
+        // First, special handling for some of these
+        match game_update {
+            GameStart { options } => {
+                let mut big_bang = BigBang::new()
+                    .width(options.width as usize)
+                    .height(options.height as usize)
+                    .server_mode(false)
+                    .history(options.history as usize)
+                    .fog_radius(options.fog_radius as usize);
+
+                for net_region in options.player_writable.iter() {
+                    let region: Region = net_region.clone().into();
+                    big_bang = big_bang.add_player(PlayerBuilder::new(region));
+                }
+                let uni = big_bang.birth()?;
+                let game = ClientGame {
+                    player_id:     self.player_id, // copy
+                    diff_parts:    HashMap::new(),
+                    universe:      uni,
+                    last_full_gen: None,
+                    partial_gen:   None,
+                };
+                self.game = Some(game);
+            }
+            GameFinish { .. } => {
+                self.game = None;
+                self.player_id = None;
+                let mut new_other_players = HashMap::new();
+                for name in self.other_players.keys() {
+                    new_other_players.insert(name.clone(), None);
+                }
+                self.other_players = new_other_players;
+            }
+
+            PlayerList { players } => {
+                for player in players {
+                    if player.name == self.player_name {
+                        // Hey, that's us!
+                        self.change_own_player_id(player.index);
+                    }
+                }
+            }
+
+            PlayerChange { player, old_name } => {
+                if old_name.is_some() {
+                    unimplemented!("player name changes not implemented"); // TODO
+                }
+                if player.name == self.player_name {
+                    // Hey, that's us!
+                    self.change_own_player_id(player.index);
+                }
+            }
+            PlayerJoin { player } => {
+                if player.name == self.player_name {
+                    warn!("[FILTER] ignoring GameUpdate::PlayerJoin for ourselves");
+                } else {
+                    self.other_players
+                        .insert(player.name.clone(), player.index.map(|idx| idx as usize));
+                }
+            }
+            PlayerLeave { name } => {
+                if *name == self.player_name {
+                    warn!("[FILTER] ignoring GameUpdate::PlayerLeave for ourselves");
+                } else {
+                    self.other_players.remove(name);
+                }
+            }
+            _ => {}
+        }
+
+        // Send it on up
+        filter_notice_tx
+            .send(FilterNotice::NewGameUpdates {
+                endpoint: server_endpoint,
+                updates:  vec![game_update.clone()],
+            })
+            .await?;
+
+        Ok(())
+    }
+
+    // This field is duplicated so should be saved to the ClientGame if one is in progress.
+    fn change_own_player_id(&mut self, player_id: Option<u64>) {
+        self.player_id = player_id.map(|idx| idx as usize);
+        if let Some(ref mut game) = self.game {
+            // Copy
+            game.player_id = self.player_id;
+        }
+    }
+
+    pub fn new(player_name: String) -> Self {
+        ClientRoom {
+            player_name,
+            player_id: None,
+            other_players: HashMap::new(),
+            game: None,
+            last_chat_seq: None,
+        }
     }
 }
 
@@ -91,7 +198,7 @@ impl ClientGame {
                 gen1:    gen1 as usize,
                 pattern: Pattern(diff),
             };
-            let opt_gen = self.universe.apply(&genstatediff, Some(self.player_id))?;
+            let opt_gen = self.universe.apply(&genstatediff, self.player_id)?;
             if let Some(latest_gen) = opt_gen {
                 //XXX store this
             }
