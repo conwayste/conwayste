@@ -4,8 +4,9 @@ Multiplayer Conway's Game of Life!
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) ![build status](https://api.travis-ci.com/conwayste/conwayste.svg?branch=master) [![Discord](https://img.shields.io/discord/463752820026376202.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/mjSsUMw)
 
-![life in action](https://s7.gifyu.com/images/BlaringTidyDutchsmoushond-mobile.gif)
-![Patterns!](https://s8.gifyu.com/images/conwayste.gif)
+Life In Action | Patterns!
+:-: | :-:
+<video src='https://user-images.githubusercontent.com/1715672/142133919-a080f383-8403-4162-9ea6-a8e6d9360148.mp4' width=180/> | <video src='https://user-images.githubusercontent.com/1715672/142133963-320767e9-32f7-4cc8-96b0-e3f8cf164f41.mp4' width=180/>
 
 ## How to Play
 
