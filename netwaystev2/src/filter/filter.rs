@@ -480,86 +480,13 @@ impl Filter {
                     }
                 }
 
-                let mut start_idx = None;
-                match (server.game_update_seq, game_update_seq) {
-                    (None, None) => {} // No-op
-                    (Some(_), None) => {
-                        // We previously had Some(...), but the server just sent None -- reset!
-                        debug!("[FILTER] reset game_update_seq");
-                        server.game_update_seq = None;
-                    }
-                    (None, Some(_)) => {
-                        start_idx = Some(0);
-                    }
-                    (Some(seen_seq), Some(recvd_seq)) => {
-                        // recvd_seq is the offset of `game_updates` in the sequence that's shared
-                        // between client and server.
-                        // seen_seq  |  recvd_seq | meaning
-                        //    5            7          can't do anything with this -- missing GameUpdate #6
-                        //    5            6          start processing at index 0 in game_updates
-                        //    5            5          overlap -- already got GameUpdate #5; start processing at index 1
-                        //    5            1          overlap -- already got GameUpdate #5; start processing at index 5
-                        if seen_seq + 1 >= recvd_seq {
-                            let i = seen_seq + 1 - recvd_seq;
-                            start_idx = if i as usize >= game_updates.len() {
-                                // All of these updates were already processed
-                                None
-                            } else {
-                                Some(i)
-                            };
-                        } else {
-                            // The start of the `game_updates` server just sent us is missing one
-                            // or more that we need next -- in other words, it's too far ahead.
-                            start_idx = None;
-                        }
-                    }
-                }
-                if let Some(_start_idx) = start_idx {
-                    if server.room.is_none() {
-                        if game_updates.len() == 1 {
-                            let game_update = &game_updates[0];
-                            match game_update {
-                                GameUpdate::Match { room, expire_secs } => {
-                                    server.process_match(&room, *expire_secs)?;
-                                    server.game_update_seq.as_mut().map(|seq| *seq += 1);
-                                    // Increment
-                                }
-                                _ => {
-                                    return Err(anyhow!("we are in the lobby and got a non-Match game update"));
-                                }
-                            }
-                        } else {
-                            return Err(anyhow!(
-                                "we are in the lobby and getting more than one game update at a time"
-                            ));
-                        }
-                    }
-                    for i in (_start_idx as usize)..game_updates.len() {
-                        if let Some(ref mut room) = server.room {
-                            if let Err(e) = room
-                                .process_game_update(endpoint, &game_updates[i], filter_notice_tx)
-                                .await
-                            {
-                                error!("[FILTER] failed to process game update {:?}: {}", game_updates[i], e);
-                            }
+                server
+                    .process_game_updates(endpoint, game_update_seq, &game_updates, &filter_notice_tx)
+                    .await?;
 
-                            match &game_updates[i] {
-                                GameUpdate::RoomDeleted => {
-                                    if i != game_updates.len() {
-                                        warn!("got a RoomDeleted; but it wasn't the last game update -- the rest will be ignored");
-                                        server.room = None;
-                                        server.game_update_seq = None;
-                                        break;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        server.game_update_seq.as_mut().map(|seq| *seq += 1); // Increment
-                    }
+                if let Some(ref mut room) = server.room {
+                    room.process_chats(endpoint, &chats, &filter_notice_tx).await?;
                 }
-
-                //XXX NewChats
 
                 server.server_ping = ping;
 
@@ -972,6 +899,94 @@ impl OtherEndServer {
                 packets,
             })
             .await?;
+        Ok(())
+    }
+
+    async fn process_game_updates(
+        &mut self,
+        endpoint: Endpoint,
+        game_update_seq: Option<u64>,
+        game_updates: &[GameUpdate],
+        filter_notice_tx: &FilterNotifySend,
+    ) -> anyhow::Result<()> {
+        let mut start_idx = None;
+        match (self.game_update_seq, game_update_seq) {
+            (None, None) => {} // No-op
+            (Some(_), None) => {
+                // We previously had Some(...), but the server just sent None -- reset!
+                debug!("[FILTER] reset game_update_seq");
+                self.game_update_seq = None;
+            }
+            (None, Some(_)) => {
+                start_idx = Some(0);
+            }
+            (Some(seen_seq), Some(recvd_seq)) => {
+                // recvd_seq is the offset of `game_updates` in the sequence that's shared
+                // between client and server.
+                // seen_seq  |  recvd_seq | meaning
+                //    5            7          can't do anything with this -- missing GameUpdate #6
+                //    5            6          start processing at index 0 in game_updates
+                //    5            5          overlap -- already got GameUpdate #5; start processing at index 1
+                //    5            1          overlap -- already got GameUpdate #5; start processing at index 5
+                if seen_seq + 1 >= recvd_seq {
+                    let i = seen_seq + 1 - recvd_seq;
+                    start_idx = if i as usize >= game_updates.len() {
+                        // All of these updates were already processed
+                        None
+                    } else {
+                        Some(i)
+                    };
+                } else {
+                    // The start of the `game_updates` server just sent us is missing one
+                    // or more that we need next -- in other words, it's too far ahead.
+                    start_idx = None;
+                }
+            }
+        }
+        if let Some(_start_idx) = start_idx {
+            if self.room.is_none() {
+                if game_updates.len() == 1 {
+                    let game_update = &game_updates[0];
+                    match game_update {
+                        GameUpdate::Match { room, expire_secs } => {
+                            self.process_match(&room, *expire_secs)?;
+                            self.game_update_seq.as_mut().map(|seq| *seq += 1);
+                            // Increment
+                        }
+                        _ => {
+                            return Err(anyhow!("we are in the lobby and got a non-Match game update"));
+                        }
+                    }
+                } else {
+                    return Err(anyhow!(
+                        "we are in the lobby and getting more than one game update at a time"
+                    ));
+                }
+            }
+            for i in (_start_idx as usize)..game_updates.len() {
+                if let Some(ref mut room) = self.room {
+                    if let Err(e) = room
+                        .process_game_update(endpoint, &game_updates[i], filter_notice_tx)
+                        .await
+                    {
+                        error!("[FILTER] failed to process game update {:?}: {}", game_updates[i], e);
+                    }
+
+                    match &game_updates[i] {
+                        GameUpdate::RoomDeleted => {
+                            if i != game_updates.len() {
+                                warn!("[FILTER] got a RoomDeleted but it wasn't the last game update; the rest will be ignored");
+                                self.room = None;
+                                self.game_update_seq = None;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                self.game_update_seq.as_mut().map(|seq| *seq += 1); // Increment
+            }
+        }
         Ok(())
     }
 }

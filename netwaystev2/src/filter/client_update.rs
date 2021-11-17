@@ -3,7 +3,7 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use super::{FilterNotice, FilterNotifySend};
 use crate::common::Endpoint;
-use crate::protocol::{GameUpdate, GenPartInfo, GenStateDiffPart, UniUpdate};
+use crate::protocol::{BroadcastChatMessage, GameUpdate, GenPartInfo, GenStateDiffPart, UniUpdate};
 use conway::{
     rle::Pattern,
     universe::{BigBang, GenStateDiff, PlayerBuilder, Region, Universe},
@@ -30,7 +30,7 @@ impl ClientRoom {
         &mut self,
         server_endpoint: Endpoint,
         game_update: &GameUpdate,
-        filter_notice_tx: &mut FilterNotifySend,
+        filter_notice_tx: &FilterNotifySend,
     ) -> Result<()> {
         use GameUpdate::*;
         // First, special handling for some of these
@@ -111,6 +111,41 @@ impl ClientRoom {
             })
             .await?;
 
+        Ok(())
+    }
+
+    pub async fn process_chats(
+        &mut self,
+        server_endpoint: Endpoint,
+        chats: &[BroadcastChatMessage],
+        filter_notice_tx: &FilterNotifySend,
+    ) -> Result<()> {
+        let mut to_send = vec![];
+
+        // Figure out which chats are new
+        for chat in chats {
+            if chat.chat_seq.is_none() {
+                return Err(anyhow!("chat_seq in message is unexpectedly None: {:?}", chat));
+            }
+            let chat_seq = chat.chat_seq.unwrap(); // unwrap OK because of above check
+            if let Some(ref mut last_chat_seq) = self.last_chat_seq {
+                if *last_chat_seq < chat_seq {
+                    *last_chat_seq = chat_seq;
+                    to_send.push(chat.clone());
+                }
+            } else {
+                self.last_chat_seq = Some(chat_seq);
+                to_send.push(chat.clone());
+            }
+        }
+
+        // Send them on up
+        filter_notice_tx
+            .send(FilterNotice::NewChats {
+                endpoint: server_endpoint,
+                messages: to_send,
+            })
+            .await?;
         Ok(())
     }
 
