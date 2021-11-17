@@ -235,12 +235,25 @@ impl ClientGame {
             };
             let opt_gen = self.universe.apply(&genstatediff, self.player_id)?;
             if let Some(latest_gen) = opt_gen {
-                //XXX store this
-            }
-            //XXX error handling
+                // We have a new generation in the Universe
+                if latest_gen != gen1 as usize {
+                    warn!(
+                        "[FILTER] expected latest generation to be {} but it was {}",
+                        gen1, latest_gen
+                    );
+                }
 
-            self.diff_parts.remove(&(gen0, gen1));
-            //XXX delete stuff from diff_parts
+                // Remove all from diff_parts where gen1 <= latest_gen because they're outdated
+                self.diff_parts
+                    .retain(|&(_gen0, gen1), _current_parts| gen1 as usize > latest_gen);
+            } else {
+                // * `Ok(None)` if the update is valid but was not applied because either:
+                //     - the generation to be applied is already present,
+                //     - there is already a greater generation present, or
+                //     - the base generation of this diff (that is, `diff.gen0`) could not be found.
+                //       A base generation of 0 is a special case -- it is always found.
+                self.diff_parts.remove(&(gen0, gen1));
+            }
 
             return Ok(Some(genstatediff));
         }
