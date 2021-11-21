@@ -910,6 +910,9 @@ impl OtherEndServer {
         filter_notice_tx: &FilterNotifySend,
     ) -> anyhow::Result<()> {
         let mut start_idx = None;
+        // We are comparing game update sequence number to what the server just sent us to decide
+        // what game updates have we already processed, what game updates we can process now, and
+        // what updates are too far ahead to be processed.
         match (self.game_update_seq, game_update_seq) {
             (None, None) => {} // No-op
             (Some(_), None) => {
@@ -963,6 +966,9 @@ impl OtherEndServer {
                     ));
                 }
             }
+
+            // Out of the game updates we got from the server, process the ones we haven't already
+            // processed.
             for i in (_start_idx as usize)..game_updates.len() {
                 if let Some(ref mut room) = self.room {
                     if let Err(e) = room
@@ -984,7 +990,7 @@ impl OtherEndServer {
                         _ => {}
                     }
                 }
-                self.game_update_seq.as_mut().map(|seq| *seq += 1); // Increment
+                self.game_update_seq.as_mut().map(|seq| *seq += 1); // Increment by 1 because we just handled a game update
             }
         }
         Ok(())

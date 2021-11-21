@@ -1,4 +1,4 @@
-/*  Copyright 2017-2019 the Conwayste Developers.
+/*  Copyright 2017-2021 the Conwayste Developers.
  *
  *  This file is part of libconway.
  *
@@ -15,8 +15,7 @@
  *  You should have received a copy of the GNU General Public License
  *  along with libconway.  If not, see <http://www.gnu.org/licenses/>. */
 
-use crate::rle::Pattern;
-use crate::universe::Region;
+use super::{Pattern, PlayerID, Region};
 use std::cmp;
 use std::error::Error;
 use std::ops::{Index, IndexMut};
@@ -303,7 +302,7 @@ pub trait CharGrid {
     /// * `col` or `row` are out of range
     /// * `char` is invalid for this type. Use `is_valid` to check first.
     /// * `visibility` is invalid. That is, it equals `Some(player_id)`, but there is no such `player_id`.
-    fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: Option<usize>);
+    fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: PlayerID);
 
     /// Is `ch` a valid character?
     fn is_valid(ch: char) -> bool;
@@ -316,7 +315,7 @@ pub trait CharGrid {
 
     /// Returns a Pattern that describes this `CharGrid` as viewed by specified player if
     /// `visibility.is_some()`, or a fog-less view if `visibility.is_none()`.
-    fn to_pattern(&self, visibility: Option<usize>) -> Pattern {
+    fn to_pattern(&self, visibility: PlayerID) -> Pattern {
         fn push(result: &mut String, output_col: &mut usize, rle_len: usize, ch: char) {
             let what_to_add = if rle_len == 1 {
                 let mut s = String::with_capacity(1);
@@ -389,7 +388,7 @@ pub trait CharGrid {
     /// # Panics
     ///
     /// This function will panic if `col`, `row`, or `visibility` (`Some(player_id)`) are out of bounds.
-    fn get_run(&self, col: usize, row: usize, visibility: Option<usize>) -> (usize, char);
+    fn get_run(&self, col: usize, row: usize, visibility: PlayerID) -> (usize, char);
 }
 
 const VALID_BIT_GRID_CHARS: [char; 2] = ['b', 'o'];
@@ -406,7 +405,7 @@ impl CharGrid for BitGrid {
     }
 
     /// _visibility is ignored, since BitGrids have no concept of a player.
-    fn write_at_position(&mut self, col: usize, row: usize, ch: char, _visibility: Option<usize>) {
+    fn write_at_position(&mut self, col: usize, row: usize, ch: char, _visibility: PlayerID) {
         let word_col = col / 64;
         let shift = 63 - (col & (64 - 1));
         match ch {
@@ -433,7 +432,7 @@ impl CharGrid for BitGrid {
     /// # Panics
     ///
     /// This function will panic if `col` or `row` are out of bounds.
-    fn get_run(&self, col: usize, row: usize, _visibility: Option<usize>) -> (usize, char) {
+    fn get_run(&self, col: usize, row: usize, _visibility: PlayerID) -> (usize, char) {
         let word_col = col / 64;
         let shift = 63 - (col & (64 - 1));
         let mut word = self.0[row][word_col];

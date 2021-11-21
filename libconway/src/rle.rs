@@ -1,4 +1,4 @@
-/*  Copyright 2017-2019 the Conwayste Developers.
+/*  Copyright 2017-2021 the Conwayste Developers.
  *
  *  This file is part of libconway.
  *
@@ -18,7 +18,7 @@
 const MAX_NUMBER: usize = 50000;
 pub const NO_OP_CHAR: char = '"';
 
-use crate::error::{ConwayError, ConwayResult};
+use super::{ConwayError, ConwayResult, PlayerID};
 use crate::grids::{BitGrid, CharGrid};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -60,7 +60,7 @@ impl PatternFile {
         self.pattern.to_new_bit_grid(self.width(), self.height())
     }
 
-    pub fn to_grid<G: CharGrid>(&self, grid: &mut G, visibility: Option<usize>) -> ConwayResult<()> {
+    pub fn to_grid<G: CharGrid>(&self, grid: &mut G, visibility: PlayerID) -> ConwayResult<()> {
         self.pattern.to_grid(grid, visibility)
     }
 }
@@ -178,7 +178,7 @@ struct PatternSize {
 
 impl CharGrid for PatternSize {
     /// Write a char `ch` to (`col`, `row`).
-    fn write_at_position(&mut self, col: usize, row: usize, _ch: char, _visibility: Option<usize>) {
+    fn write_at_position(&mut self, col: usize, row: usize, _ch: char, _visibility: PlayerID) {
         if row > self.row {
             self.row = row;
         }
@@ -202,7 +202,7 @@ impl CharGrid for PatternSize {
         self.row + 1
     }
 
-    fn get_run(&self, _col: usize, _row: usize, _visibility: Option<usize>) -> (usize, char) {
+    fn get_run(&self, _col: usize, _row: usize, _visibility: PlayerID) -> (usize, char) {
         unimplemented!("PatternSize is write-only");
     }
 }
@@ -236,7 +236,7 @@ impl Pattern {
     ///
     /// If there is a parsing error, `grid` may be in a partially written state. If this is a
     /// problem, then back up `grid` before calling this.
-    pub fn to_grid<G: CharGrid>(&self, grid: &mut G, visibility: Option<usize>) -> ConwayResult<()> {
+    pub fn to_grid<G: CharGrid>(&self, grid: &mut G, visibility: PlayerID) -> ConwayResult<()> {
         use ConwayError::*;
         let mut col: usize = 0;
         let mut row: usize = 0;

@@ -4,21 +4,18 @@ use std::collections::{hash_map::Entry, HashMap};
 use super::{FilterNotice, FilterNotifySend};
 use crate::common::Endpoint;
 use crate::protocol::{BroadcastChatMessage, GameUpdate, GenPartInfo, GenStateDiffPart, UniUpdate};
-use conway::{
-    rle::Pattern,
-    universe::{BigBang, GenStateDiff, PlayerBuilder, Region, Universe},
-};
+use conway::{BigBang, GenStateDiff, Pattern, PlayerBuilder, PlayerID, Region, Universe};
 
 pub struct ClientRoom {
-    player_name:       String, // Duplicate of player_name from OtherEndServer (parent) struct
-    player_id:         Option<usize>, // If player is not a lurker, must be Some(...) before the first GenStateDiff
-    other_players:     HashMap<String, Option<usize>>, // Other players: player_name => player_id (None means lurker)
+    player_name:       String,   // Duplicate of player_name from OtherEndServer (parent) struct
+    player_id:         PlayerID, // If player is not a lurker, must be Some(...) before the first GenStateDiff
+    other_players:     HashMap<String, PlayerID>, // Other players: player_name => player_id (None means lurker)
     pub game:          Option<ClientGame>,
     pub last_chat_seq: Option<u64>, // sequence number of latest chat msg. received from server
 }
 
 pub struct ClientGame {
-    player_id:         Option<usize>, // Duplicate of player_id from ClientRoom
+    player_id:         PlayerID, // Duplicate of player_id from ClientRoom
     diff_parts:        HashMap<(u32, u32), Vec<Option<String>>>,
     universe:          Universe,
     pub last_full_gen: Option<u64>, // generation number client is currently at
@@ -49,7 +46,7 @@ impl ClientRoom {
                 }
                 let uni = big_bang.birth()?;
                 let game = ClientGame {
-                    player_id:     self.player_id, // copy
+                    player_id:     self.player_id,
                     diff_parts:    HashMap::new(),
                     universe:      uni,
                     last_full_gen: None,
@@ -70,7 +67,8 @@ impl ClientRoom {
             PlayerList { players } => {
                 for player in players {
                     if player.name == self.player_name {
-                        // Hey, that's us!
+                        // Hey, that's us! The game is starting or finishing, so we are likely
+                        // going between None and Some(...).
                         self.change_own_player_id(player.index);
                     }
                 }
@@ -81,7 +79,8 @@ impl ClientRoom {
                     unimplemented!("player name changes not implemented"); // TODO
                 }
                 if player.name == self.player_name {
-                    // Hey, that's us!
+                    // Hey, that's us! The game is starting or finishing, so we are likely
+                    // going between None and Some(...).
                     self.change_own_player_id(player.index);
                 }
             }

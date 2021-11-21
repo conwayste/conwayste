@@ -1,4 +1,4 @@
-/*  Copyright 2016-2019 the Conwayste Developers.
+/*  Copyright 2016-2021 the Conwayste Developers.
  *
  *  This file is part of libconway.
  *
@@ -45,6 +45,8 @@ impl PlayerBuilder {
         }
     }
 }
+
+pub type PlayerID = Option<usize>;
 
 /// This is a builder for `Universe` structs.
 ///
@@ -198,7 +200,7 @@ struct PlayerGenState {
 #[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Debug)]
 pub enum CellState {
     Dead,
-    Alive(Option<usize>), // Some(player_number) or alive but not belonging to any player
+    Alive(PlayerID), // Some(player_number) or alive but not belonging to any player
     Wall,
     Fog,
 }
@@ -303,7 +305,7 @@ impl GenState {
     ///
     /// The top-left cell (that is, the cell at `(0,0)`) in `src` gets written to `(dst_region.top(),
     /// dst_region.left())` in `dst`.
-    pub fn copy_from_bit_grid(&mut self, src: &BitGrid, dst_region: Region, opt_player_id: Option<usize>) {
+    pub fn copy_from_bit_grid(&mut self, src: &BitGrid, dst_region: Region, opt_player_id: PlayerID) {
         BitGrid::copy(src, &mut self.cells, dst_region);
 
         if let Some(player_id) = opt_player_id {
@@ -349,8 +351,8 @@ impl GenState {
     /// `player_id` is valid and dimensions match, the following should be true:
     ///
     ///  ```no_run
-    ///  # use conway::universe::GenState;
-    ///  # fn do_eet(gs0: GenState, gs1: GenState, mut new_gs: GenState, visibility: Option<usize>) {
+    ///  # use conway::universe::{GenState, PlayerID};
+    ///  # fn do_eet(gs0: GenState, gs1: GenState, mut new_gs: GenState, visibility: PlayerID) {
     ///  let gsdiff = gs0.diff(&gs1, visibility);
     ///  gsdiff.pattern.to_grid(&mut new_gs, visibility).unwrap();
     ///  assert_eq!(new_gs, gs1);
@@ -362,7 +364,7 @@ impl GenState {
     /// * This will panic if either `self.gen_or_none` or `new.gen_or_none` is `None`.
     /// * This will panic if the lengths of the `player_states` vectors do not match.
     /// * This will panic if the dimensions of the grids do not match.
-    pub fn diff(&self, new: &GenState, visibility: Option<usize>) -> GenStateDiff {
+    pub fn diff(&self, new: &GenState, visibility: PlayerID) -> GenStateDiff {
         if self.height() != new.height() || self.width() != new.width() {
             panic!(
                 "Dimensions do not match: {}x{} vs {}x{}",
@@ -440,9 +442,9 @@ impl CharGrid for GenState {
     }
 
     #[inline]
-    fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: Option<usize>) {
+    fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: PlayerID) {
         if !GenState::is_valid(ch) {
-            panic!(format!("char {:?} is invalid for this CharGrid", ch));
+            panic!("char {:?} is invalid for this CharGrid", ch);
         }
         let word_col = col / 64;
         let shift = 63 - (col & (64 - 1));
@@ -514,7 +516,7 @@ impl CharGrid for GenState {
     /// # Panics
     ///
     /// This function will panic if `col`, `row`, or `visibility` (`Some(player_id)`) are out of bounds.
-    fn get_run(&self, col: usize, row: usize, visibility: Option<usize>) -> (usize, char) {
+    fn get_run(&self, col: usize, row: usize, visibility: PlayerID) -> (usize, char) {
         let mut min_run = self.width() - col;
 
         let (known_run, known_ch) = self.known.get_run(col, row, None);
@@ -583,7 +585,7 @@ impl<'a, 'b> CharGrid for GenStatePair<'a, 'b> {
         self.gen_state0.height()
     }
 
-    fn write_at_position(&mut self, _col: usize, _row: usize, _ch: char, _visibility: Option<usize>) {
+    fn write_at_position(&mut self, _col: usize, _row: usize, _ch: char, _visibility: PlayerID) {
         unimplemented!("This is a read-only struct!");
     }
 
@@ -609,7 +611,7 @@ impl<'a, 'b> CharGrid for GenStatePair<'a, 'b> {
     /// # Panics
     ///
     /// This function will panic if `col`, `row`, or `visibility` (`Some(player_id)`) are out of bounds.
-    fn get_run(&self, mut col: usize, row: usize, visibility: Option<usize>) -> (usize, char) {
+    fn get_run(&self, mut col: usize, row: usize, visibility: PlayerID) -> (usize, char) {
         let (run0, ch0) = self.gen_state0.get_run(col, row, visibility);
         let (run1, ch1) = self.gen_state1.get_run(col, row, visibility);
         let ch;
@@ -687,7 +689,7 @@ impl Universe {
     /// # Panics
     ///
     /// Panics if `row` or `col` are out of range.
-    pub fn get_cell_state(&mut self, col: usize, row: usize, opt_player_id: Option<usize>) -> CellState {
+    pub fn get_cell_state(&mut self, col: usize, row: usize, opt_player_id: PlayerID) -> CellState {
         let gen_state = &mut self.gen_states[self.state_index];
         let word_col = col / 64;
         let shift = 63 - (col & (64 - 1)); // translate literal col (ex: 134) to bit index in word_col
@@ -781,7 +783,7 @@ impl Universe {
     ///  3. If general cell transitioned Dead->Alive, then set requested player's cell
     ///
     /// The new value of the cell is returned.
-    pub fn toggle_unchecked(&mut self, col: usize, row: usize, opt_player_id: Option<usize>) -> CellState {
+    pub fn toggle_unchecked(&mut self, col: usize, row: usize, opt_player_id: PlayerID) -> CellState {
         let word_col = col / 64;
         let shift = 63 - (col & (64 - 1));
         let mask = 1 << shift;
@@ -952,26 +954,26 @@ impl Universe {
             }
 
             gen_states.push(GenState {
-                gen_or_none:   if i == 0 && is_server { Some(1) } else { None },
-                cells:         BitGrid::new(width_in_words, height),
-                wall_cells:    BitGrid::new(width_in_words, height),
-                known:         known,
-                player_states: player_states,
+                gen_or_none: if i == 0 && is_server { Some(1) } else { None },
+                cells: BitGrid::new(width_in_words, height),
+                wall_cells: BitGrid::new(width_in_words, height),
+                known,
+                player_states,
             });
         }
 
         let mut uni = Universe {
-            width:           width,
-            height:          height,
-            width_in_words:  width_in_words,
-            generation:      1,
-            num_players:     num_players,
-            state_index:     0,
-            gen_states:      gen_states,
-            player_writable: player_writable,
+            width,
+            height,
+            width_in_words,
+            generation: 1,
+            num_players,
+            state_index: 0,
+            gen_states,
+            player_writable,
             // TODO: it's not very rusty to have uninitialized stuff (use Option<FogInfo> instead)
-            fog_radius:      fog_radius,      // uninitialized
-            fog_circle:      BitGrid(vec![]), // uninitialized
+            fog_radius,                  // uninitialized
+            fog_circle: BitGrid(vec![]), // uninitialized
         };
         uni.generate_fog_circle_bitmap();
         Ok(uni)
@@ -1405,7 +1407,7 @@ impl Universe {
     pub fn each_non_dead(
         &self,
         region: Region,
-        visibility: Option<usize>,
+        visibility: PlayerID,
         callback: &mut dyn FnMut(usize, usize, CellState),
     ) {
         let cells = &self.gen_states[self.state_index].cells;
@@ -1509,7 +1511,7 @@ impl Universe {
     /// Iterate over every non-dead cell in the universe for the current generation.
     /// `visibility` is an optional player_id, allowing filtering based on fog.
     /// Callback receives (col, row, cell_state).
-    pub fn each_non_dead_full(&self, visibility: Option<usize>, callback: &mut dyn FnMut(usize, usize, CellState)) {
+    pub fn each_non_dead_full(&self, visibility: PlayerID, callback: &mut dyn FnMut(usize, usize, CellState)) {
         self.each_non_dead(self.region(), visibility, callback);
     }
 
@@ -1526,7 +1528,7 @@ impl Universe {
     /// is written to.
     ///
     /// Panics if `opt_player_id` is `Some(player_id)` and `player_id` is out of range.
-    pub fn copy_from_bit_grid(&mut self, src: &BitGrid, dst_region: Region, opt_player_id: Option<usize>) {
+    pub fn copy_from_bit_grid(&mut self, src: &BitGrid, dst_region: Region, opt_player_id: PlayerID) {
         let region;
         if let Some(player_id) = opt_player_id {
             if let Some(_region) = dst_region.intersection(self.player_writable[player_id]) {
@@ -1598,11 +1600,13 @@ impl Universe {
     /// This will panic if:
     /// * `gen0` is not less than `gen1`.
     /// * `visibility` is out of range.
-    pub fn apply(&mut self, diff: &GenStateDiff, visibility: Option<usize>) -> ConwayResult<Option<usize>> {
+    pub fn apply(&mut self, diff: &GenStateDiff, visibility: PlayerID) -> ConwayResult<Option<usize>> {
         use ConwayError::*;
         assert!(
             diff.gen0 < diff.gen1,
-            format!("expected gen0 < gen1, but {} >= {}", diff.gen0, diff.gen1)
+            "expected gen0 < gen1, but {} >= {}",
+            diff.gen0,
+            diff.gen1,
         );
         // if diff too large, return Err(...)
         let gen_state_len = self.gen_states.len();
@@ -1695,8 +1699,8 @@ impl Universe {
     ///
     /// * Panics if `gen0` >= `gen1`.
     /// * Panics if `visibility` is out of range.
-    pub fn diff(&self, gen0: usize, gen1: usize, visibility: Option<usize>) -> Option<GenStateDiff> {
-        assert!(gen0 < gen1, format!("expected gen0 < gen1, but {} >= {}", gen0, gen1));
+    pub fn diff(&self, gen0: usize, gen1: usize, visibility: PlayerID) -> Option<GenStateDiff> {
+        assert!(gen0 < gen1, "expected gen0 < gen1, but {} >= {}", gen0, gen1);
         let mut opt_genstate0 = None;
         let mut opt_genstate1 = None;
         for gen_idx in 0..self.gen_states.len() {
@@ -1727,7 +1731,7 @@ impl CharGrid for Universe {
         GenState::is_valid(ch)
     }
 
-    fn write_at_position(&mut self, _col: usize, _row: usize, _ch: char, _visibility: Option<usize>) {
+    fn write_at_position(&mut self, _col: usize, _row: usize, _ch: char, _visibility: PlayerID) {
         unimplemented!("This interface is not intended for modifying Universes");
     }
 
@@ -1741,7 +1745,7 @@ impl CharGrid for Universe {
         return self.height;
     }
 
-    fn get_run(&self, col: usize, row: usize, visibility: Option<usize>) -> (usize, char) {
+    fn get_run(&self, col: usize, row: usize, visibility: PlayerID) -> (usize, char) {
         let gen_state = &self.gen_states[self.state_index];
         gen_state.get_run(col, row, visibility)
     }

@@ -27,6 +27,8 @@ pub mod rle;
 pub mod universe;
 
 pub use error::{ConwayError, ConwayResult};
+pub use rle::Pattern;
+pub use universe::{BigBang, GenStateDiff, PlayerBuilder, PlayerID, Region, Universe};
 
 pub use grids::Rotation;
 
