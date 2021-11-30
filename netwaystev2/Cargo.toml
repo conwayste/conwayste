@@ -24,6 +24,8 @@ lazy_static     = "1.4.0"
 log             = "0.4.*"
 thiserror       = "1.0.*"
 snowflake       = "1.2"
+strum           = "0.23"
+strum_macros    = "0.23"
 
 [dependencies.reqwest]
 version = "0.11"

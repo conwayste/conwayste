@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use strum_macros::{EnumString, EnumIter, Display};
 
 ////////////////////// Data model ////////////////////////
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, EnumString, EnumIter, Display)]
 pub enum RequestAction {
     None, // never actually sent
 
