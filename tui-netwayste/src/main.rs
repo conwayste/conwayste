@@ -1,4 +1,6 @@
+pub(crate) mod scraper;
 pub(crate) mod statefullist;
+
 use statefullist::StatefulList;
 
 use crossterm::{
@@ -95,25 +97,44 @@ impl<'a> App<'a> {
         menu_item_map.insert("RequestAction".to_owned(), MenuItemEntry::MenuIndex(1));
         menu_item_map.insert("ResponseCode".to_owned(), MenuItemEntry::MenuIndex(2));
 
-        for ra in RequestAction::iter() {
-            menu_item_map.insert(
-                ra.to_string().clone(),
-                MenuItemEntry::EditDialog(EditableCommand::with_items(vec![
-                    ("Field 1".to_owned(), "DefaultValue".to_owned()),
-                    ("Field 2".to_owned(), "124".to_owned()),
-                    ("Field 3".to_owned(), "".to_owned()),
-                ])),
-            );
+        let mut protocol_map;
+        match scraper::scrape_nwv2_protocol(
+            ["RequestAction", "ResponseCode"].to_vec(),
+            "/../netwaystev2/src/protocol",
+        ) {
+            Ok(map) => protocol_map = map,
+            Err(e) => unreachable!("Could not scrape netwayste protocol from local directory: {}", e),
         }
 
-        for rc in ResponseCode::iter() {
+        /* For debugging since stdout is not a good means for print-logging with a tui
+        use std::io::prelude::*;
+        let mut file = std::fs::File::create("foo.txt").unwrap();
+        file.write_all(format!("{:#?}", protocol_map).as_bytes()).unwrap();
+        drop(file);
+        */
+
+        for key in RequestAction::iter().map(|e| e.to_string()).collect::<Vec<String>>() {
+            let variant_fields = protocol_map.get(&key).unwrap().clone();
+            let count = variant_fields.len();
+
+            let item_list = variant_fields
+                .into_iter()
+                .map(|s| {
+                    if s.contains('.') {
+                        let mut s = s.split('.').skip(2).collect::<Vec<&str>>().join("::");
+                        s.push_str("{..}");
+                        // XXX default value
+                        (s, String::new())
+                    } else {
+                        // XXX default value
+                        (s, String::new())
+                    }
+                })
+                .collect();
+
             menu_item_map.insert(
-                rc.to_string().clone(),
-                MenuItemEntry::EditDialog(EditableCommand::with_items(vec![
-                    ("Field 1".to_owned(), "DefaultValue".to_owned()),
-                    ("Field 2".to_owned(), "124".to_owned()),
-                    ("Field 3".to_owned(), "".to_owned()),
-                ])),
+                key.to_owned(),
+                MenuItemEntry::EditDialog(EditableCommand::with_items(item_list)),
             );
         }
 
@@ -474,7 +495,7 @@ fn editor_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .title(title)
         .title_alignment(Alignment::Center);
 
-    let area = centered_rect(80, 20, size);
+    let area = centered_rect(80, 40, size);
     f.render_widget(Clear, area); //this clears out the background
 
     // Iterate through all elements in the `items` app and append some debug text to it.
@@ -482,8 +503,8 @@ fn editor_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .displayed_editor
         .items
         .iter()
-        .map(|(field_name, field_value)| {
-            let lines = vec![Spans::from(format!("{} -> {}", field_name, field_value))];
+        .map(|(field_name, _field_value)| {
+            let lines = vec![Spans::from(format!("{}", field_name))];
             ListItem::new(lines).style(Style::default().fg(Color::Black).bg(Color::White))
         })
         .collect();
