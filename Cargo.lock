@@ -1075,6 +1075,7 @@ dependencies = [
  "bytes 1.0.1",
  "lazy_static",
  "netwayste",
+ "parser-netwayste",
  "pkg-config",
  "syn",
  "tokio-core",
@@ -2795,6 +2796,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "parser-netwayste"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "syn",
+ "walkdir",
+]
+
+[[package]]
 name = "peeking_take_while"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4318,6 +4328,7 @@ dependencies = [
  "anyhow",
  "crossterm 0.22.1",
  "netwaystev2",
+ "parser-netwayste",
  "strum",
  "thiserror",
  "tui",

@@ -6,6 +6,7 @@ members = [
   "libconway",
   "dissect-netwayste",
   "tui-netwayste",
+  "parser-netwayste"
 ]
 
 [profile.dev]

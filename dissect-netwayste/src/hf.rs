@@ -23,7 +23,7 @@ use std::os::raw::{c_int, c_void};
 use std::ptr;
 use std::sync::Mutex;
 
-use crate::netwaysteparser::{FieldDescriptor, NetwaysteDataFormat::*, Sizing, VariableContainer};
+use crate::parser_netwayste::{FieldDescriptor, NetwaysteDataFormat::*, Sizing, VariableContainer};
 use crate::wrapperdefs::*;
 use crate::{enum_strings, netwayste_data, ws};
 
@@ -176,7 +176,7 @@ pub fn register_header_fields(hf_fields: &Mutex<HFFieldAllocator>) {
             Structure(fields) => {
                 // Reserve a header field for structure's fields
                 for field in fields {
-                    // Stuctures are *always* named so unwrap is safe.
+                    // Structures are *always* named so unwrap is safe.
                     hf_register(hf_fields, field.name.clone());
                     option_check(hf_fields, &field);
                 }
@@ -185,7 +185,7 @@ pub fn register_header_fields(hf_fields: &Mutex<HFFieldAllocator>) {
     }
 
     /// Inspect the FieldDescriptor's format list to see if there's an Option, and register an HF
-    /// for each additional occurence. Option-ed members map to two possible header fields:
+    /// for each additional occurrence. Option-ed members map to two possible header fields:
     /// A header field when `Some(T)`, and a header field when `None` (as there is no data type T).
     fn option_check(hf_fields: &Mutex<HFFieldAllocator>, f: &FieldDescriptor) {
         for format in &f.format {
