@@ -30,8 +30,6 @@
 #![allow(dead_code)] // hide warnings for wireshark register functions
 
 extern crate netwayste;
-extern crate parser_netwayste;
-
 #[macro_use]
 extern crate lazy_static;
 extern crate byteorder;
@@ -52,16 +50,16 @@ use std::sync::Mutex;
 
 mod ett;
 mod hf;
+mod netwaysteparser;
 mod wrapperdefs;
 
 use ett::*;
 use hf::*;
-
-use parser_netwayste::{
-    collect_netwayste_source_files, parse_netwayste_files, NetwaysteDataFormat, Sizing, VariableContainer,
+use netwaysteparser::{
+    parse_netwayste_format,
+    NetwaysteDataFormat::{self, Enumerator, Structure},
+    Sizing, VariableContainer,
 };
-
-use parser_netwayste::NetwaysteDataFormat::{Enumerator, Structure};
 use wrapperdefs::*;
 
 /// Wireshark C bindings
@@ -119,11 +117,7 @@ lazy_static! {
     // The result of parsing the AST of `netwayste/src/net.rs`. AST is piped through the parser to
     // give us a simplified description of the `net.rs` data layout.
     static ref netwayste_data: HashMap<CString, NetwaysteDataFormat> = {
-        // Collect what netwayste source files we'll iterate over using WalkDir
-        let netwayste_files = collect_netwayste_source_files("/../netwayste/src/");
-
-        // Will panic during initialization if the file cannot be parsed
-        let _nw_data: HashMap<CString, NetwaysteDataFormat> = parse_netwayste_files(netwayste_files, false).unwrap();
+        let _nw_data: HashMap<CString, NetwaysteDataFormat> = parse_netwayste_format();
         _nw_data
     };
 
@@ -281,7 +275,7 @@ impl ConwaysteTree {
         &self,
         tree: *mut ws::proto_tree,
         tvb: *mut ws::tvbuff_t,
-        fd: &parser_netwayste::FieldDescriptor,
+        fd: &netwaysteparser::FieldDescriptor,
         bytes_examined: &mut i32,
     ) {
         let mut field_length: i32 = 4; // First byte is enumerator definition

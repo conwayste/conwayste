@@ -19,7 +19,7 @@ Bindgen requires Wireshark development headers in order to generate calls used b
 1) Use your package manager to install Wireshark, as well as the development libraries (such as `libwireshark-dev`)
 2) Build wireshark from source
 
-*Note: Ubuntu 18.04 only has Wireshark 2 in the repo so I had to follow the instructions here to generate and install the debian package from source. This is not an issue on Ubuntu 20.04 and newer.*
+*Note: Ubuntu 18.04 only has Wireshark 2 in the repo so I had to follow the instructions here to generate and install the debian package from source.*
 Instructions: https://www.consentfactory.com/install-wireshark-3-0-2-on-ubuntu-desktop-18-04-redux/
 
 # Install Wireshark
@@ -27,12 +27,6 @@ Instructions: https://www.consentfactory.com/install-wireshark-3-0-2-on-ubuntu-d
 1. Install Wireshark 3.1 or 3.2.
 
 If you've installed wireshark from your package manager (or built the package from source), you should see `config.h` within `/usr/include/wireshark/`. If you don't see this, then something went wrong. You won't see this file if you've only compiled Wireshark from source as that won't install the development headers to the necessary paths in `/usr/`.
-
-For Ubuntu 20.04, install dependencies with:
-
-```
-$ sudo apt install wireshark wireshark-dev llvm libclang1 libclang-dev libglib2.0-dev 
-```
 
 2. Make sure you enable `dumpcap` to be runnable as non-root.
 
