@@ -189,7 +189,7 @@ fn extract_type(ty: &syn::Type) -> String {
 }
 
 /// Creates a `FieldDescriptor` from the field's type and variant. In the case of unnamed/anonymous
-/// fields, a numerical count is appended to avoid field description name collisons as they must
+/// fields, a numerical count is appended to avoid field description name collisions as they must
 /// be unique for header fields.
 fn create_field_descriptor(f: &syn::Field, variant_name: String, count: usize) -> FieldDescriptor {
     let ty = extract_type(&f.ty);
@@ -239,7 +239,7 @@ fn parse_enum(e: &syn::ItemEnum) -> (Vec<CString>, HashMap<String, Vec<FieldDesc
     (ordered_variants, variants)
 }
 
-/// Parses all members of a struct, returning a description of field name and it's correspnding
+/// Parses all members of a struct, returning a description of field name and its corresponding
 /// type size.
 fn parse_struct(s: &syn::ItemStruct) -> Vec<FieldDescriptor> {
     let mut fields = vec![];
@@ -278,7 +278,7 @@ pub fn collect_netwayste_source_files() -> Vec<PathBuf> {
 }
 
 /// Scans netwayste source file abstract syntax trees (AST) looking for enum and structure
-/// definitions. An enum is described by its variants while a structure is desribed by its members.
+/// definitions. An enum is described by its variants while a structure is described by its members.
 /// Both are parsed into a format that can easily describe the type and size of each sub-item.
 pub fn parse_netwayste_format() -> HashMap<CString, NetwaysteDataFormat> {
     let mut map: HashMap<CString, NetwaysteDataFormat> = HashMap::new();

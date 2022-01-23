@@ -176,7 +176,7 @@ pub fn register_header_fields(hf_fields: &Mutex<HFFieldAllocator>) {
             Structure(fields) => {
                 // Reserve a header field for structure's fields
                 for field in fields {
-                    // Stuctures are *always* named so unwrap is safe.
+                    // Structures are *always* named so unwrap is safe.
                     hf_register(hf_fields, field.name.clone());
                     option_check(hf_fields, &field);
                 }
