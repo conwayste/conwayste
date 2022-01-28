@@ -79,10 +79,10 @@ enum MenuItemEntry {
 struct App<'a> {
     mode:               FilterMode,
     input_stage:        InputStage,
-    editing:            bool,
-    preedit_text:       String,
+    editing:            bool,   // Are we editing a field?
+    preedit_text:       String, // Previous field value while editing it; restored on cancel
     displayed_menu:     StatefulList<String>,
-    menu_display_index: usize,
+    menu_display_index: usize,  // Index into the following vec
     menus:              Vec<StatefulList<String>>,
     menu_item_map:      HashMap<String, MenuItemEntry>,
     displayed_editor:   StatefulList<Field>,
@@ -358,14 +358,20 @@ fn handle_editcommand_keys(key: KeyCode, app: &mut App) {
     match key {
         KeyCode::Char(ch) => field_value.push(ch),
         KeyCode::Backspace => {
-            let _ = field_value.pop();
+            field_value.pop();
         }
         KeyCode::Delete => field_value.clear(),
-        KeyCode::Enter => app.editing = false,
+        KeyCode::Enter => {
+            app.editing = false;
+            app.preedit_text.clear();
+        }
         KeyCode::Esc => {
+            // Abort editing
             app.editing = false;
 
             let index = app.displayed_editor.state.selected().unwrap();
+
+            // Restore the original value
             app.displayed_editor.items[index].value = std::mem::take(&mut app.preedit_text);
         }
         _ => (),
