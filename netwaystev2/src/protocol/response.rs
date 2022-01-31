@@ -1,8 +1,11 @@
 use serde::{Deserialize, Serialize};
-use strum_macros::{EnumString, EnumIter, Display};
+use strum_macros::{EnumString,
+EnumIter, Display};
 
 // server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, EnumString, EnumIter, Display)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone,
+EnumString,
+EnumIter, Display)]
 pub enum ResponseCode {
     // success - these are all 200 in HTTP
     // TODO: Many of these should contain the sequence number being acknowledged

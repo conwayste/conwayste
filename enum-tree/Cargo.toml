@@ -1,0 +1,10 @@
+[package]
+name = "enum-tree"
+version = "0.1.0"
+edition = "2021"
+authors = ["Aaron Miller <aaron.miller04@gmail.com>", "Ameen Manghi <manghirs@gmail.com>"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+enum-tree-derive = {path = "./enum-tree-derive"}

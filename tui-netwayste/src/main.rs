@@ -28,6 +28,9 @@ use tui::{
 };
 use unicode_width::UnicodeWidthStr;
 
+use enum_tree::{EnumTree,
+EnumTreeNode};
+
 #[derive(PartialEq)]
 enum InputStage {
     NavigateMenu,
@@ -178,6 +181,20 @@ impl<'a> App<'a> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+
+    // XXX Enum Tree Testing
+    use enum_tree::EnumTree;
+    println!("{:?}", RequestAction::enum_tree());
+
+    return Ok(());
+
+
+
+
+
+
+
+
     // setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
