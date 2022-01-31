@@ -57,11 +57,11 @@ impl InputStage {
 }
 
 struct EditableCommand {
-    fields: StatefulList<(String, String)>,
+    fields: StatefulList<Field>,
 }
 
 impl EditableCommand {
-    fn with_items(list_fields: Vec<(String, String)>) -> Self {
+    fn with_items(list_fields: Vec<Field>) -> Self {
         EditableCommand {
             fields: StatefulList::with_items(list_fields),
         }
@@ -82,14 +82,29 @@ enum MenuItemEntry {
 struct App<'a> {
     mode:               FilterMode,
     input_stage:        InputStage,
-    editing:            bool,
-    preedit_text:       String,
+    editing:            bool,   // Are we editing a field?
+    preedit_text:       String, // Previous field value while editing it; restored on cancel
     displayed_menu:     StatefulList<String>,
-    menu_display_index: usize,
+    menu_display_index: usize,  // Index into the following vec
     menus:              Vec<StatefulList<String>>,
     menu_item_map:      HashMap<String, MenuItemEntry>,
-    displayed_editor:   StatefulList<(String, String)>,
+    displayed_editor:   StatefulList<Field>,
     events:             Vec<(&'a str, &'a str)>,
+}
+
+#[derive(Debug, Clone)]
+struct Field {
+    name: String,
+    value: String,
+}
+
+impl Field {
+    fn new(name: &str, value: &str) -> Self {
+        Field {
+            name: name.into(),
+            value: value.into(),
+        }
+    }
 }
 
 impl<'a> App<'a> {
@@ -102,9 +117,9 @@ impl<'a> App<'a> {
             menu_item_map.insert(
                 ra.to_string().clone(),
                 MenuItemEntry::EditDialog(EditableCommand::with_items(vec![
-                    ("Field 1".to_owned(), "DefaultValue".to_owned()),
-                    ("Field 2".to_owned(), "124".to_owned()),
-                    ("Field 3".to_owned(), "".to_owned()),
+                    Field::new("Field 1", "DefaultValue"),
+                    Field::new("Field 2", "124"),
+                    Field::new("Field 3", ""),
                 ])),
             );
         }
@@ -113,9 +128,9 @@ impl<'a> App<'a> {
             menu_item_map.insert(
                 rc.to_string().clone(),
                 MenuItemEntry::EditDialog(EditableCommand::with_items(vec![
-                    ("Field 1".to_owned(), "DefaultValue".to_owned()),
-                    ("Field 2".to_owned(), "124".to_owned()),
-                    ("Field 3".to_owned(), "".to_owned()),
+                    Field::new("Field 1", "DefaultValue"),
+                    Field::new("Field 2", "124"),
+                    Field::new("Field 3", ""),
                 ])),
             );
         }
@@ -287,14 +302,14 @@ fn handle_command_keys(key: KeyCode, app: &mut App) {
             if let Some(next_menu_index) = opt_next_menu_idx {
                 // Save the state current menu and load the new menu
                 let current_menu = std::mem::replace(&mut app.displayed_menu, app.menus[*next_menu_index].clone());
-                let _ = std::mem::replace(&mut app.menus[app.menu_display_index], current_menu);
+                app.menus[app.menu_display_index] = current_menu;
                 app.menu_display_index = *next_menu_index;
             }
             if let Some(edit_cmd_ref) = opt_edit_cmd_ref {
                 // Save the menu state; Load the edit state
                 //let _ = std::mem::replace(&mut app.menus[app.menu_display_index], app.displayed_menu);
 
-                let _ = std::mem::replace(&mut app.displayed_editor, edit_cmd_ref.fields.clone());
+                app.displayed_editor = edit_cmd_ref.fields.clone();
 
                 app.input_stage.next();
             }
@@ -306,11 +321,11 @@ fn handle_command_keys(key: KeyCode, app: &mut App) {
 
             if app.input_stage == InputStage::NavigateMenu {
                 // Save current menu state and load the parent menu
-                let _ = std::mem::replace(&mut app.menus[app.menu_display_index], app.displayed_menu.clone());
+                app.menus[app.menu_display_index] = app.displayed_menu.clone();
 
                 // HACK: We only have two levels of menus now. It isn't worth the time to build a proper menu tree
                 app.menu_display_index = 0;
-                let _ = std::mem::replace(&mut app.displayed_menu, app.menus[app.menu_display_index].clone());
+                app.displayed_menu = app.menus[app.menu_display_index].clone();
             } else {
                 app.input_stage.prev();
             }
@@ -328,7 +343,7 @@ fn handle_navigateedit_keys(key: KeyCode, app: &mut App) {
             if !app.editing {
                 app.editing = true;
                 let index = app.displayed_editor.state.selected().unwrap();
-                app.preedit_text = app.displayed_editor.items[index].1.clone();
+                app.preedit_text = app.displayed_editor.items[index].value.clone();
             }
         }
         KeyCode::Esc => {
@@ -347,7 +362,7 @@ fn handle_navigateedit_keys(key: KeyCode, app: &mut App) {
             let edit_cmd_mut_ref = opt_edit_cmd.unwrap();
 
             // Save the editing window state
-            let _ = std::mem::replace(&mut edit_cmd_mut_ref.fields, app.displayed_editor.clone());
+            edit_cmd_mut_ref.fields = app.displayed_editor.clone();
             app.input_stage.prev();
         }
         _ => (),
@@ -355,20 +370,26 @@ fn handle_navigateedit_keys(key: KeyCode, app: &mut App) {
 }
 
 fn handle_editcommand_keys(key: KeyCode, app: &mut App) {
-    let field_value = &mut app.displayed_editor.items[app.displayed_editor.state.selected().unwrap()].1;
+    let field_value = &mut app.displayed_editor.items[app.displayed_editor.state.selected().unwrap()].value;
 
     match key {
         KeyCode::Char(ch) => field_value.push(ch),
         KeyCode::Backspace => {
-            let _ = field_value.pop();
+            field_value.pop();
         }
         KeyCode::Delete => field_value.clear(),
-        KeyCode::Enter => app.editing = false,
+        KeyCode::Enter => {
+            app.editing = false;
+            app.preedit_text.clear();
+        }
         KeyCode::Esc => {
+            // Abort editing
             app.editing = false;
 
             let index = app.displayed_editor.state.selected().unwrap();
-            app.displayed_editor.items[index].1 = std::mem::take(&mut app.preedit_text);
+
+            // Restore the original value
+            app.displayed_editor.items[index].value = std::mem::take(&mut app.preedit_text);
         }
         _ => (),
     }
@@ -483,7 +504,7 @@ fn editor_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         ]
     };
 
-    let mut title = Spans::from(msg);
+    let title = Spans::from(msg);
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -499,8 +520,8 @@ fn editor_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .displayed_editor
         .items
         .iter()
-        .map(|(field_name, field_value)| {
-            let lines = vec![Spans::from(format!("{} -> {}", field_name, field_value))];
+        .map(|field| {
+            let lines = vec![Spans::from(format!("{} -> {}", field.name, field.value))];
             ListItem::new(lines).style(Style::default().fg(Color::Black).bg(Color::White))
         })
         .collect();
@@ -514,8 +535,8 @@ fn editor_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     if app.editing {
         let index = app.displayed_editor.state.selected().unwrap();
-        let label_text = &app.displayed_editor.items[index].0;
-        let editing_text = &app.displayed_editor.items[index].1;
+        let label_text = &app.displayed_editor.items[index].name;
+        let editing_text = &app.displayed_editor.items[index].value;
         f.set_cursor(
             area.x
                 + ">> ".width() as u16
