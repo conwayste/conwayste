@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate enum_tree_derive;
 
 pub use enum_tree_derive::EnumTree;

@@ -7,7 +7,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use netwaystev2::{
-    filter::FilterMode,
+    filter::{FilterMode, FilterCmd},
     protocol::{BroadcastChatMessage, Packet, RequestAction, ResponseCode},
 };
 use std::{
@@ -28,8 +28,7 @@ use tui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use enum_tree::{EnumTree,
-EnumTreeNode};
+use enum_tree::{EnumTree, EnumTreeNode};
 
 #[derive(PartialEq)]
 enum InputStage {
@@ -85,7 +84,7 @@ struct App<'a> {
     editing:            bool,   // Are we editing a field?
     preedit_text:       String, // Previous field value while editing it; restored on cancel
     displayed_menu:     StatefulList<String>,
-    menu_display_index: usize,  // Index into the following vec
+    menu_display_index: usize, // Index into the following vec
     menus:              Vec<StatefulList<String>>,
     menu_item_map:      HashMap<String, MenuItemEntry>,
     displayed_editor:   StatefulList<Field>,
@@ -94,14 +93,14 @@ struct App<'a> {
 
 #[derive(Debug, Clone)]
 struct Field {
-    name: String,
+    name:  String,
     value: String,
 }
 
 impl Field {
     fn new(name: &str, value: &str) -> Self {
         Field {
-            name: name.into(),
+            name:  name.into(),
             value: value.into(),
         }
     }
@@ -199,7 +198,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // XXX Enum Tree Testing
     use enum_tree::EnumTree;
-    println!("{:?}", RequestAction::enum_tree());
+    println!("{:?}", FilterCmd::enum_tree());
 
     return Ok(());
 
@@ -289,8 +288,12 @@ fn handle_command_keys(key: KeyCode, app: &mut App) {
         KeyCode::Enter => {
             let mut opt_next_menu_idx = None;
             let mut opt_edit_cmd_ref = None;
+
             if let Some(index) = app.displayed_menu.state.selected() {
                 let item_name = &app.displayed_menu.items[index];
+
+                // Determine if the selected menu item leads to a sub-menu or an edit dialog. A submenu falls under a
+                // request action or response code
                 if let Some(entry) = app.menu_item_map.get(item_name) {
                     match entry {
                         MenuItemEntry::MenuIndex(next_menu_idx) => opt_next_menu_idx = Some(next_menu_idx),
@@ -305,10 +308,9 @@ fn handle_command_keys(key: KeyCode, app: &mut App) {
                 app.menus[app.menu_display_index] = current_menu;
                 app.menu_display_index = *next_menu_index;
             }
+
             if let Some(edit_cmd_ref) = opt_edit_cmd_ref {
                 // Save the menu state; Load the edit state
-                //let _ = std::mem::replace(&mut app.menus[app.menu_display_index], app.displayed_menu);
-
                 app.displayed_editor = edit_cmd_ref.fields.clone();
 
                 app.input_stage.next();

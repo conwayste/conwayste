@@ -8,10 +8,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::{Ident, Span};
 
 use syn::Variant;
-use syn::{
-    parse_macro_input, DataEnum, DataUnion, DeriveInput, Field, Fields::*, FieldsNamed, FieldsUnnamed,
-    PathArguments::AngleBracketed, TypePath,
-};
+use syn::{DataEnum, DeriveInput, Field, FieldsNamed, FieldsUnnamed, PathArguments::AngleBracketed};
 
 fn extract_type(ty: &syn::Type) -> String {
     match ty {
@@ -40,10 +37,16 @@ fn extract_type(ty: &syn::Type) -> String {
     "".to_owned()
 }
 
-fn type_is_primitive(ty_string: &String) -> bool {
+fn type_is_primitive(type_string: &String) -> bool {
     let primitives_str = "u128 i128 u64 i64 u32 i32 f32 u16 i16 u8 i8 bool String &str ()";
     for t in primitives_str.split_ascii_whitespace() {
-        if t == ty_string {
+        if t == type_string {
+            return true;
+        }
+
+        let outer = type_string.split('|').next().unwrap();
+        let inner = type_string.split('|').last().unwrap();
+        if (outer == "Vec" || outer == "Option") && t == inner {
             return true;
         }
     }
@@ -84,18 +87,18 @@ fn generate_node_from_variant(v: &Variant) -> TokenStream2 {
         let (field_name, field_nodes) = generate_name_and_nodes_from_field(f);
 
         variant_subnodes.push(quote! {EnumTreeNode {
-            name:     stringify!(#field_name).to_string(),
+            name:     #field_name.to_string(),
             subnodes: vec![#(#field_nodes,)*],
         }});
     }
 
     quote! {EnumTreeNode{
-        name:     stringify!(#v_name).to_string(),
+        name:     #v_name.to_string(),
         subnodes: vec![#(#variant_subnodes,)*],
     }}
 }
 
-fn impl_enum_tree(ast: &syn::DeriveInput) -> TokenStream {
+fn impl_enum_tree(ast: &DeriveInput) -> TokenStream {
     let name = &ast.ident;
     let data = &ast.data;
 
@@ -103,8 +106,9 @@ fn impl_enum_tree(ast: &syn::DeriveInput) -> TokenStream {
 
     match data {
         syn::Data::Struct(s) => match &s.fields {
-            syn::Fields::Named(FieldsNamed { named, .. }) => (),
-            syn::Fields::Unnamed(FieldsUnnamed { unnamed, .. }) => (),
+            // TODO: Implement for structs when support is needed.
+            syn::Fields::Named(FieldsNamed { .. }) => (),
+            syn::Fields::Unnamed(FieldsUnnamed { .. }) => (),
             syn::Fields::Unit => (),
         },
         syn::Data::Enum(DataEnum { variants, .. }) => {
