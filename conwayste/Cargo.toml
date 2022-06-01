@@ -12,7 +12,7 @@ color-backtrace = "0.5"
 conway       = { path = "../libconway" }
 custom_error = "1.9"
 downcast-rs  = "1.2.0"
-enum-iterator = "0.6"
+enum-iterator = "1.1"
 env_logger   = "0.8.3"
 futures      = "0.3"
 ggez         = { path = "../third_party_submods/ggez" }   # "0.5"
