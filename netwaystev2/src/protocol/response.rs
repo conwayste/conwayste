@@ -1,9 +1,8 @@
-use enum_tree::{EnumTree, EnumTreeNode};
 use serde::{Deserialize, Serialize};
 use strum_macros::{EnumString, EnumIter, Display};
 
 // server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, EnumString,EnumIter, Display, EnumTree)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, EnumString,EnumIter, Display)]
 pub enum ResponseCode {
     // success - these are all 200 in HTTP
     // TODO: Many of these should contain the sequence number being acknowledged
@@ -44,7 +43,7 @@ pub enum ResponseCode {
     KeepAlive, // Server's heart is beating
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, EnumTree)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct RoomList {
     pub room_name:    String,
     pub player_count: u8,
