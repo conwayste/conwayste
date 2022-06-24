@@ -1,7 +1,6 @@
 use std::num::Wrapping;
 
 use conway::universe::GenStateDiff;
-use enum_tree::{EnumTree, EnumTreeNode};
 
 use crate::{
     common::Endpoint,
@@ -17,7 +16,7 @@ pub enum FilterMode {
 }
 
 /// App layer sends these commands to the Filter Layer to send game events to a peer
-#[derive(Debug, EnumTree)]
+#[derive(Debug)]
 pub enum FilterCmd {
     SendRequestAction {
         endpoint: Endpoint,

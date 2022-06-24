@@ -6,7 +6,6 @@ members = [
   "libconway",
   "dissect-netwayste",
   "tui-netwayste",
-  "enum-tree",
 ]
 
 [profile.dev]

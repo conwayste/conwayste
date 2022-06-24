@@ -1,9 +1,8 @@
-use enum_tree::{EnumTree, EnumTreeNode};
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumIter, EnumString};
 
 ////////////////////// Data model ////////////////////////
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, EnumString, EnumIter, Display, EnumTree)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, EnumString, EnumIter, Display)]
 pub enum RequestAction {
     None, // never actually sent
 
@@ -53,7 +52,7 @@ pub enum RequestAction {
     },
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, EnumTree)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum ClientOptionValue {
     Bool { value: bool },
     U8 { value: u8 },
@@ -65,7 +64,5 @@ pub enum ClientOptionValue {
     I32 { value: i32 },
     I64 { value: i64 },
     Str { value: String },
-    // proc_macro EnumTree will generate expanded code which recursively calls ClientOptionValue::enum_tree() at run-time,
-    // resulting in a run-time stack overflow
-    // List { value: Vec<ClientOptionValue> },
+    List { value: Vec<ClientOptionValue> },
 }

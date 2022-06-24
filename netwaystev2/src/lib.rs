@@ -4,7 +4,6 @@ extern crate conway;
 extern crate env_logger;
 #[macro_use]
 extern crate log;
-extern crate enum_tree;
 extern crate serde;
 extern crate snowflake;
 extern crate thiserror;
