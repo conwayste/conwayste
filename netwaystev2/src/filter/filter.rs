@@ -137,7 +137,7 @@ impl Filter {
                 filter_notice_tx,
                 mode,
                 per_endpoint,
-                phase_watch_tx: phase_watch_tx,
+                phase_watch_tx,
                 phase_watch_rx,
                 ping_endpoints,
             },
