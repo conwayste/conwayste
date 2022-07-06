@@ -687,11 +687,12 @@ macro_rules! impl_emit_event {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use enum_iterator::all;
 
     #[test]
-    fn test_into_enum_iter() {
-        let all: Vec<EventType> = EventType::into_enum_iter().collect();
-        assert_eq!(all.len(), EventType::VARIANT_COUNT);
+    fn test_enum_iter_sequence() {
+        let all: Vec<EventType> = all::<EventType>().collect();
+        assert_eq!(all.len(), EventType::CARDINALITY);
         assert!(all.contains(&EventType::Click));
     }
 }

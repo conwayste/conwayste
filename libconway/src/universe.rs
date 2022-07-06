@@ -442,7 +442,7 @@ impl CharGrid for GenState {
     #[inline]
     fn write_at_position(&mut self, col: usize, row: usize, ch: char, visibility: Option<usize>) {
         if !GenState::is_valid(ch) {
-            panic!(format!("char {:?} is invalid for this CharGrid", ch));
+            panic!("char {:?} is invalid for this CharGrid", ch);
         }
         let word_col = col / 64;
         let shift = 63 - (col & (64 - 1));
@@ -1602,7 +1602,9 @@ impl Universe {
         use ConwayError::*;
         assert!(
             diff.gen0 < diff.gen1,
-            format!("expected gen0 < gen1, but {} >= {}", diff.gen0, diff.gen1)
+            "expected gen0 < gen1, but {} >= {}",
+            diff.gen0,
+            diff.gen1
         );
         // if diff too large, return Err(...)
         let gen_state_len = self.gen_states.len();
@@ -1696,7 +1698,7 @@ impl Universe {
     /// * Panics if `gen0` >= `gen1`.
     /// * Panics if `visibility` is out of range.
     pub fn diff(&self, gen0: usize, gen1: usize, visibility: Option<usize>) -> Option<GenStateDiff> {
-        assert!(gen0 < gen1, format!("expected gen0 < gen1, but {} >= {}", gen0, gen1));
+        assert!(gen0 < gen1, "expected gen0 < gen1, but {} >= {}", gen0, gen1);
         let mut opt_genstate0 = None;
         let mut opt_genstate1 = None;
         for gen_idx in 0..self.gen_states.len() {
