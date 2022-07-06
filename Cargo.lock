@@ -1790,9 +1790,9 @@ dependencies = [
 
 [[package]]
 name = "id_tree"
-version = "1.7.0"
+version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8233bef841ffcb4766af63c917b09c786430cfcfbaf41bffeae57d53284ddd00"
+checksum = "bcd9db8dd5be8bde5a2624ed4b2dfb74368fe7999eb9c4940fd3ca344b61071a"
 dependencies = [
  "snowflake",
 ]
