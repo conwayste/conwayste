@@ -628,7 +628,7 @@ name = "conway"
 version = "0.3.5"
 dependencies = [
  "custom_error",
- "env_logger 0.8.3",
+ "env_logger 0.9.0",
  "log",
  "rand 0.8.3",
  "serde",
@@ -645,7 +645,7 @@ dependencies = [
  "custom_error",
  "downcast-rs",
  "enum-iterator",
- "env_logger 0.8.3",
+ "env_logger 0.9.0",
  "futures 0.3.8",
  "ggez",
  "id_tree",
@@ -1121,9 +1121,9 @@ dependencies = [
 
 [[package]]
 name = "env_logger"
-version = "0.8.3"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17392a012ea30ef05a610aa97dfb49496e71c9f676b27879922ea5bdf60d9d3f"
+checksum = "0b2cf0344971ee6c64c31be0d530793fba457d322dfec2810c453d0ef228f9c3"
 dependencies = [
  "atty",
  "humantime 2.0.1",
@@ -2413,7 +2413,7 @@ dependencies = [
  "clap",
  "color-backtrace",
  "conway",
- "env_logger 0.8.3",
+ "env_logger 0.9.0",
  "futures 0.3.8",
  "log",
  "proptest",
