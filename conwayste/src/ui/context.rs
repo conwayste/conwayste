@@ -22,7 +22,7 @@ use std::fmt;
 use std::mem;
 
 use downcast_rs::Downcast;
-use enum_iterator::IntoEnumIterator;
+use enum_iterator::Sequence;
 use ggez;
 use ggez::event::MouseButton;
 use ggez::graphics::Rect;
@@ -187,7 +187,7 @@ impl<'a> Drop for UIContext<'a> {
 }
 
 /// The type of an event.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, IntoEnumIterator)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Sequence)]
 pub enum EventType {
     None,
     Click,
@@ -687,11 +687,12 @@ macro_rules! impl_emit_event {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use enum_iterator::all;
 
     #[test]
-    fn test_into_enum_iter() {
-        let all: Vec<EventType> = EventType::into_enum_iter().collect();
-        assert_eq!(all.len(), EventType::VARIANT_COUNT);
+    fn test_enum_iter_sequence() {
+        let all: Vec<EventType> = all::<EventType>().collect();
+        assert_eq!(all.len(), EventType::CARDINALITY);
         assert!(all.contains(&EventType::Click));
     }
 }
