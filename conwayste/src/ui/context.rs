@@ -22,7 +22,7 @@ use std::fmt;
 use std::mem;
 
 use downcast_rs::Downcast;
-use enum_iterator::IntoEnumIterator;
+use enum_iterator::Sequence;
 use ggez;
 use ggez::event::MouseButton;
 use ggez::graphics::Rect;
@@ -187,7 +187,7 @@ impl<'a> Drop for UIContext<'a> {
 }
 
 /// The type of an event.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, IntoEnumIterator)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Sequence)]
 pub enum EventType {
     None,
     Click,
