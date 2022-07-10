@@ -1,0 +1,20 @@
+[package]
+name = "nwv2-python-wrapper"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "nwv2_python_wrapper"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.16.5", features = ["extension-module"] }
+pyo3-asyncio = { version = "0.16", features = ["tokio-runtime"] }
+# This is what it wraps!
+netwaystev2 = { path = "../netwaystev2" }
+
+# from netwaystev2
+[dependencies.tokio]
+version = "1.4"
+features = ["sync", "net", "macros", "rt", "rt-multi-thread", "test-util", "signal"]
