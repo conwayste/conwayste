@@ -48,28 +48,9 @@ pub struct App<'a> {
 }
 
 impl<'a> App<'a> {
-    pub(crate) fn new() -> App<'a> {
-        let root = StatefulList::with_items(vec![
-                "RequestAction".to_owned(),
-                "ResponseCode".to_owned(),
-            ]);
-
-        let ra_list = StatefulList::with_items(vec![
-            "RA_one".to_owned(),
-            "RA_two".to_owned(),
-        ]);
-
-        let rc_list = StatefulList::with_items(vec![
-            "RC_one".to_owned(),
-            "RC_two".to_owned(),
-        ]);
-
-        let menus = vec![
-            root, ra_list, rc_list
-        ];
-
+    pub(crate) fn new(mode: FilterMode, menus: Vec<StatefulList<String>>) -> App<'a> {
         App {
-            mode: FilterMode::Client,
+            mode,
             input_stage: InputStage::SelectPacket,
             editing: false,
             preedit_text: String::new(),

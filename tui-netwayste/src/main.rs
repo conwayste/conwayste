@@ -10,6 +10,8 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use netwaystev2::filter::FilterMode;
+use statefullist::StatefulList;
 use std::{
     error::Error,
     io,
@@ -30,9 +32,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    let packet_selections = create_packet_selection_lists(FilterMode::Client);
+
     // create app and run it
     let tick_rate = Duration::from_millis(250);
-    let app = App::new();
+    let app = App::new(FilterMode::Client, packet_selections );
     let res = run_app(&mut terminal, app, tick_rate);
 
     // restore terminal
@@ -87,4 +91,33 @@ pub fn draw_app<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     ui::draw_menu_list(f, app.displayed_menu_mut(), "Client", chunks[0]);
     ui::draw_event_log(f, app, chunks[1]);
+}
+
+fn create_packet_selection_lists(mode: FilterMode) -> Vec<StatefulList<String>> {
+    match mode {
+        FilterMode::Client => {
+            let client_packets = StatefulList::with_items(vec![
+                    "RequestAction".to_owned(),
+                    "ResponseCode".to_owned(),
+                ]);
+
+            let ra_list = StatefulList::with_items(vec![
+                "RA_one".to_owned(),
+                "RA_two".to_owned(),
+            ]);
+
+            let rc_list = StatefulList::with_items(vec![
+                "RC_one".to_owned(),
+                "RC_two".to_owned(),
+            ]);
+
+            vec![
+                client_packets, ra_list, rc_list
+            ]
+        }
+        FilterMode::Server => {
+            // TODO
+            vec![]
+        }
+    }
 }
