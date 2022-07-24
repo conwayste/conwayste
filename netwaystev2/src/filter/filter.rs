@@ -98,14 +98,14 @@ enum Phase {
 
 pub struct Filter {
     transport_cmd_tx:    TransportCmdSend,
-    transport_rsp_rx:    Option<TransportRspRecv>,    // TODO no option
-    transport_notice_rx: Option<TransportNotifyRecv>, // TODO no option
-    filter_cmd_rx:       Option<FilterCmdRecv>,       // TODO no option
+    transport_rsp_rx:    TransportRspRecv,
+    transport_notice_rx: TransportNotifyRecv,
+    filter_cmd_rx:       FilterCmdRecv,
     filter_rsp_tx:       FilterRspSend,
     filter_notice_tx:    FilterNotifySend,
     mode:                FilterMode,
     per_endpoint:        HashMap<Endpoint, FilterEndpointData>,
-    phase_watch_tx:      Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
+    phase_watch_tx:      watch::Sender<Phase>,
     phase_watch_rx:      watch::Receiver<Phase>,
     ping_endpoints:      HashMap<Endpoint, (LatencyFilter, PingPong, Option<ProcessUniqueId>)>,
 }
@@ -130,14 +130,14 @@ impl Filter {
         (
             Filter {
                 transport_cmd_tx,
-                transport_rsp_rx: Some(transport_rsp_rx),
-                transport_notice_rx: Some(transport_notice_rx),
-                filter_cmd_rx: Some(filter_cmd_rx),
+                transport_rsp_rx,
+                transport_notice_rx,
+                filter_cmd_rx,
                 filter_rsp_tx,
                 filter_notice_tx,
                 mode,
                 per_endpoint,
-                phase_watch_tx: Some(phase_watch_tx),
+                phase_watch_tx,
                 phase_watch_rx,
                 ping_endpoints,
             },
@@ -148,18 +148,12 @@ impl Filter {
     }
 
     pub async fn run(&mut self) {
+        // Transport cmd tx is cloned as used by the shutdown path to notify the transport layer of a shutdown event
         let transport_cmd_tx = self.transport_cmd_tx.clone();
-        let transport_rsp_rx = self.transport_rsp_rx.take().unwrap();
-        let transport_notice_rx = self.transport_notice_rx.take().unwrap();
-        let phase_watch_tx = self.phase_watch_tx.take().unwrap();
         tokio::pin!(transport_cmd_tx);
-        tokio::pin!(transport_rsp_rx);
-        tokio::pin!(transport_notice_rx);
 
-        let filter_cmd_rx = self.filter_cmd_rx.take().unwrap();
         let _filter_rsp_tx = self.filter_rsp_tx.clone();
         let filter_notice_tx = self.filter_notice_tx.clone();
-        tokio::pin!(filter_cmd_rx);
         tokio::pin!(_filter_rsp_tx);
         tokio::pin!(filter_notice_tx);
 
@@ -167,7 +161,7 @@ impl Filter {
 
         loop {
             tokio::select! {
-                response = transport_rsp_rx.recv() => {
+                response = self.transport_rsp_rx.recv() => {
                     // trace!("[FILTER] Transport Response: {:?}", response);
 
                     if let Some(response) = response {
@@ -179,11 +173,11 @@ impl Filter {
                                 error!("[FILTER] Packet and PacketSettings data did not align")
                             }
                             TransportRsp::BufferFull => {
-                                // TODO
+                                // TODO: understand if there is other action that needs to be taken besides logging
                                 error!("[FILTER] Transmit buffer is full");
                             }
                             TransportRsp::ExceedsMtu {tid} => {
-                                // TODO
+                                // TODO: understand if there is other action that needs to be taken besides logging
                                 error!("[FILTER] Packet exceeds MTU size. Tid={}", tid);
                             }
                             TransportRsp::EndpointError {error} => {
@@ -192,7 +186,7 @@ impl Filter {
                         }
                     }
                 }
-                notice = transport_notice_rx.recv() => {
+                notice = self.transport_notice_rx.recv() => {
                     if let Some(notice) = notice {
                         match notice {
                             TransportNotice::PacketDelivery{
@@ -215,7 +209,7 @@ impl Filter {
                         }
                     }
                 }
-                command = filter_cmd_rx.recv() => {
+                command = self.filter_cmd_rx.recv() => {
                     if let Some(command) = command {
                         trace!("[FILTER] New command: {:?}", command);
 
@@ -230,7 +224,7 @@ impl Filter {
                                         } else {
                                             phase = Phase::ShutdownInProgress
                                         }
-                                        phase_watch_tx.send(phase).unwrap();
+                                        self.phase_watch_tx.send(phase).unwrap();
                                         return;
                                     }
                                 }

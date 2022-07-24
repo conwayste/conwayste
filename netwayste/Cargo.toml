@@ -16,9 +16,9 @@ chrono               = "0.4.19"
 clap                 = "2"
 color-backtrace      = "0.5"
 conway               = { path = "../libconway" }
-env_logger           = "0.8.3"
+env_logger           = "0.9.0"
 futures              = "0.3"
-log                  = "0.4.11"
+log                  = "0.4.14"
 rand                 = "0.8.3"
 regex                = "1"
 reqwest              = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
@@ -29,20 +29,20 @@ time                 = "0.1"
 tokio-core           = "0.1.18"
 
 [dependencies.serde]
-version = "1.0.116"
+version = "1.0.126"
 features = ["derive"]
 
 [dependencies.tokio]
-version = "1.2"
+version = "1.7"
 features = ["full"]
 
 [dependencies.tokio-stream]
-version = "0.1.3"
+version = "0.1.6"
 
 [dependencies.tokio-util]
 version = "0.6.3"
 features = ["codec", "net"]
 
 [dev-dependencies]
-proptest             = "0.10"
+proptest             = "1.0"
 tokio-test = "*"

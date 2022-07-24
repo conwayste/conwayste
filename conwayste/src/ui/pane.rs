@@ -23,7 +23,7 @@ use ggez::graphics::{self, Color, DrawMode, DrawParam, Rect};
 use ggez::mint::{Point2, Vector2};
 use ggez::{Context, GameResult};
 
-use enum_iterator::IntoEnumIterator;
+use enum_iterator::all;
 use id_tree::NodeId;
 
 use super::{
@@ -83,7 +83,7 @@ impl Pane {
         };
 
         // for each event type, auto-register some of the common event types to a common handler
-        for event_type in EventType::into_enum_iter() {
+        for event_type in all::<EventType>() {
             if event_type.is_mouse_event() {
                 // unwrap OK because we aren't calling from within a handler
                 pane.on(event_type, Box::new(Pane::mouse_event_handler)).unwrap();

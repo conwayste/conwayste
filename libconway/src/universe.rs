@@ -1606,7 +1606,7 @@ impl Universe {
             diff.gen0 < diff.gen1,
             "expected gen0 < gen1, but {} >= {}",
             diff.gen0,
-            diff.gen1,
+            diff.gen1
         );
         // if diff too large, return Err(...)
         let gen_state_len = self.gen_states.len();
