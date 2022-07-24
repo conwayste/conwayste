@@ -1,16 +1,17 @@
 use crate::app::App;
+use crate::statefullist::StatefulList;
 
 use crossterm::event::KeyCode;
 
-pub fn handle_list_navigation(key: KeyCode, app: &mut App) {
+pub fn handle_list_navigation<L: ToString>(key: KeyCode, list: &mut StatefulList<L>) {
     match key {
-        KeyCode::Down => app.displayed_menu.next(),
-        KeyCode::Up => app.displayed_menu.previous(),
+        KeyCode::Down => list.next(),
+        KeyCode::Up => list.previous(),
         KeyCode::Char(c) => {
             if let Some(d) = c.to_digit(10) {
                 let d = d as usize;
-                if d <= app.displayed_menu.items.len() {
-                    app.displayed_menu.select(d);
+                if d <= list.items.len() {
+                    list.select(d);
                 }
             }
         }
