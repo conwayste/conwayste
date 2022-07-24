@@ -64,8 +64,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App, tick_rate: Dura
                 }
 
                 match app.input_stage {
-                    InputStage::SelectPacket => input::handle_list_navigation(key.code, &mut app.displayed_menu),
-                    InputStage::SelectCommand => input::handle_list_navigation(key.code, &mut app.displayed_menu),
+                    InputStage::SelectPacket => input::handle_list_navigation(key.code, &mut app),
+                    InputStage::SelectCommand => input::handle_list_navigation(key.code,&mut app),
                     InputStage::CommandModification => {}
                     InputStage::SendCommand => (),
                 }
@@ -85,6 +85,6 @@ pub fn draw_app<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())
         .split(f.size());
 
-    ui::draw_menu_list(f, &mut app.displayed_menu, "Client", chunks[0]);
+    ui::draw_menu_list(f, app.displayed_menu_mut(), "Client", chunks[0]);
     ui::draw_event_log(f, app, chunks[1]);
 }

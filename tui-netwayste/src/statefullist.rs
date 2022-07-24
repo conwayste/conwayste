@@ -54,4 +54,12 @@ impl<T> StatefulList<T> {
     pub fn unselect(&mut self) {
         self.state.select(None);
     }
+
+    pub fn get_index(&self) -> usize {
+        if let Some(x) = self.state.selected() {
+            x
+        } else {
+            0
+        }
+    }
 }

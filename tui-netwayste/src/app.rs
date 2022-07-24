@@ -1,3 +1,5 @@
+use std::vec;
+
 use crate::statefullist::StatefulList;
 use netwaystev2::filter::FilterMode;
 
@@ -39,30 +41,41 @@ pub struct App<'a> {
     pub input_stage:        InputStage,
     pub editing:            bool,   // Are we editing a field?
     pub preedit_text:       String, // Previous field value while editing it; restored on cancel
-    pub displayed_menu:     StatefulList<String>,
+    pub displayed_menu:     usize,
+    pub edit_index : Option<usize>,
     pub menus:              Vec<StatefulList<String>>,
     pub events:             Vec<(&'a str, &'a str)>,
 }
 
 impl<'a> App<'a> {
     pub(crate) fn new() -> App<'a> {
-        let menus = vec![
-            StatefulList::with_items(vec![
+        let root = StatefulList::with_items(vec![
                 "RequestAction".to_owned(),
                 "ResponseCode".to_owned(),
-            ]),
-        ];
+            ]);
 
-        let menu_display_index = 0;
-        let displayed_menu = menus[menu_display_index].clone();
+        let ra_list = StatefulList::with_items(vec![
+            "RA_one".to_owned(),
+            "RA_two".to_owned(),
+        ]);
+
+        let rc_list = StatefulList::with_items(vec![
+            "RC_one".to_owned(),
+            "RC_two".to_owned(),
+        ]);
+
+        let menus = vec![
+            root, ra_list, rc_list
+        ];
 
         App {
             mode: FilterMode::Client,
             input_stage: InputStage::SelectPacket,
             editing: false,
             preedit_text: String::new(),
-            displayed_menu,
             menus,
+            displayed_menu: 0,
+            edit_index: None,
             events: vec![
                 ("Event1", "INFO"),
                 ("Event2", "INFO"),
@@ -99,6 +112,16 @@ impl<'a> App<'a> {
     pub fn on_tick(&mut self) {
         let event = self.events.remove(0);
         self.events.push(event);
+    }
+
+    pub fn displayed_menu_mut(&mut self) -> &mut StatefulList<String>{
+        let index = self.displayed_menu;
+        match index {
+            0 => &mut self.menus[0],
+            1 => &mut self.menus[1],
+            2 => &mut self.menus[2],
+            _ => unimplemented!()
+        }
     }
 }
 
