@@ -1,6 +1,6 @@
 pub(crate) mod app;
-pub(crate) mod statefullist;
 mod input;
+pub(crate) mod statefullist;
 mod ui;
 
 use app::{App, InputStage};
@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // create app and run it
     let tick_rate = Duration::from_millis(250);
-    let app = App::new(FilterMode::Client, packet_selections );
+    let app = App::new(FilterMode::Client, packet_selections);
     let res = run_app(&mut terminal, app, tick_rate);
 
     // restore terminal
@@ -69,7 +69,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App, tick_rate: Dura
 
                 match app.input_stage {
                     InputStage::SelectPacket => input::handle_list_navigation(key.code, &mut app),
-                    InputStage::SelectCommand => input::handle_list_navigation(key.code,&mut app),
+                    InputStage::SelectCommand => input::handle_list_navigation(key.code, &mut app),
                     InputStage::CommandModification => {}
                     InputStage::SendCommand => (),
                 }
@@ -96,24 +96,13 @@ pub fn draw_app<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 fn create_packet_selection_lists(mode: FilterMode) -> Vec<StatefulList<String>> {
     match mode {
         FilterMode::Client => {
-            let client_packets = StatefulList::with_items(vec![
-                    "RequestAction".to_owned(),
-                    "ResponseCode".to_owned(),
-                ]);
+            let client_packets = StatefulList::with_items(vec!["RequestAction".to_owned(), "ResponseCode".to_owned()]);
 
-            let ra_list = StatefulList::with_items(vec![
-                "RA_one".to_owned(),
-                "RA_two".to_owned(),
-            ]);
+            let ra_list = StatefulList::with_items(vec!["RA_one".to_owned(), "RA_two".to_owned()]);
 
-            let rc_list = StatefulList::with_items(vec![
-                "RC_one".to_owned(),
-                "RC_two".to_owned(),
-            ]);
+            let rc_list = StatefulList::with_items(vec!["RC_one".to_owned(), "RC_two".to_owned()]);
 
-            vec![
-                client_packets, ra_list, rc_list
-            ]
+            vec![client_packets, ra_list, rc_list]
         }
         FilterMode::Server => {
             // TODO

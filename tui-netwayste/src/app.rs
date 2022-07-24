@@ -37,14 +37,14 @@ impl EditableCommand {
 /// Check the event handling at the bottom to see how to change the state on incoming events.
 /// Check the drawing logic for items on how to specify the highlighting style for selected items.
 pub struct App<'a> {
-    pub mode:               FilterMode,
-    pub input_stage:        InputStage,
-    pub editing:            bool,   // Are we editing a field?
-    pub preedit_text:       String, // Previous field value while editing it; restored on cancel
-    pub displayed_menu:     usize,
-    pub edit_index : Option<usize>,
-    pub menus:              Vec<StatefulList<String>>,
-    pub events:             Vec<(&'a str, &'a str)>,
+    pub mode:           FilterMode,
+    pub input_stage:    InputStage,
+    pub editing:        bool,   // Are we editing a field?
+    pub preedit_text:   String, // Previous field value while editing it; restored on cancel
+    pub displayed_menu: usize,
+    pub edit_index:     Option<usize>,
+    pub menus:          Vec<StatefulList<String>>,
+    pub events:         Vec<(&'a str, &'a str)>,
 }
 
 impl<'a> App<'a> {
@@ -95,13 +95,13 @@ impl<'a> App<'a> {
         self.events.push(event);
     }
 
-    pub fn displayed_menu_mut(&mut self) -> &mut StatefulList<String>{
+    pub fn displayed_menu_mut(&mut self) -> &mut StatefulList<String> {
         let index = self.displayed_menu;
         match index {
             0 => &mut self.menus[0],
             1 => &mut self.menus[1],
             2 => &mut self.menus[2],
-            _ => unimplemented!()
+            _ => unimplemented!(),
         }
     }
 }
@@ -118,7 +118,7 @@ impl InputStage {
     pub fn next(&mut self) {
         *self = match self {
             InputStage::SelectPacket => InputStage::SelectCommand,
-            InputStage::SelectCommand=> InputStage::CommandModification,
+            InputStage::SelectCommand => InputStage::CommandModification,
             InputStage::CommandModification => InputStage::SendCommand,
             InputStage::SendCommand => InputStage::SelectPacket,
         };
