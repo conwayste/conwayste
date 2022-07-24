@@ -1157,22 +1157,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "enum-tree"
-version = "0.1.0"
-dependencies = [
- "enum-tree-derive",
-]
-
-[[package]]
-name = "enum-tree-derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "env_logger"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4433,7 +4417,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "crossterm 0.22.1",
- "enum-tree",
  "netwaystev2",
  "strum",
  "thiserror",
