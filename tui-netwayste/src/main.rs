@@ -64,7 +64,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App, tick_rate: Dura
                 }
 
                 match app.input_stage {
-                    InputStage::CommandSelection => input::handle_list_navigation(key.code, &mut app),
+                    InputStage::SelectPacket => input::handle_list_navigation(key.code, &mut app.displayed_menu),
+                    InputStage::SelectCommand => input::handle_list_navigation(key.code, &mut app.displayed_menu),
                     InputStage::CommandModification => {}
                     InputStage::SendCommand => (),
                 }

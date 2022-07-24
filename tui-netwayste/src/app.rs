@@ -58,7 +58,7 @@ impl<'a> App<'a> {
 
         App {
             mode: FilterMode::Client,
-            input_stage: InputStage::CommandSelection,
+            input_stage: InputStage::SelectPacket,
             editing: false,
             preedit_text: String::new(),
             displayed_menu,
@@ -104,7 +104,8 @@ impl<'a> App<'a> {
 
 #[derive(PartialEq)]
 pub enum InputStage {
-    CommandSelection,
+    SelectPacket,
+    SelectCommand,
     CommandModification,
     SendCommand,
 }
@@ -112,16 +113,18 @@ pub enum InputStage {
 impl InputStage {
     pub fn next(&mut self) {
         *self = match self {
-            InputStage::CommandSelection => InputStage::CommandModification,
+            InputStage::SelectPacket => InputStage::SelectCommand,
+            InputStage::SelectCommand=> InputStage::CommandModification,
             InputStage::CommandModification => InputStage::SendCommand,
-            InputStage::SendCommand => InputStage::CommandSelection,
+            InputStage::SendCommand => InputStage::SelectPacket,
         };
     }
 
     pub fn prev(&mut self) {
         *self = match self {
-            InputStage::CommandSelection => InputStage::CommandSelection,
-            InputStage::CommandModification => InputStage::CommandSelection,
+            InputStage::SelectPacket => InputStage::SelectPacket,
+            InputStage::SelectCommand => InputStage::SelectPacket,
+            InputStage::CommandModification => InputStage::SelectCommand,
             InputStage::SendCommand => InputStage::CommandModification,
         };
     }
