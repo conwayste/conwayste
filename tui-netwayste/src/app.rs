@@ -1,6 +1,5 @@
 use crate::statefullist::StatefulList;
 use netwaystev2::filter::FilterMode;
-use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 struct Field {
@@ -29,11 +28,6 @@ impl EditableCommand {
     }
 }
 
-pub enum MenuItemEntry {
-    MenuIndex(usize),
-    EditDialog(EditableCommand),
-}
-
 /// This struct holds the current state of the app. In particular, it has the `items` field which is a wrapper
 /// around `ListState`. Keeping track of the items state let us render the associated widget with its state
 /// and have access to features such as natural scrolling.
@@ -47,20 +41,17 @@ pub struct App<'a> {
     pub preedit_text:       String, // Previous field value while editing it; restored on cancel
     pub displayed_menu:     StatefulList<String>,
     pub menus:              Vec<StatefulList<String>>,
-    pub menu_item_map:      HashMap<String, MenuItemEntry>,
     pub events:             Vec<(&'a str, &'a str)>,
 }
 
 impl<'a> App<'a> {
     pub(crate) fn new() -> App<'a> {
-        let mut menu_item_map = HashMap::new();
-        menu_item_map.insert("RequestAction".to_owned(), MenuItemEntry::MenuIndex(1));
-        menu_item_map.insert("ResponseCode".to_owned(), MenuItemEntry::MenuIndex(2));
-
-        let menus = vec![StatefulList::with_items(vec![
-            "RequestAction".to_owned(),
-            "ResponseCode".to_owned(),
-        ])];
+        let menus = vec![
+            StatefulList::with_items(vec![
+                "RequestAction".to_owned(),
+                "ResponseCode".to_owned(),
+            ]),
+        ];
 
         let menu_display_index = 0;
         let displayed_menu = menus[menu_display_index].clone();
@@ -72,7 +63,6 @@ impl<'a> App<'a> {
             preedit_text: String::new(),
             displayed_menu,
             menus,
-            menu_item_map,
             events: vec![
                 ("Event1", "INFO"),
                 ("Event2", "INFO"),

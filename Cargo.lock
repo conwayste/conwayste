@@ -4418,7 +4418,6 @@ dependencies = [
  "anyhow",
  "crossterm 0.22.1",
  "netwaystev2",
- "strum",
  "thiserror",
  "tui",
  "unicode-width",

@@ -18,12 +18,6 @@ fn handle_command_edit(key: KeyCode, app: &mut App) {
             let mut opt_edit_cmd = None;
             if let Some(index) = app.displayed_menu.state.selected() {
                 let item_name = &app.displayed_menu.items[index];
-                if let Some(entry) = app.menu_item_map.get_mut(item_name) {
-                    match entry {
-                        MenuItemEntry::EditDialog(edit_cmd) => opt_edit_cmd = Some(edit_cmd),
-                        _ => unreachable!("It should be impossible to be editing anything other than the EditDialog"),
-                    }
-                }
             }
 
             // Unwrap okay because all other paths are unreachable

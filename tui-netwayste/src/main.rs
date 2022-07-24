@@ -3,7 +3,7 @@ pub(crate) mod statefullist;
 mod input;
 mod ui;
 
-use app::{App, InputStage, MenuItemEntry};
+use app::{App, InputStage};
 
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
@@ -15,7 +15,6 @@ use std::{
     io,
     time::{Duration, Instant},
 };
-use strum::IntoEnumIterator;
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Rect},
