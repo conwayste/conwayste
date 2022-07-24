@@ -1,5 +1,6 @@
 pub(crate) mod app;
 pub(crate) mod statefullist;
+mod input;
 mod ui;
 
 use app::{App, InputStage, MenuItemEntry};
@@ -64,8 +65,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App, tick_rate: Dura
                 }
 
                 match app.input_stage {
-                    InputStage::NavigateMenu => handle_command_keys(key.code, &mut app),
-                    InputStage::NavigateEdit => {}
+                    InputStage::CommandSelection => input::handle_list_navigation(key.code, &mut app),
+                    InputStage::CommandModification => {}
                     InputStage::SendCommand => (),
                 }
             }
@@ -86,66 +87,4 @@ pub fn draw_app<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     ui::draw_menu_list(f, &mut app.displayed_menu, "Client", chunks[0]);
     ui::draw_event_log(f, app, chunks[1]);
-}
-
-fn handle_command_keys(key: KeyCode, app: &mut App) {
-    match key {
-        KeyCode::Down => app.displayed_menu.next(),
-        KeyCode::Up => app.displayed_menu.previous(),
-        KeyCode::Char(c) => {
-            if let Some(d) = c.to_digit(10) {
-                let d = d as usize;
-                if d <= app.displayed_menu.items.len() {
-                    app.displayed_menu.select(d);
-                }
-            }
-        }
-        KeyCode::Enter => {
-            let mut opt_next_menu_idx = None;
-            let mut opt_edit_cmd_ref = None;
-
-            if let Some(index) = app.displayed_menu.state.selected() {
-                let item_name = &app.displayed_menu.items[index];
-
-                // Determine if the selected menu item leads to a sub-menu or an edit dialog. A submenu falls under a
-                // request action or response code
-                if let Some(entry) = app.menu_item_map.get(item_name) {
-                    match entry {
-                        MenuItemEntry::MenuIndex(next_menu_idx) => opt_next_menu_idx = Some(next_menu_idx),
-                        MenuItemEntry::EditDialog(edit_cmd_ref) => opt_edit_cmd_ref = Some(edit_cmd_ref),
-                    }
-                }
-            }
-
-            if let Some(next_menu_index) = opt_next_menu_idx {
-                // Save the state current menu and load the new menu
-                let current_menu = std::mem::replace(&mut app.displayed_menu, app.menus[*next_menu_index].clone());
-                app.menus[app.menu_display_index] = current_menu;
-                app.menu_display_index = *next_menu_index;
-            }
-
-            if let Some(edit_cmd_ref) = opt_edit_cmd_ref {
-                // Save the menu state; Load the edit state
-
-                app.input_stage.next();
-            }
-        }
-        KeyCode::Esc => {
-            if app.menu_display_index == 0 {
-                return;
-            }
-
-            if app.input_stage == InputStage::NavigateMenu {
-                // Save current menu state and load the parent menu
-                app.menus[app.menu_display_index] = app.displayed_menu.clone();
-
-                // HACK: We only have two levels of menus now. It isn't worth the time to build a proper menu tree
-                app.menu_display_index = 0;
-                app.displayed_menu = app.menus[app.menu_display_index].clone();
-            } else {
-                app.input_stage.prev();
-            }
-        }
-        _ => {}
-    }
 }

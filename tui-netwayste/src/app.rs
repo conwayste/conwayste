@@ -46,7 +46,6 @@ pub struct App<'a> {
     pub editing:            bool,   // Are we editing a field?
     pub preedit_text:       String, // Previous field value while editing it; restored on cancel
     pub displayed_menu:     StatefulList<String>,
-    pub menu_display_index: usize, // Index into the following vec
     pub menus:              Vec<StatefulList<String>>,
     pub menu_item_map:      HashMap<String, MenuItemEntry>,
     pub events:             Vec<(&'a str, &'a str)>,
@@ -68,11 +67,10 @@ impl<'a> App<'a> {
 
         App {
             mode: FilterMode::Client,
-            input_stage: InputStage::NavigateMenu,
+            input_stage: InputStage::CommandSelection,
             editing: false,
             preedit_text: String::new(),
             displayed_menu,
-            menu_display_index,
             menus,
             menu_item_map,
             events: vec![
@@ -116,25 +114,25 @@ impl<'a> App<'a> {
 
 #[derive(PartialEq)]
 pub enum InputStage {
-    NavigateMenu,
-    NavigateEdit,
+    CommandSelection,
+    CommandModification,
     SendCommand,
 }
 
 impl InputStage {
     pub fn next(&mut self) {
         *self = match self {
-            InputStage::NavigateMenu => InputStage::NavigateEdit,
-            InputStage::NavigateEdit => InputStage::SendCommand,
-            InputStage::SendCommand => InputStage::NavigateMenu,
+            InputStage::CommandSelection => InputStage::CommandModification,
+            InputStage::CommandModification => InputStage::SendCommand,
+            InputStage::SendCommand => InputStage::CommandSelection,
         };
     }
 
     pub fn prev(&mut self) {
         *self = match self {
-            InputStage::NavigateMenu => InputStage::NavigateMenu,
-            InputStage::NavigateEdit => InputStage::NavigateMenu,
-            InputStage::SendCommand => InputStage::NavigateEdit,
+            InputStage::CommandSelection => InputStage::CommandSelection,
+            InputStage::CommandModification => InputStage::CommandSelection,
+            InputStage::SendCommand => InputStage::CommandModification,
         };
     }
 }
