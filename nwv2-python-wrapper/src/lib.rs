@@ -1,27 +1,48 @@
 /// Reference: https://pyo3.rs/v0.16.4/ecosystem/async-await.html#pyo3-native-rust-modules
+use pyo3_asyncio;
 use pyo3::prelude::*;
+use pyo3::exceptions::PyValueError;
 
 use netwaystev2::protocol::Packet;
 use netwaystev2::protocol::RequestAction;
 
-#[pyfunction]
-fn get_a_packet() -> PyResult<String> {
-    let p = Packet::Request{
-        sequence:     1,
-        response_ack: None, // Next expected  sequence number the Server responds with to the Client.
-        // Stated differently, the client has seen Server responses from 0 to response_ack-1.
-        cookie:       None,
-        action:       RequestAction::Connect{
-            name: "Paul".to_owned(),
-            client_version: "0.0.0".to_owned(),
-        },
-    };
-    Ok(format!("{:#?}", p))
+/// Packet wrapper
+#[pyclass]
+struct PacketW {
+    inner: Packet,
 }
+
+#[pymethods]
+impl PacketW {
+    #[new]
+    fn new(variant: String, cookie: Option<String>) -> PyResult<Self> {
+        let opt_packet = match variant.as_str() {
+            "request" => {
+                Ok(Packet::Request {
+                    sequence: 0,
+                    response_ack: None,
+                    action: RequestAction::None,
+                    cookie,
+                })
+            }
+            // TODO: more variants
+            _ => Err(PyValueError::new_err(format!("invalid variant type: {}", variant)))
+        };
+        opt_packet.map(|packet| PacketW { inner: packet })
+    }
+
+    fn __repr__(slf: PyRef<'_, Self>) -> String {
+        format!("{:?}", slf.inner)
+    }
+
+    // TODO: methods for getting/setting stuff in a packet
+}
+
 
 /// A Python module implemented in Rust.
 #[pymodule]
 fn nwv2_python_wrapper(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(get_a_packet, m)?)?;
+    // m.add_function(wrap_pyfunction!(rust_delayed_value, m)?)?;
+    m.add_class::<PacketW>()?;
     Ok(())
 }
