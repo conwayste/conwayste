@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.38"
 crossterm = "0.22.1"
-mimicry         = {git = "https://github.com/conwayste/mimicry", rev = "bd3674f19067a8df185fb3910d3390787b52d6cd"}
+mimicry         = {git = "https://github.com/conwayste/mimicry", rev = "79b65426ec9bfc2a380358e5531ce7c0f8cf2bfb"}
 netwaystev2 = {path = "../netwaystev2"}
 strum           = "0.23"
 strum_macros    = "0.23"

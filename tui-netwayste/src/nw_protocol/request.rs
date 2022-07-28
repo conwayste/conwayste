@@ -4,7 +4,7 @@ use strum_macros::{Display, EnumIter};
 
 ////////////////////// Data model ////////////////////////
 #[derive(PartialEq, Debug, Clone, EnumIter, Display, Default, Mimic)]
-pub enum RequestAction {
+pub(crate) enum RequestAction {
     #[default]
     None,
     Connect {

@@ -15,7 +15,7 @@ pub fn create_packet_selection_lists(mode: FilterMode) -> Vec<StatefulList<Strin
             };
 
             let ra_list = StatefulList::with_items(RequestAction::iter().map(|ra| ra.to_string()).collect());
-            let rc_list = StatefulList::with_items(vec!["RC_one".to_owned(), "RC_two".to_owned()]);
+            let rc_list = StatefulList::with_items(ResponseCode::iter().map(|rc| rc.to_string()).collect());
 
             vec![client_packets, ra_list, rc_list]
         }
