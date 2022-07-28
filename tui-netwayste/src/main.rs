@@ -2,6 +2,8 @@ pub(crate) mod app;
 mod input;
 pub(crate) mod statefullist;
 mod ui;
+mod nw;
+mod nw_protocol;
 
 use app::{App, InputStage};
 
@@ -10,8 +12,9 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use netwaystev2::filter::FilterMode;
 use statefullist::StatefulList;
+use netwaystev2::filter::FilterMode;
+use nw::create_packet_selection_lists;
 use std::{
     error::Error,
     io,
@@ -91,22 +94,4 @@ pub fn draw_app<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     ui::draw_menu_list(f, app.displayed_menu_mut(), "Client", chunks[0]);
     ui::draw_event_log(f, app, chunks[1]);
-}
-
-fn create_packet_selection_lists(mode: FilterMode) -> Vec<StatefulList<String>> {
-    match mode {
-        FilterMode::Client => {
-            let client_packets = StatefulList::with_items(vec!["RequestAction".to_owned(), "ResponseCode".to_owned()]);
-
-            let ra_list = StatefulList::with_items(vec!["RA_one".to_owned(), "RA_two".to_owned()]);
-
-            let rc_list = StatefulList::with_items(vec!["RC_one".to_owned(), "RC_two".to_owned()]);
-
-            vec![client_packets, ra_list, rc_list]
-        }
-        FilterMode::Server => {
-            // TODO
-            vec![]
-        }
-    }
 }
