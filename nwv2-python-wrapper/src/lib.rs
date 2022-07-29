@@ -1,4 +1,8 @@
-/// Reference: https://pyo3.rs/v0.16.4/ecosystem/async-await.html#pyo3-native-rust-modules
+///! Reference: https://pyo3.rs/v0.16.4/ecosystem/async-await.html#pyo3-native-rust-modules
+
+pub mod wrappers;
+use wrappers::request::*;
+
 use pyo3_asyncio;
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
@@ -6,7 +10,13 @@ use pyo3::exceptions::PyValueError;
 use netwaystev2::protocol::Packet;
 use netwaystev2::protocol::RequestAction;
 
-/// Packet wrapper
+/// A wrapped netwaystev2 Packet
+///
+/// Example usage:
+///
+/// ```python
+/// p = PacketW("request", "fakecookie")
+/// ```
 #[pyclass]
 struct PacketW {
     inner: Packet,
@@ -31,8 +41,8 @@ impl PacketW {
         opt_packet.map(|packet| PacketW { inner: packet })
     }
 
-    fn __repr__(slf: PyRef<'_, Self>) -> String {
-        format!("{:?}", slf.inner)
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.inner)
     }
 
     // TODO: methods for getting/setting stuff in a packet
@@ -44,5 +54,6 @@ impl PacketW {
 fn nwv2_python_wrapper(_py: Python, m: &PyModule) -> PyResult<()> {
     // m.add_function(wrap_pyfunction!(rust_delayed_value, m)?)?;
     m.add_class::<PacketW>()?;
+    m.add_class::<RequestActionW>()?;
     Ok(())
 }
