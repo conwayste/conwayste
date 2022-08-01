@@ -2285,7 +2285,6 @@ checksum = "2a60c7ce501c71e03a9c9c0d35b861413ae925bd979cc7a4e30d060069aaac8d"
 [[package]]
 name = "mimicry"
 version = "0.1.0"
-source = "git+https://github.com/conwayste/mimicry?rev=bd3674f19067a8df185fb3910d3390787b52d6cd#bd3674f19067a8df185fb3910d3390787b52d6cd"
 dependencies = [
  "mimicry-arg",
  "mimicry-derive",
@@ -2294,7 +2293,6 @@ dependencies = [
 [[package]]
 name = "mimicry-arg"
 version = "0.1.0"
-source = "git+https://github.com/conwayste/mimicry?rev=bd3674f19067a8df185fb3910d3390787b52d6cd#bd3674f19067a8df185fb3910d3390787b52d6cd"
 dependencies = [
  "mimicry-arg-derive",
 ]
@@ -2302,7 +2300,6 @@ dependencies = [
 [[package]]
 name = "mimicry-arg-derive"
 version = "0.1.0"
-source = "git+https://github.com/conwayste/mimicry?rev=bd3674f19067a8df185fb3910d3390787b52d6cd#bd3674f19067a8df185fb3910d3390787b52d6cd"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2312,7 +2309,6 @@ dependencies = [
 [[package]]
 name = "mimicry-derive"
 version = "0.1.0"
-source = "git+https://github.com/conwayste/mimicry?rev=bd3674f19067a8df185fb3910d3390787b52d6cd#bd3674f19067a8df185fb3910d3390787b52d6cd"
 dependencies = [
  "proc-macro2",
  "quote",

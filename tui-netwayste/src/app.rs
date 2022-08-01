@@ -1,5 +1,6 @@
 use std::vec;
 
+use crate::nw_protocol::MimicRequestAction;
 use crate::statefullist::StatefulList;
 use netwaystev2::filter::FilterMode;
 
@@ -40,21 +41,25 @@ pub struct App<'a> {
     pub mode:           FilterMode,
     pub input_stage:    InputStage,
     pub editing:        bool,   // Are we editing a field?
-    pub preedit_text:   String, // Previous field value while editing it; restored on cancel
     pub displayed_menu: usize,
     pub edit_index:     Option<usize>,
     pub menus:          Vec<StatefulList<String>>,
+
+    // would be better off as something that isn't a stateful list but this hack works for now
+    pub edit_list_state: StatefulList<String>,
+    pub ra_data:        Vec<MimicRequestAction>,
     pub events:         Vec<(&'a str, &'a str)>,
 }
 
 impl<'a> App<'a> {
-    pub(crate) fn new(mode: FilterMode, menus: Vec<StatefulList<String>>) -> App<'a> {
+    pub(crate) fn new(mode: FilterMode, menus: Vec<StatefulList<String>>, request_action_data: Vec<MimicRequestAction>) -> App<'a> {
         App {
             mode,
             input_stage: InputStage::SelectPacket,
             editing: false,
-            preedit_text: String::new(),
             menus,
+            ra_data: request_action_data,
+            edit_list_state: StatefulList::with_items(vec![]),
             displayed_menu: 0,
             edit_index: None,
             events: vec![
@@ -101,6 +106,16 @@ impl<'a> App<'a> {
             0 => &mut self.menus[0],
             1 => &mut self.menus[1],
             2 => &mut self.menus[2],
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn displayed_menu(&mut self) -> &StatefulList<String> {
+        let index = self.displayed_menu;
+        match index {
+            0 => &self.menus[0],
+            1 => &self.menus[1],
+            2 => &self.menus[2],
             _ => unimplemented!(),
         }
     }

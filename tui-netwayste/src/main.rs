@@ -1,9 +1,9 @@
 pub(crate) mod app;
 mod input;
-pub(crate) mod statefullist;
-mod ui;
 mod nw;
 mod nw_protocol;
+pub(crate) mod statefullist;
+mod ui;
 
 use app::{App, InputStage};
 
@@ -12,9 +12,9 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use statefullist::StatefulList;
 use netwaystev2::filter::FilterMode;
-use nw::create_packet_selection_lists;
+use nw::{create_packet_selection_lists, create_request_action_data};
+use statefullist::StatefulList;
 use std::{
     error::Error,
     io,
@@ -25,7 +25,6 @@ use tui::{
     layout::{Constraint, Direction, Layout, Rect},
     Frame, Terminal,
 };
-use unicode_width::UnicodeWidthStr;
 
 fn main() -> Result<(), Box<dyn Error>> {
     // setup terminal
@@ -36,10 +35,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     let packet_selections = create_packet_selection_lists(FilterMode::Client);
+    let request_actions = create_request_action_data();
 
     // create app and run it
     let tick_rate = Duration::from_millis(250);
-    let app = App::new(FilterMode::Client, packet_selections);
+    let app = App::new(FilterMode::Client, packet_selections, request_actions);
     let res = run_app(&mut terminal, app, tick_rate);
 
     // restore terminal
@@ -64,6 +64,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App, tick_rate: Dura
         let timeout = tick_rate
             .checked_sub(last_tick.elapsed())
             .unwrap_or_else(|| Duration::from_secs(0));
+
         if crossterm::event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if KeyCode::Char('q') == key.code {
@@ -73,7 +74,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App, tick_rate: Dura
                 match app.input_stage {
                     InputStage::SelectPacket => input::handle_list_navigation(key.code, &mut app),
                     InputStage::SelectCommand => input::handle_list_navigation(key.code, &mut app),
-                    InputStage::CommandModification => {}
+                    InputStage::CommandModification => input::handle_command_modification(key.code, &mut app),
                     InputStage::SendCommand => (),
                 }
             }
@@ -94,4 +95,5 @@ pub fn draw_app<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     ui::draw_menu_list(f, app.displayed_menu_mut(), "Client", chunks[0]);
     ui::draw_event_log(f, app, chunks[1]);
+    ui::draw_edit_ui(f, app);
 }

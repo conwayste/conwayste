@@ -1,4 +1,4 @@
-use crate::app::App;
+use crate::app::{App, InputStage};
 use crate::statefullist::StatefulList;
 
 use crossterm::event::KeyCode;
@@ -26,10 +26,12 @@ pub fn handle_list_navigation(key: KeyCode, app: &mut App) {
                 // Already in a sub menu
                 app.edit_index = Some(index + 1);
             }
+            app.input_stage.next();
         }
         KeyCode::Esc => {
             app.displayed_menu = 0;
             app.edit_index = None;
+            app.input_stage = InputStage::SelectPacket;
         }
         _ => {}
     }

@@ -1,4 +1,5 @@
 use crate::app::App;
+use crate::nw::get_mimic_meta_from;
 
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -8,8 +9,9 @@ use tui::{
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
+use unicode_width::UnicodeWidthStr;
 
-fn editor_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
+pub fn draw_edit_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let size = f.size();
 
     let msg = if !app.editing {
@@ -57,28 +59,35 @@ fn editor_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let area = centered_rect(80, 20, size);
     f.render_widget(Clear, area); //this clears out the background
 
+    let command_index = app.displayed_menu_mut().get_index();
+
+    let mimic_metadata = get_mimic_meta_from(&app.ra_data[command_index]);
+
     // Iterate through all elements in the `items` app and append some debug text to it.
-    let items: Vec<ListItem> = app
-        .displayed_editor
-        .items
-        .iter()
-        .map(|field| {
-            let lines = vec![Spans::from(format!("{} -> {}", field.name, field.value))];
-            ListItem::new(lines).style(Style::default().fg(Color::Black).bg(Color::White))
-        })
-        .collect();
+    let mut items: Vec<ListItem> = vec![];
+    if let Some(metadata) = mimic_metadata {
+        // FIXME: MetadataField needs to be bound to Iterator
+        for field in &metadata.fields {
+            let lines = vec![Spans::from(format!(
+                "{} ({}) {}",
+                field.name,
+                field.type_,
+                "PLACEHOLDER".to_owned()
+            ))];
+            items.push(ListItem::new(lines).style(Style::default().fg(Color::Black).bg(Color::White)));
+        }
+    }
 
     // Create a List from all list items and highlight the currently selected one
-    let editing_cmd_name = app.displayed_menu.items[app.displayed_menu.state.selected().unwrap()].to_string();
     let items = List::new(items)
         .block(block)
         .highlight_style(Style::default().bg(Color::LightGreen).add_modifier(Modifier::BOLD))
         .highlight_symbol(">> ");
 
     if app.editing {
-        let index = app.displayed_editor.state.selected().unwrap();
-        let label_text = &app.displayed_editor.items[index].name;
-        let editing_text = &app.displayed_editor.items[index].value;
+        let index = 0;
+        let label_text = "label_text Fixme!";
+        let editing_text = "editing_text Fixme!";
         f.set_cursor(
             area.x
                 + ">> ".width() as u16
@@ -90,6 +99,34 @@ fn editor_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         );
     }
 
+    let mut list_state = ListState::default();
     // We can now render the item list
-    f.render_stateful_widget(items, area, &mut app.displayed_editor.state);
+    f.render_stateful_widget(items, area, &mut list_state);
+}
+
+/// helper function to create a centered rect using up certain percentage of the available rect `r`
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Percentage((100 - percent_y) / 2),
+                Constraint::Percentage(percent_y),
+                Constraint::Percentage((100 - percent_y) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Percentage((100 - percent_x) / 2),
+                Constraint::Percentage(percent_x),
+                Constraint::Percentage((100 - percent_x) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(popup_layout[1])[1]
 }
