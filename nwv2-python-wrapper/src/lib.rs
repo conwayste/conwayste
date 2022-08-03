@@ -1,6 +1,7 @@
 ///! Reference: https://pyo3.rs/v0.16.4/ecosystem/async-await.html#pyo3-native-rust-modules
 
 pub mod wrappers;
+pub(crate) mod utils;
 use wrappers::request::*;
 
 use pyo3_asyncio;
