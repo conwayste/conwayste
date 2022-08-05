@@ -630,7 +630,7 @@ dependencies = [
  "custom_error",
  "env_logger 0.9.0",
  "log",
- "rand 0.8.3",
+ "rand 0.8.5",
  "serde",
 ]
 
@@ -652,7 +652,7 @@ dependencies = [
  "lazy_static",
  "log",
  "netwayste",
- "rand 0.8.3",
+ "rand 0.8.5",
  "serde",
  "tokio 1.7.1",
  "toml",
@@ -2417,7 +2417,7 @@ dependencies = [
  "futures 0.3.8",
  "log",
  "proptest",
- "rand 0.8.3",
+ "rand 0.8.5",
  "regex",
  "reqwest",
  "semver 0.11.0",
@@ -2852,7 +2852,7 @@ dependencies = [
  "lazy_static",
  "num-traits",
  "quick-error 2.0.0",
- "rand 0.8.3",
+ "rand 0.8.5",
  "rand_chacha 0.3.0",
  "rand_xorshift",
  "regex-syntax",
@@ -2947,19 +2947,18 @@ dependencies = [
  "libc",
  "rand_chacha 0.2.2",
  "rand_core 0.5.1",
- "rand_hc 0.2.0",
+ "rand_hc",
 ]
 
 [[package]]
 name = "rand"
-version = "0.8.3"
+version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ef9e7e66b4468674bfcb0c81af8b7fa0bb154fa9f28eb840da5c447baeb8d7e"
+checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
 dependencies = [
  "libc",
  "rand_chacha 0.3.0",
  "rand_core 0.6.0",
- "rand_hc 0.3.0",
 ]
 
 [[package]]
@@ -3022,15 +3021,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca3129af7b92a17112d59ad498c6f81eaf463253766b90396d39ea7a39d6613c"
 dependencies = [
  "rand_core 0.5.1",
-]
-
-[[package]]
-name = "rand_hc"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3190ef7066a446f2e7f42e239d161e905420ccab01eb967c9eb27d21b2322a73"
-dependencies = [
- "rand_core 0.6.0",
 ]
 
 [[package]]
