@@ -7,8 +7,15 @@ use crate::utils::get_from_dict;
 use netwaystev2::protocol::RequestAction;
 
 #[pyclass]
+#[derive(Clone)]
 pub struct RequestActionW {
     inner: RequestAction,
+}
+
+impl Into<RequestAction> for RequestActionW {
+    fn into(self) -> RequestAction {
+        self.inner
+    }
 }
 
 #[pymethods]
@@ -78,7 +85,7 @@ impl RequestActionW {
                 RequestAction::ClearArea{x,y,w,h}
             }
             _ => {
-                return Err(PyTypeError::new_err("variant not supported"));
+                return Err(PyValueError::new_err(format!("invalid variant type: {}", variant)));
             }
         };
         Ok(RequestActionW{inner:ra})

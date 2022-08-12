@@ -1,8 +1,11 @@
 ///! Reference: https://pyo3.rs/v0.16.4/ecosystem/async-await.html#pyo3-native-rust-modules
 
+use std::collections::HashMap;
+
 pub mod wrappers;
 pub(crate) mod utils;
 use wrappers::request::*;
+use utils::get_from_dict;
 
 use pyo3_asyncio;
 use pyo3::prelude::*;
@@ -26,20 +29,32 @@ struct PacketW {
 #[pymethods]
 impl PacketW {
     #[new]
-    fn new(variant: String, cookie: Option<String>) -> PyResult<Self> {
-        let opt_packet = match variant.as_str() {
+    #[args(kwds="**")]
+    fn new(variant: String, kwds: Option<HashMap<String,&PyAny>>) -> PyResult<Self> {
+        let kwds = if let Some(kwds) = kwds {
+            kwds
+        } else {
+            HashMap::new()
+        };
+        let packet = match variant.to_lowercase().as_str() {
             "request" => {
-                Ok(Packet::Request {
-                    sequence: 0,
-                    response_ack: None,
-                    action: RequestAction::None,
+                let sequence: u64 = get_from_dict(&kwds, "sequence")?;
+                let response_ack: Option<u64> = get_from_dict(&kwds, "response_ack")?;
+                let action_wrapper: RequestActionW = get_from_dict(&kwds, "action")?;
+                let cookie: Option<String> = get_from_dict(&kwds, "cookie")?;
+                Packet::Request {
+                    sequence,
+                    response_ack,
+                    action: action_wrapper.into(),
                     cookie,
-                })
+                }
             }
             // TODO: more variants
-            _ => Err(PyValueError::new_err(format!("invalid variant type: {}", variant)))
+            _ => {
+                return Err(PyValueError::new_err(format!("invalid variant type: {}", variant)));
+            }
         };
-        opt_packet.map(|packet| PacketW { inner: packet })
+        Ok(PacketW { inner: packet })
     }
 
     fn __repr__(&self) -> String {
