@@ -39,7 +39,7 @@ pub type TransportRspRecv = Receiver<TransportRsp>;
 pub type TransportNotifySend = Sender<TransportNotice>;
 pub type TransportNotifyRecv = Receiver<TransportNotice>;
 
-type TransportInit = (Transport, TransportCmdSend, TransportRspRecv, TransportNotifyRecv);
+pub type TransportInit = (Transport, TransportCmdSend, TransportRspRecv, TransportNotifyRecv);
 
 type TransportItem = (Packet, SocketAddr);
 
@@ -64,6 +64,7 @@ pub struct Transport {
 impl Transport {
     pub fn new(opt_host: Option<&str>, opt_port: Option<u16>) -> Result<TransportInit> {
         // Bind socket to UDP
+        //XXX move this into run()
         let udp_socket = bind(opt_host, opt_port)?;
 
         // Split the socket into a two-part stream
