@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
 
     // Create the lowest (Transport) layer, returning the layer itself plus three channel halves
     // (one outgoing and two incoming) for communicating with it.
-    let (mut transport, transport_cmd_tx, transport_rsp_rx, transport_notice_rx) = Transport::new(None, None)?;
+    let (mut transport, transport_cmd_tx, transport_rsp_rx, transport_notice_rx) = Transport::new(None, None).await?;
     let transport_shutdown_watcher = transport.get_shutdown_watcher();
 
     // Start the transport's task in the background

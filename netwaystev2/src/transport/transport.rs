@@ -62,10 +62,9 @@ pub struct Transport {
 }
 
 impl Transport {
-    pub fn new(opt_host: Option<&str>, opt_port: Option<u16>) -> Result<TransportInit> {
+    pub async fn new(opt_host: Option<String>, opt_port: Option<u16>) -> Result<TransportInit> {
         // Bind socket to UDP
-        //XXX move this into run()
-        let udp_socket = bind(opt_host, opt_port)?;
+        let udp_socket = bind(opt_host, opt_port).await?;
 
         // Split the socket into a two-part stream
         let udp_stream = UdpFramed::new(udp_socket, NetwaystePacketCodec);
@@ -186,15 +185,14 @@ impl Transport {
     }
 }
 
-fn bind(opt_host: Option<&str>, opt_port: Option<u16>) -> Result<UdpSocket> {
-    let host = if let Some(host) = opt_host { host } else { DEFAULT_HOST };
+async fn bind(opt_host: Option<String>, opt_port: Option<u16>) -> Result<UdpSocket> {
+    let host = if let Some(host) = opt_host { host } else { DEFAULT_HOST.to_owned() };
     let port = if let Some(port) = opt_port { port } else { DEFAULT_PORT };
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
 
     info!("[TRANSPORT] Attempting to bind to {}", addr);
 
-    let sock_fut = UdpSocket::bind(&addr);
-    let sock = futures::executor::block_on(sock_fut)?;
+    let sock = UdpSocket::bind(&addr).await?;
 
     Ok(sock)
 }
