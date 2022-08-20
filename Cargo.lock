@@ -2691,6 +2691,7 @@ checksum = "b8f8bdf33df195859076e54ab11ee78a1b208382d3a26ec40d142ffc1ecc49ef"
 name = "nwv2-python-wrapper"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "netwaystev2",
  "pyo3",
  "pyo3-asyncio",
