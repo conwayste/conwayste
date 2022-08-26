@@ -6,7 +6,7 @@ pub(crate) mod common;
 pub(crate) mod utils;
 use protocol::request::RequestActionW;
 use protocol::packet::PacketW;
-use transport::{new_transport_interface, TransportInterface};
+use transport::*;
 use common::EndpointW;
 
 use pyo3_asyncio;
@@ -20,6 +20,8 @@ fn nwv2_python_wrapper(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<RequestActionW>()?;
     m.add_class::<PacketW>()?;
     m.add_class::<EndpointW>()?;
+    m.add_class::<ProcessUniqueIdW>()?;
+    m.add_class::<PacketSettingsW>()?;
     m.add_class::<TransportInterface>()?;
     m.add_function(wrap_pyfunction!(new_transport_interface, m)?)?;
     Ok(())

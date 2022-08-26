@@ -1,3 +1,6 @@
+pub mod interface;
+pub use interface::*;
+
 use futures_util::future::TryFutureExt;
 use pyo3::prelude::*;
 use pyo3::exceptions::*;
@@ -49,7 +52,13 @@ impl TransportInterface  {
         pyo3_asyncio::tokio::future_into_py(py, run_fut)
     }
 
-    //XXX allow receiving and sending on channels.
+    //fn command_response<'p>(&mut self, py: Python<'p>, transport_cmd: /*XXX impl*/TransportCmdW) -> PyResult<&'p PyAny> {
+    //    //XXX send a command and get a response
+    //}
+
+    //fn get_notifications<'p>(&mut self, py: Python<'p>) -> PyResult<&'p PyAny> {
+    //    //XXX get a Vec of Transport notifications.
+    //}
 
     fn __repr__(&self) -> String {
         format!(

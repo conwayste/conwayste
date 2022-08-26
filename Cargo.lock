@@ -2695,6 +2695,7 @@ dependencies = [
  "netwaystev2",
  "pyo3",
  "pyo3-asyncio",
+ "snowflake",
  "tokio 1.16.1",
 ]
 
