@@ -24,6 +24,7 @@ fn nwv2_python_wrapper(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PacketSettingsW>()?;
     m.add_class::<TransportInterface>()?;
     m.add_class::<TransportCmdW>()?;
+    m.add_class::<TransportRspW>()?;
     m.add_function(wrap_pyfunction!(new_transport_interface, m)?)?;
     Ok(())
 }

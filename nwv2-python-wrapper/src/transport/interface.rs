@@ -8,12 +8,18 @@ use snowflake::ProcessUniqueId;
 use crate::protocol::PacketW;
 use crate::utils::get_from_dict;
 use crate::common::*;
-use netwaystev2::common::Endpoint;
 use netwaystev2::transport::{PacketSettings, TransportCmd, TransportRsp};
 
 #[pyclass]
+#[derive(Clone, Debug)]
 pub struct ProcessUniqueIdW {
     pub inner: ProcessUniqueId,
+}
+
+impl Into<ProcessUniqueId> for ProcessUniqueIdW {
+    fn into(self) -> ProcessUniqueId {
+        self.inner
+    }
 }
 
 #[pymethods]
@@ -24,7 +30,7 @@ impl ProcessUniqueIdW {
     }
 
     fn __repr__(&self) -> String {
-        format!("{}", self.inner)
+        format!("ProcessUniqueID{{<{}>}}", self.inner)
     }
 }
 
@@ -67,6 +73,7 @@ impl Into<TransportCmd> for TransportCmdW {
         self.inner
     }
 }
+
 #[pymethods]
 impl TransportCmdW {
     #[new]
@@ -106,7 +113,29 @@ impl TransportCmdW {
                     packets: packetws.into_iter().map(|pw| pw.into()).collect(),
                 }
             }
-            //XXX more variants
+            "dropendpoint" => {
+                let endpointw: EndpointW = get_from_dict(&kwds, "endpoint")?;
+                TransportCmd::DropEndpoint {
+                    endpoint: endpointw.into(),
+                }
+            }
+            "droppacket" => {
+                let endpointw: EndpointW = get_from_dict(&kwds, "endpoint")?;
+                let tidw: ProcessUniqueIdW = get_from_dict(&kwds, "tid")?;
+                TransportCmd::DropPacket {
+                    endpoint: endpointw.into(),
+                    tid:      tidw.into(),
+                }
+            }
+            "canceltransmitqueue" => {
+                let endpointw: EndpointW = get_from_dict(&kwds, "endpoint")?;
+                TransportCmd::CancelTransmitQueue {
+                    endpoint: endpointw.into(),
+                }
+            }
+            "shutdown" => {
+                TransportCmd::Shutdown
+            }
             _ => {
                 return Err(PyValueError::new_err(format!("invalid variant type: {}", variant)));
             }
@@ -119,4 +148,40 @@ impl TransportCmdW {
     }
 }
 
-//XXX wrappers for resp and notify
+#[pyclass]
+#[derive(Debug)]
+pub struct TransportRspW {
+    pub inner: TransportRsp,
+}
+
+impl From<TransportRsp> for TransportRspW {
+    fn from(inner: TransportRsp) -> Self {
+        TransportRspW { inner }
+    }
+}
+
+impl Into<TransportRsp> for TransportRspW {
+    fn into(self) -> TransportRsp {
+        self.inner
+    }
+}
+
+#[pymethods]
+impl TransportRspW {
+    // ToDo: new
+    fn variant(&self) -> String {
+        match self.inner {
+            TransportRsp::Accepted => "Accepted",
+            TransportRsp::BufferFull => "BufferFull",
+            TransportRsp::ExceedsMtu { .. } => "ExceedsMtu",
+            TransportRsp::EndpointError { .. } => "EndpointError",
+            TransportRsp::SendPacketsLengthMismatch => "SendPacketsLengthMismatch",
+        }.to_owned()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.inner)
+    }
+}
+
+//XXX wrapper for notify/TransportNotice
