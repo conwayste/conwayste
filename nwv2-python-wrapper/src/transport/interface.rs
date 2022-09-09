@@ -1,9 +1,14 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use pyo3::prelude::*;
 use pyo3::exceptions::*;
 use snowflake::ProcessUniqueId;
 
+use crate::protocol::PacketW;
+use crate::utils::get_from_dict;
+use crate::common::*;
+use netwaystev2::common::Endpoint;
 use netwaystev2::transport::{PacketSettings, TransportCmd, TransportRsp};
 
 #[pyclass]
@@ -24,8 +29,15 @@ impl ProcessUniqueIdW {
 }
 
 #[pyclass]
+#[derive(Clone)]
 pub struct PacketSettingsW {
     pub inner: PacketSettings,
+}
+
+impl Into<PacketSettings> for PacketSettingsW {
+    fn into(self) -> PacketSettings {
+        self.inner
+    }
 }
 
 #[pymethods]
@@ -34,7 +46,7 @@ impl PacketSettingsW {
     #[new]
     fn new(retry_interval_ms: u64, tid: Option<&ProcessUniqueIdW>) -> PyResult<Self> {
         let retry_interval = Duration::from_millis(retry_interval_ms);
-        let tid = tid.map(|w| w.inner).unwrap_or_else(|| ProcessUniqueId::new());
+        let tid = tid.map(|w| w.inner).unwrap_or_else(|| ProcessUniqueId::new()); // Generate new ID if none was specified
         let inner = PacketSettings{ tid, retry_interval };
         Ok(PacketSettingsW{ inner })
     }
@@ -44,4 +56,67 @@ impl PacketSettingsW {
     }
 }
 
-//XXX wrappers for cmd and resp
+#[pyclass]
+#[derive(Debug)]
+pub struct TransportCmdW {
+    pub inner: TransportCmd,
+}
+
+impl Into<TransportCmd> for TransportCmdW {
+    fn into(self) -> TransportCmd {
+        self.inner
+    }
+}
+#[pymethods]
+impl TransportCmdW {
+    #[new]
+    #[args(kwds="**")]
+    fn new(variant: String, kwds: Option<HashMap<String,&PyAny>>) -> PyResult<Self> {
+        let kwds = if let Some(kwds) = kwds {
+            kwds
+        } else {
+            HashMap::new()
+        };
+        let tc = match variant.to_lowercase().as_str() {
+            "newendpoint" => {
+                let endpointw: EndpointW = get_from_dict(&kwds, "endpoint")?;
+                // ToDo: take PyDelta and convert to std::time::Duration, instead of accepting integer milliseconds
+                let timeout_ms: u64 = get_from_dict(&kwds, "timeout")?;
+                let timeout = Duration::from_millis(timeout_ms);
+                TransportCmd::NewEndpoint {
+                    endpoint: endpointw.into(),
+                    timeout,
+                }
+            }
+            "sendpackets" => {
+                let endpointw: EndpointW = get_from_dict(&kwds, "endpoint")?;
+                let packet_infos_py: Vec<&PyAny> = get_from_dict(&kwds, "packet_infos")?;
+                let mut packet_infos: Vec<PacketSettings> = vec![];
+                for pip in packet_infos_py {
+                    let packet_setting = pip.extract::<PacketSettingsW>()?;
+                    packet_infos.push(packet_setting.into());
+                }
+
+                let packets_py: Vec<&PyAny> = get_from_dict(&kwds, "packets")?;
+                let packetws = packets_py.into_iter().map(|packet_py| packet_py.extract()).collect::<Result<Vec<PacketW>, _>>()?;
+
+                TransportCmd::SendPackets {
+                    endpoint: endpointw.into(),
+                    packet_infos,
+                    packets: packetws.into_iter().map(|pw| pw.into()).collect(),
+                }
+            }
+            //XXX more variants
+            _ => {
+                return Err(PyValueError::new_err(format!("invalid variant type: {}", variant)));
+            }
+        };
+        Ok(TransportCmdW{inner:tc})
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.inner)
+    }
+}
+
+//XXX wrappers for resp and notify

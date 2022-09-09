@@ -6,6 +6,7 @@ use pyo3::exceptions::PyValueError;
 use netwaystev2::common::Endpoint;
 
 #[pyclass]
+#[derive(Clone)]
 pub struct EndpointW {
     inner: Endpoint,
 }

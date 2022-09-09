@@ -54,7 +54,7 @@ pub enum TransportNotice {
 }
 
 /// Used by the Filter layer to inform the Transport layer of packet settings
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PacketSettings {
     /// Transmit ID, a unique identifier used to sync packet transactions between the filter and Transport layers
     pub tid:            ProcessUniqueId,

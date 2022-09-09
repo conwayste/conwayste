@@ -15,8 +15,15 @@ use crate::utils::get_from_dict;
 /// p = PacketW("request", "fakecookie")
 /// ```
 #[pyclass]
+#[derive(Clone)]
 pub struct PacketW {
     inner: Packet,
+}
+
+impl Into<Packet> for PacketW {
+    fn into(self) -> Packet {
+        self.inner
+    }
 }
 
 #[pymethods]
