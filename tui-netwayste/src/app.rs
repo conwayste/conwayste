@@ -2,34 +2,8 @@ use std::vec;
 
 use crate::nw_protocol::MimicRequestAction;
 use crate::statefullist::StatefulList;
+use crate::fieldeditlist::FieldEditList;
 use netwaystev2::filter::FilterMode;
-
-#[derive(Debug, Clone)]
-struct Field {
-    name:  String,
-    value: String,
-}
-
-impl Field {
-    fn new(name: &str, value: &str) -> Self {
-        Field {
-            name:  name.into(),
-            value: value.into(),
-        }
-    }
-}
-
-pub struct EditableCommand {
-    fields: StatefulList<Field>,
-}
-
-impl EditableCommand {
-    fn with_items(list_fields: Vec<Field>) -> Self {
-        EditableCommand {
-            fields: StatefulList::with_items(list_fields),
-        }
-    }
-}
 
 /// This struct holds the current state of the app. In particular, it has the `items` field which is a wrapper
 /// around `ListState`. Keeping track of the items state let us render the associated widget with its state
@@ -46,7 +20,7 @@ pub struct App<'a> {
     pub menus:          Vec<StatefulList<String>>,
 
     // would be better off as something that isn't a stateful list but this hack works for now
-    pub edit_list_state: StatefulList<String>,
+    pub edit_list_state: Option<FieldEditList>,
     pub ra_data:        Vec<MimicRequestAction>,
     pub events:         Vec<(&'a str, &'a str)>,
 }
@@ -59,7 +33,7 @@ impl<'a> App<'a> {
             editing: false,
             menus,
             ra_data: request_action_data,
-            edit_list_state: StatefulList::with_items(vec![]),
+            edit_list_state: None,
             displayed_menu: 0,
             edit_index: None,
             events: vec![

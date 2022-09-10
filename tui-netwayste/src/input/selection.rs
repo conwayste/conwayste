@@ -22,6 +22,7 @@ pub fn handle_list_navigation(key: KeyCode, app: &mut App) {
         KeyCode::Enter => {
             if app.displayed_menu == 0 {
                 app.displayed_menu = index + 1;
+                app.edit_list_state = None;
             } else {
                 // Already in a sub menu
                 app.edit_index = Some(index + 1);
@@ -30,6 +31,7 @@ pub fn handle_list_navigation(key: KeyCode, app: &mut App) {
         }
         KeyCode::Esc => {
             app.displayed_menu = 0;
+            app.edit_list_state = None;
             app.edit_index = None;
             app.input_stage = InputStage::SelectPacket;
         }

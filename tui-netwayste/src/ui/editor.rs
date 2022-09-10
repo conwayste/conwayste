@@ -1,5 +1,4 @@
 use crate::app::App;
-use crate::nw::get_mimic_meta_from;
 
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -59,21 +58,14 @@ pub fn draw_edit_ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let area = centered_rect(80, 20, size);
     f.render_widget(Clear, area); //this clears out the background
 
-    let command_index = app.displayed_menu_mut().get_index();
-
-    let mimic_metadata = get_mimic_meta_from(&app.ra_data[command_index]);
-
     // Iterate through all elements in the `items` app and append some debug text to it.
     let mut items: Vec<ListItem> = vec![];
-    if let Some(metadata) = mimic_metadata {
-        // FIXME: MetadataField needs to be bound to Iterator
-        for field in &metadata.fields {
-            let lines = vec![Spans::from(format!(
-                "{} ({}) {}",
-                field.name,
-                field.type_,
-                "PLACEHOLDER".to_owned()
-            ))];
+    // FIXME: MetadataField needs to be bound to Iterator
+    if let Some(edit_list_state) = &app.edit_list_state {
+        let fields = &edit_list_state.fields;
+        let values = &edit_list_state.values;
+        for (k, v) in fields.into_iter().zip(values) {
+            let lines = vec![Spans::from(format!("{}: {}", k, v))];
             items.push(ListItem::new(lines).style(Style::default().fg(Color::Black).bg(Color::White)));
         }
     }

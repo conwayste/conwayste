@@ -1,4 +1,5 @@
 pub(crate) mod app;
+pub(crate) mod fieldeditlist;
 mod input;
 mod nw;
 mod nw_protocol;
@@ -12,6 +13,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use fieldeditlist::FieldEditList;
 use netwaystev2::filter::FilterMode;
 use nw::{create_packet_selection_lists, create_request_action_data};
 use statefullist::StatefulList;
@@ -19,6 +21,7 @@ use std::{
     error::Error,
     io,
     time::{Duration, Instant},
+    vec,
 };
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -74,7 +77,10 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App, tick_rate: Dura
                 match app.input_stage {
                     InputStage::SelectPacket => input::handle_list_navigation(key.code, &mut app),
                     InputStage::SelectCommand => input::handle_list_navigation(key.code, &mut app),
-                    InputStage::CommandModification => input::handle_command_modification(key.code, &mut app),
+                    InputStage::CommandModification => {
+                        build_field_edit_list(&mut app);
+                        input::handle_command_modification(key.code, &mut app);
+                    }
                     InputStage::SendCommand => (),
                 }
             }
@@ -96,4 +102,28 @@ pub fn draw_app<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     ui::draw_menu_list(f, app.displayed_menu_mut(), "Client", chunks[0]);
     ui::draw_event_log(f, app, chunks[1]);
     ui::draw_edit_ui(f, app);
+}
+
+use crate::nw::get_mimic_meta_from;
+use std::fs::File;
+use std::io::prelude::*;
+pub fn build_field_edit_list(app: &mut App) {
+    if app.edit_list_state.is_some() {
+        return;
+    }
+
+    // TODO: Select either ra_data or rc_data
+    let command_index = app.displayed_menu_mut().get_index();
+    let mimic_metadata = get_mimic_meta_from(&app.ra_data[command_index]);
+
+    // Iterate through all elements in the `items` app and append some debug text to it.
+    if let Some(metadata) = mimic_metadata {
+        let mut fields = vec![];
+        // FIXME: MetadataField needs to be bound to Iterator
+        for field in &metadata.fields {
+            let key = format!("{} ({})\n", field.name, field.type_,);
+            fields.push(key);
+        }
+        app.edit_list_state = Some(FieldEditList::with_fields(fields));
+    }
 }
