@@ -8,7 +8,7 @@ use snowflake::ProcessUniqueId;
 use crate::protocol::PacketW;
 use crate::utils::get_from_dict;
 use crate::common::*;
-use netwaystev2::transport::{PacketSettings, TransportCmd, TransportRsp};
+use netwaystev2::transport::{PacketSettings, TransportCmd, TransportNotice, TransportRsp};
 
 #[pyclass]
 #[derive(Clone, Debug)]
@@ -63,7 +63,7 @@ impl PacketSettingsW {
 }
 
 #[pyclass]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TransportCmdW {
     pub inner: TransportCmd,
 }
@@ -180,8 +180,39 @@ impl TransportRspW {
     }
 
     fn __repr__(&self) -> String {
-        format!("{:?}", self.inner)
+        format!("TransportRsp::{:?}", self.inner)
     }
 }
 
-//XXX wrapper for notify/TransportNotice
+#[pyclass]
+#[derive(Debug)]
+pub struct TransportNoticeW {
+    pub inner: TransportNotice,
+}
+
+impl From<TransportNotice> for TransportNoticeW {
+    fn from(inner: TransportNotice) -> Self {
+        TransportNoticeW { inner }
+    }
+}
+
+impl Into<TransportNotice> for TransportNoticeW {
+    fn into(self) -> TransportNotice {
+        self.inner
+    }
+}
+
+#[pymethods]
+impl TransportNoticeW {
+    // ToDo: new
+    fn variant(&self) -> String {
+        match self.inner {
+            TransportNotice::PacketDelivery { .. } => "PacketDelivery",
+            TransportNotice::EndpointTimeout { .. } => "EndpointTimeout",
+        }.to_owned()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("TransportNotice::{:?}", self.inner)
+    }
+}

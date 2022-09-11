@@ -10,7 +10,7 @@ mod tests;
 
 pub use filter::*;
 pub use interface::*;
-pub(crate) use ping::PingPong;
+pub use ping::PingPong;
 pub use sortedbuffer::SequencedMinHeap;
 
 #[cfg(test)]

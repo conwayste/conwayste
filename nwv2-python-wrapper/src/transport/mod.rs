@@ -1,9 +1,15 @@
 pub mod interface;
 pub use interface::*;
 
+use std::sync::Arc;
+
 use futures_util::future::TryFutureExt;
 use pyo3::prelude::*;
 use pyo3::exceptions::*;
+use tokio::sync::{
+    mpsc::error::TryRecvError,
+    Mutex,
+};
 
 use netwaystev2::transport::{
     Transport,
@@ -17,8 +23,8 @@ use netwaystev2::transport::{
 pub struct TransportInterface {
     transport: Option<Transport>,
     cmd_tx: TransportCmdSend,
-    response_rx: TransportRspRecv,
-    notify_rx: TransportNotifyRecv,
+    response_rx: Arc<Mutex<TransportRspRecv>>, // Can't clone an MPSC receiver; need to share :(
+    notify_rx: TransportNotifyRecv, // ... but this one doesn't need that because it's only read in non-async
 }
 
 /// Create a TransportInterface.
@@ -33,7 +39,7 @@ pub fn new_transport_interface<'p>(py: Python<'p>, opt_host: Option<String>, opt
         Ok(TransportInterface{
             transport: Some(transport),
             cmd_tx,
-            response_rx,
+            response_rx: Arc::new(Mutex::new(response_rx)),
             notify_rx,
         })
     };
@@ -52,20 +58,43 @@ impl TransportInterface  {
         pyo3_asyncio::tokio::future_into_py(py, run_fut)
     }
 
-    //fn command_response<'p>(&mut self, py: Python<'p>, transport_cmd: /*XXX impl*/TransportCmdW) -> PyResult<&'p PyAny> {
-    //    //XXX send a command and get a response
-    //}
+    /// Send a command and get a response
+    fn command_response<'p>(&mut self, py: Python<'p>, transport_cmd: TransportCmdW) -> PyResult<&'p PyAny> {
+        let cmd_tx = self.cmd_tx.clone();
+        let response_rx = self.response_rx.clone();
+        let send_recv_fut = async move {
+            //ToDo: use timeouts for below
+            cmd_tx.send(transport_cmd.into()).await.map_err(|e| PyException::new_err(format!("failed to send TransportCmd: {}", e)))?;
+            let mut response_rx = response_rx.try_lock().map_err(|e| PyException::new_err(format!("failed to unlock transport response receiver: {}", e)))?;
+            Ok(response_rx.recv().await.map(|resp| TransportRspW::from(resp)))
+        };
+        pyo3_asyncio::tokio::future_into_py(py, send_recv_fut)
+    }
 
-    //fn get_notifications<'p>(&mut self, py: Python<'p>) -> PyResult<&'p PyAny> {
-    //    //XXX get a Vec of Transport notifications.
-    //}
+    /// Get a Vec of Transport notifications.
+    /// Note: Not Python async, unlike other methods!
+    fn get_notifications(&mut self) -> PyResult<Vec<TransportNoticeW>> {
+        let mut notifications = vec![];
+        loop {
+            match self.notify_rx.try_recv() {
+                Ok(notification) => {
+                    notifications.push(notification.into());
+                    continue;
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    return Err(PyException::new_err("transport notify channel was disconnected"))
+                }
+            }
+        }
+        Ok(notifications)
+    }
 
     fn __repr__(&self) -> String {
         format!(
-            "TransportInterface{{ transport: {},   cmd_tx: {:?},   response_rx: {:?},   notify_rx: {:?} }}",
+            "TransportInterface{{ transport: {},   cmd_tx: ...,   response_rx: ...,   notify_rx: ... }}",
             if self.transport.is_some() { "Some(<Transport>)" } else { "None" }, // run() takes this; keep borrow
                                                                                  // checker happy
-            self.cmd_tx, self.response_rx, self.notify_rx,
         )
     }
 }

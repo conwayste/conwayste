@@ -9,7 +9,7 @@ use std::time::Duration;
 pub const UDP_MTU_SIZE: usize = 1472;
 
 /// Filter layer sends these commands to the Transport Layer to manage endpoints and their packets
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TransportCmd {
     NewEndpoint {
         endpoint: Endpoint,

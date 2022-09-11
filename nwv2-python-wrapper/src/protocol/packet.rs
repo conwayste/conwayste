@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
 
-use netwaystev2::protocol::Packet;
+use netwaystev2::filter::*;
+use netwaystev2::protocol::*;
 use super::request::RequestActionW;
 use crate::utils::get_from_dict;
 
@@ -48,6 +49,13 @@ impl PacketW {
                     action: action_wrapper.into(),
                     cookie,
                 }
+            }
+            "getstatus" => {
+                // Note: non-standard! The standard way would to accept a `ping` param of type
+                // PingPongW, but that seems unnecessary...
+                let ping_nonce: u64 = get_from_dict(&kwds, "ping_nonce")?;
+                let ping = PingPong { nonce: ping_nonce };
+                Packet::GetStatus { ping }
             }
             // TODO: more variants
             _ => {

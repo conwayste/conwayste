@@ -155,6 +155,7 @@ impl Transport {
 
                     // Notify filter of any endpoints that have timed-out
                     for endpoint in  self.endpoints.timed_out_endpoints() {
+                        // FIXME: need to limit how often this is sent to avoid spamming Filter layer
                         self.notifications.send(TransportNotice::EndpointTimeout {
                             endpoint
                         }).await?;
