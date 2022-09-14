@@ -22,6 +22,12 @@ impl Into<ProcessUniqueId> for ProcessUniqueIdW {
     }
 }
 
+impl From<ProcessUniqueId> for ProcessUniqueIdW {
+    fn from(other: ProcessUniqueId) -> Self {
+        ProcessUniqueIdW { inner: other }
+    }
+}
+
 #[pymethods]
 impl ProcessUniqueIdW {
     #[new]
@@ -55,6 +61,11 @@ impl PacketSettingsW {
         let tid = tid.map(|w| w.inner).unwrap_or_else(|| ProcessUniqueId::new()); // Generate new ID if none was specified
         let inner = PacketSettings{ tid, retry_interval };
         Ok(PacketSettingsW{ inner })
+    }
+
+    #[getter]
+    fn tid(&self) -> PyResult<ProcessUniqueIdW> {
+        Ok(self.inner.tid.into())
     }
 
     fn __repr__(&self) -> String {
