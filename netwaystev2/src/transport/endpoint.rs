@@ -36,15 +36,17 @@ impl PacketInfo {
 
 /// Transport layer uses this to determine if an endpoint is still active
 struct EndpointMeta {
-    endpoint_timeout: Duration,
-    last_receive:     Option<Instant>,
+    endpoint_timeout:    Duration,
+    last_receive:        Option<Instant>,
+    notified_of_timeout: bool,
 }
 
 impl EndpointMeta {
     pub fn new(timeout: Duration) -> Self {
         EndpointMeta {
-            endpoint_timeout: timeout,
-            last_receive:     None,
+            endpoint_timeout:    timeout,
+            last_receive:        None,
+            notified_of_timeout: false,
         }
     }
 }
@@ -162,18 +164,37 @@ impl<P> TransportEndpointData<P> {
         Ok(())
     }
 
-    /// Returns a vector of endpoints that have timed-out
+    /// Returns a vector of endpoints that have timed-out and have not resulted in TransportNotice.
     /// If the vector is empty, all endpoints still maintain active connections.
-    pub fn timed_out_endpoints(&mut self) -> Vec<Endpoint> {
-        let mut timed_out = vec![];
+    pub fn timed_out_endpoints_needing_notify(&mut self) -> Vec<Endpoint> {
+        let mut timed_out_unnotified = vec![];
         for (endpoint, endpoint_meta) in &self.endpoint_meta {
+            // Exclude endpoints that we have notified about
+            if endpoint_meta.notified_of_timeout {
+                continue;
+            }
             if let Some(last_receive) = endpoint_meta.last_receive {
                 if Instant::now() - last_receive >= endpoint_meta.endpoint_timeout {
-                    timed_out.push(*endpoint);
+                    timed_out_unnotified.push(*endpoint);
                 }
             }
         }
-        timed_out
+        timed_out_unnotified
+    }
+
+    /// Indicate that an "endpoint timed out" TransportNotice for this Endpoint has been sent.
+    /// Returns whether an un-timed out entry was found and marked as timed out.
+    pub fn mark_endpoint_as_timeout_notified(&mut self, endpoint: Endpoint) -> bool {
+        if let Some(endpoint_meta) = self.endpoint_meta.get_mut(&endpoint) {
+            // Return false if already marked as timed out
+            if endpoint_meta.notified_of_timeout {
+                return false;
+            }
+            endpoint_meta.notified_of_timeout = true;
+            true
+        } else {
+            false
+        }
     }
 
     /// Requested by the Filter layer to remove an endpoint.
