@@ -76,15 +76,19 @@ impl FieldEditList {
         }
     }
 
-    pub fn update_field(&mut self, input: String) {
-        let index = self.get_index();
+    pub fn field_buffer_push(&mut self, input: char) {
+        self.field_input_buffer.push(input);
+    }
 
+    pub fn field_buffer_pop(&mut self) {
+        self.field_input_buffer.pop();
     }
 
     pub fn save(&mut self) {
         let index = self.get_index();
         if let Some(string) = self.values.get_mut(index) {
             *string = self.field_input_buffer.to_string();
+            self.field_input_buffer.clear();
         }
     }
 }

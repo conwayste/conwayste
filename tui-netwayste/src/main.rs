@@ -101,7 +101,10 @@ pub fn draw_app<B: Backend>(f: &mut Frame<B>, app: &mut App) {
 
     ui::draw_menu_list(f, app.displayed_menu_mut(), "Client", chunks[0]);
     ui::draw_event_log(f, app, chunks[1]);
-    ui::draw_edit_ui(f, app);
+
+    if app.edit_index.is_some() {
+        ui::draw_edit_ui(f, app);
+    }
 }
 
 use crate::nw::get_mimic_meta_from;
