@@ -27,6 +27,12 @@ impl Into<Packet> for PacketW {
     }
 }
 
+impl From<Packet> for PacketW {
+    fn from(other: Packet) -> Self {
+        PacketW { inner: other }
+    }
+}
+
 #[pymethods]
 impl PacketW {
     #[new]
