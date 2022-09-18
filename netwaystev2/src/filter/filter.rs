@@ -170,7 +170,7 @@ impl Filter {
                                 trace!("[FILTER] Transport Command Accepted");
                             }
                             TransportRsp::SendPacketsLengthMismatch => {
-                                error!("[FILTER] Packet and PacketSettings data did not align")
+                                error!("[FILTER] bug in filter layer! Length mismatch between parallel arrays in SendPackets command")
                             }
                             TransportRsp::BufferFull => {
                                 // TODO: understand if there is other action that needs to be taken besides logging
