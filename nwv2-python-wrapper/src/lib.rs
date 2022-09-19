@@ -16,7 +16,6 @@ use pyo3::prelude::*;
 /// A Python module implemented in Rust.
 #[pymodule]
 fn nwv2_python_wrapper(_py: Python, m: &PyModule) -> PyResult<()> {
-    // m.add_function(wrap_pyfunction!(rust_delayed_value, m)?)?;
     m.add_class::<RequestActionW>()?;
     m.add_class::<PacketW>()?;
     m.add_class::<EndpointW>()?;
