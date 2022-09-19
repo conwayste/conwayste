@@ -221,6 +221,7 @@ async fn process_transport_command(
             for (i, p) in packets.iter().enumerate() {
                 let pi = packet_infos.get(i).unwrap(); // Unwrap safe b/c of length check above
 
+                // TODO: the size should be determined by serializing. Maybe change in udp_codec.rs?
                 if std::mem::size_of_val(p) < UDP_MTU_SIZE {
                     let _result = udp_send.send((p.clone(), endpoint.0)).await.and_then(|_| {
                         cmd_responses.push(
