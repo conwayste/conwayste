@@ -221,22 +221,28 @@ async fn process_transport_command(
             for (i, p) in packets.iter().enumerate() {
                 let pi = packet_infos.get(i).unwrap(); // Unwrap safe b/c of length check above
 
-                // TODO: the size should be determined by serializing. Maybe change in udp_codec.rs?
-                if std::mem::size_of_val(p) < UDP_MTU_SIZE {
-                    let _result = udp_send.send((p.clone(), endpoint.0)).await.and_then(|_| {
-                        cmd_responses.push(
-                            endpoints
-                                .push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)
-                                .map_or_else(
-                                    |error| TransportRsp::EndpointError { error },
-                                    |()| TransportRsp::Accepted,
-                                ),
-                        );
-                        Ok(())
-                    });
-                } else {
-                    cmd_responses.push(TransportRsp::ExceedsMtu { tid: pi.tid });
+                let size = match bincode::serialized_size(&p) {
+                    Ok(size) => size as usize,
+                    Err(error) => {
+                        cmd_responses.push(TransportRsp::EndpointError { error: error.into() });
+                        continue;
+                    }
+                };
+                if size > UDP_MTU_SIZE {
+                    cmd_responses.push(TransportRsp::ExceedsMtu { tid: pi.tid, size, mtu: UDP_MTU_SIZE });
+                    continue;
                 }
+                let _result = udp_send.send((p.clone(), endpoint.0)).await.and_then(|_| {
+                    cmd_responses.push(
+                        endpoints
+                            .push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)
+                            .map_or_else(
+                                |error| TransportRsp::EndpointError { error },
+                                |()| TransportRsp::Accepted,
+                            ),
+                    );
+                    Ok(())
+                });
             }
         }
         DropEndpoint { endpoint } => cmd_responses.push(endpoints.drop_endpoint(endpoint).map_or_else(

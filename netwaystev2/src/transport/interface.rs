@@ -38,7 +38,7 @@ pub enum TransportCmd {
 pub enum TransportRsp {
     Accepted,
     BufferFull,
-    ExceedsMtu { tid: ProcessUniqueId },
+    ExceedsMtu { tid: ProcessUniqueId, size: usize, mtu: usize },
     EndpointError { error: anyhow::Error },
     SendPacketsLengthMismatch,
 }

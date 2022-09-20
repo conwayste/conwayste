@@ -176,9 +176,9 @@ impl Filter {
                                 // TODO: understand if there is other action that needs to be taken besides logging
                                 error!("[FILTER] Transmit buffer is full");
                             }
-                            TransportRsp::ExceedsMtu {tid} => {
+                            TransportRsp::ExceedsMtu {tid, size, mtu} => {
                                 // TODO: understand if there is other action that needs to be taken besides logging
-                                error!("[FILTER] Packet exceeds MTU size. Tid={}", tid);
+                                error!("[FILTER] Packet exceeds MTU size of {}. Tid={} and size is {}", mtu, tid, size);
                             }
                             TransportRsp::EndpointError {error} => {
                                 error!("[FILTER] Transport Layer error: {:?}", error);

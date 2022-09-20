@@ -14,6 +14,7 @@ use tokio::sync::{
 use netwaystev2::transport::{
     Transport,
     TransportInit,
+    TransportCmd,
     TransportCmdSend,
     TransportRspRecv,
     TransportNotifyRecv,
@@ -63,8 +64,17 @@ impl TransportInterface  {
         let cmd_tx = self.cmd_tx.clone();
         let response_rx = self.response_rx.clone();
         let send_recv_fut = async move {
-            //ToDo: use timeouts for below
-            cmd_tx.send(transport_cmd.into()).await.map_err(|e| PyException::new_err(format!("failed to send TransportCmd: {}", e)))?;
+            let transport_cmd = transport_cmd.into();
+            if let TransportCmd::SendPackets { ref packet_infos, ref packets, .. } = transport_cmd {
+                if packet_infos.len() == packets.len() && packets.len() != 1 {
+                    // Packet vec lengths other than 1 aren't supported because they would require
+                    // support for reading a number of TransportRsps other than 1, which
+                    // complicates things. However, mismatched lengths are supported only to allow
+                    // testing for the length mismatch error.
+                    return Err(PyValueError::new_err(format!("unsupported TransportCmd::SendPackets - length {}, should be 1", packets.len())));
+                }
+            }
+            cmd_tx.send(transport_cmd).await.map_err(|e| PyException::new_err(format!("failed to send TransportCmd: {}", e)))?;
             let mut response_rx = response_rx.try_lock().map_err(|e| PyException::new_err(format!("failed to unlock transport response receiver: {}", e)))?;
             Ok(response_rx.recv().await.map(|resp| TransportRspW::from(resp)))
         };
