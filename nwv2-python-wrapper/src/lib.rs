@@ -2,6 +2,7 @@
 
 mod protocol;
 mod transport;
+mod filter;
 pub(crate) mod common;
 pub(crate) mod utils;
 use protocol::request::RequestActionW;
