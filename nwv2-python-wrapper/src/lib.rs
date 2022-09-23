@@ -1,18 +1,16 @@
+pub(crate) mod common;
+mod filter;
 ///! Reference: https://pyo3.rs/v0.16.4/ecosystem/async-await.html#pyo3-native-rust-modules
-
 mod protocol;
 mod transport;
-mod filter;
-pub(crate) mod common;
 pub(crate) mod utils;
-use protocol::request::RequestActionW;
-use protocol::packet::PacketW;
-use transport::*;
 use common::EndpointW;
+use protocol::packet::PacketW;
+use protocol::request::RequestActionW;
+use transport::*;
 
-use pyo3_asyncio;
 use pyo3::prelude::*;
-
+use pyo3_asyncio;
 
 /// A Python module implemented in Rust.
 #[pymodule]

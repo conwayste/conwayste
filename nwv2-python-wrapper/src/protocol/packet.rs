@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 
-use netwaystev2::filter::*;
-use netwaystev2::protocol::*;
 use super::request::RequestActionW;
 use crate::utils::get_from_dict;
+use netwaystev2::filter::*;
+use netwaystev2::protocol::*;
 
 /// A wrapped netwaystev2 Packet
 ///
@@ -36,13 +36,9 @@ impl From<Packet> for PacketW {
 #[pymethods]
 impl PacketW {
     #[new]
-    #[args(kwds="**")]
-    fn new(variant: String, kwds: Option<HashMap<String,&PyAny>>) -> PyResult<Self> {
-        let kwds = if let Some(kwds) = kwds {
-            kwds
-        } else {
-            HashMap::new()
-        };
+    #[args(kwds = "**")]
+    fn new(variant: String, kwds: Option<HashMap<String, &PyAny>>) -> PyResult<Self> {
+        let kwds = if let Some(kwds) = kwds { kwds } else { HashMap::new() };
         let packet = match variant.to_lowercase().as_str() {
             "request" => {
                 let sequence: u64 = get_from_dict(&kwds, "sequence")?;
