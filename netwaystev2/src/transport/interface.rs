@@ -4,6 +4,7 @@ use crate::protocol::Packet;
 use snowflake::ProcessUniqueId;
 
 use std::time::Duration;
+use std::sync::Arc;
 
 // https://serverfault.com/questions/645890/tcpdump-truncates-to-1472-bytes-useful-data-in-udp-packets-during-the-capture/645892#645892
 pub const UDP_MTU_SIZE: usize = 1472;
@@ -34,12 +35,12 @@ pub enum TransportCmd {
 }
 
 /// Transport layer sends these response codes for each Filter layer command (see `TransportCmd`)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TransportRsp {
     Accepted,
     BufferFull,
     ExceedsMtu { tid: ProcessUniqueId, size: usize, mtu: usize },
-    EndpointError { error: anyhow::Error },
+    EndpointError { error: Arc<anyhow::Error> }, // Needs to be Arc to allow cloning
     SendPacketsLengthMismatch,
 }
 

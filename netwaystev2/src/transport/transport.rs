@@ -10,6 +10,7 @@ use crate::settings::*;
 
 use std::time::Duration;
 use std::{net::SocketAddr, pin::Pin};
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -207,7 +208,7 @@ async fn process_transport_command(
     let mut cmd_responses = vec![];
     match command {
         NewEndpoint { endpoint, timeout } => cmd_responses.push(endpoints.new_endpoint(endpoint, timeout).map_or_else(
-            |error| TransportRsp::EndpointError { error },
+            |error| TransportRsp::EndpointError { error: Arc::new(error) },
             |()| TransportRsp::Accepted,
         )),
         SendPackets {
@@ -224,7 +225,7 @@ async fn process_transport_command(
                 let size = match bincode::serialized_size(&p) {
                     Ok(size) => size as usize,
                     Err(error) => {
-                        cmd_responses.push(TransportRsp::EndpointError { error: error.into() });
+                        cmd_responses.push(TransportRsp::EndpointError { error: Arc::new(error.into()) });
                         continue;
                     }
                 };
@@ -232,29 +233,29 @@ async fn process_transport_command(
                     cmd_responses.push(TransportRsp::ExceedsMtu { tid: pi.tid, size, mtu: UDP_MTU_SIZE });
                     continue;
                 }
-                let _result = udp_send.send((p.clone(), endpoint.0)).await.and_then(|_| {
-                    cmd_responses.push(
-                        endpoints
-                            .push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)
-                            .map_or_else(
-                                |error| TransportRsp::EndpointError { error },
-                                |()| TransportRsp::Accepted,
-                            ),
-                    );
-                    Ok(())
-                });
+                if let Err(error) = udp_send.send((p.clone(), endpoint.0)).await {
+                    continue;
+                }
+                cmd_responses.push(
+                    endpoints
+                        .push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)
+                        .map_or_else(
+                            |error| TransportRsp::EndpointError { error: Arc::new(error) },
+                            |()| TransportRsp::Accepted,
+                        ),
+                );
             }
         }
         DropEndpoint { endpoint } => cmd_responses.push(endpoints.drop_endpoint(endpoint).map_or_else(
-            |error| TransportRsp::EndpointError { error },
+            |error| TransportRsp::EndpointError { error: Arc::new(error) },
             |()| TransportRsp::Accepted,
         )),
         DropPacket { endpoint, tid } => cmd_responses.push(endpoints.drop_packet(endpoint, tid).map_or_else(
-            |error| TransportRsp::EndpointError { error },
+            |error| TransportRsp::EndpointError { error: Arc::new(error) },
             |()| TransportRsp::Accepted,
         )),
         CancelTransmitQueue { endpoint } => cmd_responses.push(endpoints.clear_queue(endpoint).map_or_else(
-            |error| TransportRsp::EndpointError { error },
+            |error| TransportRsp::EndpointError { error: Arc::new(error) },
             |()| TransportRsp::Accepted,
         )),
         Shutdown => return Err(anyhow!(TransportCommandError::ShutdownRequested)),

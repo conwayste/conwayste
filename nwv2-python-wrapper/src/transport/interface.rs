@@ -165,7 +165,7 @@ impl TransportCmdW {
 }
 
 #[pyclass]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TransportRspW {
     pub inner: TransportRsp,
 }
