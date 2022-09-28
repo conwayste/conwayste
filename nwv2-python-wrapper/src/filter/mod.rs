@@ -35,6 +35,28 @@ struct TransportChannels {
 // TODO: reference the one in netw.../src/settings.rs
 pub const TRANSPORT_CHANNEL_LEN: usize = 1000;
 
+/// Ex:
+///
+/// ```
+/// take_from_self_or_raise_exc!(t_iface <- self.transport_iface);
+/// ```
+///
+/// Expands to:
+///
+/// ```
+/// let mut t_iface = self
+///     .transport_iface
+///     .take()
+///     .ok_or_else(|| PyException::new_err("cannot call run() more than once - transport_iface"))?;
+/// ```
+macro_rules! take_from_self_or_raise_exc {
+    ($var:ident <- $self:ident.$field:ident) => {
+        let mut $var = $self.$field.take().ok_or_else(|| {
+            PyException::new_err(format!("cannot call run() more than once - {}", stringify!($field)))
+        })?;
+    };
+}
+
 #[pymethods]
 impl FilterInterface {
     /// The argument can be a TransportInterface, but any object that has the same methods with the
@@ -70,24 +92,15 @@ impl FilterInterface {
     }
 
     fn run<'p>(&mut self, py: Python<'p>) -> PyResult<&'p PyAny> {
-        let mut filter = self
-            .filter
-            .take()
-            .ok_or_else(|| PyException::new_err("cannot call run() more than once"))?;
+        take_from_self_or_raise_exc!(filter <- self.filter);
+        take_from_self_or_raise_exc!(t_channels <- self.transport_channels);
+        take_from_self_or_raise_exc!(t_iface <- self.transport_iface);
         let run_fut = async move { Ok(filter.run().await) };
-        let mut t_channels = self
-            .transport_channels
-            .take()
-            .ok_or_else(|| PyException::new_err("cannot call run() more than once (taking transport channels)"))?;
-        let mut t_iface = self
-            .transport_iface
-            .take()
-            .ok_or_else(|| PyException::new_err("cannot call run() more than once (taking transport interface)"))?;
+        //XXX why did I do a tokio spawn here? This is already async...
         tokio::spawn(async move {
             loop {
                 // Receive transport command from Filter layer
-                let transport_cmd = t_channels.transport_cmd_rx.recv().await.unwrap(); //XXX break
-                                                                                       //if error
+                let transport_cmd = t_channels.transport_cmd_rx.recv().await.unwrap(); //XXX break if error
                 let transport_cmdw: TransportCmdW = transport_cmd.into();
 
                 // Call command_response, passing in the TransportCmd and getting a Python Future
@@ -104,6 +117,7 @@ impl FilterInterface {
                 let transport_rspw: TransportRspW =
                     Python::with_gil(|py| transport_rspw.extract(py)).expect("bad command_response retval"); // TODO: handle better
                 let transport_rsp: TransportRsp = transport_rspw.into();
+                //XXX send TransportRsp on channel
             }
             //XXX turn channel send/recvs into calls to transport_iface methods
         });
@@ -115,7 +129,7 @@ impl FilterInterface {
 
 #[pyclass]
 #[derive(Clone, Copy, Debug)]
-struct FilterModeW {
+pub struct FilterModeW {
     inner: FilterMode,
 }
 

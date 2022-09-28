@@ -5,6 +5,7 @@ mod protocol;
 mod transport;
 pub(crate) mod utils;
 use common::EndpointW;
+use filter::*;
 use protocol::packet::PacketW;
 use protocol::request::RequestActionW;
 use transport::*;
@@ -24,6 +25,8 @@ fn nwv2_python_wrapper(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<TransportCmdW>()?;
     m.add_class::<TransportRspW>()?;
     m.add_class::<TransportNoticeW>()?;
+    m.add_class::<FilterModeW>()?;
+    m.add_class::<FilterInterface>()?;
     m.add_function(wrap_pyfunction!(new_transport_interface, m)?)?;
     Ok(())
 }
