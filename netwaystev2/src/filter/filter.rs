@@ -702,7 +702,7 @@ impl Filter {
         Ok(())
     }
 
-    pub fn get_shutdown_watcher(&mut self) -> impl Future<Output = ()> + 'static {
+    pub fn get_shutdown_watcher(&mut self) -> impl Future<Output = ()> + Send + 'static {
         let mut phase_watch_rx = self.phase_watch_rx.clone();
         let transport_cmd_tx = self.transport_cmd_tx.clone();
         async move {
