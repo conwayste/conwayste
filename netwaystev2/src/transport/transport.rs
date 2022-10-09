@@ -4,13 +4,13 @@ use super::interface::{
     TransportNotice, TransportRsp, UDP_MTU_SIZE,
 };
 use super::udp_codec::NetwaystePacketCodec;
-use crate::common::Endpoint;
+use crate::common::{Endpoint, ShutdownWatcher};
 use crate::protocol::Packet;
 use crate::settings::*;
 
+use std::sync::Arc;
 use std::time::Duration;
 use std::{net::SocketAddr, pin::Pin};
-use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -167,9 +167,9 @@ impl Transport {
         }
     }
 
-    pub fn get_shutdown_watcher(&mut self) -> impl Future<Output = ()> + 'static {
+    pub fn get_shutdown_watcher(&mut self) -> ShutdownWatcher {
         let mut phase_watch_rx = self.phase_watch_rx.clone();
-        async move {
+        Box::pin(async move {
             loop {
                 let phase = *phase_watch_rx.borrow();
                 match phase {
@@ -184,12 +184,16 @@ impl Transport {
                     return;
                 }
             }
-        }
+        })
     }
 }
 
 async fn bind(opt_host: Option<String>, opt_port: Option<u16>) -> Result<UdpSocket> {
-    let host = if let Some(host) = opt_host { host } else { DEFAULT_HOST.to_owned() };
+    let host = if let Some(host) = opt_host {
+        host
+    } else {
+        DEFAULT_HOST.to_owned()
+    };
     let port = if let Some(port) = opt_port { port } else { DEFAULT_PORT };
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
 
@@ -225,12 +229,18 @@ async fn process_transport_command(
                 let size = match bincode::serialized_size(&p) {
                     Ok(size) => size as usize,
                     Err(error) => {
-                        cmd_responses.push(TransportRsp::EndpointError { error: Arc::new(error.into()) });
+                        cmd_responses.push(TransportRsp::EndpointError {
+                            error: Arc::new(error.into()),
+                        });
                         continue;
                     }
                 };
                 if size > UDP_MTU_SIZE {
-                    cmd_responses.push(TransportRsp::ExceedsMtu { tid: pi.tid, size, mtu: UDP_MTU_SIZE });
+                    cmd_responses.push(TransportRsp::ExceedsMtu {
+                        tid: pi.tid,
+                        size,
+                        mtu: UDP_MTU_SIZE,
+                    });
                     continue;
                 }
                 if let Err(error) = udp_send.send((p.clone(), endpoint.0)).await {

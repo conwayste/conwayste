@@ -3,7 +3,7 @@ use super::interface::{FilterCmd, FilterMode, FilterNotice, FilterRsp, SeqNum};
 use super::ping::LatencyFilter;
 use super::sortedbuffer::SequencedMinHeap;
 use super::PingPong;
-use crate::common::Endpoint;
+use crate::common::{Endpoint, ShutdownWatcher};
 use crate::protocol::{GameUpdate, GenStateDiffPart, Packet, RequestAction, ResponseCode};
 use crate::settings::{DEFAULT_RETRY_INTERVAL_NS, FILTER_CHANNEL_LEN};
 use crate::transport::{
@@ -15,12 +15,10 @@ use snowflake::ProcessUniqueId;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::watch;
 
-use std::time::Duration;
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    future::Future,
+    collections::{HashMap, VecDeque},
     num::Wrapping,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 #[derive(PartialEq, Debug)]
@@ -702,10 +700,10 @@ impl Filter {
         Ok(())
     }
 
-    pub fn get_shutdown_watcher(&mut self) -> impl Future<Output = ()> + Send + 'static {
+    pub fn get_shutdown_watcher(&mut self) -> ShutdownWatcher {
         let mut phase_watch_rx = self.phase_watch_rx.clone();
         let transport_cmd_tx = self.transport_cmd_tx.clone();
-        async move {
+        Box::pin(async move {
             loop {
                 let phase = *phase_watch_rx.borrow();
                 match phase {
@@ -722,7 +720,7 @@ impl Filter {
             }
             // Also shutdown the layer below
             let _ = transport_cmd_tx.send(TransportCmd::Shutdown).await;
-        }
+        })
     }
 
     async fn send_pings(&mut self) -> anyhow::Result<()> {

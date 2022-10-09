@@ -1,14 +1,18 @@
 use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use pyo3::exceptions::*;
+use pyo3::gc::PyVisit;
 use pyo3::prelude::*;
+use pyo3::PyTraverseError;
 use tokio::sync::{
     mpsc::error::TryRecvError,
     mpsc::{self, Receiver, Sender},
     Mutex,
 };
 
+use netwaystev2::common::ShutdownWatcher;
 use netwaystev2::filter::{
     Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotice, FilterNotifyRecv, FilterRsp, FilterRspRecv,
 };
@@ -25,8 +29,8 @@ pub struct FilterInterface {
     notify_rx:          FilterNotifyRecv,
     transport_iface:    Option<PyObject>, // duck-typed Python object (same methods as TransportInterface)
     transport_channels: Option<TransportChannels>,
-    shutdown_watcher:   Option<Box<dyn Future<Output = ()> + Send + 'static>>,
-    shutdown_watcher2:  Option<Box<dyn Future<Output = ()> + Send + 'static>>,
+    shutdown_watcher:   Option<ShutdownWatcher>,
+    shutdown_watcher2:  Option<ShutdownWatcher>,
 }
 
 struct TransportChannels {
@@ -41,7 +45,7 @@ pub const TRANSPORT_CHANNEL_LEN: usize = 1000;
 /// Ex:
 ///
 /// ```
-/// take_from_self_or_raise_exc!(t_iface <- self.transport_iface);
+/// take_from_self_or_raise_exc!(mut t_iface <- self.transport_iface);
 /// ```
 ///
 /// Expands to:
@@ -52,6 +56,8 @@ pub const TRANSPORT_CHANNEL_LEN: usize = 1000;
 ///     .take()
 ///     .ok_or_else(|| PyException::new_err("cannot call run() more than once - transport_iface"))?;
 /// ```
+///
+/// The `mut` is optional.
 macro_rules! take_from_self_or_raise_exc {
     (mut $var:ident <- $self:ident.$field:ident) => {
         let mut $var = $self.$field.take().ok_or_else(|| {
@@ -100,50 +106,86 @@ impl FilterInterface {
             notify_rx:          filter_notice_rx,
             transport_iface:    Some(transport_iface),
             transport_channels: Some(transport_channels),
-            //XXX do we need these???? The async fns mentioned below can detect transport layer
-            // shutdown, which should be just as good as detecting filter layer shutdown.
-            shutdown_watcher:   Some(Box::new(filter_shutdown_watcher)), //XXX use in async fn spawned by run()
-            shutdown_watcher2:  Some(Box::new(filter_shutdown_watcher2)), //XXX use in other async fn spawned by run()
+            shutdown_watcher:   Some(filter_shutdown_watcher),
+            shutdown_watcher2:  Some(filter_shutdown_watcher2), //XXX use in other async fn spawned by run()
         }
     }
 
     fn run<'p>(&mut self, py: Python<'p>) -> PyResult<&'p PyAny> {
         take_from_self_or_raise_exc!(mut filter <- self.filter);
-        take_from_self_or_raise_exc!(mut t_channels <- self.transport_channels);
-        take_from_self_or_raise_exc!(mut t_iface <- self.transport_iface);
-        tokio::spawn(async move {
-            loop {
-                // Receive transport command from Filter layer
-                let transport_cmd = if let Some(c) = t_channels.transport_cmd_rx.recv().await {
-                    c
-                } else {
-                    return; // Transport layer was shut down
-                };
-                let transport_cmdw: TransportCmdW = transport_cmd.into();
+        take_from_self_or_raise_exc!(t_channels <- self.transport_channels);
+        take_from_self_or_raise_exc!(t_iface <- self.transport_iface);
+        take_from_self_or_raise_exc!(shutdown_watcher <- self.shutdown_watcher);
 
-                // Call command_response, passing in the TransportCmd and getting a Python Future
-                // that returns a TransportRsp.
+        let transport_iface = Arc::new(Mutex::new(t_iface));
 
-                let transport_rspw: PyObject = Python::with_gil(|py| {
-                    let py_retval = t_iface
-                        .call_method(py, "command_response", (transport_cmdw,), None)
-                        .expect("unreachable");
-                    pyo3_asyncio::tokio::into_future(py_retval.as_ref(py)).expect("should return future")
-                })
-                .await
-                .expect("unreachable2");
-                let transport_rspw: TransportRspW =
-                    Python::with_gil(|py| transport_rspw.extract(py)).expect("bad command_response retval"); // TODO: handle better
-                let transport_rsp: TransportRsp = transport_rspw.into();
-                t_channels.transport_rsp_tx.send(transport_rsp).await.unwrap(); //XXX break if error
-            }
-            //XXX turn channel send/recvs into calls to transport_iface methods
-        });
+        tokio::spawn(handle_transport_cmd_resp(t_channels, transport_iface, shutdown_watcher));
+
         let run_fut = async move { Ok(filter.run().await) };
+
         pyo3_asyncio::tokio::future_into_py(py, run_fut)
     }
 
-    //XXX more methods
+    // Python GC methods - https://pyo3.rs/v0.16.4/class/protocols.html#garbage-collector-integration
+    fn __traverse__(&self, visit: PyVisit<'_>) -> Result<(), PyTraverseError> {
+        if let Some(t_iface) = &self.transport_iface {
+            visit.call(t_iface)?
+        }
+        Ok(())
+    }
+
+    fn __clear__(&mut self) {
+        // Clear reference, this decrements ref counter.
+        self.transport_iface = None;
+    }
+
+    //XXX command_response
+
+    //XXX get_notifications
+}
+
+/// Responsible for passing Transport layer commands and responses between the channels to the
+/// Filter layer and the Python TransportInterface wrapper.
+async fn handle_transport_cmd_resp(
+    mut t_channels: TransportChannels,
+    transport_iface: Arc<Mutex<PyObject>>,
+    mut shutdown_watcher: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
+) {
+    loop {
+        // Receive transport command from Filter layer. Return if either filter or transport layers
+        // were shutdown.
+        let transport_cmd = tokio::select! {
+            cmd = t_channels.transport_cmd_rx.recv() => {
+                if let Some(c) = cmd {
+                    c
+                } else {
+                    return;
+                }
+            }
+            _ = &mut shutdown_watcher => {
+                // Filter layer was shutdown
+                return;
+            }
+        };
+        let transport_cmdw: TransportCmdW = transport_cmd.into();
+
+        // Call command_response, passing in the TransportCmd and getting a Python Future
+        // that returns a TransportRsp.
+
+        let t_iface = transport_iface.lock().await;
+        let transport_rspw_fut = Python::with_gil(|py| {
+            let py_retval = t_iface
+                .call_method(py, "command_response", (transport_cmdw,), None)
+                .expect("unreachable");
+            pyo3_asyncio::tokio::into_future(py_retval.as_ref(py)).expect("should return future")
+        });
+        drop(t_iface); // Unlock mutex before the await on the following line
+        let transport_rspw: PyObject = transport_rspw_fut.await.expect("unreachable2");
+        let transport_rspw: TransportRspW =
+            Python::with_gil(|py| transport_rspw.extract(py)).expect("command_response must return TransportRspW"); // ToDo: handle better
+        let transport_rsp: TransportRsp = transport_rspw.into();
+        t_channels.transport_rsp_tx.send(transport_rsp).await.unwrap(); //XXX break if error
+    }
 }
 
 #[pyclass]
