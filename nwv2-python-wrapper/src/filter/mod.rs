@@ -7,12 +7,11 @@ use pyo3::gc::PyVisit;
 use pyo3::prelude::*;
 use pyo3::PyTraverseError;
 use tokio::sync::{
-    mpsc::error::TryRecvError,
+    mpsc::error::{SendError, TryRecvError},
     mpsc::{self, Receiver, Sender},
     Mutex,
 };
 
-use netwaystev2::common::ShutdownWatcher;
 use netwaystev2::filter::{
     Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotice, FilterNotifyRecv, FilterRsp, FilterRspRecv,
 };
@@ -29,8 +28,6 @@ pub struct FilterInterface {
     notify_rx:          FilterNotifyRecv,
     transport_iface:    Option<PyObject>, // duck-typed Python object (same methods as TransportInterface)
     transport_channels: Option<TransportChannels>,
-    shutdown_watcher:   Option<ShutdownWatcher>,
-    shutdown_watcher2:  Option<ShutdownWatcher>,
 }
 
 struct TransportChannels {
@@ -96,9 +93,6 @@ impl FilterInterface {
             filter_mode.into(),
         );
 
-        let filter_shutdown_watcher = filter.get_shutdown_watcher(); // No await; get the future
-        let filter_shutdown_watcher2 = filter.get_shutdown_watcher(); // No await; get the future
-
         FilterInterface {
             filter:             Some(filter),
             cmd_tx:             filter_cmd_tx,
@@ -106,8 +100,6 @@ impl FilterInterface {
             notify_rx:          filter_notice_rx,
             transport_iface:    Some(transport_iface),
             transport_channels: Some(transport_channels),
-            shutdown_watcher:   Some(filter_shutdown_watcher),
-            shutdown_watcher2:  Some(filter_shutdown_watcher2), //XXX use in other async fn spawned by run()
         }
     }
 
@@ -115,11 +107,10 @@ impl FilterInterface {
         take_from_self_or_raise_exc!(mut filter <- self.filter);
         take_from_self_or_raise_exc!(t_channels <- self.transport_channels);
         take_from_self_or_raise_exc!(t_iface <- self.transport_iface);
-        take_from_self_or_raise_exc!(shutdown_watcher <- self.shutdown_watcher);
 
         let transport_iface = Arc::new(Mutex::new(t_iface));
 
-        tokio::spawn(handle_transport_cmd_resp(t_channels, transport_iface, shutdown_watcher));
+        tokio::spawn(handle_transport_cmd_resp(t_channels, transport_iface));
 
         let run_fut = async move { Ok(filter.run().await) };
 
@@ -146,26 +137,13 @@ impl FilterInterface {
 
 /// Responsible for passing Transport layer commands and responses between the channels to the
 /// Filter layer and the Python TransportInterface wrapper.
-async fn handle_transport_cmd_resp(
-    mut t_channels: TransportChannels,
-    transport_iface: Arc<Mutex<PyObject>>,
-    mut shutdown_watcher: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
-) {
+async fn handle_transport_cmd_resp(mut t_channels: TransportChannels, transport_iface: Arc<Mutex<PyObject>>) {
     loop {
-        // Receive transport command from Filter layer. Return if either filter or transport layers
-        // were shutdown.
-        let transport_cmd = tokio::select! {
-            cmd = t_channels.transport_cmd_rx.recv() => {
-                if let Some(c) = cmd {
-                    c
-                } else {
-                    return;
-                }
-            }
-            _ = &mut shutdown_watcher => {
-                // Filter layer was shutdown
-                return;
-            }
+        // Receive transport command from Filter layer. Return if Filter layer was shutdown.
+        let transport_cmd = if let Some(c) = t_channels.transport_cmd_rx.recv().await {
+            c
+        } else {
+            return;
         };
         let transport_cmdw: TransportCmdW = transport_cmd.into();
 
@@ -184,7 +162,13 @@ async fn handle_transport_cmd_resp(
         let transport_rspw: TransportRspW =
             Python::with_gil(|py| transport_rspw.extract(py)).expect("command_response must return TransportRspW"); // ToDo: handle better
         let transport_rsp: TransportRsp = transport_rspw.into();
-        t_channels.transport_rsp_tx.send(transport_rsp).await.unwrap(); //XXX break if error
+        match t_channels.transport_rsp_tx.send(transport_rsp).await {
+            Err(SendError(_)) => {
+                // A failure to send indicates the Filter layer was shutdown
+                return;
+            }
+            _ => {} // Continue with loop
+        }
     }
 }
 
