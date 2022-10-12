@@ -1,6 +1,6 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use pyo3::exceptions::*;
 use pyo3::gc::PyVisit;
@@ -9,7 +9,7 @@ use pyo3::PyTraverseError;
 use tokio::sync::{
     mpsc::error::{SendError, TryRecvError},
     mpsc::{self, Receiver, Sender},
-    Mutex,
+    watch, Mutex,
 };
 
 use netwaystev2::filter::{
@@ -26,8 +26,10 @@ pub struct FilterInterface {
     cmd_tx:             FilterCmdSend,
     response_rx:        Arc<Mutex<FilterRspRecv>>,
     notify_rx:          FilterNotifyRecv,
-    transport_iface:    Option<PyObject>, // duck-typed Python object (same methods as TransportInterface)
+    transport_iface:    Option<Arc<PyObject>>, // duck-typed Python object (same methods as TransportInterface)
     transport_channels: Option<TransportChannels>,
+    shutdown_tx:        watch::Sender<()>, // sends or closes if FilterInterface is shutdown
+    shutdown_rx:        watch::Receiver<()>, // Is cloned and provided to async functions so they don't run forever
 }
 
 struct TransportChannels {
@@ -86,20 +88,24 @@ impl FilterInterface {
         };
 
         // Create the filter.
-        let (mut filter, filter_cmd_tx, filter_rsp_rx, filter_notice_rx) = Filter::new(
+        let (filter, filter_cmd_tx, filter_rsp_rx, filter_notice_rx) = Filter::new(
             transport_cmd_tx,
             transport_rsp_rx,
             transport_notice_rx,
             filter_mode.into(),
         );
 
+        let (shutdown_tx, shutdown_rx) = watch::channel(());
+
         FilterInterface {
-            filter:             Some(filter),
-            cmd_tx:             filter_cmd_tx,
-            response_rx:        Arc::new(Mutex::new(filter_rsp_rx)),
-            notify_rx:          filter_notice_rx,
-            transport_iface:    Some(transport_iface),
+            filter: Some(filter),
+            cmd_tx: filter_cmd_tx,
+            response_rx: Arc::new(Mutex::new(filter_rsp_rx)),
+            notify_rx: filter_notice_rx,
+            transport_iface: Some(Arc::new(transport_iface)),
             transport_channels: Some(transport_channels),
+            shutdown_tx,
+            shutdown_rx,
         }
     }
 
@@ -108,9 +114,12 @@ impl FilterInterface {
         take_from_self_or_raise_exc!(t_channels <- self.transport_channels);
         take_from_self_or_raise_exc!(t_iface <- self.transport_iface);
 
-        let transport_iface = Arc::new(Mutex::new(t_iface));
-
-        tokio::spawn(handle_transport_cmd_resp(t_channels, transport_iface));
+        tokio::spawn(handle_transport_cmd_resp(
+            t_channels,
+            Arc::downgrade(&t_iface),
+            self.shutdown_rx.clone(),
+        ));
+        //XXX handle_transport_notification
 
         let run_fut = async move { Ok(filter.run().await) };
 
@@ -120,13 +129,15 @@ impl FilterInterface {
     // Python GC methods - https://pyo3.rs/v0.16.4/class/protocols.html#garbage-collector-integration
     fn __traverse__(&self, visit: PyVisit<'_>) -> Result<(), PyTraverseError> {
         if let Some(t_iface) = &self.transport_iface {
-            visit.call(t_iface)?
+            let ti: &PyObject = &*t_iface;
+            visit.call(ti)?
         }
         Ok(())
     }
 
     fn __clear__(&mut self) {
-        // Clear reference, this decrements ref counter.
+        let _ = self.shutdown_tx.send(()); // Shutdown async worker functions.
+                                           // Clear reference, this decrements PyObject ref counter.
         self.transport_iface = None;
     }
 
@@ -135,29 +146,53 @@ impl FilterInterface {
     //XXX get_notifications
 }
 
+impl Drop for FilterInterface {
+    fn drop(&mut self) {
+        let _ = self.shutdown_tx.send(()); // Shutdown async worker functions.
+    }
+}
+
 /// Responsible for passing Transport layer commands and responses between the channels to the
 /// Filter layer and the Python TransportInterface wrapper.
-async fn handle_transport_cmd_resp(mut t_channels: TransportChannels, transport_iface: Arc<Mutex<PyObject>>) {
+///
+/// There is a weak reference to `transport_iface` so that Python GC can operate correctly.
+async fn handle_transport_cmd_resp(
+    mut t_channels: TransportChannels,
+    transport_iface: Weak<PyObject>,
+    mut shutdown_rx: watch::Receiver<()>,
+) {
     loop {
         // Receive transport command from Filter layer. Return if Filter layer was shutdown.
-        let transport_cmd = if let Some(c) = t_channels.transport_cmd_rx.recv().await {
-            c
-        } else {
-            return;
+        let transport_cmd = tokio::select! {
+            maybe_transport_cmd = t_channels.transport_cmd_rx.recv() => {
+                if let Some(c) = maybe_transport_cmd {
+                    c
+                } else {
+                    return;
+                }
+            }
+            _ = shutdown_rx.changed() => {
+                return;
+            }
         };
         let transport_cmdw: TransportCmdW = transport_cmd.into();
 
         // Call command_response, passing in the TransportCmd and getting a Python Future
         // that returns a TransportRsp.
 
-        let t_iface = transport_iface.lock().await;
+        let t_iface = if let Some(ti) = transport_iface.upgrade() {
+            ti
+        } else {
+            // Cannot upgrade from weak reference due to Python GC having us break a reference
+            // cycle. Should be rare case.
+            return;
+        };
         let transport_rspw_fut = Python::with_gil(|py| {
             let py_retval = t_iface
                 .call_method(py, "command_response", (transport_cmdw,), None)
                 .expect("unreachable");
             pyo3_asyncio::tokio::into_future(py_retval.as_ref(py)).expect("should return future")
         });
-        drop(t_iface); // Unlock mutex before the await on the following line
         let transport_rspw: PyObject = transport_rspw_fut.await.expect("unreachable2");
         let transport_rspw: TransportRspW =
             Python::with_gil(|py| transport_rspw.extract(py)).expect("command_response must return TransportRspW"); // ToDo: handle better
