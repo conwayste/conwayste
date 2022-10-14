@@ -137,8 +137,7 @@ impl FilterInterface {
 
     fn __clear__(&mut self) {
         let _ = self.shutdown_tx.send(()); // Shutdown async worker functions.
-                                           // Clear reference, this decrements PyObject ref counter.
-        self.transport_iface = None;
+        self.transport_iface = None; // Clear reference, this decrements PyObject ref counter.
     }
 
     //XXX command_response
