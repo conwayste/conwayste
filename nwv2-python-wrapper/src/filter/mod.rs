@@ -1,5 +1,3 @@
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::{Arc, Weak};
 
 use pyo3::exceptions::*;
@@ -7,7 +5,7 @@ use pyo3::gc::PyVisit;
 use pyo3::prelude::*;
 use pyo3::PyTraverseError;
 use tokio::sync::{
-    mpsc::error::{SendError, TryRecvError},
+    mpsc::error::SendError,
     mpsc::{self, Receiver, Sender},
     watch, Mutex,
 };
@@ -114,16 +112,17 @@ impl FilterInterface {
         take_from_self_or_raise_exc!(t_channels <- self.transport_channels);
         take_from_self_or_raise_exc!(t_iface <- self.transport_iface);
 
-        tokio::spawn(handle_transport_cmd_resp(
-            t_channels,
-            Arc::downgrade(&t_iface),
-            self.shutdown_rx.clone(),
-        ));
-        //XXX handle_transport_notification
+        let shutdown_rx = self.shutdown_rx.clone();
+        let rust_fut = async move {
+            tokio::join!(
+                filter.run(),
+                handle_transport_cmd_resp(t_channels, Arc::downgrade(&t_iface), shutdown_rx),
+                //XXX handle_transport_notification
+            );
+            Ok(())
+        };
 
-        let run_fut = async move { Ok(filter.run().await) };
-
-        pyo3_asyncio::tokio::future_into_py(py, run_fut)
+        pyo3_asyncio::tokio::future_into_py(py, rust_fut) // Returns a Python future
     }
 
     // Python GC methods - https://pyo3.rs/v0.16.4/class/protocols.html#garbage-collector-integration
