@@ -11,7 +11,6 @@ use protocol::request::RequestActionW;
 use transport::*;
 
 use pyo3::prelude::*;
-use pyo3_asyncio;
 
 /// A Python module implemented in Rust.
 #[pymodule]

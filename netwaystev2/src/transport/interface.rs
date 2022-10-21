@@ -51,7 +51,7 @@ pub enum TransportRsp {
 }
 
 /// Used by the Transport layer to inform the Filter layer of a packet or endpoint event
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TransportNotice {
     /// Here is the received packet for this endpoint
     PacketDelivery { endpoint: Endpoint, packet: Packet },

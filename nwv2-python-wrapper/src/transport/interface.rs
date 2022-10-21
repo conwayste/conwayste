@@ -202,7 +202,7 @@ impl TransportRspW {
 }
 
 #[pyclass]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TransportNoticeW {
     pub inner: TransportNotice,
 }

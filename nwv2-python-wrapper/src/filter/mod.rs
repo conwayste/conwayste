@@ -1,4 +1,8 @@
-use std::sync::{Arc, Weak};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Weak,
+};
+use std::time::Duration;
 
 use pyo3::exceptions::*;
 use pyo3::gc::PyVisit;
@@ -9,6 +13,7 @@ use tokio::sync::{
     mpsc::{self, Receiver, Sender},
     watch, Mutex,
 };
+use tokio::time::sleep;
 
 use netwaystev2::filter::{
     Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotice, FilterNotifyRecv, FilterRsp, FilterRspRecv,
@@ -24,6 +29,7 @@ pub struct FilterInterface {
     cmd_tx:             FilterCmdSend,
     response_rx:        Arc<Mutex<FilterRspRecv>>,
     notify_rx:          FilterNotifyRecv,
+    notif_poll_ms:      Arc<AtomicUsize>, // Controls how frequently we poll the TransportInterface for transport notifications
     transport_iface:    Option<Arc<PyObject>>, // duck-typed Python object (same methods as TransportInterface)
     transport_channels: Option<TransportChannels>,
     shutdown_tx:        watch::Sender<()>, // sends or closes if FilterInterface is shutdown
@@ -38,6 +44,8 @@ struct TransportChannels {
 
 // TODO: reference the one in netw.../src/settings.rs
 pub const TRANSPORT_CHANNEL_LEN: usize = 1000;
+
+pub const DEFAULT_NOTIFY_POLL_MS: usize = 30; // Milliseconds to wait between calling get_notifications()
 
 /// Ex:
 ///
@@ -100,6 +108,7 @@ impl FilterInterface {
             cmd_tx: filter_cmd_tx,
             response_rx: Arc::new(Mutex::new(filter_rsp_rx)),
             notify_rx: filter_notice_rx,
+            notif_poll_ms: Arc::new(AtomicUsize::new(DEFAULT_NOTIFY_POLL_MS)),
             transport_iface: Some(Arc::new(transport_iface)),
             transport_channels: Some(transport_channels),
             shutdown_tx,
@@ -107,17 +116,37 @@ impl FilterInterface {
         }
     }
 
+    #[getter]
+    fn get_notif_poll_ms(&self) -> PyResult<usize> {
+        Ok(self.notif_poll_ms.load(Ordering::SeqCst))
+    }
+
+    #[setter]
+    fn set_notif_poll_ms(&mut self, notif_poll_ms: usize) -> PyResult<()> {
+        self.notif_poll_ms.store(notif_poll_ms, Ordering::SeqCst);
+        Ok(())
+    }
+
     fn run<'p>(&mut self, py: Python<'p>) -> PyResult<&'p PyAny> {
         take_from_self_or_raise_exc!(mut filter <- self.filter);
         take_from_self_or_raise_exc!(t_channels <- self.transport_channels);
         take_from_self_or_raise_exc!(t_iface <- self.transport_iface);
 
+        let transport_notice_tx = t_channels.transport_notice_tx.clone();
+
         let shutdown_rx = self.shutdown_rx.clone();
+        let shutdown_rx2 = self.shutdown_rx.clone();
+        let notif_poll_ms = self.notif_poll_ms.clone();
         let rust_fut = async move {
             tokio::join!(
                 filter.run(),
                 handle_transport_cmd_resp(t_channels, Arc::downgrade(&t_iface), shutdown_rx),
-                //XXX handle_transport_notification
+                handle_transport_notification(
+                    transport_notice_tx,
+                    Arc::downgrade(&t_iface),
+                    notif_poll_ms,
+                    shutdown_rx2
+                ),
             );
             Ok(())
         };
@@ -135,6 +164,7 @@ impl FilterInterface {
     }
 
     fn __clear__(&mut self) {
+        let _ = self.cmd_tx.try_send(FilterCmd::Shutdown { graceful: false });
         let _ = self.shutdown_tx.send(()); // Shutdown async worker functions.
         self.transport_iface = None; // Clear reference, this decrements PyObject ref counter.
     }
@@ -146,6 +176,7 @@ impl FilterInterface {
 
 impl Drop for FilterInterface {
     fn drop(&mut self) {
+        let _ = self.cmd_tx.try_send(FilterCmd::Shutdown { graceful: false });
         let _ = self.shutdown_tx.send(()); // Shutdown async worker functions.
     }
 }
@@ -202,6 +233,61 @@ async fn handle_transport_cmd_resp(
             }
             _ => {} // Continue with loop
         }
+    }
+}
+
+async fn handle_transport_notification(
+    transport_notice_tx: Sender<TransportNotice>,
+    transport_iface: Weak<PyObject>,
+    notif_poll_ms: Arc<AtomicUsize>,
+    mut shutdown_rx: watch::Receiver<()>,
+) {
+    loop {
+        let t_iface = if let Some(ti) = transport_iface.upgrade() {
+            ti
+        } else {
+            // Cannot upgrade from weak reference due to Python GC having us break a reference
+            // cycle. Should be rare case.
+            return;
+        };
+
+        // Python call "get_notifications" on transport_iface. Note: not Python async!
+        let py_retval = Python::with_gil(|py| t_iface.call_method0(py, "get_notifications"))
+            .expect("TransportInterface get_notifications should not raise exception");
+        let py_obj_vec: Vec<Py<PyAny>> = Python::with_gil(|py| py_retval.extract(py))
+            .expect("TransportInterface get_notifications must return list");
+        let transport_notif_wrappers: Vec<TransportNoticeW> = Python::with_gil(|py| {
+            py_obj_vec
+                .into_iter()
+                .map(|obj| {
+                    obj.extract(py)
+                        .expect("TransportInterface get_notifications must return list of TransportNoticeW")
+                })
+                .collect()
+        });
+        drop(t_iface); // Now we only have a weak ref
+
+        // Send any notifications we received above to `transport_notice_tx` so that Filter can handle them.
+        for tnoticew in transport_notif_wrappers {
+            let transport_notice: TransportNotice = tnoticew.into();
+            if let Err(_) = transport_notice_tx.send(transport_notice).await {
+                // Filter layer must have been dropped
+                return;
+            }
+        }
+
+        let poll_interval = Duration::from_millis(
+            notif_poll_ms
+                .load(Ordering::SeqCst)
+                .try_into()
+                .expect("notif_poll_ms too big"),
+        );
+        tokio::select! {
+            _ = sleep(poll_interval) => {}
+            _ = shutdown_rx.changed() => {
+                return;
+            }
+        };
     }
 }
 
