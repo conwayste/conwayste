@@ -6,6 +6,6 @@ mod response;
 mod update;
 
 pub use packet::Packet;
-pub use request::RequestAction;
-pub use response::ResponseCode;
+pub use request::*;
+pub use response::*;
 pub use update::*;

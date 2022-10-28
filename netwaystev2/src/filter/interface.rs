@@ -16,7 +16,7 @@ pub enum FilterMode {
 }
 
 /// App layer sends these commands to the Filter Layer to send game events to a peer
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FilterCmd {
     SendRequestAction {
         endpoint: Endpoint,
