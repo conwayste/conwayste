@@ -32,7 +32,7 @@ pub enum FilterCmd {
     },
     SendGameUpdates {
         endpoints: Vec<Endpoint>,
-        messages:  Vec<GameUpdate>,
+        updates:   Vec<GameUpdate>,
     },
     Authenticated {
         endpoint: Endpoint,

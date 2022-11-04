@@ -66,6 +66,8 @@ pub const DEFAULT_NOTIFY_POLL_MS: usize = 30; // Milliseconds to wait between ca
 /// ```
 ///
 /// The `mut` is optional.
+///
+/// Must be used in a function that returns `PyResult<T>`, where `T` can be any type.
 macro_rules! take_from_self_or_raise_exc {
     (mut $var:ident <- $self:ident.$field:ident) => {
         let mut $var = $self.$field.take().ok_or_else(|| {

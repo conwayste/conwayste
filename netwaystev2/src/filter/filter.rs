@@ -660,7 +660,7 @@ impl Filter {
                 }
             }
             // TODO: implement these
-            FilterCmd::SendGameUpdates { endpoints, messages } => {}
+            FilterCmd::SendGameUpdates { endpoints, updates } => {}
             FilterCmd::Authenticated { endpoint } => {} // TODO: should probably have player_name as part of this
             FilterCmd::SendGenStateDiff { endpoints, diff } => {}
             FilterCmd::AddPingEndpoints { endpoints } => {

@@ -54,19 +54,19 @@ impl EndpointW {
 ///          let endpointw: EndpointW = ep.extract()?;
 ///          Ok(endpointw.into())
 ///      })
-///      .collect()?;
+///      .collect::<PyResult<Vec<_>>>()?;
 /// ```
-// XXX PR_GATE XXX use for all wrappers in this crate that use Vec<...>
-// XXX PR_GATE XXX Search for: Vec.*PyAny
+///
+/// Must use in a function that returns PyResult<T> where T is any type,
 macro_rules! vec_from_py {
     (let $result_var:ident: Vec<$final_type:ty> <- [$wrapper_type:ty] <- $expression:expr) => {
         let vec_py: Vec<&PyAny> = $expression;
         let $result_var: Vec<$final_type> = vec_py
-                    .into_iter()
-                    .map(|obj_py| {
-                        let wrapped: $wrapper_type = obj_py.extract()?;
-                        Ok(wrapped.into())
-                    })
-                    .collect()?;
+            .into_iter()
+            .map(|obj_py| {
+                let wrapped: $wrapper_type = obj_py.extract()?;
+                Ok(wrapped.into())
+            })
+            .collect::<PyResult<Vec<_>>>()?;
     };
 }

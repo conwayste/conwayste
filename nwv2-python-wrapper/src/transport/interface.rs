@@ -8,6 +8,7 @@ use snowflake::ProcessUniqueId;
 use crate::common::*;
 use crate::protocol::PacketW;
 use crate::utils::get_from_dict;
+use netwaystev2::protocol::Packet;
 use netwaystev2::transport::{PacketSettings, TransportCmd, TransportNotice, TransportRsp};
 
 #[pyclass]
@@ -112,23 +113,14 @@ impl TransportCmdW {
             }
             "sendpackets" => {
                 let endpointw: EndpointW = get_from_dict(&kwds, "endpoint")?;
-                let packet_infos_py: Vec<&PyAny> = get_from_dict(&kwds, "packet_infos")?;
-                let mut packet_infos: Vec<PacketSettings> = vec![];
-                for pip in packet_infos_py {
-                    let packet_setting = pip.extract::<PacketSettingsW>()?;
-                    packet_infos.push(packet_setting.into());
-                }
+                vec_from_py! {let packet_infos: Vec<PacketSettings> <- [PacketSettingsW] <- get_from_dict(&kwds, "packet_infos")?};
 
-                let packets_py: Vec<&PyAny> = get_from_dict(&kwds, "packets")?;
-                let packetws = packets_py
-                    .into_iter()
-                    .map(|packet_py| packet_py.extract())
-                    .collect::<Result<Vec<PacketW>, _>>()?;
+                vec_from_py! {let packets: Vec<Packet> <- [PacketW] <- get_from_dict(&kwds, "packets")?};
 
                 TransportCmd::SendPackets {
                     endpoint: endpointw.into(),
                     packet_infos,
-                    packets: packetws.into_iter().map(|pw| pw.into()).collect(),
+                    packets,
                 }
             }
             "dropendpoint" => {

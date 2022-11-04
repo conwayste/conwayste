@@ -5,10 +5,10 @@ use pyo3::prelude::*;
 
 use crate::common::*;
 use crate::utils::get_from_dict;
-use crate::{BroadcastChatMessageW, RequestActionW, ResponseCodeW};
+use crate::{BroadcastChatMessageW, GameUpdateW, GenStateDiffPartW, RequestActionW, ResponseCodeW};
 use netwaystev2::common::Endpoint;
 use netwaystev2::filter::{FilterCmd, FilterNotice, FilterRsp};
-use netwaystev2::protocol::BroadcastChatMessage;
+use netwaystev2::protocol::{BroadcastChatMessage, GameUpdate};
 
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -52,32 +52,39 @@ impl FilterCmdW {
                 }
             }
             "sendchats" => {
-                vec_from_py!{let endpoints: Vec<Endpoint> <- [EndpointW] <- get_from_dict(&kwds, "endpoints")?};
-                vec_from_py!{let messages: Vec<BroadcastChatMessage> <- [BroadcastChatMessageW] <- get_from_dict(&kwds, "messages")?};
+                vec_from_py! {let endpoints: Vec<Endpoint> <- [EndpointW] <- get_from_dict(&kwds, "endpoints")?};
+                vec_from_py! {let messages: Vec<BroadcastChatMessage> <- [BroadcastChatMessageW] <- get_from_dict(&kwds, "messages")?};
                 FilterCmd::SendChats { endpoints, messages }
             }
             "sendgameupdates" => {
-                vec_from_py!{let endpoints: Vec<Endpoint> <- [EndpointW] <- get_from_dict(&kwds, "endpoints")?};
-                //XXX messages
-                FilterCmd::SendGameUpdates { endpoints, messages }
+                vec_from_py! {let endpoints: Vec<Endpoint> <- [EndpointW] <- get_from_dict(&kwds, "endpoints")?};
+                vec_from_py! {let updates: Vec<GameUpdate> <- [GameUpdateW] <- get_from_dict(&kwds, "updates")?};
+                FilterCmd::SendGameUpdates { endpoints, updates }
             }
             "authenticated" => {
                 let endpointw: EndpointW = get_from_dict(&kwds, "endpoint")?;
-                FilterCmd::Authenticated { endpoint: endpointw.into() }
+                FilterCmd::Authenticated {
+                    endpoint: endpointw.into(),
+                }
             }
             "sendgenstatediff" => {
-                vec_from_py!{let endpoints: Vec<Endpoint> <- [EndpointW] <- get_from_dict(&kwds, "endpoints")?};
-                //XXX diff
-                FilterCmd::SendGenStateDiff { endpoints, diff }
+                vec_from_py! {let endpoints: Vec<Endpoint> <- [EndpointW] <- get_from_dict(&kwds, "endpoints")?};
+                let diffw: GenStateDiffPartW = get_from_dict(&kwds, "diff")?;
+                FilterCmd::SendGenStateDiff {
+                    endpoints,
+                    diff: diffw.into(),
+                }
             }
             "addpingendpoints" => {
-                vec_from_py!{let endpoints: Vec<Endpoint> <- [EndpointW] <- get_from_dict(&kwds, "endpoints")?};
+                vec_from_py! {let endpoints: Vec<Endpoint> <- [EndpointW] <- get_from_dict(&kwds, "endpoints")?};
                 FilterCmd::AddPingEndpoints { endpoints }
             }
             "clearpingendpoints" => FilterCmd::ClearPingEndpoints,
             "dropendpoint" => {
                 let endpointw: EndpointW = get_from_dict(&kwds, "endpoint")?;
-                FilterCmd::DropEndpoint { endpoint: endpointw.into() }
+                FilterCmd::DropEndpoint {
+                    endpoint: endpointw.into(),
+                }
             }
             "shutdown" => {
                 let graceful: bool = get_from_dict(&kwds, "graceful")?;
