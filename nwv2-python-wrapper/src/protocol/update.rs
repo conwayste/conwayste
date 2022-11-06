@@ -1,5 +1,9 @@
+use std::collections::HashMap;
+
+use pyo3::exceptions::*;
 use pyo3::prelude::*;
 
+use crate::common::*;
 use netwaystev2::protocol::*;
 
 #[pyclass]
@@ -8,28 +12,18 @@ pub struct BroadcastChatMessageW {
     inner: BroadcastChatMessage,
 }
 
-impl Into<BroadcastChatMessage> for BroadcastChatMessageW {
-    fn into(self) -> BroadcastChatMessage {
-        self.inner
-    }
-}
-
-impl From<BroadcastChatMessage> for BroadcastChatMessageW {
-    fn from(other: BroadcastChatMessage) -> Self {
-        BroadcastChatMessageW { inner: other }
-    }
-}
+impl_from_and_to!(BroadcastChatMessageW wraps BroadcastChatMessage);
 
 #[pymethods]
 impl BroadcastChatMessageW {
     #[new]
-    fn new(chat_seq: Option<u64>, player_name: String, message: String) -> PyResult<Self> {
+    fn new(chat_seq: Option<u64>, player_name: String, message: String) -> Self {
         let inner = BroadcastChatMessage {
             chat_seq,
             player_name,
             message,
         };
-        Ok(BroadcastChatMessageW { inner })
+        BroadcastChatMessageW { inner }
     }
 
     #[getter]
@@ -38,13 +32,13 @@ impl BroadcastChatMessageW {
     }
 
     #[getter]
-    fn get_player_name(&self) -> String {
-        self.inner.player_name
+    fn get_player_name(&self) -> &str {
+        &self.inner.player_name
     }
 
     #[getter]
-    fn get_message(&self) -> String {
-        self.inner.message
+    fn get_message(&self) -> &str {
+        &self.inner.message
     }
 
     fn __repr__(&self) -> String {
@@ -58,22 +52,12 @@ pub struct GenStateDiffPartW {
     inner: GenStateDiffPart,
 }
 
-impl Into<GenStateDiffPart> for GenStateDiffPartW {
-    fn into(self) -> GenStateDiffPart {
-        self.inner
-    }
-}
-
-impl From<GenStateDiffPart> for GenStateDiffPartW {
-    fn from(other: GenStateDiffPart) -> Self {
-        GenStateDiffPartW { inner: other }
-    }
-}
+impl_from_and_to!(GenStateDiffPartW wraps GenStateDiffPart);
 
 #[pymethods]
 impl GenStateDiffPartW {
     #[new]
-    fn new(part_number: u8, total_parts: u8, gen0: u32, gen1: u32, pattern_part: String) -> PyResult<Self> {
+    fn new(part_number: u8, total_parts: u8, gen0: u32, gen1: u32, pattern_part: String) -> Self {
         let inner = GenStateDiffPart {
             part_number,
             total_parts,
@@ -81,7 +65,7 @@ impl GenStateDiffPartW {
             gen1,
             pattern_part,
         };
-        Ok(GenStateDiffPartW { inner })
+        GenStateDiffPartW { inner }
     }
 
     #[getter]
@@ -105,8 +89,8 @@ impl GenStateDiffPartW {
     }
 
     #[getter]
-    fn get_pattern_part(&self) -> String {
-        self.inner.pattern_part
+    fn get_pattern_part(&self) -> &str {
+        &self.inner.pattern_part
     }
 
     fn __repr__(&self) -> String {
@@ -120,29 +104,19 @@ pub struct NetRegionW {
     inner: NetRegion,
 }
 
-impl Into<NetRegion> for NetRegionW {
-    fn into(self) -> NetRegion {
-        self.inner
-    }
-}
-
-impl From<NetRegion> for NetRegionW {
-    fn from(other: NetRegion) -> Self {
-        NetRegionW { inner: other }
-    }
-}
+impl_from_and_to!(NetRegionW wraps NetRegion);
 
 #[pymethods]
 impl NetRegionW {
     #[new]
-    fn new(left: i32, top: i32, width: u32, height: u32) -> PyResult<Self> {
+    fn new(left: i32, top: i32, width: u32, height: u32) -> Self {
         let inner = NetRegion {
             left,
             top,
             width,
             height,
         };
-        Ok(NetRegionW { inner })
+        NetRegionW { inner }
     }
 
     #[getter]
@@ -176,17 +150,7 @@ pub struct GameOptionsW {
     inner: GameOptions,
 }
 
-impl Into<GameOptions> for GameOptionsW {
-    fn into(self) -> GameOptions {
-        self.inner
-    }
-}
-
-impl From<GameOptions> for GameOptionsW {
-    fn from(other: GameOptions) -> Self {
-        GameOptionsW { inner: other }
-    }
-}
+impl_from_and_to!(GameOptionsW wraps GameOptions);
 
 #[pymethods]
 impl GameOptionsW {
@@ -220,7 +184,7 @@ impl GameOptionsW {
 
     #[getter]
     fn get_player_writable(&self) -> Vec<NetRegionW> {
-        let pw = self.inner.player_writable;
+        let pw = &self.inner.player_writable;
         pw.iter()
             .cloned()
             .map(|net_region| NetRegionW { inner: net_region })
@@ -230,6 +194,133 @@ impl GameOptionsW {
     #[getter]
     fn get_fog_radius(&self) -> u32 {
         self.inner.fog_radius
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
+#[pyclass]
+#[derive(Clone, Debug)]
+pub struct PlayerInfoW {
+    inner: PlayerInfo,
+}
+
+impl_from_and_to!(PlayerInfoW wraps PlayerInfo);
+
+#[pymethods]
+impl PlayerInfoW {
+    #[new]
+    fn new(name: String, index: Option<u64>) -> Self {
+        let inner = PlayerInfo { name, index };
+        PlayerInfoW { inner }
+    }
+
+    #[getter]
+    fn get_name(&self) -> &str {
+        &self.inner.name
+    }
+
+    #[getter]
+    fn get_index(&self) -> Option<u64> {
+        self.inner.index
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
+#[pyclass]
+#[derive(Clone, Debug)]
+pub struct GameOutcomeW {
+    inner: GameOutcome,
+}
+
+impl_from_and_to!(GameOutcomeW wraps GameOutcome);
+
+#[pymethods]
+impl GameOutcomeW {
+    #[new]
+    fn new(winner: Option<String>) -> Self {
+        let inner = GameOutcome { winner };
+        GameOutcomeW { inner }
+    }
+
+    #[getter]
+    fn get_winner(&self) -> Option<&String> {
+        self.inner.winner.as_ref()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
+#[pyclass]
+#[derive(Clone, Debug)]
+pub struct GameUpdateW {
+    inner: GameUpdate,
+}
+
+impl_from_and_to!(GameUpdateW wraps GameUpdate);
+
+#[pymethods]
+impl GameUpdateW {
+    #[new]
+    #[args(kwds = "**")]
+    fn new(variant: String, kwds: Option<HashMap<String, &PyAny>>) -> PyResult<Self> {
+        let kwds = if let Some(kwds) = kwds { kwds } else { HashMap::new() };
+        use GameUpdate::*;
+        let inner = match variant.to_lowercase().as_str() {
+            "gamenotification" => {
+                let msg: String = get_from_dict(&kwds, "msg")?;
+                GameNotification { msg }
+            }
+            "gamestart" => {
+                let optionsw: GameOptionsW = get_from_dict(&kwds, "options")?;
+                GameStart {
+                    options: optionsw.into(),
+                }
+            }
+            "playerlist" => {
+                vec_from_py! {let players: Vec<PlayerInfo> <- [PlayerInfoW] <- get_from_dict(&kwds, "players")?};
+                PlayerList { players }
+            }
+            "playerchange" => {
+                let playerw: PlayerInfoW = get_from_dict(&kwds, "player")?;
+                let old_name: Option<String> = get_from_dict(&kwds, "old_name")?;
+                PlayerChange {
+                    player: playerw.into(),
+                    old_name,
+                }
+            }
+            "playerjoin" => {
+                let playerw: PlayerInfoW = get_from_dict(&kwds, "player")?;
+                PlayerJoin { player: playerw.into() }
+            }
+            "playerleave" => {
+                let name: String = get_from_dict(&kwds, "name")?;
+                PlayerLeave { name }
+            }
+            "gamefinish" => {
+                let outcomew: GameOutcomeW = get_from_dict(&kwds, "outcome")?;
+                GameFinish {
+                    outcome: outcomew.into(),
+                }
+            }
+            "roomdeleted" => RoomDeleted,
+            "match" => {
+                let room: String = get_from_dict(&kwds, "room")?;
+                let expire_secs: u32 = get_from_dict(&kwds, "expire_secs")?;
+                Match { room, expire_secs }
+            }
+            _ => {
+                return Err(PyValueError::new_err(format!("invalid variant type: {}", variant)));
+            }
+        };
+        Ok(GameUpdateW { inner })
     }
 
     fn __repr__(&self) -> String {

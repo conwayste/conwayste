@@ -302,11 +302,7 @@ pub struct FilterModeW {
     inner: FilterMode,
 }
 
-impl Into<FilterMode> for FilterModeW {
-    fn into(self) -> FilterMode {
-        self.inner
-    }
-}
+impl_from_and_to!(FilterModeW wraps FilterMode);
 
 #[pymethods]
 impl FilterModeW {

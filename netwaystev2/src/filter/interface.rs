@@ -54,7 +54,7 @@ pub enum FilterCmd {
 }
 
 /// Filter layer sends these responses to the Application Layer for each processed command
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FilterRsp {
     Accepted,
     NoSuchEndpoint { endpoint: Endpoint },
@@ -63,7 +63,7 @@ pub enum FilterRsp {
 // TODO: consider removing the Vec from some of these (might not be needed if the transport layer
 // isn't buffering things)
 /// Used by the Filter layer to inform the Application layer of game update availability
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FilterNotice {
     HasGeneration {
         endpoints: Vec<Endpoint>,

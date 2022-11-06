@@ -4,7 +4,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use super::request::RequestActionW;
-use crate::utils::get_from_dict;
+use crate::common::*;
 use netwaystev2::filter::*;
 use netwaystev2::protocol::*;
 
@@ -21,17 +21,7 @@ pub struct PacketW {
     inner: Packet,
 }
 
-impl Into<Packet> for PacketW {
-    fn into(self) -> Packet {
-        self.inner
-    }
-}
-
-impl From<Packet> for PacketW {
-    fn from(other: Packet) -> Self {
-        PacketW { inner: other }
-    }
-}
+impl_from_and_to!(PacketW wraps Packet);
 
 #[pymethods]
 impl PacketW {

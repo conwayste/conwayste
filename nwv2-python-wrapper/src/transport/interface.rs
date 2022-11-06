@@ -7,7 +7,6 @@ use snowflake::ProcessUniqueId;
 
 use crate::common::*;
 use crate::protocol::PacketW;
-use crate::utils::get_from_dict;
 use netwaystev2::protocol::Packet;
 use netwaystev2::transport::{PacketSettings, TransportCmd, TransportNotice, TransportRsp};
 
@@ -17,17 +16,7 @@ pub struct ProcessUniqueIdW {
     pub inner: ProcessUniqueId,
 }
 
-impl Into<ProcessUniqueId> for ProcessUniqueIdW {
-    fn into(self) -> ProcessUniqueId {
-        self.inner
-    }
-}
-
-impl From<ProcessUniqueId> for ProcessUniqueIdW {
-    fn from(other: ProcessUniqueId) -> Self {
-        ProcessUniqueIdW { inner: other }
-    }
-}
+impl_from_and_to!(ProcessUniqueIdW wraps ProcessUniqueId);
 
 #[pymethods]
 impl ProcessUniqueIdW {
@@ -49,11 +38,7 @@ pub struct PacketSettingsW {
     pub inner: PacketSettings,
 }
 
-impl Into<PacketSettings> for PacketSettingsW {
-    fn into(self) -> PacketSettings {
-        self.inner
-    }
-}
+impl_from_and_to!(PacketSettingsW wraps PacketSettings);
 
 #[pymethods]
 impl PacketSettingsW {
@@ -82,17 +67,7 @@ pub struct TransportCmdW {
     pub inner: TransportCmd,
 }
 
-impl Into<TransportCmd> for TransportCmdW {
-    fn into(self) -> TransportCmd {
-        self.inner
-    }
-}
-
-impl From<TransportCmd> for TransportCmdW {
-    fn from(other: TransportCmd) -> Self {
-        TransportCmdW { inner: other }
-    }
-}
+impl_from_and_to!(TransportCmdW wraps TransportCmd);
 
 #[pymethods]
 impl TransportCmdW {
@@ -162,17 +137,7 @@ pub struct TransportRspW {
     pub inner: TransportRsp,
 }
 
-impl From<TransportRsp> for TransportRspW {
-    fn from(inner: TransportRsp) -> Self {
-        TransportRspW { inner }
-    }
-}
-
-impl Into<TransportRsp> for TransportRspW {
-    fn into(self) -> TransportRsp {
-        self.inner
-    }
-}
+impl_from_and_to!(TransportRspW wraps TransportRsp);
 
 #[pymethods]
 impl TransportRspW {
@@ -199,17 +164,7 @@ pub struct TransportNoticeW {
     pub inner: TransportNotice,
 }
 
-impl From<TransportNotice> for TransportNoticeW {
-    fn from(inner: TransportNotice) -> Self {
-        TransportNoticeW { inner }
-    }
-}
-
-impl Into<TransportNotice> for TransportNoticeW {
-    fn into(self) -> TransportNotice {
-        self.inner
-    }
-}
+impl_from_and_to!(TransportNoticeW wraps TransportNotice);
 
 #[pymethods]
 impl TransportNoticeW {

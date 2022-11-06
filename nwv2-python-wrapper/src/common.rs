@@ -1,6 +1,7 @@
+use std::collections::HashMap;
 use std::net::SocketAddr;
 
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::*;
 use pyo3::prelude::*;
 
 use netwaystev2::common::Endpoint;
@@ -38,6 +39,15 @@ impl EndpointW {
     }
 }
 
+pub(crate) fn get_from_dict<'py, T: FromPyObject<'py>>(d: &HashMap<String, &'py PyAny>, k: &str) -> PyResult<T> {
+    if let Some(v) = d.get(k) {
+        let val = (*v).extract::<T>()?;
+        Ok(val)
+    } else {
+        Err(PyKeyError::new_err(format!("not in dict: {}", k)))
+    }
+}
+
 /// Example:
 ///
 /// ```no_run
@@ -68,5 +78,21 @@ macro_rules! vec_from_py {
                 Ok(wrapped.into())
             })
             .collect::<PyResult<Vec<_>>>()?;
+    };
+}
+
+macro_rules! impl_from_and_to {
+    ($wrapper:ident wraps $typ:ident) => {
+        impl Into<$typ> for $wrapper {
+            fn into(self) -> $typ {
+                self.inner
+            }
+        }
+
+        impl From<$typ> for $wrapper {
+            fn from(other: $typ) -> Self {
+                $wrapper { inner: other }
+            }
+        }
     };
 }

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use pyo3::exceptions::*;
 use pyo3::prelude::*;
 
-use crate::utils::get_from_dict;
+use crate::common::*;
 use netwaystev2::protocol::RequestAction;
 
 #[pyclass]
@@ -12,11 +12,7 @@ pub struct RequestActionW {
     inner: RequestAction,
 }
 
-impl Into<RequestAction> for RequestActionW {
-    fn into(self) -> RequestAction {
-        self.inner
-    }
-}
+impl_from_and_to!(RequestActionW wraps RequestAction);
 
 #[pymethods]
 impl RequestActionW {

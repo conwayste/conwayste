@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use pyo3::exceptions::*;
 use pyo3::prelude::*;
 
-use crate::utils::get_from_dict;
+use crate::common::*;
 use netwaystev2::protocol::{ResponseCode, RoomList};
 
 #[pyclass]
@@ -12,17 +12,7 @@ pub struct ResponseCodeW {
     inner: ResponseCode,
 }
 
-impl Into<ResponseCode> for ResponseCodeW {
-    fn into(self) -> ResponseCode {
-        self.inner
-    }
-}
-
-impl From<ResponseCode> for ResponseCodeW {
-    fn from(other: ResponseCode) -> Self {
-        ResponseCodeW { inner: other }
-    }
-}
+impl_from_and_to!(ResponseCodeW wraps ResponseCode);
 
 #[pymethods]
 impl ResponseCodeW {
@@ -112,8 +102,8 @@ impl RoomListW {
     }
 
     #[getter]
-    fn get_room_name(&self) -> String {
-        self.inner.room_name
+    fn get_room_name(&self) -> &str {
+        &self.inner.room_name
     }
 
     #[getter]

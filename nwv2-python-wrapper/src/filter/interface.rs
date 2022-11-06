@@ -4,7 +4,6 @@ use pyo3::exceptions::*;
 use pyo3::prelude::*;
 
 use crate::common::*;
-use crate::utils::get_from_dict;
 use crate::{BroadcastChatMessageW, GameUpdateW, GenStateDiffPartW, RequestActionW, ResponseCodeW};
 use netwaystev2::common::Endpoint;
 use netwaystev2::filter::{FilterCmd, FilterNotice, FilterRsp};
@@ -16,17 +15,7 @@ pub struct FilterCmdW {
     inner: FilterCmd,
 }
 
-impl Into<FilterCmd> for FilterCmdW {
-    fn into(self) -> FilterCmd {
-        self.inner
-    }
-}
-
-impl From<FilterCmd> for FilterCmdW {
-    fn from(other: FilterCmd) -> Self {
-        FilterCmdW { inner: other }
-    }
-}
+impl_from_and_to!(FilterCmdW wraps FilterCmd);
 
 #[pymethods]
 impl FilterCmdW {
@@ -34,7 +23,7 @@ impl FilterCmdW {
     #[args(kwds = "**")]
     fn new(variant: String, kwds: Option<HashMap<String, &PyAny>>) -> PyResult<Self> {
         let kwds = if let Some(kwds) = kwds { kwds } else { HashMap::new() };
-        let tc = match variant.to_lowercase().as_str() {
+        let fc = match variant.to_lowercase().as_str() {
             "sendrequestaction" => {
                 let endpointw: EndpointW = get_from_dict(&kwds, "endpoint")?;
                 let req_actionw: RequestActionW = get_from_dict(&kwds, "action")?;
@@ -94,7 +83,42 @@ impl FilterCmdW {
                 return Err(PyValueError::new_err(format!("invalid variant type: {}", variant)));
             }
         };
-        Ok(FilterCmdW { inner: tc })
+        Ok(FilterCmdW { inner: fc })
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:?}", self.inner)
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct FilterRspW {
+    inner: FilterRsp,
+}
+
+impl_from_and_to!(FilterRspW wraps FilterRsp);
+
+#[pymethods]
+impl FilterRspW {
+    #[new]
+    #[args(kwds = "**")]
+    fn new(variant: String, kwds: Option<HashMap<String, &PyAny>>) -> PyResult<Self> {
+        let kwds = if let Some(kwds) = kwds { kwds } else { HashMap::new() };
+        use FilterRsp::*;
+        let fc = match variant.to_lowercase().as_str() {
+            "accepted" => Accepted,
+            "nosuchendpoint" => {
+                let endpointw: EndpointW = get_from_dict(&kwds, "endpoint")?;
+                NoSuchEndpoint {
+                    endpoint: endpointw.into(),
+                }
+            }
+            _ => {
+                return Err(PyValueError::new_err(format!("invalid variant type: {}", variant)));
+            }
+        };
+        Ok(FilterRspW { inner: fc })
     }
 
     fn __repr__(&self) -> String {
