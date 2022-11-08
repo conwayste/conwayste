@@ -2643,6 +2643,7 @@ dependencies = [
 name = "nwv2-python-wrapper"
 version = "0.1.0"
 dependencies = [
+ "conway",
  "futures-util",
  "netwaystev2",
  "pyo3",

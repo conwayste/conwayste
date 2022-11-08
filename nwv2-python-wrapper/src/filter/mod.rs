@@ -12,10 +12,11 @@ use pyo3::gc::PyVisit;
 use pyo3::prelude::*;
 use pyo3::PyTraverseError;
 use tokio::sync::{
-    mpsc::error::SendError,
+    mpsc::error::{SendError, TryRecvError},
     mpsc::{self, Receiver, Sender},
     watch, Mutex,
 };
+
 use tokio::time::sleep;
 
 use netwaystev2::filter::{
@@ -174,9 +175,43 @@ impl FilterInterface {
         self.transport_iface = None; // Clear reference, this decrements PyObject ref counter.
     }
 
-    //XXX command_response
+    /// Send a command and get a response. This is essentially a copy-paste job from TransportInterface.
+    fn command_response<'p>(&mut self, py: Python<'p>, filter_cmd: FilterCmdW) -> PyResult<&'p PyAny> {
+        let cmd_tx = self.cmd_tx.clone();
+        let response_rx = self.response_rx.clone();
+        let send_recv_fut = async move {
+            let filter_cmd = filter_cmd.into();
+            cmd_tx
+                .send(filter_cmd)
+                .await
+                .map_err(|e| PyException::new_err(format!("failed to send FilterCmd: {}", e)))?;
+            let mut response_rx = response_rx
+                .try_lock()
+                .map_err(|e| PyException::new_err(format!("failed to unlock filter response receiver: {}", e)))?;
+            Ok(response_rx.recv().await.map(|resp| FilterRspW::from(resp)))
+        };
+        pyo3_asyncio::tokio::future_into_py(py, send_recv_fut)
+    }
 
-    //XXX get_notifications
+    /// Get a Vec of Filter notifications.
+    /// Note: Not Python async, unlike other methods!
+    /// This is essentially a copy-paste job from TransportInterface.
+    fn get_notifications(&mut self) -> PyResult<Vec<FilterNoticeW>> {
+        let mut notifications = vec![];
+        loop {
+            match self.notify_rx.try_recv() {
+                Ok(notification) => {
+                    notifications.push(notification.into());
+                    continue;
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    return Err(PyException::new_err("filter notify channel was disconnected"))
+                }
+            }
+        }
+        Ok(notifications)
+    }
 }
 
 impl Drop for FilterInterface {

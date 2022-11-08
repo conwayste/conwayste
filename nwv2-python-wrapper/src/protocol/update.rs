@@ -4,6 +4,7 @@ use pyo3::exceptions::*;
 use pyo3::prelude::*;
 
 use crate::common::*;
+use conway::{GenStateDiff, Pattern};
 use netwaystev2::protocol::*;
 
 #[pyclass]
@@ -321,6 +322,46 @@ impl GameUpdateW {
             }
         };
         Ok(GameUpdateW { inner })
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
+#[pyclass]
+#[derive(Clone, Debug)]
+pub struct GenStateDiffW {
+    inner: GenStateDiff,
+}
+
+impl_from_and_to!(GenStateDiffW wraps GenStateDiff);
+
+#[pymethods]
+impl GenStateDiffW {
+    #[new]
+    fn new(gen0: usize, gen1: usize, pattern: String) -> Self {
+        let inner = GenStateDiff {
+            gen0,
+            gen1,
+            pattern: Pattern(pattern),
+        };
+        GenStateDiffW { inner }
+    }
+
+    #[getter]
+    fn get_gen0(&self) -> usize {
+        self.inner.gen0
+    }
+
+    #[getter]
+    fn get_gen1(&self) -> usize {
+        self.inner.gen1
+    }
+
+    #[getter]
+    fn get_pattern(&self) -> &str {
+        &self.inner.pattern.0
     }
 
     fn __repr__(&self) -> String {

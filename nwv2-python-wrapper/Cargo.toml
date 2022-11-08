@@ -15,6 +15,7 @@ pyo3-asyncio = { version = "0.16", features = ["tokio-runtime"] }
 netwaystev2  = { path = "../netwaystev2" }
 futures-util = "0.3.8"
 snowflake    = "1.2"
+conway       = { path = "../libconway" }
 
 # from netwaystev2
 [dependencies.tokio]
