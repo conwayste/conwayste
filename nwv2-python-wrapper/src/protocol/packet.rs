@@ -49,6 +49,29 @@ impl PacketW {
                 let ping = PingPong { nonce: ping_nonce };
                 Packet::GetStatus { ping }
             }
+            "status" => {
+                let pkt_wrapped: PacketW = get_from_dict(&kwds, "get_status")?;
+                let nonce: u64;
+                if let Packet::GetStatus{ping} = pkt_wrapped.into() {
+                    nonce = ping.nonce;
+                } else {
+                    return Err(PyValueError::new_err(format!("GetStatus packet not provided during status request")));
+                }
+                let pong = PingPong {nonce};
+
+                let server_version: String = get_from_dict(&kwds, "server_version")?;
+                let player_count: u64 = get_from_dict(&kwds, "player_count")?;
+                let room_count: u64 = get_from_dict(&kwds, "room_count")?;
+                let server_name: String = get_from_dict(&kwds, "server_name")?;
+
+                Packet::Status {
+                    pong,
+                    server_version,
+                    player_count,
+                    room_count,
+                    server_name,
+                }
+            }
             // TODO: more variants
             _ => {
                 return Err(PyValueError::new_err(format!("invalid variant type: {}", variant)));
