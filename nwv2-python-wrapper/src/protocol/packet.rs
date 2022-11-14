@@ -52,12 +52,14 @@ impl PacketW {
             "status" => {
                 let pkt_wrapped: PacketW = get_from_dict(&kwds, "get_status")?;
                 let nonce: u64;
-                if let Packet::GetStatus{ping} = pkt_wrapped.into() {
+                if let Packet::GetStatus { ping } = pkt_wrapped.into() {
                     nonce = ping.nonce;
                 } else {
-                    return Err(PyValueError::new_err(format!("GetStatus packet not provided during status request")));
+                    return Err(PyValueError::new_err(format!(
+                        "GetStatus packet not provided during status request"
+                    )));
                 }
-                let pong = PingPong {nonce};
+                let pong = PingPong { nonce };
 
                 let server_version: String = get_from_dict(&kwds, "server_version")?;
                 let player_count: u64 = get_from_dict(&kwds, "player_count")?;
