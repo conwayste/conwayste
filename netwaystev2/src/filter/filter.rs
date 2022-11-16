@@ -60,7 +60,7 @@ pub struct OtherEndServer {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum FilterEndpointDataError {
+pub enum FilterError {
     #[error("Filter mode ({mode:?}) is not configured to receive {invalid_data}")]
     UnexpectedData {
         mode:         FilterMode,
@@ -70,10 +70,6 @@ pub enum FilterEndpointDataError {
     InternalError { problem: String },
     #[error("Filter does not contain an entry for the endpoint: {endpoint:?}")]
     EndpointNotFound { endpoint: Endpoint },
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum FilterCommandError {
     #[error("Filter is shutting down. Graceful: {graceful}")]
     ShutdownRequested { graceful: bool },
 }
@@ -150,9 +146,9 @@ impl Filter {
         let transport_cmd_tx = self.transport_cmd_tx.clone();
         tokio::pin!(transport_cmd_tx);
 
-        let _filter_rsp_tx = self.filter_rsp_tx.clone();
+        let filter_rsp_tx = self.filter_rsp_tx.clone();
         let filter_notice_tx = self.filter_notice_tx.clone();
-        tokio::pin!(_filter_rsp_tx);
+        tokio::pin!(filter_rsp_tx);
         tokio::pin!(filter_notice_tx);
 
         let mut ping_interval_stream = tokio::time::interval(Duration::new(2, 0));
@@ -194,7 +190,19 @@ impl Filter {
                                 info!("[FILTER] Packet Taken from Endpoint {:?}.", endpoint);
                                 trace!("[FILTER] Took packet: {:?}", packet);
                                 if let Err(e) = self.process_transport_packet(endpoint, packet, &mut filter_notice_tx).await {
+                                    match e.downcast_ref::<FilterError>() {
+                                        Some(FilterError::EndpointNotFound { endpoint }) => {
+                                            filter_rsp_tx.send(FilterRsp::NoSuchEndpoint { endpoint: *endpoint }).await;
+                                        }
+                                        Some(_) | None => {
+                                            // Unidentified error; just accept it for now.
+                                            // ToDo: think about if this is what we really want.
+                                            filter_rsp_tx.send(FilterRsp::Accepted).await;
+                                        }
+                                    }
                                     error!("[FILTER] error processing incoming packet: {:?}", e);
+                                } else {
+                                    filter_rsp_tx.send(FilterRsp::Accepted).await;
                                 }
                             }
                             TransportNotice::EndpointTimeout {
@@ -202,7 +210,10 @@ impl Filter {
                             } => {
                                 info!("[FILTER] Endpoint {:?} timed-out. Dropping.", endpoint);
                                 self.per_endpoint.remove(&endpoint);
-                                transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await.expect("transport cmd receiver should not be dropped");
+                                if let Err(_) = transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await {
+                                    error!("[FILTER] transport cmd receiver has been dropped");
+                                    return;
+                                }
                             }
                         }
                     }
@@ -212,9 +223,9 @@ impl Filter {
                         trace!("[FILTER] New command: {:?}", command);
 
                         if let Err(e) = self.process_filter_command(command).await {
-                            if let Some(err) = e.downcast_ref::<FilterCommandError>() {
+                            if let Some(err) = e.downcast_ref::<FilterError>() {
                                 match err {
-                                    FilterCommandError::ShutdownRequested{graceful} => {
+                                    FilterError::ShutdownRequested{graceful} => {
                                         info!("[FILTER] shutting down");
                                         let phase;
                                         if *graceful {
@@ -222,9 +233,16 @@ impl Filter {
                                         } else {
                                             phase = Phase::ShutdownInProgress
                                         }
-                                        self.phase_watch_tx.send(phase).unwrap();
+                                        let _ = self.phase_watch_tx.send(phase); // OK to ignore error
                                         return;
                                     }
+                                    FilterError::EndpointNotFound{endpoint} => {
+                                        if let Err(_) = filter_rsp_tx.send(FilterRsp::NoSuchEndpoint{endpoint: *endpoint}).await {
+                                            error!("[FILTER] all receivers on FilterRsp channel have been dropped; run() exiting");
+                                            return;
+                                        }
+                                    }
+                                    _ => {}
                                 }
                             }
                             error!("[FILTER] Filter command processing failed: {}", e);
@@ -295,7 +313,7 @@ impl Filter {
                 let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
                 match endpoint_data {
                     FilterEndpointData::OtherEndServer { .. } => {
-                        return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
+                        return Err(anyhow!(FilterError::UnexpectedData {
                             mode:         self.mode,
                             invalid_data: "RequestAction".to_owned(),
                         }));
@@ -339,7 +357,7 @@ impl Filter {
                 // TODO: unit test wrapping logic and deduplicate with below
                 if client.last_request_sequence_seen.is_none() {
                     // Shouldn't be possible; if we hit this, it's a bug somewhere above
-                    return Err(anyhow!(FilterEndpointDataError::InternalError {
+                    return Err(anyhow!(FilterError::InternalError {
                         problem: "sequence number should not be None at this point".to_owned(),
                     }));
                 }
@@ -365,7 +383,7 @@ impl Filter {
                 let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
                 match endpoint_data {
                     FilterEndpointData::OtherEndClient { .. } => {
-                        return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
+                        return Err(anyhow!(FilterError::UnexpectedData {
                             mode:         self.mode,
                             invalid_data: "ResponseCode".to_owned(),
                         }));
@@ -409,7 +427,7 @@ impl Filter {
                 // TODO: unit test wrapping logic
                 if server.last_response_sequence_seen.is_none() {
                     // Shouldn't be possible; if we hit this, it's a bug somewhere above
-                    return Err(anyhow!(FilterEndpointDataError::InternalError {
+                    return Err(anyhow!(FilterError::InternalError {
                         problem: "sequence number should not be None at this point".to_owned(),
                     }));
                 }
@@ -450,7 +468,7 @@ impl Filter {
                 let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
                 match endpoint_data {
                     FilterEndpointData::OtherEndClient { .. } => {
-                        return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
+                        return Err(anyhow!(FilterError::UnexpectedData {
                             mode:         self.mode,
                             invalid_data: "Update".to_owned(),
                         }));
@@ -512,7 +530,7 @@ impl Filter {
                             .await?;
                         *opt_ping_tid = None;
                     } else {
-                        return Err(anyhow!(FilterEndpointDataError::InternalError {
+                        return Err(anyhow!(FilterError::InternalError {
                             problem: "ping tid is None on Pong. Should not be None at this point".to_owned(),
                         }));
                     }
@@ -554,16 +572,17 @@ impl Filter {
                 })?;
 
                 let server;
-                match self.per_endpoint.get_mut(&endpoint).unwrap() {
-                    FilterEndpointData::OtherEndClient(..) => {
-                        return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
+                match self.per_endpoint.get_mut(&endpoint) {
+                    Some(FilterEndpointData::OtherEndClient(..)) => {
+                        return Err(anyhow!(FilterError::UnexpectedData {
                             mode:         self.mode,
                             invalid_data: "RequestActions are not sent to clients".to_owned(),
                         }));
                     }
-                    FilterEndpointData::OtherEndServer(other_end_server) => {
+                    Some(FilterEndpointData::OtherEndServer(other_end_server)) => {
                         server = other_end_server;
                     }
+                    None => return Err(anyhow!(FilterError::EndpointNotFound { endpoint })),
                 }
                 server.last_request_sent_timestamp = Some(Instant::now());
 
@@ -602,16 +621,17 @@ impl Filter {
             }
             FilterCmd::SendResponseCode { endpoint, code } => {
                 let client;
-                match self.per_endpoint.get_mut(&endpoint).unwrap() {
-                    FilterEndpointData::OtherEndServer { .. } => {
-                        return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
+                match self.per_endpoint.get_mut(&endpoint) {
+                    Some(FilterEndpointData::OtherEndServer { .. }) => {
+                        return Err(anyhow!(FilterError::UnexpectedData {
                             mode:         self.mode,
                             invalid_data: "ResponseCodes are not sent to servers".to_owned(),
                         }));
                     }
-                    FilterEndpointData::OtherEndClient(other_end_client) => {
+                    Some(FilterEndpointData::OtherEndClient(other_end_client)) => {
                         client = other_end_client;
                     }
+                    None => return Err(anyhow!(FilterError::EndpointNotFound { endpoint })),
                 }
                 client.last_response_sent_timestamp = Some(Instant::now());
 
@@ -646,16 +666,17 @@ impl Filter {
             }
             FilterCmd::SendChats { endpoints, messages } => {
                 for endpoint in endpoints {
-                    match self.per_endpoint.get_mut(&endpoint).unwrap() {
-                        FilterEndpointData::OtherEndServer { .. } => {
-                            return Err(anyhow!(FilterEndpointDataError::UnexpectedData {
+                    match self.per_endpoint.get_mut(&endpoint) {
+                        Some(FilterEndpointData::OtherEndServer { .. }) => {
+                            return Err(anyhow!(FilterError::UnexpectedData {
                                 mode:         self.mode,
                                 invalid_data: "ResponseCodes are not sent to servers".to_owned(),
                             }));
                         }
-                        FilterEndpointData::OtherEndClient { .. } => {
+                        Some(FilterEndpointData::OtherEndClient { .. }) => {
                             // TODO: send all the messages to this client
                         }
+                        None => return Err(anyhow!(FilterError::EndpointNotFound { endpoint })),
                     }
                 }
             }
@@ -691,9 +712,11 @@ impl Filter {
                 }
                 self.ping_endpoints.clear();
             }
-            FilterCmd::DropEndpoint { endpoint } => {}
+            FilterCmd::DropEndpoint { endpoint } => {
+                // TODO: implement this
+            }
             FilterCmd::Shutdown { graceful } => {
-                return Err(anyhow!(FilterCommandError::ShutdownRequested { graceful }));
+                return Err(anyhow!(FilterError::ShutdownRequested { graceful }));
             }
         }
 
@@ -793,9 +816,7 @@ fn check_endpoint_exists(
     endpoint: Endpoint,
 ) -> anyhow::Result<()> {
     if !per_endpoint.contains_key(&endpoint) {
-        Err(anyhow!(FilterEndpointDataError::EndpointNotFound {
-            endpoint: endpoint,
-        }))
+        Err(anyhow!(FilterError::EndpointNotFound { endpoint: endpoint }))
     } else {
         Ok(())
     }

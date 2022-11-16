@@ -7,7 +7,7 @@ use crate::common::*;
 use crate::{BroadcastChatMessageW, GameUpdateW, GenStateDiffPartW, GenStateDiffW, RequestActionW, ResponseCodeW};
 use netwaystev2::common::Endpoint;
 use netwaystev2::filter::{FilterCmd, FilterNotice, FilterRsp};
-use netwaystev2::protocol::{BroadcastChatMessage, GameUpdate};
+use netwaystev2::protocol::{BroadcastChatMessage, GameUpdate, ResponseCode};
 
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -217,6 +217,22 @@ impl FilterNoticeW {
             }
         };
         Ok(FilterNoticeW { inner: fc })
+    }
+
+    // NewResponseCode getters below
+
+    #[getter]
+    fn get_cookie(&self) -> Option<&str> {
+        match self {
+            FilterNoticeW {
+                inner:
+                    FilterNotice::NewResponseCode {
+                        code: ResponseCode::LoggedIn { cookie, .. },
+                        ..
+                    },
+            } => Some(cookie),
+            _ => None,
+        }
     }
 
     fn __repr__(&self) -> String {
