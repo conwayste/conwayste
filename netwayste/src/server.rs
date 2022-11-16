@@ -244,7 +244,13 @@ pub fn validate_client_version(client_version: String) -> bool {
     let server_version = get_version();
 
     // Client cannot be newer than server
-    server_version >= Version::parse(&client_version)
+    if let Ok(server_version) = server_version {
+        if let Ok(client_version) = Version::parse(&client_version) {
+            return server_version >= client_version;
+        }
+    }
+
+    false
 }
 
 impl ServerChatMessage {
