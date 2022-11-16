@@ -30,7 +30,7 @@ use crate::utils::PingPong;
 
 use bincode::{deserialize, serialize};
 use bytes::{Buf, BytesMut};
-use semver::{SemVerError, Version};
+use semver::{Error as SemVerError, Version};
 use serde::{Deserialize, Serialize};
 use tokio::net::UdpSocket;
 use tokio_util::codec::{Decoder, Encoder};
