@@ -50,16 +50,8 @@ impl PacketW {
                 Packet::GetStatus { ping }
             }
             "status" => {
-                let pkt_wrapped: PacketW = get_from_dict(&kwds, "get_status")?;
-                let nonce: u64;
-                if let Packet::GetStatus { ping } = pkt_wrapped.into() {
-                    nonce = ping.nonce;
-                } else {
-                    return Err(PyValueError::new_err(format!(
-                        "GetStatus packet not provided during status request"
-                    )));
-                }
-                let pong = PingPong { nonce };
+                let pong_nonce: u64 = get_from_dict(&kwds, "pong_nonce")?;
+                let pong = PingPong { nonce: pong_nonce };
 
                 let server_version: String = get_from_dict(&kwds, "server_version")?;
                 let player_count: u64 = get_from_dict(&kwds, "player_count")?;
@@ -84,6 +76,42 @@ impl PacketW {
 
     fn __repr__(&self) -> String {
         format!("{:?}", self.inner)
+    }
+
+    #[args(member = "\"ping_nonce\"")]
+    fn get_status(&self, member: &str) -> PyResult<String> {
+        match self.inner {
+            Packet::GetStatus { ref ping } => match member {
+                "ping_nonce" => return Ok(format!("{}", ping.nonce)),
+                _ => return Err(PyValueError::new_err(format!("invalid member: {}", member))),
+            },
+            _ => {
+                return Err(PyValueError::new_err(format!("not a Packet::GetStatus data type")));
+            }
+        };
+    }
+
+    #[args(member = "\"pong_nonce\"")]
+    fn status(&self, member: &str) -> PyResult<String> {
+        match self.inner {
+            Packet::Status {
+                ref pong,
+                ref server_version,
+                player_count,
+                room_count,
+                ref server_name,
+            } => match member {
+                "pong_nonce" => return Ok(format!("{}", pong.nonce)),
+                "server_version" => return Ok(server_version.to_owned()),
+                "player_count" => return Ok(format!("{}", player_count)),
+                "room_count" => return Ok(format!("{}", room_count)),
+                "server_name" => return Ok(server_name.to_owned()),
+                _ => return Err(PyValueError::new_err(format!("invalid member: {}", member))),
+            },
+            _ => {
+                return Err(PyValueError::new_err(format!("not a Packet::Status data type")));
+            }
+        };
     }
 
     // TODO: methods for getting/setting stuff in a packet
