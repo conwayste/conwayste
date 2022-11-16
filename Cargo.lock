@@ -1043,7 +1043,7 @@ dependencies = [
  "pkg-config",
  "syn",
  "tokio-core",
- "tokio-util",
+ "tokio-util 0.7.2",
  "walkdir",
 ]
 
@@ -1667,7 +1667,7 @@ dependencies = [
  "indexmap",
  "slab",
  "tokio 1.7.1",
- "tokio-util",
+ "tokio-util 0.6.10",
  "tracing",
 ]
 
@@ -2429,7 +2429,7 @@ dependencies = [
  "tokio-core",
  "tokio-stream",
  "tokio-test",
- "tokio-util",
+ "tokio-util 0.7.2",
 ]
 
 [[package]]
@@ -4074,9 +4074,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.6.3"
+version = "0.6.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebb7cb2f00c5ae8df755b252306272cd1790d39728363936e01827e11f0b017b"
+checksum = "36943ee01a6d67977dd3f84a5a1d2efeb4ada3a1ae771cadfaa535d9d9fc6507"
 dependencies = [
  "bytes 1.0.1",
  "futures-core",
@@ -4084,6 +4084,20 @@ dependencies = [
  "log",
  "pin-project-lite",
  "tokio 1.7.1",
+]
+
+[[package]]
+name = "tokio-util"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f988a1a1adc2fb21f9c12aa96441da33a1728193ae0b95d2be22dbd17fcb4e5c"
+dependencies = [
+ "bytes 1.0.1",
+ "futures-core",
+ "futures-sink",
+ "pin-project-lite",
+ "tokio 1.7.1",
+ "tracing",
 ]
 
 [[package]]
@@ -4109,7 +4123,19 @@ checksum = "01ebdc2bb4498ab1ab5f5b73c5803825e60199229ccba0698170e3be0e7f959f"
 dependencies = [
  "cfg-if 1.0.0",
  "pin-project-lite",
+ "tracing-attributes",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-attributes"
+version = "0.1.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc6b8ad3567499f98a1db7a752b07a7c8c7c7c34c332ec00effb2b0027974b7c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
