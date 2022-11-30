@@ -222,15 +222,11 @@ impl FilterNoticeW {
     // NewResponseCode getters below
 
     #[getter]
-    fn get_cookie(&self) -> Option<&str> {
+    fn get_response_code(&self) -> Option<ResponseCodeW> {
         match self {
             FilterNoticeW {
-                inner:
-                    FilterNotice::NewResponseCode {
-                        code: ResponseCode::LoggedIn { cookie, .. },
-                        ..
-                    },
-            } => Some(cookie),
+                inner: FilterNotice::NewResponseCode { code, .. },
+            } => Some(code.clone().into()),
             _ => None,
         }
     }

@@ -66,6 +66,34 @@ impl ResponseCodeW {
         Ok(ResponseCodeW { inner })
     }
 
+    #[getter]
+    fn get_variant(&self) -> &str {
+        use ResponseCode::*;
+        match &self.inner {
+            OK => "OK",
+            LoggedIn { .. } => "LoggedIn",
+            JoinedRoom { .. } => "JoinedRoom",
+            LeaveRoom => "LeaveRoom",
+            PlayerList { .. } => "PlayerList",
+            RoomList { .. } => "RoomList",
+            BadRequest { .. } => "BadRequest",
+            Unauthorized { .. } => "Unauthorized",
+            TooManyRequests { .. } => "TooManyRequests",
+            ServerError { .. } => "ServerError",
+            NotConnected { .. } => "NotConnected",
+            KeepAlive => "KeepAlive",
+        }
+    }
+
+    #[getter]
+    fn get_cookie(&self) -> Option<&str> {
+        use ResponseCode::*;
+        match &self.inner {
+            LoggedIn { cookie, .. } => Some(cookie),
+            _ => None,
+        }
+    }
+
     fn __repr__(&self) -> String {
         format!("{:?}", self)
     }
