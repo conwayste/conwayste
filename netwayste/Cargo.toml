@@ -10,7 +10,7 @@ path = "src/server.rs"
 
 [dependencies]
 base64               = "0.13.0"
-bincode              = "1.3.1"
+bincode              = "1.3.3"
 bytes                = "1.0.0"
 chrono               = "0.4.19"
 clap                 = "2"
