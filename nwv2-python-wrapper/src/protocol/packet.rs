@@ -92,7 +92,7 @@ impl PacketW {
     }
 
     #[args(member = "\"pong_nonce\"")]
-    fn status(&self, member: &str) -> PyResult<String> {
+    fn status(&self, py: Python<'_>, member: &str) -> PyResult<Py<PyAny>> {
         match self.inner {
             Packet::Status {
                 ref pong,
@@ -101,11 +101,11 @@ impl PacketW {
                 room_count,
                 ref server_name,
             } => match member {
-                "pong_nonce" => return Ok(format!("{}", pong.nonce)),
-                "server_version" => return Ok(server_version.to_owned()),
-                "player_count" => return Ok(format!("{}", player_count)),
-                "room_count" => return Ok(format!("{}", room_count)),
-                "server_name" => return Ok(server_name.to_owned()),
+                "pong_nonce" => return Ok(pong.nonce.into_py(py)),
+                "server_version" => return Ok(server_version.into_py(py)),
+                "player_count" => return Ok(player_count.into_py(py)),
+                "room_count" => return Ok(room_count.into_py(py)),
+                "server_name" => return Ok(server_name.into_py(py)),
                 _ => return Err(PyValueError::new_err(format!("invalid member: {}", member))),
             },
             _ => {
