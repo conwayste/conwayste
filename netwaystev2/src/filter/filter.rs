@@ -57,6 +57,7 @@ pub struct OtherEndServer {
     update_reply_tid: Option<ProcessUniqueId>, // At most one outgoing UpdateReply at a time
     game_update_seq: Option<u64>,              // When a player enters or leaves a room, this gets reset to None
     server_ping: PingPong,
+    cookie: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -435,6 +436,7 @@ impl Filter {
                     .last_response_sequence_seen
                     .expect("sequence number cannot be None by this point"); // expect OK because of above check
                 while let Some(response_code) = server.response_codes.take_if_matching(expected_seq_num.0) {
+                    // TODO: move response code handling into separate function
                     // When joining or leaving a room, the game_updates are reset
                     match response_code {
                         ResponseCode::JoinedRoom { .. } => {
@@ -444,6 +446,10 @@ impl Filter {
                         ResponseCode::LeaveRoom => {
                             server.game_update_seq = None;
                         }
+                        ResponseCode::LoggedIn { ref cookie, .. } => {
+                            server.cookie = Some(cookie.clone());
+                        }
+                        // TODO: more variants here
                         _ => {}
                     }
 
@@ -597,8 +603,7 @@ impl Filter {
 
                 let response_ack = server.last_response_sequence_seen.map(|response_sn| response_sn.0);
 
-                // TODO: Get cookie from app layer
-                let cookie = None;
+                let cookie = server.cookie.clone();
 
                 let packets = vec![Packet::Request {
                     action,
@@ -857,6 +862,7 @@ impl OtherEndServer {
             room: None,
             game_update_seq: None,
             server_ping: PingPong::pong(0),
+            cookie: None,
         }
     }
 
