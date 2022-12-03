@@ -115,4 +115,8 @@ impl PacketW {
     }
 
     // TODO: methods for getting/setting stuff in a packet
+    // Request
+    // Response
+    // Update
+    // UpdateReply
 }
