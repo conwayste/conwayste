@@ -79,10 +79,10 @@ impl PacketW {
     }
 
     #[args(member = "\"ping_nonce\"")]
-    fn get_status(&self, member: &str) -> PyResult<String> {
+    fn get_status(&self, py: Python<'_>, member: &str) -> PyResult<Py<PyAny>> {
         match self.inner {
             Packet::GetStatus { ref ping } => match member {
-                "ping_nonce" => return Ok(format!("{}", ping.nonce)),
+                "ping_nonce" => return Ok(ping.nonce.into_py(py)),
                 _ => return Err(PyValueError::new_err(format!("invalid member: {}", member))),
             },
             _ => {
