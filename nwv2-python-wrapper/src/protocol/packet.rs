@@ -114,6 +114,42 @@ impl PacketW {
         };
     }
 
+    #[args(member = "\"sequence\"")]
+    fn request(&self, py: Python<'_>, member: &str) -> PyResult<Py<PyAny>> {
+        match self.inner {
+            Packet::Request {
+                sequence,
+                ref response_ack,
+                ref cookie,
+                ref action,
+            } => match member {
+                "sequence" => return Ok(sequence.into_py(py)),
+                "response_ack" => return Ok(response_ack.into_py(py)),
+                "cookie" => return Ok(cookie.clone().into_py(py)),
+                "action" => {
+                    let action_wrapped = RequestActionW::from(action.clone());
+                    return Ok(action_wrapped.into_py(py));
+                },
+                _ => return Err(PyValueError::new_err(format!("invalid member: {}", member))),
+            },
+            _ => {
+                return Err(PyValueError::new_err(format!("not a Packet::Request data type")));
+            }
+        };
+    }
+
+    /*
+     Request {
+        // sent by client
+    },
+    Response {
+        // sent by server in reply to client
+        sequence:    u64,
+        request_ack: Option<u64>, // most recent request sequence number received
+        code:        ResponseCode,
+    },
+    */
+
     // TODO: methods for getting/setting stuff in a packet
     // Request
     // Response
