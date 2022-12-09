@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumIter, EnumString};
 
 ////////////////////// Data model ////////////////////////
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, EnumString, EnumIter, Display)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, EnumString, EnumIter, Display, Eq)]
 pub enum RequestAction {
     None, // never actually sent
 
@@ -52,7 +52,7 @@ pub enum RequestAction {
     },
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Eq)]
 pub enum ClientOptionValue {
     Bool { value: bool },
     U8 { value: u8 },

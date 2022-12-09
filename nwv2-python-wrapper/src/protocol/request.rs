@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
+use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::*;
 use pyo3::prelude::*;
+use pyo3::types::PyBool;
 
 use crate::common::*;
 use netwaystev2::protocol::RequestAction;
@@ -75,6 +77,13 @@ impl RequestActionW {
 
     fn __repr__(&self) -> String {
         format!("{:?}", self.inner)
+    }
+
+    fn __richcmp__(&self, other: &Self, op: CompareOp) -> PyResult<bool> {
+        match op {
+            CompareOp::Lt | CompareOp::Le | CompareOp::Ne | CompareOp::Gt | CompareOp::Ge => Ok(false),
+            CompareOp::Eq => Ok(self.inner == other.inner),
+        }
     }
 }
 

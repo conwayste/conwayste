@@ -129,7 +129,7 @@ impl PacketW {
                 "action" => {
                     let action_wrapped = RequestActionW::from(action.clone());
                     return Ok(action_wrapped.into_py(py));
-                },
+                }
                 _ => return Err(PyValueError::new_err(format!("invalid member: {}", member))),
             },
             _ => {
