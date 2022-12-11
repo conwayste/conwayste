@@ -450,7 +450,7 @@ impl Filter {
                             server.cookie = Some(cookie.clone());
                         }
                         // TODO: more variants here
-                        _ => {}
+                        _ => {} // TODO: delete when we are certain all variants have been covered
                     }
 
                     // Send the ResponseCode up to the app layer
