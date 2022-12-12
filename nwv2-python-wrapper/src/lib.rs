@@ -34,6 +34,8 @@ fn nwv2_python_wrapper(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<RoomListW>()?;
     m.add_class::<GenStateDiffW>()?;
     m.add_class::<GenStateDiffPartW>()?;
+    m.add_class::<GenPartInfoW>()?;
+    m.add_class::<UniUpdateW>()?;
     m.add_class::<NetRegionW>()?;
     m.add_class::<GameOptionsW>()?;
     m.add_class::<PlayerInfoW>()?;

@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use super::request::RequestActionW;
+use super::request::*;
+use super::response::*;
+use super::update::*;
 use crate::common::*;
 use netwaystev2::filter::*;
 use netwaystev2::protocol::*;
@@ -42,6 +44,44 @@ impl PacketW {
                     cookie,
                 }
             }
+            "response" => {
+                let sequence: u64 = get_from_dict(&kwds, "sequence")?;
+                let request_ack: Option<u64> = get_from_dict(&kwds, "request_ack")?;
+                let responsew: ResponseCodeW = get_from_dict(&kwds, "code")?;
+                Packet::Response {
+                    sequence,
+                    request_ack,
+                    code: responsew.into(),
+                }
+            }
+            "update" => {
+                vec_from_py! {let chats: Vec<BroadcastChatMessage> <- [BroadcastChatMessageW] <- get_from_dict(&kwds, "chats")?};
+                let game_update_seq: Option<u64> = get_from_dict(&kwds, "game_update_seq")?;
+                vec_from_py! {let game_updates: Vec<GameUpdate> <- [GameUpdateW] <- get_from_dict(&kwds, "game_updates")?};
+                let uni_updatew: UniUpdateW = get_from_dict(&kwds, "universe_update")?;
+                Packet::Update {
+                    chats,
+                    game_update_seq,
+                    game_updates,
+                    universe_update: uni_updatew.into(),
+                    ping: PingPong { nonce: 0 }, // ToDo later (low priority for now)
+                }
+            }
+            "updatereply" => {
+                let cookie: String = get_from_dict(&kwds, "cookie")?;
+                let last_chat_seq: Option<u64> = get_from_dict(&kwds, "last_chat_seq")?;
+                let last_game_update_seq: Option<u64> = get_from_dict(&kwds, "last_game_update_seq")?;
+                let last_full_gen: Option<u64> = get_from_dict(&kwds, "last_full_gen")?;
+                let partial_genw: Option<GenPartInfoW> = get_from_dict(&kwds, "partial_gen")?;
+                Packet::UpdateReply {
+                    cookie,
+                    last_chat_seq,
+                    last_game_update_seq,
+                    last_full_gen,
+                    partial_gen: partial_genw.map(|pg| pg.into()),
+                    pong: PingPong { nonce: 0 }, // ToDo later (low priority for now)
+                }
+            }
             "getstatus" => {
                 // Note: non-standard! The standard way would to accept a `ping` param of type
                 // PingPongW, but that seems unnecessary...
@@ -66,7 +106,6 @@ impl PacketW {
                     server_name,
                 }
             }
-            // TODO: more variants
             _ => {
                 return Err(PyValueError::new_err(format!("invalid variant type: {}", variant)));
             }

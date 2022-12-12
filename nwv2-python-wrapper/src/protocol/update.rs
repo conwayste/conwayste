@@ -101,6 +101,46 @@ impl GenStateDiffPartW {
 
 #[pyclass]
 #[derive(Clone, Debug)]
+pub struct GenPartInfoW {
+    inner: GenPartInfo,
+}
+
+impl_from_and_to!(GenPartInfoW wraps GenPartInfo);
+
+#[pymethods]
+impl GenPartInfoW {
+    #[new]
+    fn new(gen0: u32, gen1: u32, have_bitmask: u32) -> Self {
+        let inner = GenPartInfo {
+            gen0,
+            gen1,
+            have_bitmask,
+        };
+        GenPartInfoW { inner }
+    }
+
+    #[getter]
+    fn get_gen0(&self) -> u32 {
+        self.inner.gen0
+    }
+
+    #[getter]
+    fn get_gen1(&self) -> u32 {
+        self.inner.gen1
+    }
+
+    #[getter]
+    fn get_have_bitmask(&self) -> u32 {
+        self.inner.have_bitmask
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
+#[pyclass]
+#[derive(Clone, Debug)]
 pub struct NetRegionW {
     inner: NetRegion,
 }
@@ -362,6 +402,57 @@ impl GenStateDiffW {
     #[getter]
     fn get_pattern(&self) -> &str {
         &self.inner.pattern.0
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
+#[pyclass]
+#[derive(Clone, Debug)]
+pub struct UniUpdateW {
+    inner: UniUpdate,
+}
+
+impl_from_and_to!(UniUpdateW wraps UniUpdate);
+
+#[pymethods]
+impl UniUpdateW {
+    #[new]
+    #[args(kwds = "**")]
+    fn new(variant: String, kwds: Option<HashMap<String, &PyAny>>) -> PyResult<Self> {
+        let kwds = if let Some(kwds) = kwds { kwds } else { HashMap::new() };
+        use UniUpdate::*;
+        let inner = match variant.to_lowercase().as_str() {
+            "diff" => {
+                let diff: GenStateDiffPartW = get_from_dict(&kwds, "diff")?;
+                Diff { diff: diff.into() }
+            }
+            "nochange" => NoChange,
+            _ => {
+                return Err(PyValueError::new_err(format!("invalid variant type: {}", variant)));
+            }
+        };
+        Ok(UniUpdateW { inner })
+    }
+
+    #[getter]
+    fn get_variant(&self) -> String {
+        use UniUpdate::*;
+        match self.inner {
+            Diff { .. } => "Diff",
+            NoChange => "NoChange",
+        }
+        .to_owned()
+    }
+
+    #[getter]
+    fn get_diff(&self) -> Option<GenStateDiffPartW> {
+        match self.inner {
+            UniUpdate::Diff { ref diff } => Some(diff.clone().into()),
+            UniUpdate::NoChange => None,
+        }
     }
 
     fn __repr__(&self) -> String {
