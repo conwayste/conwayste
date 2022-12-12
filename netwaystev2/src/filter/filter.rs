@@ -49,8 +49,6 @@ pub struct OtherEndServer {
     response_codes: SequencedMinHeap<ResponseCode>,
     last_request_sequence_sent: Option<SeqNum>,
     last_response_sequence_seen: Option<SeqNum>,
-    last_request_sent_timestamp: Option<Instant>,
-    last_response_seen_timestamp: Option<Instant>,
     unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>, // Tracks outgoing Requests
     // Update/UpdateReply below
     room: Option<ClientRoom>,
@@ -393,7 +391,6 @@ impl Filter {
                         server = other_end_server;
                     }
                 }
-                server.last_response_seen_timestamp = Some(Instant::now());
 
                 match determine_seq_num_advancement(sequence, server.last_response_sequence_seen) {
                     SeqNumAdvancement::Duplicate => {
@@ -590,7 +587,6 @@ impl Filter {
                     }
                     None => return Err(anyhow!(FilterError::EndpointNotFound { endpoint })),
                 }
-                server.last_request_sent_timestamp = Some(Instant::now());
 
                 if let Some(ref mut sn) = server.last_request_sequence_sent {
                     *sn += Wrapping(1u64);
@@ -855,8 +851,6 @@ impl OtherEndServer {
             response_codes: SequencedMinHeap::<ResponseCode>::new(),
             last_request_sequence_sent: None,
             last_response_sequence_seen: None,
-            last_request_sent_timestamp: None,
-            last_response_seen_timestamp: None,
             unacked_outgoing_packet_tids: VecDeque::new(),
             update_reply_tid: None,
             room: None,
