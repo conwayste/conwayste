@@ -173,6 +173,7 @@ impl TransportNoticeW {
         match self.inner {
             TransportNotice::PacketDelivery { .. } => "PacketDelivery",
             TransportNotice::EndpointTimeout { .. } => "EndpointTimeout",
+            TransportNotice::EndpointIdle { .. } => "EndpointIdle",
         }
         .to_owned()
     }

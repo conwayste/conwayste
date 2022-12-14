@@ -214,6 +214,11 @@ impl Filter {
                                     return;
                                 }
                             }
+                            TransportNotice::EndpointIdle { endpoint } => {
+                                if self.mode == FilterMode::Client {
+                                    // XXX send KeepAlive filter command ; see line ~597
+                                }
+                            }
                         }
                     }
                 }

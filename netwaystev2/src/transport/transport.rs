@@ -8,6 +8,7 @@ use crate::common::{Endpoint, ShutdownWatcher};
 use crate::protocol::Packet;
 use crate::settings::*;
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{net::SocketAddr, pin::Pin};
@@ -150,17 +151,30 @@ impl Transport {
                     // Resend any packets in the transmit queue at their retry interval or send PacketTimeout
                     let retry_packets = self.endpoints.retriable_packets();
 
+                    let mut retried_endpoints = HashSet::new();
                     for (packet_ref, endpoint) in retry_packets {
                         udp_stream_send.send((packet_ref.to_owned(), endpoint.0)).await?;
+                        retried_endpoints.insert(endpoint);
+                    }
+
+                    for endpoint in retried_endpoints {
+                        self.endpoints.update_last_sent(endpoint)?;
                     }
 
                     // Notify filter of any endpoints that have timed-out
                     for endpoint in self.endpoints.timed_out_endpoints_needing_notify() {
-                        // FIXME: need to limit how often this is sent to avoid spamming Filter layer
                         self.notifications.send(TransportNotice::EndpointTimeout {
                             endpoint
                         }).await?;
                         self.endpoints.mark_endpoint_as_timeout_notified(endpoint);
+                    }
+
+                    // Notify filter of any endpoints that are idle
+                    for endpoint in self.endpoints.idle_endpoints_needing_notify() {
+                        self.notifications.send(TransportNotice::EndpointIdle {
+                            endpoint
+                        }).await?;
+                        self.endpoints.mark_endpoint_as_idle_notified(endpoint);
                     }
                 }
             }
@@ -246,6 +260,7 @@ async fn process_transport_command(
                 if let Err(error) = udp_send.send((p.clone(), endpoint.0)).await {
                     continue;
                 }
+                endpoints.update_last_sent(endpoint)?;
                 cmd_responses.push(
                     endpoints
                         .push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)

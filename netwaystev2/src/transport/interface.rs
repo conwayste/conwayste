@@ -58,6 +58,11 @@ pub enum TransportNotice {
 
     /// The maximum time since a packet was received from this endpoint was exceeded.
     EndpointTimeout { endpoint: Endpoint },
+
+    /// It has been more than half the timeout time since a packet was received or sent. Once sent,
+    /// it will not be sent again until after a packet was sent or received and sufficient time has
+    /// passed, as described above.
+    EndpointIdle { endpoint: Endpoint },
 }
 
 /// Used by the Filter layer to inform the Transport layer of packet settings
