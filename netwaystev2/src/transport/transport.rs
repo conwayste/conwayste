@@ -258,9 +258,13 @@ async fn process_transport_command(
                     continue;
                 }
                 if let Err(error) = udp_send.send((p.clone(), endpoint.0)).await {
+                    cmd_responses.push(TransportRsp::EndpointError { error: Arc::new(error.into()) });
                     continue;
                 }
-                endpoints.update_last_sent(endpoint)?;
+                if let Err(error) = endpoints.update_last_sent(endpoint) {
+                    cmd_responses.push(TransportRsp::EndpointError { error: Arc::new(error.into()) });
+                    continue;
+                }
                 cmd_responses.push(
                     endpoints
                         .push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)
