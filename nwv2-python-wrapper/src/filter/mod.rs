@@ -263,13 +263,13 @@ async fn handle_transport_cmd_resp(
             pyo3_asyncio::tokio::into_future(py_retval.as_ref(py)).expect("should return future")
         });
         let transport_rspw: PyObject = transport_rspw_fut.await.expect("unreachable2");
-        let transport_rspw: TransportRspW =
-            Python::with_gil(|py| {
-                if transport_rspw.is_none(py) {
-                    panic!("Return value from transport interface .command_response() is None");
-                }
-                transport_rspw.extract(py)
-            }).expect("command_response must return TransportRspW"); // ToDo: handle better
+        let transport_rspw: TransportRspW = Python::with_gil(|py| {
+            if transport_rspw.is_none(py) {
+                panic!("Return value from transport interface .command_response() is None");
+            }
+            transport_rspw.extract(py)
+        })
+        .expect("command_response must return TransportRspW"); // ToDo: handle better
         let transport_rsp: TransportRsp = transport_rspw.into();
         match t_channels.transport_rsp_tx.send(transport_rsp).await {
             Err(SendError(_)) => {

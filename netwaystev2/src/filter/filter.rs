@@ -615,7 +615,10 @@ impl Filter {
 
                 let tid = ProcessUniqueId::new();
                 client.unacked_outgoing_packet_tids.push_back((Wrapping(sequence), tid));
-                let packet_infos = vec![PacketSettings { tid, retry_interval: DEFAULT_RETRY_INTERVAL }];
+                let packet_infos = vec![PacketSettings {
+                    tid,
+                    retry_interval: DEFAULT_RETRY_INTERVAL,
+                }];
 
                 self.transport_cmd_tx
                     .send(TransportCmd::SendPackets {
@@ -733,7 +736,6 @@ impl Filter {
         Ok(())
     }
 
-
     async fn send_request_action_to_server(&mut self, endpoint: Endpoint, action: RequestAction) -> anyhow::Result<()> {
         let server;
         match self.per_endpoint.get_mut(&endpoint) {
@@ -771,7 +773,10 @@ impl Filter {
 
         let tid = ProcessUniqueId::new();
         server.unacked_outgoing_packet_tids.push_back((Wrapping(sequence), tid));
-        let packet_infos = vec![PacketSettings { tid, retry_interval: DEFAULT_RETRY_INTERVAL }];
+        let packet_infos = vec![PacketSettings {
+            tid,
+            retry_interval: DEFAULT_RETRY_INTERVAL,
+        }];
 
         self.transport_cmd_tx
             .send(TransportCmd::SendPackets {
@@ -779,7 +784,8 @@ impl Filter {
                 packet_infos,
                 packets,
             })
-            .await.map_err(|e| anyhow!(e))
+            .await
+            .map_err(|e| anyhow!(e))
     }
 }
 
@@ -911,7 +917,10 @@ impl OtherEndServer {
 
         let tid = ProcessUniqueId::new();
         self.update_reply_tid = Some(tid);
-        let packet_infos = vec![PacketSettings { tid, retry_interval: DEFAULT_RETRY_INTERVAL }];
+        let packet_infos = vec![PacketSettings {
+            tid,
+            retry_interval: DEFAULT_RETRY_INTERVAL,
+        }];
         transport_cmd_tx
             .send(TransportCmd::SendPackets {
                 endpoint: server_endpoint,
