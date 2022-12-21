@@ -1,5 +1,6 @@
 use super::endpoint::TransportEndpointData;
 use super::interface::{
+    PacketSettings,
     TransportCmd::{self, *},
     TransportNotice, TransportRsp, UDP_MTU_SIZE,
 };
@@ -239,40 +240,10 @@ async fn process_transport_command(
             }
             for (i, p) in packets.iter().enumerate() {
                 let pi = packet_infos.get(i).unwrap(); // Unwrap safe b/c of length check above
-
-                let size = match bincode::serialized_size(&p) {
-                    Ok(size) => size as usize,
-                    Err(error) => {
-                        cmd_responses.push(TransportRsp::EndpointError {
-                            error: Arc::new(error.into()),
-                        });
-                        continue;
-                    }
-                };
-                if size > UDP_MTU_SIZE {
-                    cmd_responses.push(TransportRsp::ExceedsMtu {
-                        tid: pi.tid,
-                        size,
-                        mtu: UDP_MTU_SIZE,
-                    });
-                    continue;
-                }
-                if let Err(error) = udp_send.send((p.clone(), endpoint.0)).await {
-                    cmd_responses.push(TransportRsp::EndpointError { error: Arc::new(error.into()) });
-                    continue;
-                }
-                if let Err(error) = endpoints.update_last_sent(endpoint) {
-                    cmd_responses.push(TransportRsp::EndpointError { error: Arc::new(error.into()) });
-                    continue;
-                }
-                cmd_responses.push(
-                    endpoints
-                        .push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)
-                        .map_or_else(
-                            |error| TransportRsp::EndpointError { error: Arc::new(error) },
-                            |()| TransportRsp::Accepted,
-                        ),
-                );
+                cmd_responses.push(match send_packet(pi, p, endpoints, endpoint, udp_send).await {
+                    Ok(transport_rsp) => transport_rsp,
+                    Err(error) => TransportRsp::EndpointError { error: Arc::new(error) },
+                });
             }
         }
         DropEndpoint { endpoint } => cmd_responses.push(endpoints.drop_endpoint(endpoint).map_or_else(
@@ -291,4 +262,25 @@ async fn process_transport_command(
     }
 
     Ok(cmd_responses)
+}
+
+async fn send_packet(
+    pi: &PacketSettings,
+    p: &Packet,
+    endpoints: &mut TransportEndpointData<Packet>,
+    endpoint: Endpoint,
+    udp_send: &mut Pin<&mut &mut SplitSink<UdpFramed<NetwaystePacketCodec>, (Packet, std::net::SocketAddr)>>,
+) -> Result<TransportRsp> {
+    let size = bincode::serialized_size(p)? as usize;
+    if size > UDP_MTU_SIZE {
+        return Ok(TransportRsp::ExceedsMtu {
+            tid: pi.tid,
+            size,
+            mtu: UDP_MTU_SIZE,
+        });
+    }
+    udp_send.send((p.clone(), endpoint.0)).await?;
+    endpoints.update_last_sent(endpoint)?;
+    endpoints.push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)?;
+    Ok(TransportRsp::Accepted)
 }
