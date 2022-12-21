@@ -5,7 +5,7 @@ use super::sortedbuffer::SequencedMinHeap;
 use super::PingPong;
 use crate::common::{Endpoint, ShutdownWatcher};
 use crate::protocol::{GameUpdate, GenStateDiffPart, Packet, RequestAction, ResponseCode};
-use crate::settings::{DEFAULT_RETRY_INTERVAL_NS, FILTER_CHANNEL_LEN};
+use crate::settings::{DEFAULT_RETRY_INTERVAL, FILTER_CHANNEL_LEN};
 use crate::transport::{
     PacketSettings, TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp,
     TransportRspRecv,
@@ -564,8 +564,6 @@ impl Filter {
     }
 
     async fn process_filter_command(&mut self, command: FilterCmd) -> anyhow::Result<()> {
-        let retry_interval = Duration::new(0, DEFAULT_RETRY_INTERVAL_NS);
-
         match command {
             FilterCmd::SendRequestAction { endpoint, action } => {
                 check_endpoint_exists(&self.per_endpoint, endpoint).or_else(|err| match &action {
@@ -574,56 +572,13 @@ impl Filter {
                             endpoint,
                             FilterEndpointData::OtherEndServer(OtherEndServer::new(name.clone())),
                         );
+                        //XXX send TransportCmd::NewEndpoint?!?!?!?!
                         Ok(())
                     }
                     _ => Err(err),
                 })?;
 
-                let server;
-                match self.per_endpoint.get_mut(&endpoint) {
-                    Some(FilterEndpointData::OtherEndClient(..)) => {
-                        return Err(anyhow!(FilterError::UnexpectedData {
-                            mode:         self.mode,
-                            invalid_data: "RequestActions are not sent to clients".to_owned(),
-                        }));
-                    }
-                    Some(FilterEndpointData::OtherEndServer(other_end_server)) => {
-                        server = other_end_server;
-                    }
-                    None => return Err(anyhow!(FilterError::EndpointNotFound { endpoint })),
-                }
-
-                if let Some(ref mut sn) = server.last_request_sequence_sent {
-                    *sn += Wrapping(1u64);
-                } else {
-                    server.last_request_sequence_sent = Some(Wrapping(1));
-                }
-
-                // Unwrap ok b/c the immediate check above guarantees Some(..)
-                let sequence = server.last_request_sequence_sent.unwrap().0;
-
-                let response_ack = server.last_response_sequence_seen.map(|response_sn| response_sn.0);
-
-                let cookie = server.cookie.clone();
-
-                let packets = vec![Packet::Request {
-                    action,
-                    cookie,
-                    sequence,
-                    response_ack,
-                }];
-
-                let tid = ProcessUniqueId::new();
-                server.unacked_outgoing_packet_tids.push_back((Wrapping(sequence), tid));
-                let packet_infos = vec![PacketSettings { tid, retry_interval }];
-
-                self.transport_cmd_tx
-                    .send(TransportCmd::SendPackets {
-                        endpoint,
-                        packet_infos,
-                        packets,
-                    })
-                    .await?;
+                self.send_request_action_to_server(endpoint, action).await?
             }
             FilterCmd::SendResponseCode { endpoint, code } => {
                 let client;
@@ -660,7 +615,7 @@ impl Filter {
 
                 let tid = ProcessUniqueId::new();
                 client.unacked_outgoing_packet_tids.push_back((Wrapping(sequence), tid));
-                let packet_infos = vec![PacketSettings { tid, retry_interval }];
+                let packet_infos = vec![PacketSettings { tid, retry_interval: DEFAULT_RETRY_INTERVAL }];
 
                 self.transport_cmd_tx
                     .send(TransportCmd::SendPackets {
@@ -777,6 +732,55 @@ impl Filter {
         }
         Ok(())
     }
+
+
+    async fn send_request_action_to_server(&mut self, endpoint: Endpoint, action: RequestAction) -> anyhow::Result<()> {
+        let server;
+        match self.per_endpoint.get_mut(&endpoint) {
+            Some(FilterEndpointData::OtherEndClient(..)) => {
+                return Err(anyhow!(FilterError::UnexpectedData {
+                    mode:         self.mode,
+                    invalid_data: "RequestActions are not sent to clients".to_owned(),
+                }));
+            }
+            Some(FilterEndpointData::OtherEndServer(other_end_server)) => {
+                server = other_end_server;
+            }
+            None => return Err(anyhow!(FilterError::EndpointNotFound { endpoint })),
+        }
+
+        if let Some(ref mut sn) = server.last_request_sequence_sent {
+            *sn += Wrapping(1u64);
+        } else {
+            server.last_request_sequence_sent = Some(Wrapping(1));
+        }
+
+        // Unwrap ok b/c the immediate check above guarantees Some(..)
+        let sequence = server.last_request_sequence_sent.unwrap().0;
+
+        let response_ack = server.last_response_sequence_seen.map(|response_sn| response_sn.0);
+
+        let cookie = server.cookie.clone();
+
+        let packets = vec![Packet::Request {
+            action,
+            cookie,
+            sequence,
+            response_ack,
+        }];
+
+        let tid = ProcessUniqueId::new();
+        server.unacked_outgoing_packet_tids.push_back((Wrapping(sequence), tid));
+        let packet_infos = vec![PacketSettings { tid, retry_interval: DEFAULT_RETRY_INTERVAL }];
+
+        self.transport_cmd_tx
+            .send(TransportCmd::SendPackets {
+                endpoint,
+                packet_infos,
+                packets,
+            })
+            .await.map_err(|e| anyhow!(e))
+    }
 }
 
 // I've deemed 'far away' to mean the half of the max value of the type.
@@ -875,8 +879,6 @@ impl OtherEndServer {
         server_endpoint: Endpoint,
         transport_cmd_tx: &mut TransportCmdSend,
     ) -> anyhow::Result<()> {
-        let retry_interval = Duration::new(0, DEFAULT_RETRY_INTERVAL_NS);
-
         // Drop the old one
         if let Some(update_reply_tid) = self.update_reply_tid.take() {
             transport_cmd_tx
@@ -909,7 +911,7 @@ impl OtherEndServer {
 
         let tid = ProcessUniqueId::new();
         self.update_reply_tid = Some(tid);
-        let packet_infos = vec![PacketSettings { tid, retry_interval }];
+        let packet_infos = vec![PacketSettings { tid, retry_interval: DEFAULT_RETRY_INTERVAL }];
         transport_cmd_tx
             .send(TransportCmd::SendPackets {
                 endpoint: server_endpoint,
