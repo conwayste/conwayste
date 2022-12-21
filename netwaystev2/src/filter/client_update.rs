@@ -138,6 +138,10 @@ impl ClientRoom {
             }
         }
 
+        if to_send.is_empty() {
+            return Ok(());
+        }
+
         // Send them on up
         filter_notice_tx
             .send(FilterNotice::NewChats {
