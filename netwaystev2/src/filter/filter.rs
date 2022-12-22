@@ -566,17 +566,27 @@ impl Filter {
     async fn process_filter_command(&mut self, command: FilterCmd) -> anyhow::Result<()> {
         match command {
             FilterCmd::SendRequestAction { endpoint, action } => {
-                check_endpoint_exists(&self.per_endpoint, endpoint).or_else(|err| match &action {
-                    RequestAction::Connect { name, .. } => {
-                        self.per_endpoint.insert(
-                            endpoint,
-                            FilterEndpointData::OtherEndServer(OtherEndServer::new(name.clone())),
-                        );
-                        //XXX send TransportCmd::NewEndpoint?!?!?!?!
-                        Ok(())
+                match check_endpoint_exists(&self.per_endpoint, endpoint) {
+                    Err(err) => {
+                        // Create a new endpoint only on Connect messages
+                        match &action {
+                            RequestAction::Connect { name, .. } => {
+                                self.per_endpoint.insert(
+                                    endpoint,
+                                    FilterEndpointData::OtherEndServer(OtherEndServer::new(name.clone())),
+                                );
+                                self.transport_cmd_tx
+                                    .send(TransportCmd::NewEndpoint {
+                                        endpoint,
+                                        timeout: DEFAULT_RETRY_INTERVAL,
+                                    })
+                                    .await?;
+                            }
+                            _ => return Err(err),
+                        }
                     }
-                    _ => Err(err),
-                })?;
+                    _ => (),
+                }
 
                 self.send_request_action_to_server(endpoint, action).await?
             }
