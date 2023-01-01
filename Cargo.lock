@@ -232,9 +232,15 @@ checksum = "b41b7ea54a0c9d92199de89e20e58d49f02f8e699814ef3fdf266f6f748d15c7"
 
 [[package]]
 name = "base64"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
+checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
+
+[[package]]
+name = "base64"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ea22880d78093b0cbe17c89f64a7d457941e65759157ec6cb31a31d652b05e5"
 
 [[package]]
 name = "bincode"
@@ -2412,7 +2418,7 @@ dependencies = [
 name = "netwayste"
 version = "0.3.5"
 dependencies = [
- "base64 0.13.0",
+ "base64 0.20.0",
  "bincode",
  "bytes 1.0.1",
  "chrono",
@@ -3130,7 +3136,7 @@ version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "246e9f61b9bb77df069a947682be06e31ac43ea37862e244a69f177694ea6d22"
 dependencies = [
- "base64 0.13.0",
+ "base64 0.13.1",
  "bytes 1.0.1",
  "encoding_rs",
  "futures-core",
@@ -3241,7 +3247,7 @@ version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "064fd21ff87c6e87ed4506e68beb42459caa4a0e2eb144932e6776768556980b"
 dependencies = [
- "base64 0.13.0",
+ "base64 0.13.1",
  "log",
  "ring",
  "sct",
@@ -4216,7 +4222,7 @@ version = "1.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "294b85ef5dbc3670a72e82a89971608a1fcc4ed5c7c5a2895230d31a95f0569b"
 dependencies = [
- "base64 0.13.0",
+ "base64 0.13.1",
  "chunked_transfer",
  "cookie",
  "cookie_store",
