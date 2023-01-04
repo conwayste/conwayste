@@ -216,7 +216,11 @@ impl Filter {
                             }
                             TransportNotice::EndpointIdle { endpoint } => {
                                 if self.mode == FilterMode::Client {
-                                    // XXX send KeepAlive filter command ; see line ~597
+                                    // response_ack filled in later (see HACK)
+                                    let action = RequestAction::KeepAlive { latest_response_ack: 0 };
+                                    if let Err(e) = self.send_request_action_to_server(endpoint, action).await {
+                                        warn!("[FILTER] error sending KeepAlive: {}", e);
+                                    }
                                 }
                             }
                         }
@@ -750,7 +754,11 @@ impl Filter {
         Ok(())
     }
 
-    async fn send_request_action_to_server(&mut self, endpoint: Endpoint, action: RequestAction) -> anyhow::Result<()> {
+    async fn send_request_action_to_server(
+        &mut self,
+        endpoint: Endpoint,
+        mut action: RequestAction,
+    ) -> anyhow::Result<()> {
         let server;
         match self.per_endpoint.get_mut(&endpoint) {
             Some(FilterEndpointData::OtherEndClient(..)) => {
@@ -775,6 +783,15 @@ impl Filter {
         let sequence = server.last_request_sequence_sent.unwrap().0;
 
         let response_ack = server.last_response_sequence_seen.map(|response_sn| response_sn.0);
+
+        // HACK: fill in latest_response_ack. The solution is probably to change the protocol,
+        // removing latest_response_ack, which is redundant anyway.
+        match action {
+            RequestAction::KeepAlive {
+                ref mut latest_response_ack,
+            } => *latest_response_ack = response_ack.unwrap_or(0),
+            _ => {}
+        };
 
         let cookie = server.cookie.clone();
 

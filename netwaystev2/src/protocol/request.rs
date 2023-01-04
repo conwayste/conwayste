@@ -15,7 +15,7 @@ pub enum RequestAction {
     /* All actions below require a log-in via a Connect request */
     Disconnect,
     KeepAlive {
-        latest_response_ack: u64,
+        latest_response_ack: u64, // FIXME: does this matter?
     }, // Send latest response ack on each heartbeat
     ListPlayers,
     ChatMessage {
