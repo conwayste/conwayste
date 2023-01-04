@@ -268,8 +268,6 @@ impl Filter {
         packet: Packet,
         filter_notice_tx: &mut FilterNotifySend,
     ) -> anyhow::Result<()> {
-        // TODO: also create endpoint data entry on a filter command to initiate a connection
-        // (client mode only).
         if !self.per_endpoint.contains_key(&endpoint) {
             let mut valid_new_conn = false;
             if self.mode == FilterMode::Server {
@@ -290,6 +288,12 @@ impl Filter {
                                     unacked_outgoing_packet_tids: VecDeque::new(),
                                 }),
                             );
+                            self.transport_cmd_tx
+                                .send(TransportCmd::NewEndpoint {
+                                    endpoint,
+                                    timeout: DEFAULT_RETRY_INTERVAL,
+                                })
+                                .await?;
                         }
                     }
                 }
