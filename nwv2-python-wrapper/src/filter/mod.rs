@@ -19,12 +19,13 @@ use tokio::sync::{
 
 use tokio::time::sleep;
 
-use netwaystev2::filter::{
-    Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotice, FilterNotifyRecv, FilterRsp, FilterRspRecv,
-};
 use netwaystev2::transport::{TransportCmd, TransportNotice, TransportRsp};
+use netwaystev2::{
+    filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotice, FilterNotifyRecv, FilterRsp, FilterRspRecv},
+    protocol::ResponseCode,
+};
 
-use crate::transport::*;
+use crate::{filter, transport::*};
 
 // All the below Options are to permit taking these and passing them into async blocks
 #[pyclass]
@@ -32,7 +33,7 @@ pub struct FilterInterface {
     filter:             Option<Filter>,
     cmd_tx:             FilterCmdSend,
     response_rx:        Arc<Mutex<FilterRspRecv>>,
-    notify_rx:          FilterNotifyRecv,
+    notify_rx:          Arc<Mutex<FilterNotifyRecv>>,
     notif_poll_ms:      Arc<AtomicUsize>, // Controls how frequently we poll the TransportInterface for transport notifications
     transport_iface:    Option<Arc<PyObject>>, // duck-typed Python object (same methods as TransportInterface)
     transport_channels: Option<TransportChannels>,
@@ -113,7 +114,7 @@ impl FilterInterface {
             filter: Some(filter),
             cmd_tx: filter_cmd_tx,
             response_rx: Arc::new(Mutex::new(filter_rsp_rx)),
-            notify_rx: filter_notice_rx,
+            notify_rx: Arc::new(Mutex::new(filter_notice_rx)),
             notif_poll_ms: Arc::new(AtomicUsize::new(DEFAULT_NOTIFY_POLL_MS)),
             transport_iface: Some(Arc::new(transport_iface)),
             transport_channels: Some(transport_channels),
@@ -140,9 +141,13 @@ impl FilterInterface {
 
         let transport_notice_tx = t_channels.transport_notice_tx.clone();
 
+        let mut filter_cmd_tx = self.cmd_tx.clone();
+        let mut filter_notify_rx = self.notify_rx.clone();
         let shutdown_rx = self.shutdown_rx.clone();
         let shutdown_rx2 = self.shutdown_rx.clone();
+        let shutdown_rx3 = self.shutdown_rx.clone();
         let notif_poll_ms = self.notif_poll_ms.clone();
+        let notif_poll_ms2 = self.notif_poll_ms.clone();
         let rust_fut = async move {
             tokio::join!(
                 filter.run(),
@@ -153,6 +158,7 @@ impl FilterInterface {
                     notif_poll_ms,
                     shutdown_rx2
                 ),
+                handle_filter_notification(&mut filter_cmd_tx, &mut filter_notify_rx, notif_poll_ms2, shutdown_rx3)
             );
             Ok(())
         };
@@ -199,7 +205,7 @@ impl FilterInterface {
     fn get_notifications(&mut self) -> PyResult<Vec<FilterNoticeW>> {
         let mut notifications = vec![];
         loop {
-            match self.notify_rx.try_recv() {
+            match self.notify_rx.try_lock().expect("failed to acquire notify rx lock").try_recv() {
                 Ok(notification) => {
                     notifications.push(notification.into());
                     continue;
@@ -318,6 +324,71 @@ async fn handle_transport_notification(
             if let Err(_) = transport_notice_tx.send(transport_notice).await {
                 // Filter layer must have been dropped
                 return;
+            }
+        }
+
+        let poll_interval = Duration::from_millis(
+            notif_poll_ms
+                .load(Ordering::SeqCst)
+                .try_into()
+                .expect("notif_poll_ms too big"),
+        );
+        tokio::select! {
+            _ = sleep(poll_interval) => {}
+            _ = shutdown_rx.changed() => {
+                return;
+            }
+        };
+    }
+}
+
+async fn handle_filter_notification(
+    cmd_tx: &mut Sender<FilterCmd>,
+    notify_rx: &mut Arc<Mutex<Receiver<FilterNotice>>>,
+    notif_poll_ms: Arc<AtomicUsize>,
+    mut shutdown_rx: watch::Receiver<()>,
+) {
+    loop {
+        // Python call "get_notifications" on filter_notifications. Note: not Python async!
+        /*
+        let py_retval = Python::with_gil(|py| filter_iface
+            .call_method0(py, "get_notifications"))
+            .expect("TransportInterface get_notifications should not raise exception");
+        let py_obj_vec: Vec<Py<PyAny>> = Python::with_gil(|py| py_retval.extract(py))
+            .expect("TransportInterface get_notifications must return list");
+        let transport_notif_wrappers: Vec<TransportNoticeW> = Python::with_gil(|py| {
+            py_obj_vec
+                .into_iter()
+                .map(|obj| {
+                    obj.extract(py)
+                        .expect("TransportInterface get_notifications must return list of TransportNoticeW")
+                })
+                .collect()
+        });
+        drop(t_iface); // Now we only have a weak ref
+        */
+        let mut notice = None;
+
+        let mut notify_rx = notify_rx
+            .try_lock()
+            .expect("Failed to acquire notify rx lock. Why?");
+
+        while let Ok(message) = notify_rx.try_recv() {
+            notice = Some(message);
+            break;
+        }
+
+        if let Some(message) = notice {
+            match message {
+                FilterNotice::NewRequestAction { endpoint, action } => {
+                        cmd_tx
+                        .try_send(FilterCmd::SendResponseCode {
+                            endpoint,
+                            code: ResponseCode::OK,
+                        })
+                        .expect("Channel closed?");
+                }
+                _ => panic!("Unhandled filter notice in handle_filter_notification"),
             }
         }
 

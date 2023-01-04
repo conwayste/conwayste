@@ -63,8 +63,6 @@ async fn main() -> Result<()> {
         FilterMode::Server,
     );
     let filter_shutdown_watcher = filter.get_shutdown_watcher();
-    // TODO: Silence compiler warning until interface is implemented
-    let (_, _) = (filter_rsp_rx, filter_notice_rx);
     filter_cmd_tx
         .send(FilterCmd::SendRequestAction {
             endpoint: Endpoint("127.0.0.1:2017".parse().unwrap()),
