@@ -39,6 +39,7 @@ pub struct FilterInterface {
     transport_channels: Option<TransportChannels>,
     shutdown_tx:        watch::Sender<()>, // sends or closes if FilterInterface is shutdown
     shutdown_rx:        watch::Receiver<()>, // Is cloned and provided to async functions so they don't run forever
+    filter_mode:        FilterMode,
 }
 
 struct TransportChannels {
@@ -120,6 +121,7 @@ impl FilterInterface {
             transport_channels: Some(transport_channels),
             shutdown_tx,
             shutdown_rx,
+            filter_mode: filter_mode.into(),
         }
     }
 
@@ -148,6 +150,8 @@ impl FilterInterface {
         let shutdown_rx3 = self.shutdown_rx.clone();
         let notif_poll_ms = self.notif_poll_ms.clone();
         let notif_poll_ms2 = self.notif_poll_ms.clone();
+        let filter_mode = self.filter_mode;
+
         let rust_fut = async move {
             tokio::join!(
                 filter.run(),
@@ -158,7 +162,7 @@ impl FilterInterface {
                     notif_poll_ms,
                     shutdown_rx2
                 ),
-                handle_filter_notification(&mut filter_cmd_tx, &mut filter_notify_rx, notif_poll_ms2, shutdown_rx3)
+                handle_filter_notification(&mut filter_cmd_tx, filter_notify_rx, notif_poll_ms2, shutdown_rx3, filter_mode),
             );
             Ok(())
         };
@@ -344,10 +348,16 @@ async fn handle_transport_notification(
 
 async fn handle_filter_notification(
     cmd_tx: &mut Sender<FilterCmd>,
-    notify_rx: &mut Arc<Mutex<Receiver<FilterNotice>>>,
+    notify_rx: Arc<Mutex<Receiver<FilterNotice>>>,
     notif_poll_ms: Arc<AtomicUsize>,
     mut shutdown_rx: watch::Receiver<()>,
+    filter_mode: FilterMode,
 ) {
+    // Only run the rest in server mode
+    if filter_mode == FilterMode::Client {
+        return;
+    }
+
     loop {
         // Python call "get_notifications" on filter_notifications. Note: not Python async!
         /*
@@ -388,7 +398,11 @@ async fn handle_filter_notification(
                         })
                         .expect("Channel closed?");
                 }
-                _ => panic!("Unhandled filter notice in handle_filter_notification"),
+                FilterNotice::EndpointTimeout { endpoint } => {
+                    //XXX
+                    info!("received FilterNotice::EndpointTimeout in handle_filter_notification");
+                }
+                _ => panic!("Unhandled filter notice in handle_filter_notification: {:?}", message),
             }
         }
 

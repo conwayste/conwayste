@@ -16,6 +16,9 @@ netwaystev2  = { path = "../netwaystev2" }
 futures-util = "0.3.8"
 snowflake    = "1.2"
 conway       = { path = "../libconway" }
+env_logger      = "0.8.*"
+log             = "0.4.*"
+chrono          = "0.4.19"
 
 # from netwaystev2
 [dependencies.tokio]

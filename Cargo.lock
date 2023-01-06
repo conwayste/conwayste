@@ -2643,8 +2643,11 @@ dependencies = [
 name = "nwv2-python-wrapper"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "conway",
+ "env_logger 0.8.4",
  "futures-util",
+ "log",
  "netwaystev2",
  "pyo3",
  "pyo3-asyncio",

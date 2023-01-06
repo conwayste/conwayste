@@ -8,8 +8,40 @@ use common::EndpointW;
 use filter::*;
 use protocol::*;
 use transport::*;
+use env_logger::*;
+#[macro_use]
+extern crate log;
+use std::io::prelude::*;
+use chrono::Local;
 
 use pyo3::prelude::*;
+
+#[pyfunction]
+fn init_logging() {
+    env_logger::Builder::new()
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "{} [{:5}] - {}",
+                Local::now().format("%a %Y-%m-%d %H:%M:%S%.6f"),
+                record.level(),
+                record.args(),
+            )
+        })
+        .filter_level(log::LevelFilter::max())
+        .target(env_logger::Target::Stdout)
+        .init();
+}
+
+#[pyfunction]
+fn debug_hello() {
+    another_function();
+}
+
+fn another_function() {
+    println!("hi there");
+    info!("this is an info thing");
+}
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -41,5 +73,7 @@ fn nwv2_python_wrapper(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PlayerInfoW>()?;
     m.add_class::<GameOutcomeW>()?;
     m.add_class::<GameUpdateW>()?;
+    m.add_function(wrap_pyfunction!(init_logging, m)?)?;
+    m.add_function(wrap_pyfunction!(debug_hello, m)?)?;
     Ok(())
 }
