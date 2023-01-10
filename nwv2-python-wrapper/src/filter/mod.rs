@@ -21,11 +21,11 @@ use tokio::time::sleep;
 
 use netwaystev2::transport::{TransportCmd, TransportNotice, TransportRsp};
 use netwaystev2::{
-    filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotice, FilterNotifyRecv, FilterRsp, FilterRspRecv},
+    filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotice, FilterNotifyRecv, FilterRspRecv},
     protocol::ResponseCode,
 };
 
-use crate::{filter, transport::*};
+use crate::{transport::*};
 
 // All the below Options are to permit taking these and passing them into async blocks
 #[pyclass]
@@ -144,7 +144,7 @@ impl FilterInterface {
         let transport_notice_tx = t_channels.transport_notice_tx.clone();
 
         let mut filter_cmd_tx = self.cmd_tx.clone();
-        let mut filter_notify_rx = self.notify_rx.clone();
+        let filter_notify_rx = self.notify_rx.clone();
         let shutdown_rx = self.shutdown_rx.clone();
         let shutdown_rx2 = self.shutdown_rx.clone();
         let shutdown_rx3 = self.shutdown_rx.clone();
@@ -390,7 +390,8 @@ async fn handle_filter_notification(
 
         if let Some(message) = notice {
             match message {
-                FilterNotice::NewRequestAction { endpoint, action } => {
+                // XXX action
+                FilterNotice::NewRequestAction { endpoint, action: _ } => {
                         cmd_tx
                         .try_send(FilterCmd::SendResponseCode {
                             endpoint,
@@ -400,7 +401,7 @@ async fn handle_filter_notification(
                 }
                 FilterNotice::EndpointTimeout { endpoint } => {
                     //XXX
-                    info!("received FilterNotice::EndpointTimeout in handle_filter_notification");
+                    info!("[pyF] received FilterNotice::EndpointTimeout in handle_filter_notification for {:?}", endpoint);
                 }
                 _ => panic!("Unhandled filter notice in handle_filter_notification: {:?}", message),
             }

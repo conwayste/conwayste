@@ -8,7 +8,6 @@ use common::EndpointW;
 use filter::*;
 use protocol::*;
 use transport::*;
-use env_logger::*;
 #[macro_use]
 extern crate log;
 use std::io::prelude::*;

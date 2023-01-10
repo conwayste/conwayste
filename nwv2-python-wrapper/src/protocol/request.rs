@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::*;
 use pyo3::prelude::*;
-use pyo3::types::PyBool;
 
 use crate::common::*;
 use netwaystev2::protocol::RequestAction;

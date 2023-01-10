@@ -190,17 +190,29 @@ impl Filter {
                                 if let Err(e) = self.process_transport_packet(endpoint, packet, &mut filter_notice_tx).await {
                                     match e.downcast_ref::<FilterError>() {
                                         Some(FilterError::EndpointNotFound { endpoint }) => {
-                                            filter_rsp_tx.send(FilterRsp::NoSuchEndpoint { endpoint: *endpoint }).await;
+                                            if let Err(e) = filter_rsp_tx.send(FilterRsp::NoSuchEndpoint { endpoint: *endpoint }).await {
+                                                error!("[F->TR] 'NoSuchEndpoint' failed to send, {:?}", e);
+                                            } else {
+                                                // Nothing to do for Ok
+                                            }
                                         }
                                         Some(_) | None => {
                                             // Unidentified error; just accept it for now.
                                             // ToDo: think about if this is what we really want.
-                                            filter_rsp_tx.send(FilterRsp::Accepted).await;
+                                            if let Err(e) = filter_rsp_tx.send(FilterRsp::Accepted).await {
+                                                error!("[F->TR] Failed to accept unidentified error, {:?}", e);
+                                            } else {
+                                                // Nothing to do for Ok
+                                            }
                                         }
                                     }
                                     error!("[F<-TN] error processing incoming packet: {:?}", e);
                                 } else {
-                                    filter_rsp_tx.send(FilterRsp::Accepted).await;
+                                    if let Err(e) = filter_rsp_tx.send(FilterRsp::Accepted).await {
+                                        error!("[F->TR] 'Packet accepted' failed to send {:?}", e);
+                                    } else {
+                                        // Nothing to do for Ok
+                                    }
                                 }
                             }
                             TransportNotice::EndpointTimeout {

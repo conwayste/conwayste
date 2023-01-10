@@ -7,7 +7,7 @@ use crate::common::*;
 use crate::{BroadcastChatMessageW, GameUpdateW, GenStateDiffPartW, GenStateDiffW, RequestActionW, ResponseCodeW};
 use netwaystev2::common::Endpoint;
 use netwaystev2::filter::{FilterCmd, FilterNotice, FilterRsp};
-use netwaystev2::protocol::{BroadcastChatMessage, GameUpdate, ResponseCode};
+use netwaystev2::protocol::{BroadcastChatMessage, GameUpdate};
 
 #[pyclass]
 #[derive(Debug, Clone)]
