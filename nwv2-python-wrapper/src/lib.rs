@@ -10,8 +10,8 @@ use protocol::*;
 use transport::*;
 #[macro_use]
 extern crate log;
-use std::io::prelude::*;
 use chrono::Local;
+use std::io::prelude::*;
 
 use pyo3::prelude::*;
 

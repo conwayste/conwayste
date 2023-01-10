@@ -25,7 +25,7 @@ use netwaystev2::{
     protocol::ResponseCode,
 };
 
-use crate::{transport::*};
+use crate::transport::*;
 
 // All the below Options are to permit taking these and passing them into async blocks
 #[pyclass]
@@ -162,7 +162,13 @@ impl FilterInterface {
                     notif_poll_ms,
                     shutdown_rx2
                 ),
-                handle_filter_notification(&mut filter_cmd_tx, filter_notify_rx, notif_poll_ms2, shutdown_rx3, filter_mode),
+                handle_filter_notification(
+                    &mut filter_cmd_tx,
+                    filter_notify_rx,
+                    notif_poll_ms2,
+                    shutdown_rx3,
+                    filter_mode
+                ),
             );
             Ok(())
         };
@@ -209,7 +215,12 @@ impl FilterInterface {
     fn get_notifications(&mut self) -> PyResult<Vec<FilterNoticeW>> {
         let mut notifications = vec![];
         loop {
-            match self.notify_rx.try_lock().expect("failed to acquire notify rx lock").try_recv() {
+            match self
+                .notify_rx
+                .try_lock()
+                .expect("failed to acquire notify rx lock")
+                .try_recv()
+            {
                 Ok(notification) => {
                     notifications.push(notification.into());
                     continue;
@@ -379,9 +390,7 @@ async fn handle_filter_notification(
         */
         let mut notice = None;
 
-        let mut notify_rx = notify_rx
-            .try_lock()
-            .expect("Failed to acquire notify rx lock. Why?");
+        let mut notify_rx = notify_rx.try_lock().expect("Failed to acquire notify rx lock. Why?");
 
         while let Ok(message) = notify_rx.try_recv() {
             notice = Some(message);
@@ -392,7 +401,7 @@ async fn handle_filter_notification(
             match message {
                 // XXX action
                 FilterNotice::NewRequestAction { endpoint, action: _ } => {
-                        cmd_tx
+                    cmd_tx
                         .try_send(FilterCmd::SendResponseCode {
                             endpoint,
                             code: ResponseCode::OK,
@@ -401,7 +410,10 @@ async fn handle_filter_notification(
                 }
                 FilterNotice::EndpointTimeout { endpoint } => {
                     //XXX
-                    info!("[pyF] received FilterNotice::EndpointTimeout in handle_filter_notification for {:?}", endpoint);
+                    info!(
+                        "[pyF] received FilterNotice::EndpointTimeout in handle_filter_notification for {:?}",
+                        endpoint
+                    );
                 }
                 _ => panic!("Unhandled filter notice in handle_filter_notification: {:?}", message),
             }
