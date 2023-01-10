@@ -370,24 +370,6 @@ async fn handle_filter_notification(
     }
 
     loop {
-        // Python call "get_notifications" on filter_notifications. Note: not Python async!
-        /*
-        let py_retval = Python::with_gil(|py| filter_iface
-            .call_method0(py, "get_notifications"))
-            .expect("TransportInterface get_notifications should not raise exception");
-        let py_obj_vec: Vec<Py<PyAny>> = Python::with_gil(|py| py_retval.extract(py))
-            .expect("TransportInterface get_notifications must return list");
-        let transport_notif_wrappers: Vec<TransportNoticeW> = Python::with_gil(|py| {
-            py_obj_vec
-                .into_iter()
-                .map(|obj| {
-                    obj.extract(py)
-                        .expect("TransportInterface get_notifications must return list of TransportNoticeW")
-                })
-                .collect()
-        });
-        drop(t_iface); // Now we only have a weak ref
-        */
         let mut notice = None;
 
         let mut notify_rx = notify_rx.try_lock().expect("Failed to acquire notify rx lock. Why?");
