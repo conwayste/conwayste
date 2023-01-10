@@ -86,7 +86,7 @@ impl ClientRoom {
             }
             PlayerJoin { player } => {
                 if player.name == self.player_name {
-                    warn!("[FILTER] ignoring GameUpdate::PlayerJoin for ourselves");
+                    warn!("[F] ignoring GameUpdate::PlayerJoin for ourselves");
                 } else {
                     self.other_players
                         .insert(player.name.clone(), player.index.map(|idx| idx as usize));
@@ -94,7 +94,7 @@ impl ClientRoom {
             }
             PlayerLeave { name } => {
                 if *name == self.player_name {
-                    warn!("[FILTER] ignoring GameUpdate::PlayerLeave for ourselves");
+                    warn!("[F] ignoring GameUpdate::PlayerLeave for ourselves");
                 } else {
                     self.other_players.remove(name);
                 }
@@ -241,7 +241,7 @@ impl ClientGame {
                 // We have a new generation in the Universe
                 if latest_gen != gen1 as usize {
                     warn!(
-                        "[FILTER] expected latest generation to be {} but it was {}",
+                        "[F] expected latest generation to be {} but it was {}",
                         gen1, latest_gen
                     );
                 }

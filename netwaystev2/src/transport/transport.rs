@@ -111,7 +111,7 @@ impl Transport {
         loop {
             tokio::select! {
                 Some(cmd) = self.requests.recv() => {
-                    trace!("[TRANSPORT] Filter Request: {:?}", cmd);
+                    trace!("[T<-FC] Processing command {:?}", cmd);
                     match process_transport_command(&mut self.endpoints, cmd, &mut udp_stream_send).await {
                         Ok(responses) => {
                             for response in responses {
@@ -122,24 +122,24 @@ impl Transport {
                             if let Some(err) = e.downcast_ref::<TransportCommandError>() {
                                 match err {
                                     TransportCommandError::ShutdownRequested => {
-                                        info!("[TRANSPORT] shutting down");
+                                        info!("[T] shutting down");
                                         let phase = Phase::ShutdownComplete;
                                         phase_watch_tx.send(phase).unwrap();
                                         return Ok(());
                                     }
                                 }
                             }
-                            error!("[TRANSPORT] Transport command processing failed: {}", e);
+                            error!("[T] Transport command processing failed: {}", e);
                             return Ok(());
                         }
                     }
                 }
                 item_address_result = udp_stream_recv.select_next_some() => {
                     if let Ok((item, address)) = item_address_result {
-                        trace!("[TRANSPORT] UDP Codec data: {:?}", item);
+                        trace!("[T<-UDP] {:?}", item);
 
                         if let Err(e) = self.endpoints.update_last_received(Endpoint(address)) {
-                            warn!("[TRANSPORT] {}", e);
+                            warn!("[T] {}", e);
                         } else {
                             self.notifications.send(TransportNotice::PacketDelivery{
                                 endpoint: Endpoint(address),
@@ -195,7 +195,7 @@ impl Transport {
                 }
                 if phase_watch_rx.changed().await.is_err() {
                     // channel closed
-                    trace!("[TRANSPORT] phase watch channel was dropped");
+                    trace!("[T] phase watch channel was dropped");
                     return;
                 }
             }
@@ -212,7 +212,7 @@ async fn bind(opt_host: Option<String>, opt_port: Option<u16>) -> Result<UdpSock
     let port = if let Some(port) = opt_port { port } else { DEFAULT_PORT };
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
 
-    info!("[TRANSPORT] Attempting to bind to {}", addr);
+    info!("[T] Attempting to bind to {}", addr);
 
     let sock = UdpSocket::bind(&addr).await?;
 

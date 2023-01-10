@@ -340,7 +340,7 @@ impl<P> TransportEndpointData<P> {
                 if info.retry_count >= TRANSPORT_RETRY_COUNT_LOG_THRESHOLD && !info.retry_logged {
                     info.retry_logged = true;
                     warn!(
-                        "[TRANSPORT] Retry logging threshold exceeded for endpoint {:?}, tid {}",
+                        "[T] Retry logging threshold exceeded for endpoint {:?}, tid {}",
                         endpoint, tid
                     );
                 }

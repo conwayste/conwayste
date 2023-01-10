@@ -43,7 +43,7 @@ async fn main() -> Result<()> {
 
     // Start the transport's task in the background
     tokio::spawn(async move { transport.run().await });
-    info!("Transport initialized!");
+    info!("[cli] Transport initialized!");
 
     // Send a fake "NewEndpoint" command to the transport layer to kick things off
     transport_cmd_tx
@@ -75,10 +75,10 @@ async fn main() -> Result<()> {
 
     // Start the filter's task in the background
     tokio::spawn(async move { filter.run().await });
-    info!("Filter initialized!");
+    info!("[cli] Filter initialized!");
 
     signal::ctrl_c().await?;
-    info!("ctrl-c received!");
+    info!("[cli] ctrl-c received!");
 
     // Shutdown
     filter_cmd_tx.send(FilterCmd::Shutdown { graceful: true }).await?;
