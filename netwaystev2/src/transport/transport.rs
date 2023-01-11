@@ -53,6 +53,7 @@ enum Phase {
 }
 
 pub struct Transport {
+    local_addr:      SocketAddr,
     requests:        TransportCmdRecv,
     responses:       TransportRspSend,
     notifications:   TransportNotifySend,
@@ -68,6 +69,7 @@ impl Transport {
     pub async fn new(opt_host: Option<String>, opt_port: Option<u16>) -> Result<TransportInit> {
         // Bind socket to UDP
         let udp_socket = bind(opt_host, opt_port).await?;
+        let local_addr = udp_socket.local_addr()?;
 
         // Split the socket into a two-part stream
         let udp_stream = UdpFramed::new(udp_socket, NetwaystePacketCodec);
@@ -83,6 +85,7 @@ impl Transport {
 
         Ok((
             Transport {
+                local_addr,
                 requests: cmd_rx,
                 responses: rsp_tx,
                 notifications: notice_tx,
@@ -200,6 +203,10 @@ impl Transport {
                 }
             }
         })
+    }
+
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
     }
 }
 

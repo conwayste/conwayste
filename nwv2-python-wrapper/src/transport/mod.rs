@@ -1,13 +1,16 @@
 pub mod interface;
 pub use interface::*;
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use pyo3::exceptions::*;
 use pyo3::prelude::*;
 use tokio::sync::{mpsc::error::TryRecvError, Mutex};
 
+use netwaystev2::common::Endpoint;
 use netwaystev2::transport::{Transport, TransportCmd, TransportCmdSend, TransportNotifyRecv, TransportRspRecv};
+use crate::common::EndpointW;
 
 #[pyclass]
 pub struct TransportInterface {
@@ -15,6 +18,7 @@ pub struct TransportInterface {
     cmd_tx:      TransportCmdSend,
     response_rx: Arc<Mutex<TransportRspRecv>>, // Can't clone an MPSC receiver; need to share :(
     notify_rx:   TransportNotifyRecv,          // ... but this one doesn't need that because it's only read in non-async
+    local_addr:  SocketAddr,
 }
 
 /// Create a TransportInterface.
@@ -29,11 +33,13 @@ pub fn new_transport_interface<'p>(
     let transport_fut = async move {
         let (transport, cmd_tx, response_rx, notify_rx) =
             Transport::new(opt_host, opt_port).await.map_err(err_mapper)?;
+        let local_addr = transport.local_addr();
         Ok(TransportInterface {
             transport: Some(transport),
             cmd_tx,
             response_rx: Arc::new(Mutex::new(response_rx)),
             notify_rx,
+            local_addr,
         })
     };
     pyo3_asyncio::tokio::future_into_py(py, transport_fut)
@@ -109,6 +115,11 @@ impl TransportInterface {
             }
         }
         Ok(notifications)
+    }
+
+    #[getter]
+    fn get_local_addr(&self) -> EndpointW {
+        Endpoint(self.local_addr).into()
     }
 
     fn __repr__(&self) -> String {
