@@ -1,4 +1,5 @@
 use super::interface::TransportEndpointDataError;
+use super::TransportRsp;
 use crate::common::Endpoint;
 use crate::settings::TRANSPORT_RETRY_COUNT_LOG_THRESHOLD;
 use anyhow::{anyhow, Result};
@@ -87,7 +88,7 @@ impl<P> TransportEndpointData<P> {
 
     /// Create a new endpoint to transmit and receive data to and from.
     /// Will report an error if an entry for the endpoint already exists.
-    pub fn new_endpoint(&mut self, endpoint: Endpoint, timeout: Duration) -> Result<()> {
+    pub fn new_endpoint(&mut self, endpoint: Endpoint, timeout: Duration) -> Result<TransportRsp> {
         match self.transmit.entry(endpoint) {
             Entry::Vacant(entry) => {
                 entry.insert(VecDeque::new());
@@ -105,21 +106,24 @@ impl<P> TransportEndpointData<P> {
                 entry.insert(EndpointMeta::new(timeout));
             }
             Entry::Occupied(entry) => {
+                self.transmit.remove(&endpoint); // Probably unreachable, but just in case -- remove what we inserted above.
                 return Err(anyhow!(TransportEndpointDataError::EndpointExists {
                     endpoint,
                     entry_found: *entry.key()
-                }))
+                }));
             }
         }
 
-        Ok(())
+        Ok(TransportRsp::Accepted)
     }
 
     /// Updates the last received time for the given endpoint. If the endpoint does not exist, a
     /// new one is created. This should be called when a new packet arrives.
     pub fn update_last_received(&mut self, endpoint: Endpoint) -> Result<()> {
         match self.endpoint_meta.entry(endpoint) {
-            Entry::Vacant(_) => self.new_endpoint(endpoint, NEW_PACKET_ENDPOINT_TIMEOUT)?,
+            Entry::Vacant(_) => {
+                self.new_endpoint(endpoint, NEW_PACKET_ENDPOINT_TIMEOUT)?;
+            }
             Entry::Occupied(mut entry) => {
                 let meta = entry.get_mut();
                 meta.last_receive = Some(Instant::now());

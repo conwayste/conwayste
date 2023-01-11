@@ -224,12 +224,15 @@ async fn process_transport_command(
     command: TransportCmd,
     udp_send: &mut Pin<&mut &mut SplitSink<UdpFramed<NetwaystePacketCodec>, (Packet, std::net::SocketAddr)>>,
 ) -> anyhow::Result<Vec<TransportRsp>> {
-    let mut cmd_responses = vec![];
+    let mut cmd_responses: Vec<TransportRsp> = vec![];
     match command {
-        NewEndpoint { endpoint, timeout } => cmd_responses.push(endpoints.new_endpoint(endpoint, timeout).map_or_else(
-            |error| TransportRsp::EndpointError { error: Arc::new(error) },
-            |()| TransportRsp::Accepted,
-        )),
+        NewEndpoint { endpoint, timeout } => {
+            cmd_responses.push(
+                endpoints
+                    .new_endpoint(endpoint, timeout)
+                    .unwrap_or_else(|error| TransportRsp::EndpointError { error: Arc::new(error) }),
+            );
+        }
         SendPackets {
             endpoint,
             packet_infos,
