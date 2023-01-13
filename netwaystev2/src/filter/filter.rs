@@ -5,7 +5,7 @@ use super::sortedbuffer::SequencedMinHeap;
 use super::PingPong;
 use crate::common::{Endpoint, ShutdownWatcher};
 use crate::protocol::{GameUpdate, GenStateDiffPart, Packet, RequestAction, ResponseCode};
-use crate::settings::{DEFAULT_RETRY_INTERVAL, FILTER_CHANNEL_LEN};
+use crate::settings::{DEFAULT_ENDPOINT_TIMEOUT_INTERVAL, DEFAULT_RETRY_INTERVAL, FILTER_CHANNEL_LEN};
 use crate::transport::{
     PacketSettings, TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp,
     TransportRspRecv,
@@ -306,7 +306,7 @@ impl Filter {
                             self.transport_cmd_tx
                                 .send(TransportCmd::NewEndpoint {
                                     endpoint,
-                                    timeout: DEFAULT_RETRY_INTERVAL,
+                                    timeout: DEFAULT_ENDPOINT_TIMEOUT_INTERVAL,
                                 })
                                 .await?;
                         }
@@ -597,7 +597,7 @@ impl Filter {
                                 self.transport_cmd_tx
                                     .send(TransportCmd::NewEndpoint {
                                         endpoint,
-                                        timeout: DEFAULT_RETRY_INTERVAL,
+                                        timeout: DEFAULT_ENDPOINT_TIMEOUT_INTERVAL,
                                     })
                                     .await?;
                             }
@@ -646,7 +646,7 @@ impl Filter {
                 client.unacked_outgoing_packet_tids.push_back((Wrapping(sequence), tid));
                 let packet_infos = vec![PacketSettings {
                     tid,
-                    retry_interval: DEFAULT_RETRY_INTERVAL,
+                    retry_interval: Duration::from_secs(9999), // HACK
                 }];
 
                 self.transport_cmd_tx

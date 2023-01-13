@@ -1,14 +1,12 @@
 use super::interface::TransportEndpointDataError;
 use super::TransportRsp;
 use crate::common::Endpoint;
-use crate::settings::TRANSPORT_RETRY_COUNT_LOG_THRESHOLD;
+use crate::settings::{DEFAULT_ENDPOINT_TIMEOUT_INTERVAL, TRANSPORT_RETRY_COUNT_LOG_THRESHOLD};
 use anyhow::{anyhow, Result};
 use snowflake::ProcessUniqueId;
 
 use std::collections::{hash_map::Entry, HashMap, VecDeque};
 use std::time::{Duration, Instant};
-
-const NEW_PACKET_ENDPOINT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Transport layers uses this to track packet-specific retries and timeouts.
 ///
@@ -122,7 +120,7 @@ impl<P> TransportEndpointData<P> {
     pub fn update_last_received(&mut self, endpoint: Endpoint) -> Result<()> {
         match self.endpoint_meta.entry(endpoint) {
             Entry::Vacant(_) => {
-                self.new_endpoint(endpoint, NEW_PACKET_ENDPOINT_TIMEOUT)?;
+                self.new_endpoint(endpoint, DEFAULT_ENDPOINT_TIMEOUT_INTERVAL)?;
             }
             Entry::Occupied(mut entry) => {
                 let meta = entry.get_mut();
