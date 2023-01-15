@@ -114,7 +114,7 @@ impl Transport {
         loop {
             tokio::select! {
                 Some(cmd) = self.requests.recv() => {
-                    trace!("[T<-FC] Processing command {:?}", cmd);
+                    trace!("[T<-F,C] Processing command {:?}", cmd);
                     match process_transport_command(&mut self.endpoints, cmd, &mut udp_stream_send).await {
                         Ok(responses) => {
                             for response in responses {

@@ -95,23 +95,23 @@ impl AppServer {
             tokio::select! {
                 response = filter_rsp_rx.recv() => {
                     if let Some(response) = response {
-                        trace!("[APP] Filter Response: {:?}", response);
+                        trace!("[A<-F,R] {:?}", response);
                     }
                 }
                 notice = filter_notice_rx.recv() => {
                     if let Some(notice) = notice {
-                        trace!("[APP] Filter Notice: {:?}", notice);
+                        trace!("[A<-F,N] {:?}", notice);
                     }
                 }
                 response = unigen_rsp_rx.recv() => {
                     if let Some(response) = response {
-                        trace!("[APP] Unigen Response: {:?}", response);
+                        trace!("[A<-F,UGR] {:?}", response);
 
                     }
                 }
                 notice = unigen_notice_rx.recv() => {
                     if let Some(notice) = notice {
-                        trace!("[APP] Unigen Notice: {:?}", notice);
+                        trace!("[A<-F,UGN] {:?}", notice);
                     }
                 }
                 _instant = register_interval_stream.tick() => {
@@ -135,7 +135,7 @@ impl AppServer {
                 }
                 if phase_watch_rx.changed().await.is_err() {
                     // channel closed
-                    trace!("[APP] phase watch channel was dropped");
+                    trace!("[A] phase watch channel was dropped");
                     break;
                 }
             }

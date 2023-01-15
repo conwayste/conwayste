@@ -155,26 +155,26 @@ impl Filter {
         loop {
             tokio::select! {
                 response = self.transport_rsp_rx.recv() => {
-                    // trace!("[F<-TP]: {:?}", response);
+                    // trace!("[F<-T,R]: {:?}", response);
 
                     if let Some(response) = response {
                         match response {
                             TransportRsp::Accepted => {
-                                trace!("[F<-TR] Command Accepted");
+                                trace!("[F<-T,R] Command Accepted");
                             }
                             TransportRsp::SendPacketsLengthMismatch => {
-                                error!("[F<-TR] bug in filter layer! Length mismatch between parallel arrays in SendPackets command")
+                                error!("[F<-T,R] bug in filter layer! Length mismatch between parallel arrays in SendPackets command")
                             }
                             TransportRsp::BufferFull => {
                                 // TODO: understand if there is other action that needs to be taken besides logging
-                                error!("[F<-TR] Transmit buffer is full");
+                                error!("[F<-T,R] Transmit buffer is full");
                             }
                             TransportRsp::ExceedsMtu {tid, size, mtu} => {
                                 // TODO: understand if there is other action that needs to be taken besides logging
-                                error!("[F<-TR] Packet exceeds MTU size of {}. Tid={} and size is {}", mtu, tid, size);
+                                error!("[F<-T,R] Packet exceeds MTU size of {}. Tid={} and size is {}", mtu, tid, size);
                             }
                             TransportRsp::EndpointError {error} => {
-                                error!("[F<-TR] Endpoint error: {:?}", error);
+                                error!("[F<-T,R] Endpoint error: {:?}", error);
                             }
                         }
                     }
@@ -186,12 +186,12 @@ impl Filter {
                                 endpoint,
                                 packet,
                             } => {
-                                trace!("[F<-TN] For Endpoint {:?}, Took packet {:?}", endpoint, packet);
+                                trace!("[F<-T,N] For Endpoint {:?}, Took packet {:?}", endpoint, packet);
                                 if let Err(e) = self.process_transport_packet(endpoint, packet, &mut filter_notice_tx).await {
                                     match e.downcast_ref::<FilterError>() {
                                         Some(FilterError::EndpointNotFound { endpoint }) => {
                                             if let Err(e) = filter_rsp_tx.send(FilterRsp::NoSuchEndpoint { endpoint: *endpoint }).await {
-                                                error!("[F->TR] 'NoSuchEndpoint' failed to send, {:?}", e);
+                                                error!("[F->T,R] 'NoSuchEndpoint' failed to send, {:?}", e);
                                             } else {
                                                 // Nothing to do for Ok
                                             }
@@ -200,16 +200,16 @@ impl Filter {
                                             // Unidentified error; just accept it for now.
                                             // ToDo: think about if this is what we really want.
                                             if let Err(e) = filter_rsp_tx.send(FilterRsp::Accepted).await {
-                                                error!("[F->TR] Failed to accept unidentified error, {:?}", e);
+                                                error!("[F->T,R] Failed to accept unidentified error, {:?}", e);
                                             } else {
                                                 // Nothing to do for Ok
                                             }
                                         }
                                     }
-                                    error!("[F<-TN] error processing incoming packet: {:?}", e);
+                                    error!("[F<-T,N] error processing incoming packet: {:?}", e);
                                 } else {
                                     if let Err(e) = filter_rsp_tx.send(FilterRsp::Accepted).await {
-                                        error!("[F->TR] 'Packet accepted' failed to send {:?}", e);
+                                        error!("[F->T,R] 'Packet accepted' failed to send {:?}", e);
                                     } else {
                                         // Nothing to do for Ok
                                     }
@@ -218,7 +218,7 @@ impl Filter {
                             TransportNotice::EndpointTimeout {
                                 endpoint,
                             } => {
-                                info!("[F<-TN] Endpoint {:?} timed-out. Dropping.", endpoint);
+                                info!("[F<-T,N] Endpoint {:?} timed-out. Dropping.", endpoint);
                                 self.per_endpoint.remove(&endpoint);
                                 if let Err(_) = transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await {
                                     error!("[F] transport cmd receiver has been dropped");
@@ -230,7 +230,7 @@ impl Filter {
                                     // response_ack filled in later (see HACK)
                                     let action = RequestAction::KeepAlive { latest_response_ack: 0 };
                                     if let Err(e) = self.send_request_action_to_server(endpoint, action).await {
-                                        warn!("[F<-TN] error sending KeepAlive during idle endpoint ({:?}): {}", endpoint, e);
+                                        warn!("[F<-T,N] error sending KeepAlive during idle endpoint ({:?}): {}", endpoint, e);
                                     }
                                 }
                             }
@@ -239,13 +239,13 @@ impl Filter {
                 }
                 command = self.filter_cmd_rx.recv() => {
                     if let Some(command) = command {
-                        trace!("[F<-AC] New command: {:?}", command);
+                        trace!("[F<-A,C] New command: {:?}", command);
 
                         if let Err(e) = self.process_filter_command(command).await {
                             if let Some(err) = e.downcast_ref::<FilterError>() {
                                 match err {
                                     FilterError::ShutdownRequested{graceful} => {
-                                        info!("[F<-AC] shutting down");
+                                        info!("[F<-A,C] shutting down");
                                         let phase;
                                         if *graceful {
                                             phase = Phase::ShutdownComplete;
@@ -257,20 +257,20 @@ impl Filter {
                                     }
                                     FilterError::EndpointNotFound{endpoint} => {
                                         if let Err(_) = filter_rsp_tx.send(FilterRsp::NoSuchEndpoint{endpoint: *endpoint}).await {
-                                            error!("[F<-AC] all receivers on FilterRsp channel have been dropped; run() exiting");
+                                            error!("[F<-A,C] all receivers on FilterRsp channel have been dropped; run() exiting");
                                             return;
                                         }
                                     }
                                     _ => {}
                                 }
                             }
-                            error!("[F<-AC] command processing failed: {}", e);
+                            error!("[F<-A,C] command processing failed: {}", e);
                         }
                     }
                 }
                 _instant = ping_interval_stream.tick() => {
                     if let Err(e) = self.send_pings().await {
-                        error!("[F->TC] Failed to send pings: {}", e);
+                        error!("[F->T,C] Failed to send pings: {}", e);
                     }
                 }
             }
