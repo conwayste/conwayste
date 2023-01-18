@@ -585,26 +585,23 @@ impl Filter {
     async fn process_filter_command(&mut self, command: FilterCmd) -> anyhow::Result<()> {
         match command {
             FilterCmd::SendRequestAction { endpoint, action } => {
-                match check_endpoint_exists(&self.per_endpoint, endpoint) {
-                    Err(err) => {
-                        // Create a new endpoint only on Connect messages
-                        match &action {
-                            RequestAction::Connect { name, .. } => {
-                                self.per_endpoint.insert(
+                if !self.per_endpoint.contains_key(&endpoint) {
+                    // Create a new endpoint only on Connect messages
+                    match &action {
+                        RequestAction::Connect { name, .. } => {
+                            self.per_endpoint.insert(
+                                endpoint,
+                                FilterEndpointData::OtherEndServer(OtherEndServer::new(name.clone())),
+                            );
+                            self.transport_cmd_tx
+                                .send(TransportCmd::NewEndpoint {
                                     endpoint,
-                                    FilterEndpointData::OtherEndServer(OtherEndServer::new(name.clone())),
-                                );
-                                self.transport_cmd_tx
-                                    .send(TransportCmd::NewEndpoint {
-                                        endpoint,
-                                        timeout: DEFAULT_ENDPOINT_TIMEOUT_INTERVAL,
-                                    })
-                                    .await?;
-                            }
-                            _ => return Err(err),
+                                    timeout: DEFAULT_ENDPOINT_TIMEOUT_INTERVAL,
+                                })
+                                .await?;
                         }
+                        _ => return Err(anyhow!(FilterError::EndpointNotFound { endpoint: endpoint })),
                     }
-                    _ => (),
                 }
 
                 self.send_request_action_to_server(endpoint, action).await?
@@ -865,18 +862,6 @@ pub(crate) fn determine_seq_num_advancement(pkt_sequence: u64, last_seen_sn: Opt
         }
     } else {
         return SeqNumAdvancement::BrandNew;
-    }
-}
-
-/// Returns an error if the endpoint is not known to the filter
-fn check_endpoint_exists(
-    per_endpoint: &HashMap<Endpoint, FilterEndpointData>,
-    endpoint: Endpoint,
-) -> anyhow::Result<()> {
-    if !per_endpoint.contains_key(&endpoint) {
-        Err(anyhow!(FilterError::EndpointNotFound { endpoint: endpoint }))
-    } else {
-        Ok(())
     }
 }
 
