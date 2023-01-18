@@ -15,34 +15,33 @@ pub mod protocol;
 mod settings;
 pub mod transport;
 
-
-/// This project formats log statements in according to the following format.
-///
-/// Date \[Log Level\] - \[Layer Context\] Message
-///
-/// where
-///     Date: Follows the short-hand day of the week, 'Thu' for Thursday followed by the datetime in ISO 8601
-///
-///     Log Level: The log severity level such as 'TRACE', 'INFO', 'DEBUG', 'WARN', or 'ERROR'.
-///
-///     Layer Context: A shorthand notation for the Netwayste networking architecture's three-layer design.
-///         "Log Message Source Layer" [<- "Event Origin Layer", "Event Type"]
-///
-///         "F<-T,R" means the message was logged by the Filter layer, having received a Transport Response
-///         "T<-F,C" means the message was logged by the Transport layer, having received a Command sent by the Filter.
-///         "A<-F,N" means the message was logged by the Application layer, having received a Notification sent by the Filter.
-///
-///         The log message source and event origin layers can be one of
-///             A: Application (Client or Server)
-///             F: Filter
-///             T: Transport
-///
-///         The event type can be one of:
-///             C: Contextual Command, such as a Filter or Transport Command
-///             R: Contextual Response, such as a Filter or Transport Response
-///             N: Contextual Notice, such as a Filter or Transport Notice
-///             UDP: UDP network transmission or reception
-///             UGR: Universe Generation Response
-///             UGN: Universe Generation Notice
-///
-///     Message: A variable-length sequence of Unicode characters terminated by a newline, '\n'
+// This project formats log statements in according to the following format.
+//
+// Date \[Log Level\] - \[Layer Context\] Message
+//
+// where
+//     Date: Follows the short-hand day of the week, 'Thu' for Thursday followed by the datetime in ISO 8601
+//
+//     Log Level: The log severity level such as 'TRACE', 'INFO', 'DEBUG', 'WARN', or 'ERROR'.
+//
+//     Layer Context: A shorthand notation for the Netwayste networking architecture's three-layer design.
+//         "Log Message Source Layer" [<- "Event Origin Layer", "Event Type"]
+//
+//         "F<-T,R" means the message was logged by the Filter layer, having received a Transport Response
+//         "T<-F,C" means the message was logged by the Transport layer, having received a Command sent by the Filter.
+//         "A<-F,N" means the message was logged by the Application layer, having received a Notification sent by the Filter.
+//
+//         The log message source and event origin layers can be one of
+//             A: Application (Client or Server)
+//             F: Filter
+//             T: Transport
+//
+//         The event type can be one of:
+//             C: Contextual Command, such as a Filter or Transport Command
+//             R: Contextual Response, such as a Filter or Transport Response
+//             N: Contextual Notice, such as a Filter or Transport Notice
+//             UDP: UDP network transmission or reception
+//             UGR: Universe Generation Response
+//             UGN: Universe Generation Notice
+//
+//     Message: A variable-length sequence of Unicode characters terminated by a newline, '\n'
