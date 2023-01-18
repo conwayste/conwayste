@@ -85,34 +85,23 @@ impl<P> TransportEndpointData<P> {
     }
 
     /// Create a new endpoint to transmit and receive data to and from.
-    /// Will report an error if an entry for the endpoint already exists.
-    pub fn new_endpoint(&mut self, endpoint: Endpoint, timeout: Duration) -> Result<TransportRsp> {
-        match self.transmit.entry(endpoint) {
-            Entry::Vacant(entry) => {
-                entry.insert(VecDeque::new());
-            }
-            Entry::Occupied(entry) => {
-                return Err(anyhow!(TransportEndpointDataError::EndpointExists {
-                    endpoint,
-                    entry_found: *entry.key()
-                }))
-            }
-        }
+    /// Will update certain fields if an entry for the endpoint already exists.
+    pub fn upsert_endpoint(&mut self, endpoint: Endpoint, timeout: Duration) {
+        self.transmit.entry(endpoint).or_insert_with(|| VecDeque::new());
 
-        match self.endpoint_meta.entry(endpoint) {
-            Entry::Vacant(entry) => {
-                entry.insert(EndpointMeta::new(timeout));
-            }
-            Entry::Occupied(entry) => {
-                self.transmit.remove(&endpoint); // Probably unreachable, but just in case -- remove what we inserted above.
-                return Err(anyhow!(TransportEndpointDataError::EndpointExists {
-                    endpoint,
-                    entry_found: *entry.key()
-                }));
-            }
-        }
-
-        Ok(TransportRsp::Accepted)
+        self.endpoint_meta
+            .entry(endpoint)
+            .and_modify(|meta| {
+                // If EndpointMeta is expanded, do the same for new fields as well.
+                if meta.endpoint_timeout != timeout {
+                    info!(
+                        "[T] Updating EndpointMeta for {:?}; old timeout: {:?}, new timeout: {:?}",
+                        endpoint, meta.endpoint_timeout, timeout
+                    );
+                    meta.endpoint_timeout = timeout;
+                }
+            })
+            .or_insert_with(|| EndpointMeta::new(timeout));
     }
 
     /// Updates the last received time for the given endpoint. If the endpoint does not exist, a
@@ -120,7 +109,7 @@ impl<P> TransportEndpointData<P> {
     pub fn update_last_received(&mut self, endpoint: Endpoint) -> Result<()> {
         match self.endpoint_meta.entry(endpoint) {
             Entry::Vacant(_) => {
-                self.new_endpoint(endpoint, DEFAULT_ENDPOINT_TIMEOUT_INTERVAL)?;
+                self.upsert_endpoint(endpoint, DEFAULT_ENDPOINT_TIMEOUT_INTERVAL);
             }
             Entry::Occupied(mut entry) => {
                 let meta = entry.get_mut();

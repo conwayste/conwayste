@@ -234,11 +234,8 @@ async fn process_transport_command(
     let mut cmd_responses: Vec<TransportRsp> = vec![];
     match command {
         NewEndpoint { endpoint, timeout } => {
-            cmd_responses.push(
-                endpoints
-                    .new_endpoint(endpoint, timeout)
-                    .unwrap_or_else(|error| TransportRsp::EndpointError { error: Arc::new(error) }),
-            );
+            endpoints.upsert_endpoint(endpoint, timeout);
+            cmd_responses.push(TransportRsp::Accepted);
         }
         SendPackets {
             endpoint,
