@@ -74,6 +74,16 @@ impl RequestActionW {
         Ok(RequestActionW { inner: ra })
     }
 
+    #[getter]
+    fn name(&self) -> Option<String> {
+        match self {
+            RequestActionW {
+                inner: RequestAction::Connect { name, .. },
+            } => Some(name.clone()),
+            _ => None,
+        }
+    }
+
     fn __repr__(&self) -> String {
         format!("{:?}", self.inner)
     }

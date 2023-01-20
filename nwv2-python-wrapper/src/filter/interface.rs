@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use netwaystev2::protocol::RequestAction;
 use pyo3::exceptions::*;
 use pyo3::prelude::*;
 
@@ -219,7 +220,15 @@ impl FilterNoticeW {
         Ok(FilterNoticeW { inner: fc })
     }
 
-    // NewResponseCode getters below
+    #[getter]
+    fn get_request_action(&self) -> Option<RequestActionW> {
+        match self {
+            FilterNoticeW {
+                inner: FilterNotice::NewRequestAction { action, .. },
+            } => Some(action.clone().into()),
+            _ => None,
+        }
+    }
 
     #[getter]
     fn get_response_code(&self) -> Option<ResponseCodeW> {
