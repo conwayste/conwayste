@@ -162,13 +162,14 @@ impl FilterInterface {
                     notif_poll_ms,
                     shutdown_rx2
                 ),
+                /*
                 handle_filter_notification(
                     &mut filter_cmd_tx,
                     filter_notify_rx,
                     notif_poll_ms2,
                     shutdown_rx3,
                     filter_mode
-                ),
+                ),*/
             );
             Ok(())
         };
@@ -207,6 +208,32 @@ impl FilterInterface {
             Ok(response_rx.recv().await.map(|resp| FilterRspW::from(resp)))
         };
         pyo3_asyncio::tokio::future_into_py(py, send_recv_fut)
+    }
+
+    /// Send an individual command.
+    fn command<'p>(&mut self, py: Python<'p>, filter_cmd: FilterCmdW) -> PyResult<&'p PyAny> {
+        let cmd_tx = self.cmd_tx.clone();
+        let send_fut = async move {
+            let filter_cmd = filter_cmd.into();
+            cmd_tx
+                .send(filter_cmd)
+                .await
+                .map_err(|e| PyException::new_err(format!("failed to send FilterCmd: {}", e)))?;
+            Ok(())
+        };
+        pyo3_asyncio::tokio::future_into_py(py, send_fut)
+    }
+
+    /// Receive an individual response.
+    fn response<'p>(&mut self, py: Python<'p>) -> PyResult<&'p PyAny> {
+        let response_rx = self.response_rx.clone();
+        let recv_fut = async move {
+            let mut response_rx = response_rx
+                .try_lock()
+                .map_err(|e| PyException::new_err(format!("failed to unlock filter response receiver: {}", e)))?;
+            Ok(response_rx.recv().await.map(|resp| FilterRspW::from(resp)))
+        };
+        pyo3_asyncio::tokio::future_into_py(py, recv_fut)
     }
 
     /// Get a Vec of Filter notifications.
