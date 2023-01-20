@@ -8,9 +8,9 @@ use pyo3::exceptions::*;
 use pyo3::prelude::*;
 use tokio::sync::{mpsc::error::TryRecvError, Mutex};
 
+use crate::common::EndpointW;
 use netwaystev2::common::Endpoint;
 use netwaystev2::transport::{Transport, TransportCmd, TransportCmdSend, TransportNotifyRecv, TransportRspRecv};
-use crate::common::EndpointW;
 
 #[pyclass]
 pub struct TransportInterface {
