@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use netwaystev2::protocol::RequestAction;
 use pyo3::exceptions::*;
 use pyo3::prelude::*;
 

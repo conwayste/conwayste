@@ -21,8 +21,7 @@ use tokio::time::sleep;
 
 use netwaystev2::transport::{TransportCmd, TransportNotice, TransportRsp};
 use netwaystev2::{
-    filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotice, FilterNotifyRecv, FilterRspRecv},
-    protocol::ResponseCode,
+    filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotifyRecv, FilterRspRecv},
 };
 
 use crate::transport::*;
@@ -39,7 +38,6 @@ pub struct FilterInterface {
     transport_channels: Option<TransportChannels>,
     shutdown_tx:        watch::Sender<()>, // sends or closes if FilterInterface is shutdown
     shutdown_rx:        watch::Receiver<()>, // Is cloned and provided to async functions so they don't run forever
-    filter_mode:        FilterMode,
 }
 
 struct TransportChannels {
@@ -121,7 +119,6 @@ impl FilterInterface {
             transport_channels: Some(transport_channels),
             shutdown_tx,
             shutdown_rx,
-            filter_mode: filter_mode.into(),
         }
     }
 
@@ -143,14 +140,9 @@ impl FilterInterface {
 
         let transport_notice_tx = t_channels.transport_notice_tx.clone();
 
-        let mut filter_cmd_tx = self.cmd_tx.clone();
-        let filter_notify_rx = self.notify_rx.clone();
         let shutdown_rx = self.shutdown_rx.clone();
         let shutdown_rx2 = self.shutdown_rx.clone();
-        let shutdown_rx3 = self.shutdown_rx.clone();
         let notif_poll_ms = self.notif_poll_ms.clone();
-        let notif_poll_ms2 = self.notif_poll_ms.clone();
-        let filter_mode = self.filter_mode;
 
         let rust_fut = async move {
             tokio::join!(
@@ -162,14 +154,6 @@ impl FilterInterface {
                     notif_poll_ms,
                     shutdown_rx2
                 ),
-                /*
-                handle_filter_notification(
-                    &mut filter_cmd_tx,
-                    filter_notify_rx,
-                    notif_poll_ms2,
-                    shutdown_rx3,
-                    filter_mode
-                ),*/
             );
             Ok(())
         };
@@ -366,65 +350,6 @@ async fn handle_transport_notification(
             if let Err(_) = transport_notice_tx.send(transport_notice).await {
                 // Filter layer must have been dropped
                 return;
-            }
-        }
-
-        let poll_interval = Duration::from_millis(
-            notif_poll_ms
-                .load(Ordering::SeqCst)
-                .try_into()
-                .expect("notif_poll_ms too big"),
-        );
-        tokio::select! {
-            _ = sleep(poll_interval) => {}
-            _ = shutdown_rx.changed() => {
-                return;
-            }
-        };
-    }
-}
-
-async fn handle_filter_notification(
-    cmd_tx: &mut Sender<FilterCmd>,
-    notify_rx: Arc<Mutex<Receiver<FilterNotice>>>,
-    notif_poll_ms: Arc<AtomicUsize>,
-    mut shutdown_rx: watch::Receiver<()>,
-    filter_mode: FilterMode,
-) {
-    // Only run the rest in server mode
-    if filter_mode == FilterMode::Client {
-        return;
-    }
-
-    loop {
-        let mut notice = None;
-
-        let mut notify_rx = notify_rx.try_lock().expect("Failed to acquire notify rx lock. Why?");
-
-        while let Ok(message) = notify_rx.try_recv() {
-            notice = Some(message);
-            break;
-        }
-
-        if let Some(message) = notice {
-            match message {
-                // XXX action
-                FilterNotice::NewRequestAction { endpoint, action: _ } => {
-                    cmd_tx
-                        .try_send(FilterCmd::SendResponseCode {
-                            endpoint,
-                            code: ResponseCode::OK,
-                        })
-                        .expect("Channel closed?");
-                }
-                FilterNotice::EndpointTimeout { endpoint } => {
-                    //XXX
-                    info!(
-                        "[pyF] received FilterNotice::EndpointTimeout in handle_filter_notification for {:?}",
-                        endpoint
-                    );
-                }
-                _ => panic!("Unhandled filter notice in handle_filter_notification: {:?}", message),
             }
         }
 
