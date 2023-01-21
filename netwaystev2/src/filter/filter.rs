@@ -189,6 +189,8 @@ impl Filter {
                                 trace!("[F<-T,N] For Endpoint {:?}, Took packet {:?}", endpoint, packet);
                                 if let Err(e) = self.process_transport_packet(endpoint, packet, &mut filter_notice_tx).await {
                                     match e.downcast_ref::<FilterError>() {
+                                        // XXX WTF, shouldn't send on filter_rsp_tx!!! not part of
+                                        // that flow.
                                         Some(FilterError::EndpointNotFound { endpoint }) => {
                                             if let Err(e) = filter_rsp_tx.send(FilterRsp::NoSuchEndpoint { endpoint: *endpoint }).await {
                                                 error!("[F->T,R] 'NoSuchEndpoint' failed to send, {:?}", e);
@@ -261,10 +263,14 @@ impl Filter {
                                             return;
                                         }
                                     }
-                                    _ => {}
+                                    _ => {
+                                        //XXX send something to filter_rsp_tx!!!
+                                    }
                                 }
                             }
                             error!("[F<-A,C] command processing failed: {}", e);
+                        } else {
+                            filter_rsp_tx.send(FilterRsp::Accepted).await;
                         }
                     }
                 }
