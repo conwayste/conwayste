@@ -19,10 +19,8 @@ use tokio::sync::{
 
 use tokio::time::sleep;
 
+use netwaystev2::filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotifyRecv, FilterRspRecv};
 use netwaystev2::transport::{TransportCmd, TransportNotice, TransportRsp};
-use netwaystev2::{
-    filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotifyRecv, FilterRspRecv},
-};
 
 use crate::transport::*;
 
@@ -32,7 +30,7 @@ pub struct FilterInterface {
     filter:             Option<Filter>,
     cmd_tx:             FilterCmdSend,
     response_rx:        Arc<Mutex<FilterRspRecv>>,
-    notify_rx:          Arc<Mutex<FilterNotifyRecv>>,
+    notify_rx:          FilterNotifyRecv,
     notif_poll_ms:      Arc<AtomicUsize>, // Controls how frequently we poll the TransportInterface for transport notifications
     transport_iface:    Option<Arc<PyObject>>, // duck-typed Python object (same methods as TransportInterface)
     transport_channels: Option<TransportChannels>,
@@ -113,7 +111,7 @@ impl FilterInterface {
             filter: Some(filter),
             cmd_tx: filter_cmd_tx,
             response_rx: Arc::new(Mutex::new(filter_rsp_rx)),
-            notify_rx: Arc::new(Mutex::new(filter_notice_rx)),
+            notify_rx: filter_notice_rx,
             notif_poll_ms: Arc::new(AtomicUsize::new(DEFAULT_NOTIFY_POLL_MS)),
             transport_iface: Some(Arc::new(transport_iface)),
             transport_channels: Some(transport_channels),
@@ -226,12 +224,7 @@ impl FilterInterface {
     fn get_notifications(&mut self) -> PyResult<Vec<FilterNoticeW>> {
         let mut notifications = vec![];
         loop {
-            match self
-                .notify_rx
-                .try_lock()
-                .expect("failed to acquire notify rx lock")
-                .try_recv()
-            {
+            match self.notify_rx.try_recv() {
                 Ok(notification) => {
                     notifications.push(notification.into());
                     continue;
