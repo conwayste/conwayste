@@ -188,33 +188,11 @@ impl Filter {
                             } => {
                                 trace!("[F<-T,N] For Endpoint {:?}, Took packet {:?}", endpoint, packet);
                                 if let Err(e) = self.process_transport_packet(endpoint, packet, &mut filter_notice_tx).await {
-                                    match e.downcast_ref::<FilterError>() {
-                                        // XXX WTF, shouldn't send on filter_rsp_tx!!! not part of
-                                        // that flow.
-                                        Some(FilterError::EndpointNotFound { endpoint }) => {
-                                            if let Err(e) = filter_rsp_tx.send(FilterRsp::NoSuchEndpoint { endpoint: *endpoint }).await {
-                                                error!("[F->T,R] 'NoSuchEndpoint' failed to send, {:?}", e);
-                                            } else {
-                                                // Nothing to do for Ok
-                                            }
-                                        }
-                                        Some(_) | None => {
-                                            // Unidentified error; just accept it for now.
-                                            // ToDo: think about if this is what we really want.
-                                            if let Err(e) = filter_rsp_tx.send(FilterRsp::Accepted).await {
-                                                error!("[F->T,R] Failed to accept unidentified error, {:?}", e);
-                                            } else {
-                                                // Nothing to do for Ok
-                                            }
-                                        }
-                                    }
-                                    error!("[F<-T,N] error processing incoming packet: {:?}", e);
+                                    error!("[F] packet delivery failed: {:?}", e);
+                                    error!("[F] run() exiting");
+                                    return;
                                 } else {
-                                    if let Err(e) = filter_rsp_tx.send(FilterRsp::Accepted).await {
-                                        error!("[F->T,R] 'Packet accepted' failed to send {:?}", e);
-                                    } else {
-                                        // Nothing to do for Ok
-                                    }
+                                    // Nothing to do for Ok
                                 }
                             }
                             TransportNotice::EndpointTimeout {
@@ -224,6 +202,7 @@ impl Filter {
                                 self.per_endpoint.remove(&endpoint);
                                 if let Err(_) = transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await {
                                     error!("[F] transport cmd receiver has been dropped");
+                                    error!("[F] run() exiting");
                                     return;
                                 }
                             }
@@ -232,7 +211,7 @@ impl Filter {
                                     // response_ack filled in later (see HACK)
                                     let action = RequestAction::KeepAlive { latest_response_ack: 0 };
                                     if let Err(e) = self.send_request_action_to_server(endpoint, action).await {
-                                        warn!("[F<-T,N] error sending KeepAlive during idle endpoint ({:?}): {}", endpoint, e);
+                                        warn!("[F] error sending KeepAlive during idle endpoint ({:?}): {}", endpoint, e);
                                     }
                                 }
                             }
@@ -247,7 +226,7 @@ impl Filter {
                             if let Some(err) = e.downcast_ref::<FilterError>() {
                                 match err {
                                     FilterError::ShutdownRequested{graceful} => {
-                                        info!("[F<-A,C] shutting down");
+                                        info!("[F] shutting down");
                                         let phase;
                                         if *graceful {
                                             phase = Phase::ShutdownComplete;
@@ -258,8 +237,9 @@ impl Filter {
                                         return;
                                     }
                                     FilterError::EndpointNotFound{endpoint} => {
-                                        if let Err(_) = filter_rsp_tx.send(FilterRsp::NoSuchEndpoint{endpoint: *endpoint}).await {
-                                            error!("[F<-A,C] all receivers on FilterRsp channel have been dropped; run() exiting");
+                                        if let Err(e) = filter_rsp_tx.send(FilterRsp::NoSuchEndpoint{endpoint: *endpoint}).await {
+                                            error!("[F] all receivers on FilterRsp channel have been dropped: {}", e);
+                                            error!("[F] run() exiting");
                                             return;
                                         }
                                     }
@@ -270,7 +250,11 @@ impl Filter {
                             }
                             error!("[F<-A,C] command processing failed: {}", e);
                         } else {
-                            filter_rsp_tx.send(FilterRsp::Accepted).await;
+                            if let Err(e) = filter_rsp_tx.send(FilterRsp::Accepted).await {
+                                error!("[F] filter response receiver has been dropped: {}", e);
+                                error!("[F] run() exiting");
+                                return;
+                            }
                         }
                     }
                 }

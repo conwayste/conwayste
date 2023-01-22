@@ -57,8 +57,7 @@ use ett::*;
 use hf::*;
 use netwaysteparser::{
     parse_netwayste_format,
-    NetwaysteDataFormat::{self,
-Enumerator, Structure},
+    NetwaysteDataFormat::{self, Enumerator, Structure},
     Sizing, VariableContainer,
 };
 use wrapperdefs::*;
