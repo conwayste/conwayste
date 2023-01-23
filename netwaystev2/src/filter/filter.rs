@@ -188,6 +188,7 @@ impl Filter {
                             } => {
                                 trace!("[F<-T,N] For Endpoint {:?}, Took packet {:?}", endpoint, packet);
                                 if let Err(e) = self.process_transport_packet(endpoint, packet, &mut filter_notice_tx).await {
+                                    //XXX should not return unless it's a SendError
                                     error!("[F] packet delivery failed: {:?}", e);
                                     error!("[F] run() exiting");
                                     return;
@@ -224,8 +225,9 @@ impl Filter {
 
                         if let Err(e) = self.process_filter_command(command).await {
                             if let Some(err) = e.downcast_ref::<FilterError>() {
+                                use FilterError::*;
                                 match err {
-                                    FilterError::ShutdownRequested{graceful} => {
+                                    ShutdownRequested{graceful} => {
                                         info!("[F] shutting down");
                                         let phase;
                                         if *graceful {
@@ -236,23 +238,34 @@ impl Filter {
                                         let _ = self.phase_watch_tx.send(phase); // OK to ignore error
                                         return;
                                     }
-                                    FilterError::EndpointNotFound{endpoint} => {
-                                        if let Err(e) = filter_rsp_tx.send(FilterRsp::NoSuchEndpoint{endpoint: *endpoint}).await {
-                                            error!("[F] all receivers on FilterRsp channel have been dropped: {}", e);
-                                            error!("[F] run() exiting");
+                                    EndpointNotFound{endpoint} => {
+                                        if filter_rsp_tx.send(FilterRsp::NoSuchEndpoint{endpoint: *endpoint}).await.is_err() {
+                                            error!("[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
                                             return;
                                         }
                                     }
-                                    _ => {
-                                        //XXX send something to filter_rsp_tx!!!
+                                    UnexpectedData { mode, .. } => {
+                                        error!("[F] [{:?}] unexpected data: {}", mode, err);
+                                        // TODO: pass error to App layer
+                                        if filter_rsp_tx.send(FilterRsp::Accepted).await.is_err() {
+                                            error!("[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
+                                            return;
+                                        }
+                                    }
+                                    InternalError { .. } => {
+                                        error!("[F] internal error: {}", err);
+                                        // TODO: pass error to App layer
+                                        if filter_rsp_tx.send(FilterRsp::Accepted).await.is_err() {
+                                            error!("[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
+                                            return;
+                                        }
                                     }
                                 }
                             }
                             error!("[F<-A,C] command processing failed: {}", e);
                         } else {
-                            if let Err(e) = filter_rsp_tx.send(FilterRsp::Accepted).await {
-                                error!("[F] filter response receiver has been dropped: {}", e);
-                                error!("[F] run() exiting");
+                            if filter_rsp_tx.send(FilterRsp::Accepted).await.is_err() {
+                                error!("[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
                                 return;
                             }
                         }
