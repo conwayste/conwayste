@@ -106,33 +106,24 @@ impl<P> TransportEndpointData<P> {
 
     /// Updates the last received time for the given endpoint. If the endpoint does not exist, a
     /// new one is created. This should be called when a new packet arrives.
-    pub fn update_last_received(&mut self, endpoint: Endpoint) -> Result<()> {
-        match self.endpoint_meta.entry(endpoint) {
-            Entry::Vacant(_) => {
-                self.upsert_endpoint(endpoint, DEFAULT_ENDPOINT_TIMEOUT_INTERVAL);
-            }
-            Entry::Occupied(mut entry) => {
-                let meta = entry.get_mut();
-                meta.last_receive = Some(Instant::now());
-                meta.notified_of_idle = false;
-            }
+    pub fn update_last_received(&mut self, endpoint: Endpoint) {
+        if !self.endpoint_meta.contains_key(&endpoint) {
+            self.upsert_endpoint(endpoint, DEFAULT_ENDPOINT_TIMEOUT_INTERVAL);
         }
-        Ok(())
+        let meta = self.endpoint_meta.get_mut(&endpoint).unwrap(); // unwrap OK because of upsert_endpoint call above
+        meta.last_receive = Some(Instant::now());
+        meta.notified_of_idle = false;
     }
 
-    /// Updates the last sent time for the given endpoint. This should be called when a packet is
-    /// sent.
-    pub fn update_last_sent(&mut self, endpoint: Endpoint) -> Result<()> {
-        if let Some(meta) = self.endpoint_meta.get_mut(&endpoint) {
-            meta.last_send = Some(Instant::now());
-            meta.notified_of_idle = false;
-            Ok(())
-        } else {
-            Err(anyhow!(TransportEndpointDataError::EndpointNotFound {
-                endpoint,
-                message: "Cannot update last_send".into(),
-            }))
+    /// Updates the last sent time for the given endpoint. If the endpoint does not exist, a new
+    /// one is created. This should be called when a packet is sent.
+    pub fn update_last_sent(&mut self, endpoint: Endpoint) {
+        if !self.endpoint_meta.contains_key(&endpoint) {
+            self.upsert_endpoint(endpoint, DEFAULT_ENDPOINT_TIMEOUT_INTERVAL);
         }
+        let meta = self.endpoint_meta.get_mut(&endpoint).unwrap(); // unwrap OK because of upsert_endpoint call above
+        meta.last_send = Some(Instant::now());
+        meta.notified_of_idle = false;
     }
 
     /// Enqueues data packets `item` to the transmit queue for the endpoint. Each packet is assigned a transmit id (tid)

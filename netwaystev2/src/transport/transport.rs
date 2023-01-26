@@ -141,14 +141,11 @@ impl Transport {
                     if let Ok((item, address)) = item_address_result {
                         trace!("[T<-UDP] {:?}", item);
 
-                        if let Err(e) = self.endpoints.update_last_received(Endpoint(address)) {
-                            warn!("[T] {}", e);
-                        } else {
-                            self.notifications.send(TransportNotice::PacketDelivery{
-                                endpoint: Endpoint(address),
-                                packet: item,
-                            }).await?;
-                        }
+                        self.endpoints.update_last_received(Endpoint(address));
+                        self.notifications.send(TransportNotice::PacketDelivery{
+                            endpoint: Endpoint(address),
+                            packet: item,
+                        }).await?;
                     }
                 }
                 _ = transmit_interval_stream.select_next_some() => {
@@ -162,7 +159,7 @@ impl Transport {
                     }
 
                     for endpoint in retried_endpoints {
-                        self.endpoints.update_last_sent(endpoint)?;
+                        self.endpoints.update_last_sent(endpoint);
                     }
 
                     // Notify filter of any endpoints that have timed-out
@@ -287,7 +284,7 @@ async fn send_packet(
         });
     }
     udp_send.send((p.clone(), endpoint.0)).await?;
-    endpoints.update_last_sent(endpoint)?;
+    endpoints.update_last_sent(endpoint);
     endpoints.push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)?;
     Ok(TransportRsp::Accepted)
 }

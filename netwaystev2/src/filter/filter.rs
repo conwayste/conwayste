@@ -100,6 +100,7 @@ pub struct Filter {
     per_endpoint:        HashMap<Endpoint, FilterEndpointData>,
     phase_watch_tx:      watch::Sender<Phase>,
     phase_watch_rx:      watch::Receiver<Phase>,
+    /// Endpoints for pinging; the endpoints here aren't necessarily in `per_endpoint`
     ping_endpoints:      HashMap<Endpoint, (LatencyFilter, PingPong, Option<ProcessUniqueId>)>,
 }
 
@@ -209,6 +210,7 @@ impl Filter {
                             }
                             TransportNotice::EndpointIdle { endpoint } => {
                                 if self.mode == FilterMode::Client {
+                                    // XXX don't send if this is a ping endpoint
                                     // response_ack filled in later (see HACK)
                                     let action = RequestAction::KeepAlive { latest_response_ack: 0 };
                                     if let Err(e) = self.send_request_action_to_server(endpoint, action).await {
@@ -318,7 +320,7 @@ impl Filter {
             } else {
                 // FilterMode::Client
                 if self.ping_endpoints.contains_key(&endpoint) {
-                    valid_new_conn = true;
+                    valid_new_conn = true; // This is misleading as it's not really new, nor is it really a connection.
                 }
             }
 
@@ -328,6 +330,7 @@ impl Filter {
             }
         }
 
+        // TODO: this badly needs to be refactored. It's a lot for one function.
         match packet {
             Packet::Request {
                 sequence,
@@ -540,49 +543,95 @@ impl Filter {
                 server_name,
                 server_version,
             } => {
-                // TODO: error if OtherEndClient
-                if let Some((latency_filter, pingpong, opt_ping_tid)) = self.ping_endpoints.get_mut(&endpoint) {
-                    // Update the round-trip time
-                    if pingpong == pong {
-                        latency_filter.update();
-                    }
-
-                    // Produce a latency after the filter has seen enough data
-                    let mut latency = 0;
-                    if let Some(average_latency_ms) = latency_filter.average_latency_ms {
-                        latency = average_latency_ms;
-                    }
-
-                    // Tell the Transport layer to drop the ping packet
-                    if let Some(tid) = opt_ping_tid {
-                        self.transport_cmd_tx
-                            .send(TransportCmd::DropPacket { endpoint, tid: *tid })
-                            .await?;
-                        *opt_ping_tid = None;
-                    } else {
-                        return Err(anyhow!(FilterError::InternalError {
-                            problem: "ping tid is None on Pong. Should not be None at this point".to_owned(),
-                        }));
-                    }
-
-                    // Notify App layer of the Server information and population
-                    filter_notice_tx
-                        .send(FilterNotice::PingResult {
-                            endpoint,
-                            latency,
-                            server_name,
-                            server_version,
-                            room_count,
-                            player_count,
-                        })
-                        .await?;
+                if self.mode == FilterMode::Client {
+                    return Err(anyhow!(FilterError::UnexpectedData {
+                        mode:         self.mode,
+                        invalid_data: "Status".to_owned(),
+                    }));
                 }
+                if !self.ping_endpoints.contains_key(&endpoint) {
+                    // Not error-worthy, since a ClearPingEndpoints can happen at any time, while
+                    // Status packets from servers are in flight.
+                    info!("[F<-T,N] Received Status packet from server we have not pinged (or purged from ping_endpoints)");
+                    return Ok(());
+                }
+                let (latency_filter, pingpong, opt_ping_tid) = self.ping_endpoints.get_mut(&endpoint).unwrap(); // unwrap OK because of above check
+
+                // Update the round-trip time
+                if pingpong == pong {
+                    latency_filter.update();
+                }
+
+                // Latency is Some(<n>) once the filter has seen enough data
+                let latency = latency_filter.average_latency_ms;
+
+                // Tell the Transport layer to drop the ping packet
+                if let Some(tid) = opt_ping_tid {
+                    self.transport_cmd_tx
+                        .send(TransportCmd::DropPacket { endpoint, tid: *tid })
+                        .await?;
+                    *opt_ping_tid = None;
+                } else {
+                    return Err(anyhow!(FilterError::InternalError {
+                        problem: "ping tid is None on Pong. Should not be None at this point".to_owned(),
+                    }));
+                }
+
+                // Notify App layer of the Server information and population
+                filter_notice_tx
+                    .send(FilterNotice::PingResult {
+                        endpoint,
+                        latency,
+                        server_name,
+                        server_version,
+                        room_count,
+                        player_count,
+                    })
+                    .await?;
             }
-            // TODO: Add handling for Update and UpdateReply!!!!!!!
-            _ => {}
+            Packet::GetStatus { ping } => {
+                if self.mode == FilterMode::Server {
+                    return Err(anyhow!(FilterError::UnexpectedData {
+                        mode:         self.mode,
+                        invalid_data: "GetStatus".to_owned(),
+                    }));
+                }
+
+                self.send_server_status(endpoint, ping).await?;
+            }
+            // TODO: Add handling for Update and UpdateReply, then delete following catch-all arm!!!!!!!
+            _ => {
+                error!("FIXME stub {:?}", packet);
+            }
         }
 
-        return Ok(());
+        Ok(())
+    }
+
+    async fn send_server_status(&mut self, endpoint: Endpoint, ping: PingPong) -> anyhow::Result<()> {
+        let packets = vec![Packet::Status {
+            pong:           ping,
+            // TODO: fix placeholder values below
+            server_version: "placeholder server version".into(),
+            player_count:   1234,
+            room_count:     12456,
+            server_name:    "placeholder server name".into(),
+        }];
+        let tid = ProcessUniqueId::new();
+        let packet_infos = vec![PacketSettings {
+            tid,
+            retry_interval: Duration::from_secs(9999), // HACK: see todo note below
+        }];
+        // TODO: find a way to send this packet only once
+
+        self.transport_cmd_tx
+            .send(TransportCmd::SendPackets {
+                endpoint,
+                packet_infos,
+                packets,
+            })
+            .await
+            .map_err(|e| anyhow!(e))
     }
 
     async fn process_filter_command(&mut self, command: FilterCmd) -> anyhow::Result<()> {

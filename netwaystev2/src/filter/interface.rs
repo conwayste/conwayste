@@ -75,7 +75,7 @@ pub enum FilterNotice {
     },
     PingResult {
         endpoint:       Endpoint,
-        latency:        u64,
+        latency:        Option<u64>,
         server_name:    String,
         server_version: String,
         room_count:     u64,
