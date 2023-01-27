@@ -71,6 +71,7 @@ pub struct PacketSettings {
     /// Transmit ID, a unique identifier used to sync packet transactions between the filter and Transport layers
     pub tid:            ProcessUniqueId,
     /// The length of time in between each retry attempt
+    // XXX allow None, for no retry
     pub retry_interval: Duration,
 }
 

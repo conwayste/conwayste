@@ -151,7 +151,7 @@ impl Filter {
         tokio::pin!(filter_rsp_tx);
         tokio::pin!(filter_notice_tx);
 
-        let mut ping_interval_stream = tokio::time::interval(Duration::new(2, 0));
+        let mut ping_interval_stream = tokio::time::interval(Duration::from_millis(200));
 
         loop {
             tokio::select! {
@@ -187,7 +187,7 @@ impl Filter {
                                 endpoint,
                                 packet,
                             } => {
-                                trace!("[F<-T,N] For Endpoint {:?}, Took packet {:?}", endpoint, packet);
+                                trace!("[F<-T,N] For {:?}, took packet {:?}", endpoint, packet);
                                 if let Err(e) = self.process_transport_packet(endpoint, packet, &mut filter_notice_tx).await {
                                     //XXX should not return unless it's a SendError
                                     error!("[F] packet delivery failed: {:?}", e);
@@ -200,7 +200,7 @@ impl Filter {
                             TransportNotice::EndpointTimeout {
                                 endpoint,
                             } => {
-                                info!("[F<-T,N] Endpoint {:?} timed-out. Dropping.", endpoint);
+                                info!("[F<-T,N] {:?} timed-out. Dropping.", endpoint);
                                 self.per_endpoint.remove(&endpoint);
                                 if let Err(_) = transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await {
                                     error!("[F] transport cmd receiver has been dropped");
@@ -209,12 +209,11 @@ impl Filter {
                                 }
                             }
                             TransportNotice::EndpointIdle { endpoint } => {
-                                if self.mode == FilterMode::Client {
-                                    // XXX don't send if this is a ping endpoint
+                                if self.mode == FilterMode::Client && !self.ping_endpoints.contains_key(&endpoint) {
                                     // response_ack filled in later (see HACK)
                                     let action = RequestAction::KeepAlive { latest_response_ack: 0 };
                                     if let Err(e) = self.send_request_action_to_server(endpoint, action).await {
-                                        warn!("[F] error sending KeepAlive during idle endpoint ({:?}): {}", endpoint, e);
+                                        warn!("[F] error sending KeepAlive for idle {:?}: {}", endpoint, e);
                                     }
                                 }
                             }
@@ -274,8 +273,11 @@ impl Filter {
                     }
                 }
                 _instant = ping_interval_stream.tick() => {
-                    if let Err(e) = self.send_pings().await {
-                        error!("[F->T,C] Failed to send pings: {}", e);
+                    if self.mode == FilterMode::Client {
+                        info!("[F] About to send pings to servers: {:?}", self.ping_endpoints.keys());
+                        if let Err(e) = self.send_pings().await {
+                            error!("[F->T,C] Failed to send pings: {}", e);
+                        }
                     }
                 }
             }
@@ -291,8 +293,10 @@ impl Filter {
         if !self.per_endpoint.contains_key(&endpoint) {
             let mut valid_new_conn = false;
             if self.mode == FilterMode::Server {
-                // Add a new endpoint record if the client connects with a `None` cookie
-                if let Packet::Request { action, cookie, .. } = &packet {
+                if let Packet::GetStatus { .. } = &packet {
+                    valid_new_conn = true;
+                } else if let Packet::Request { action, cookie, .. } = &packet {
+                    // Add a new endpoint record if the client connects with a `None` cookie
                     if let RequestAction::Connect { .. } = action {
                         if cookie.is_none() {
                             valid_new_conn = true;
@@ -555,15 +559,17 @@ impl Filter {
                     info!("[F<-T,N] Received Status packet from server we have not pinged (or purged from ping_endpoints)");
                     return Ok(());
                 }
-                let (latency_filter, pingpong, opt_ping_tid) = self.ping_endpoints.get_mut(&endpoint).unwrap(); // unwrap OK because of above check
+                let (latency_filter, ref mut pingpong, opt_ping_tid) = self.ping_endpoints.get_mut(&endpoint).unwrap(); // unwrap OK because of above check
 
                 // Update the round-trip time
-                if pingpong == pong {
+                if *pingpong == *pong {
                     latency_filter.update();
                 }
+                *pingpong = PingPong::ping(); // Use a new number for next time
 
                 // Latency is Some(<n>) once the filter has seen enough data
                 let latency = latency_filter.average_latency_ms;
+                info!("[F] Latency for remote server {:?} is {:?}", endpoint, latency);
 
                 // Tell the Transport layer to drop the ping packet
                 if let Some(tid) = opt_ping_tid {
@@ -590,7 +596,7 @@ impl Filter {
                     .await?;
             }
             Packet::GetStatus { ping } => {
-                if self.mode == FilterMode::Server {
+                if self.mode == FilterMode::Client {
                     return Err(anyhow!(FilterError::UnexpectedData {
                         mode:         self.mode,
                         invalid_data: "GetStatus".to_owned(),
@@ -620,10 +626,11 @@ impl Filter {
         let tid = ProcessUniqueId::new();
         let packet_infos = vec![PacketSettings {
             tid,
-            retry_interval: Duration::from_secs(9999), // HACK: see todo note below
+            retry_interval: Duration::ZERO, //XXX use None
         }];
         // TODO: find a way to send this packet only once
 
+        info!("[F] Sending Status packet {:?} back to client {:?}", ping, endpoint);
         self.transport_cmd_tx
             .send(TransportCmd::SendPackets {
                 endpoint,
@@ -741,16 +748,18 @@ impl Filter {
                 }
             }
             FilterCmd::ClearPingEndpoints => {
+                info!("[F<-A,C] clearing ping endpoints: {:?}", self.ping_endpoints.keys());
                 // Cancel any in progress pings
                 for (endpoint, (_, _, opt_tid)) in self.ping_endpoints.iter() {
-                    if let Some(tid) = opt_tid {
+                    let endpoint = *endpoint;
+                    if let Some(tid) = opt_tid.as_ref().cloned() {
                         self.transport_cmd_tx
-                            .send(TransportCmd::DropPacket {
-                                endpoint: *endpoint,
-                                tid:      *tid,
-                            })
+                            .send(TransportCmd::DropPacket { endpoint, tid })
                             .await?;
                     }
+                    self.transport_cmd_tx
+                        .send(TransportCmd::DropEndpoint { endpoint })
+                        .await?;
                 }
                 self.ping_endpoints.clear();
             }
@@ -797,7 +806,7 @@ impl Filter {
 
             let tid = ProcessUniqueId::new();
             let pi = PacketSettings {
-                retry_interval: Duration::ZERO,
+                retry_interval: Duration::ZERO, //XXX use None
                 tid,
             };
             *opt_tid = Some(tid);
