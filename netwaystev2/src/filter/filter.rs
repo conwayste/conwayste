@@ -547,7 +547,7 @@ impl Filter {
                 server_name,
                 server_version,
             } => {
-                if self.mode == FilterMode::Client {
+                if self.mode == FilterMode::Server {
                     return Err(anyhow!(FilterError::UnexpectedData {
                         mode:         self.mode,
                         invalid_data: "Status".to_owned(),
