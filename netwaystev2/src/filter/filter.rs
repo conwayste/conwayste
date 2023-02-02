@@ -800,7 +800,11 @@ impl Filter {
     async fn send_pings(&mut self) -> anyhow::Result<()> {
         for (endpoint, (latency_filter, pingpong, opt_tid)) in self.ping_endpoints.iter_mut() {
             if opt_tid.is_some() {
-                // There's an active ping in progress
+                info!(
+                    "[F] send_pings for {:?}: skipping send because there's an active ping in progress: {}!",
+                    endpoint, pingpong.nonce
+                ); //XXX XXX
+                   // There's an active ping in progress
                 continue;
             }
 
