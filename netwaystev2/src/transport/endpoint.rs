@@ -1,5 +1,4 @@
 use super::interface::TransportEndpointDataError;
-use super::TransportRsp;
 use crate::common::Endpoint;
 use crate::settings::{DEFAULT_ENDPOINT_TIMEOUT_INTERVAL, TRANSPORT_RETRY_COUNT_LOG_THRESHOLD};
 use anyhow::{anyhow, Result};

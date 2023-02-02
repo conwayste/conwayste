@@ -1,7 +1,6 @@
 use conway::universe::Region;
 
 use serde::{Deserialize, Serialize};
-use strum_macros::EnumCount;
 
 // chat messages sent from server to all clients other than originating client
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]

@@ -559,7 +559,7 @@ impl Filter {
                     info!("[F<-T,N] Received Status packet from server we have not pinged (or purged from ping_endpoints)");
                     return Ok(());
                 }
-                let (latency_filter, ref mut pingpong, opt_ping_tid) = self.ping_endpoints.get_mut(&endpoint).unwrap(); // unwrap OK because of above check
+                let (latency_filter, pingpong, opt_ping_tid) = self.ping_endpoints.get_mut(&endpoint).unwrap(); // unwrap OK because of above check
 
                 // Update the round-trip time
                 if *pingpong == *pong {
