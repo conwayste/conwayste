@@ -22,7 +22,7 @@ fn init_logging() {
             writeln!(
                 buf,
                 "{} [{:5}] - {}",
-                Local::now().format("%a %Y-%m-%d %H:%M:%S%.6f"),
+                Local::now().format("%H:%M:%S%.6f"),
                 record.level(),
                 record.args(),
             )
