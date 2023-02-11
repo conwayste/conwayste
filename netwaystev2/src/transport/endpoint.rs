@@ -310,9 +310,15 @@ impl<P> TransportEndpointData<P> {
         for (endpoint, container) in &mut self.transmit {
             for PacketContainer { packet, info, tid } in container {
                 // Add the packet to the list of retriable packets if enough time has passed since the last transmission
-                if info.transmit_interval != Duration::ZERO
-                    && Instant::now().duration_since(info.last_transmit) > info.transmit_interval
-                {
+                if info.transmit_interval == Duration::ZERO {
+                    // Programming error
+                    error!(
+                        "[T] Should not have non-retriable packets in transmit queue; tid is {:?}",
+                        tid
+                    );
+                    continue;
+                }
+                if Instant::now().duration_since(info.last_transmit) > info.transmit_interval {
                     info.last_transmit = Instant::now();
                     info.retry_count += 1;
                     retry_qualified.push((&*packet, *endpoint));

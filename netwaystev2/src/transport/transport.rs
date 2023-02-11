@@ -155,6 +155,7 @@ impl Transport {
                     let mut retried_endpoints = HashSet::new();
                     for (packet_ref, endpoint) in retry_packets {
                         udp_stream_send.send((packet_ref.to_owned(), endpoint.0)).await?;
+                        //XXX borrow error: self.endpoints.update_last_sent(endpoint);
                         retried_endpoints.insert(endpoint);
                     }
 
@@ -285,6 +286,9 @@ async fn send_packet(
     }
     udp_send.send((p.clone(), endpoint.0)).await?;
     endpoints.update_last_sent(endpoint);
-    endpoints.push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)?;
+    if pi.retry_interval > Duration::ZERO {
+        // It's retriable
+        endpoints.push_transmit_queue(endpoint, pi.tid, p.to_owned(), pi.retry_interval)?;
+    }
     Ok(TransportRsp::Accepted)
 }
