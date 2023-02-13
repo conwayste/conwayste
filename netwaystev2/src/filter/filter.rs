@@ -101,7 +101,23 @@ pub struct Filter {
     phase_watch_tx:      watch::Sender<Phase>,
     phase_watch_rx:      watch::Receiver<Phase>,
     /// Endpoints for pinging; the endpoints here aren't necessarily in `per_endpoint`
-    ping_endpoints:      HashMap<Endpoint, (LatencyFilter, PingPong, Option<ProcessUniqueId>)>,
+    ping_endpoints:      HashMap<Endpoint, PingEndpoint>,
+}
+
+pub struct PingEndpoint {
+    latency_filter: LatencyFilter,
+    pingpong:       PingPong,
+    was_sent:       bool,
+}
+
+impl PingEndpoint {
+    fn new() -> Self {
+        PingEndpoint {
+            latency_filter: LatencyFilter::new(),
+            pingpong:       PingPong::ping(),
+            was_sent:       false,
+        }
+    }
 }
 
 impl Filter {
@@ -274,7 +290,7 @@ impl Filter {
                 }
                 _instant = ping_interval_stream.tick() => {
                     if self.mode == FilterMode::Client {
-                        info!("[F] About to send pings to servers: {:?}", self.ping_endpoints.keys());
+                        info!("[F] About to send pings to servers: {:?}", self.ping_endpoints.keys()); //XXX too much logging
                         if let Err(e) = self.send_pings().await {
                             error!("[F->T,C] Failed to send pings: {}", e);
                         }
@@ -559,29 +575,17 @@ impl Filter {
                     info!("[F<-T,N] Received Status packet from server we have not pinged (or purged from ping_endpoints)");
                     return Ok(());
                 }
-                let (latency_filter, pingpong, opt_ping_tid) = self.ping_endpoints.get_mut(&endpoint).unwrap(); // unwrap OK because of above check
+                let ping_endpoint = self.ping_endpoints.get_mut(&endpoint).unwrap(); // unwrap OK because of above check
 
                 // Update the round-trip time
-                if *pingpong == *pong {
-                    latency_filter.update();
+                if ping_endpoint.pingpong == *pong {
+                    ping_endpoint.latency_filter.update();
                 }
-                *pingpong = PingPong::ping(); // Use a new number for next time
+                ping_endpoint.pingpong = PingPong::ping(); // Use a new number for next time
 
                 // Latency is Some(<n>) once the filter has seen enough data
-                let latency = latency_filter.average_latency_ms;
+                let latency = ping_endpoint.latency_filter.average_latency_ms;
                 info!("[F] Latency for remote server {:?} is {:?}", endpoint, latency);
-
-                // Tell the Transport layer to drop the ping packet
-                if let Some(tid) = opt_ping_tid {
-                    self.transport_cmd_tx
-                        .send(TransportCmd::DropPacket { endpoint, tid: *tid })
-                        .await?;
-                    *opt_ping_tid = None;
-                } else {
-                    return Err(anyhow!(FilterError::InternalError {
-                        problem: "ping tid is None on Pong. Should not be None at this point".to_owned(),
-                    }));
-                }
 
                 // Notify App layer of the Server information and population
                 filter_notice_tx
@@ -623,12 +627,10 @@ impl Filter {
             room_count:     12456,
             server_name:    "placeholder server name".into(),
         }];
-        let tid = ProcessUniqueId::new();
         let packet_infos = vec![PacketSettings {
-            tid,
-            retry_interval: Duration::ZERO, //XXX use None
+            tid:            ProcessUniqueId::new(),
+            retry_interval: Duration::ZERO,
         }];
-        // TODO: find a way to send this packet only once
 
         info!("[F] Sending Status packet {:?} back to client {:?}", ping, endpoint);
         self.transport_cmd_tx
@@ -698,11 +700,9 @@ impl Filter {
                     request_ack,
                 }];
 
-                let tid = ProcessUniqueId::new();
-                client.unacked_outgoing_packet_tids.push_back((Wrapping(sequence), tid));
                 let packet_infos = vec![PacketSettings {
-                    tid,
-                    retry_interval: Duration::from_secs(9999), // HACK
+                    tid:            ProcessUniqueId::new(),
+                    retry_interval: Duration::ZERO,
                 }];
 
                 self.transport_cmd_tx
@@ -741,22 +741,14 @@ impl Filter {
                         continue;
                     }
 
-                    // TIDs are assigned when the ping is sent to the transport layer
-                    let opt_tid = None;
-                    self.ping_endpoints
-                        .insert(e, (LatencyFilter::new(), PingPong::ping(), opt_tid));
+                    self.ping_endpoints.insert(e, PingEndpoint::new());
                 }
             }
             FilterCmd::ClearPingEndpoints => {
                 info!("[F<-A,C] clearing ping endpoints: {:?}", self.ping_endpoints.keys());
                 // Cancel any in progress pings
-                for (endpoint, (_, _, opt_tid)) in self.ping_endpoints.iter() {
+                for (endpoint, _ping_endpoint) in self.ping_endpoints.iter() {
                     let endpoint = *endpoint;
-                    if let Some(tid) = opt_tid.as_ref().cloned() {
-                        self.transport_cmd_tx
-                            .send(TransportCmd::DropPacket { endpoint, tid })
-                            .await?;
-                    }
                     self.transport_cmd_tx
                         .send(TransportCmd::DropEndpoint { endpoint })
                         .await?;
@@ -798,31 +790,31 @@ impl Filter {
     }
 
     async fn send_pings(&mut self) -> anyhow::Result<()> {
-        for (endpoint, (latency_filter, pingpong, opt_tid)) in self.ping_endpoints.iter_mut() {
-            if opt_tid.is_some() {
+        for (endpoint, ping_endpoint) in self.ping_endpoints.iter_mut() {
+            if ping_endpoint.was_sent {
                 info!(
                     "[F] send_pings for {:?}: skipping send because there's an active ping in progress: {}!",
-                    endpoint, pingpong.nonce
+                    endpoint, ping_endpoint.pingpong.nonce
                 ); //XXX XXX
                    // There's an active ping in progress
                 continue;
             }
 
-            let tid = ProcessUniqueId::new();
             let pi = PacketSettings {
-                retry_interval: Duration::ZERO, //XXX use None
-                tid,
+                retry_interval: Duration::ZERO,
+                tid:            ProcessUniqueId::new(),
             };
-            *opt_tid = Some(tid);
 
             self.transport_cmd_tx
                 .send(TransportCmd::SendPackets {
                     endpoint:     *endpoint,
                     packet_infos: vec![pi],
-                    packets:      vec![Packet::GetStatus { ping: *pingpong }],
+                    packets:      vec![Packet::GetStatus {
+                        ping: ping_endpoint.pingpong,
+                    }],
                 })
                 .await?;
-            latency_filter.start();
+            ping_endpoint.latency_filter.start();
         }
         Ok(())
     }
