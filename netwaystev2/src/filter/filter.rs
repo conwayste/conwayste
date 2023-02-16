@@ -101,23 +101,7 @@ pub struct Filter {
     phase_watch_tx:      watch::Sender<Phase>,
     phase_watch_rx:      watch::Receiver<Phase>,
     /// Endpoints for pinging; the endpoints here aren't necessarily in `per_endpoint`
-    ping_endpoints:      HashMap<Endpoint, PingEndpoint>,
-}
-
-pub struct PingEndpoint {
-    latency_filter: LatencyFilter<u64>,
-    pingpong:       PingPong,
-    was_sent:       bool,
-}
-
-impl PingEndpoint {
-    fn new() -> Self {
-        PingEndpoint {
-            latency_filter: LatencyFilter::new(),
-            pingpong:       PingPong::ping(),
-            was_sent:       false,
-        }
-    }
+    ping_endpoints:      HashMap<Endpoint, LatencyFilter<PingPong>>,
 }
 
 impl Filter {
@@ -575,16 +559,13 @@ impl Filter {
                     info!("[F<-T,N] Received Status packet from server we have not pinged (or purged from ping_endpoints)");
                     return Ok(());
                 }
-                let ping_endpoint = self.ping_endpoints.get_mut(&endpoint).unwrap(); // unwrap OK because of above check
+                let latency_filter = self.ping_endpoints.get_mut(&endpoint).unwrap(); // unwrap OK because of above check
 
                 // Update the round-trip time
-                if ping_endpoint.pingpong == *pong {
-                    ping_endpoint.latency_filter.update(pong.nonce);
-                }
-                ping_endpoint.pingpong = PingPong::ping(); // Use a new number for next time
+                latency_filter.update(*pong);
 
                 // Latency is Some(<n>) once the filter has seen enough data
-                let latency = ping_endpoint.latency_filter.get_millis();
+                let latency = latency_filter.get_millis();
                 info!("[F] Latency for remote server {:?} is {:?}", endpoint, latency);
 
                 // Notify App layer of the Server information and population
@@ -741,7 +722,7 @@ impl Filter {
                         continue;
                     }
 
-                    self.ping_endpoints.insert(e, PingEndpoint::new());
+                    self.ping_endpoints.insert(e, LatencyFilter::new());
                 }
             }
             FilterCmd::ClearPingEndpoints => {
@@ -790,16 +771,8 @@ impl Filter {
     }
 
     async fn send_pings(&mut self) -> anyhow::Result<()> {
-        for (endpoint, ping_endpoint) in self.ping_endpoints.iter_mut() {
-            let nonce = ping_endpoint.pingpong.nonce;
-            if ping_endpoint.was_sent {
-                info!(
-                    "[F] send_pings for {:?}: skipping send because there's an active ping in progress: {}!",
-                    endpoint, nonce
-                ); //XXX XXX
-                   // There's an active ping in progress
-                continue;
-            }
+        for (endpoint, latency_filter) in self.ping_endpoints.iter_mut() {
+            let pingpong = PingPong::ping();
 
             let pi = PacketSettings {
                 retry_interval: Duration::ZERO,
@@ -810,12 +783,10 @@ impl Filter {
                 .send(TransportCmd::SendPackets {
                     endpoint:     *endpoint,
                     packet_infos: vec![pi],
-                    packets:      vec![Packet::GetStatus {
-                        ping: ping_endpoint.pingpong,
-                    }],
+                    packets:      vec![Packet::GetStatus { ping: pingpong }],
                 })
                 .await?;
-            ping_endpoint.latency_filter.start(nonce);
+            latency_filter.start(pingpong);
         }
         Ok(())
     }
