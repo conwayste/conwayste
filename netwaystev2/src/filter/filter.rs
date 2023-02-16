@@ -105,7 +105,7 @@ pub struct Filter {
 }
 
 pub struct PingEndpoint {
-    latency_filter: LatencyFilter,
+    latency_filter: LatencyFilter<u64>,
     pingpong:       PingPong,
     was_sent:       bool,
 }
@@ -579,12 +579,12 @@ impl Filter {
 
                 // Update the round-trip time
                 if ping_endpoint.pingpong == *pong {
-                    ping_endpoint.latency_filter.update();
+                    ping_endpoint.latency_filter.update(pong.nonce);
                 }
                 ping_endpoint.pingpong = PingPong::ping(); // Use a new number for next time
 
                 // Latency is Some(<n>) once the filter has seen enough data
-                let latency = ping_endpoint.latency_filter.average_latency_ms;
+                let latency = ping_endpoint.latency_filter.get_millis();
                 info!("[F] Latency for remote server {:?} is {:?}", endpoint, latency);
 
                 // Notify App layer of the Server information and population
@@ -791,10 +791,11 @@ impl Filter {
 
     async fn send_pings(&mut self) -> anyhow::Result<()> {
         for (endpoint, ping_endpoint) in self.ping_endpoints.iter_mut() {
+            let nonce = ping_endpoint.pingpong.nonce;
             if ping_endpoint.was_sent {
                 info!(
                     "[F] send_pings for {:?}: skipping send because there's an active ping in progress: {}!",
-                    endpoint, ping_endpoint.pingpong.nonce
+                    endpoint, nonce
                 ); //XXX XXX
                    // There's an active ping in progress
                 continue;
@@ -814,7 +815,7 @@ impl Filter {
                     }],
                 })
                 .await?;
-            ping_endpoint.latency_filter.start();
+            ping_endpoint.latency_filter.start(nonce);
         }
         Ok(())
     }
