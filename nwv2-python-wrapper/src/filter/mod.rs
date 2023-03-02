@@ -19,7 +19,7 @@ use tokio::sync::{
 
 use tokio::time::sleep;
 
-use netwaystev2::filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotifyRecv, FilterRspRecv};
+use netwaystev2::{filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotifyRecv, FilterRspRecv}, transport::TransportCmdSend};
 use netwaystev2::transport::{TransportCmd, TransportNotice, TransportRsp};
 
 use crate::transport::*;
@@ -91,6 +91,7 @@ impl FilterInterface {
         let (transport_cmd_tx, transport_cmd_rx) = mpsc::channel::<TransportCmd>(TRANSPORT_CHANNEL_LEN);
         let (transport_rsp_tx, transport_rsp_rx) = mpsc::channel::<TransportRsp>(TRANSPORT_CHANNEL_LEN);
         let (transport_notice_tx, transport_notice_rx) = mpsc::channel::<TransportNotice>(TRANSPORT_CHANNEL_LEN);
+
         let transport_channels = TransportChannels {
             transport_cmd_rx,
             transport_rsp_tx,
@@ -143,16 +144,18 @@ impl FilterInterface {
         let notif_poll_ms = self.notif_poll_ms.clone();
 
         let rust_fut = async move {
-            tokio::join!(
-                filter.run(),
+            //tokio::join!(
+                filter.run().await;
                 handle_transport_cmd_resp(t_channels, Arc::downgrade(&t_iface), shutdown_rx),
+                /*
                 handle_transport_notification(
                     transport_notice_tx,
                     Arc::downgrade(&t_iface),
                     notif_poll_ms,
                     shutdown_rx2
                 ),
-            );
+                */
+            //);
             Ok(())
         };
 
@@ -269,6 +272,18 @@ async fn handle_transport_cmd_resp(
                 return;
             }
         };
+
+        match t_channels.transport_cmd_tx.send(transport_cmd).await {
+            Err(SendError(_)) => {
+                // A failure to send indicates the Filter layer was shutdown
+                return;
+            }
+            _ => {} // Continue with loop
+        }
+
+    }
+}
+/*
         let transport_cmdw: TransportCmdW = transport_cmd.into();
 
         // Call command_response, passing in the TransportCmd and getting a Python Future
@@ -360,6 +375,7 @@ async fn handle_transport_notification(
         };
     }
 }
+*/
 
 #[pyclass]
 #[derive(Clone, Copy, Debug)]

@@ -9,8 +9,8 @@ name = "nwv2_python_wrapper"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3         = { version = "0.16", features = ["extension-module"] }
-pyo3-asyncio = { version = "0.16", features = ["tokio-runtime"] }
+pyo3         = { version = "0.18", features = ["extension-module"] }
+pyo3-asyncio = { version = "0.18", features = ["tokio-runtime"] }
 # This is what it wraps!
 netwaystev2  = { path = "../netwaystev2" }
 futures-util = "0.3.8"

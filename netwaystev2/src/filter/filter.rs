@@ -274,7 +274,9 @@ impl Filter {
                 }
                 _instant = ping_interval_stream.tick() => {
                     if self.mode == FilterMode::Client {
-                        info!("[F] About to send pings to servers: {:?}", self.ping_endpoints.keys()); //XXX too much logging
+                        if self.ping_endpoints.keys().len() != 0 {
+                            info!("[F] About to send pings to servers: {:?}", self.ping_endpoints.keys());
+                        }
                         if let Err(e) = self.send_pings().await {
                             error!("[F->T,C] Failed to send pings: {}", e);
                         }
