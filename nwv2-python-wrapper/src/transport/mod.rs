@@ -14,11 +14,11 @@ use netwaystev2::transport::{Transport, TransportCmd, TransportCmdSend, Transpor
 
 #[pyclass]
 pub struct TransportInterface {
-    transport:   Option<Transport>,
-    cmd_tx:      TransportCmdSend,
-    response_rx: Arc<Mutex<TransportRspRecv>>, // Can't clone an MPSC receiver; need to share :(
-    notify_rx:   TransportNotifyRecv,          // ... but this one doesn't need that because it's only read in non-async
-    local_addr:  SocketAddr,
+    transport:       Option<Transport>,
+    pub cmd_tx:      TransportCmdSend,
+    pub response_rx: Arc<Mutex<TransportRspRecv>>, // Can't clone an MPSC receiver; need to share :(
+    pub notify_rx:   TransportNotifyRecv, // ... but this one doesn't need that because it's only read in non-async
+    local_addr:      SocketAddr,
 }
 
 /// Create a TransportInterface.

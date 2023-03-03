@@ -19,35 +19,27 @@ use tokio::sync::{
 
 use tokio::time::sleep;
 
-use netwaystev2::{filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotifyRecv, FilterRspRecv}, transport::TransportCmdSend};
 use netwaystev2::transport::{TransportCmd, TransportNotice, TransportRsp};
+use netwaystev2::{
+    filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotifyRecv, FilterRspRecv},
+    transport::TransportCmdSend,
+};
 
 use crate::transport::*;
 
 // All the below Options are to permit taking these and passing them into async blocks
 #[pyclass]
 pub struct FilterInterface {
-    filter:             Option<Filter>,
-    cmd_tx:             FilterCmdSend,
-    response_rx:        Arc<Mutex<FilterRspRecv>>,
-    notify_rx:          FilterNotifyRecv,
-    notif_poll_ms:      Arc<AtomicUsize>, // Controls how frequently we poll the TransportInterface for transport notifications
-    transport_iface:    Option<Arc<PyObject>>, // duck-typed Python object (same methods as TransportInterface)
-    transport_channels: Option<TransportChannels>,
-    shutdown_tx:        watch::Sender<()>, // sends or closes if FilterInterface is shutdown
-    shutdown_rx:        watch::Receiver<()>, // Is cloned and provided to async functions so they don't run forever
-}
-
-struct TransportChannels {
-    transport_cmd_rx:    Receiver<TransportCmd>,
-    transport_rsp_tx:    Sender<TransportRsp>,
-    transport_notice_tx: Sender<TransportNotice>,
+    filter:      Option<Filter>,
+    cmd_tx:      FilterCmdSend,
+    response_rx: Arc<Mutex<FilterRspRecv>>,
+    notify_rx:   FilterNotifyRecv,
+    shutdown_tx: watch::Sender<()>,   // sends or closes if FilterInterface is shutdown
+    shutdown_rx: watch::Receiver<()>, // Is cloned and provided to async functions so they don't run forever
 }
 
 // TODO: reference the one in netw.../src/settings.rs
 pub const TRANSPORT_CHANNEL_LEN: usize = 1000;
-
-pub const DEFAULT_NOTIFY_POLL_MS: usize = 30; // Milliseconds to wait between calling get_notifications()
 
 /// Ex:
 ///
@@ -86,23 +78,12 @@ impl FilterInterface {
     /// same signatures, including the "async" on the `command_response` method and the lack of
     /// "async" on `get_notifications`, will work here.
     #[new]
-    fn new(transport_iface: PyObject, filter_mode: FilterModeW) -> Self {
-        // Channels for communicating between Transport and Filter layers
-        let (transport_cmd_tx, transport_cmd_rx) = mpsc::channel::<TransportCmd>(TRANSPORT_CHANNEL_LEN);
-        let (transport_rsp_tx, transport_rsp_rx) = mpsc::channel::<TransportRsp>(TRANSPORT_CHANNEL_LEN);
-        let (transport_notice_tx, transport_notice_rx) = mpsc::channel::<TransportNotice>(TRANSPORT_CHANNEL_LEN);
-
-        let transport_channels = TransportChannels {
-            transport_cmd_rx,
-            transport_rsp_tx,
-            transport_notice_tx,
-        };
-
+    fn new(transport_iface: &mut TransportInterface, filter_mode: FilterModeW) -> Self {
         // Create the filter.
         let (filter, filter_cmd_tx, filter_rsp_rx, filter_notice_rx) = Filter::new(
-            transport_cmd_tx,
-            transport_rsp_rx,
-            transport_notice_rx,
+            transport_iface.cmd_tx,
+            transport_iface.response_rx.clone(),
+            transport_iface.notify_rx,
             filter_mode.into(),
         );
 
@@ -113,55 +94,26 @@ impl FilterInterface {
             cmd_tx: filter_cmd_tx,
             response_rx: Arc::new(Mutex::new(filter_rsp_rx)),
             notify_rx: filter_notice_rx,
-            notif_poll_ms: Arc::new(AtomicUsize::new(DEFAULT_NOTIFY_POLL_MS)),
-            transport_iface: Some(Arc::new(transport_iface)),
-            transport_channels: Some(transport_channels),
             shutdown_tx,
             shutdown_rx,
         }
     }
 
-    #[getter]
-    fn get_notif_poll_ms(&self) -> PyResult<usize> {
-        Ok(self.notif_poll_ms.load(Ordering::SeqCst))
-    }
-
-    #[setter]
-    fn set_notif_poll_ms(&mut self, notif_poll_ms: usize) -> PyResult<()> {
-        self.notif_poll_ms.store(notif_poll_ms, Ordering::SeqCst);
-        Ok(())
-    }
-
     fn run<'p>(&mut self, py: Python<'p>) -> PyResult<&'p PyAny> {
         take_from_self_or_raise_exc!(mut filter <- self.filter);
-        take_from_self_or_raise_exc!(t_channels <- self.transport_channels);
-        take_from_self_or_raise_exc!(t_iface <- self.transport_iface);
-
-        let transport_notice_tx = t_channels.transport_notice_tx.clone();
 
         let shutdown_rx = self.shutdown_rx.clone();
         let shutdown_rx2 = self.shutdown_rx.clone();
-        let notif_poll_ms = self.notif_poll_ms.clone();
 
         let rust_fut = async move {
-            //tokio::join!(
-                filter.run().await;
-                handle_transport_cmd_resp(t_channels, Arc::downgrade(&t_iface), shutdown_rx),
-                /*
-                handle_transport_notification(
-                    transport_notice_tx,
-                    Arc::downgrade(&t_iface),
-                    notif_poll_ms,
-                    shutdown_rx2
-                ),
-                */
-            //);
+            filter.run().await;
             Ok(())
         };
 
         pyo3_asyncio::tokio::future_into_py(py, rust_fut) // Returns a Python future
     }
 
+    /*
     // Python GC methods - https://pyo3.rs/v0.16.4/class/protocols.html#garbage-collector-integration
     fn __traverse__(&self, visit: PyVisit<'_>) -> Result<(), PyTraverseError> {
         if let Some(t_iface) = &self.transport_iface {
@@ -176,6 +128,7 @@ impl FilterInterface {
         let _ = self.shutdown_tx.send(()); // Shutdown async worker functions.
         self.transport_iface = None; // Clear reference, this decrements PyObject ref counter.
     }
+    */
 
     /// Send a command and get a response. This is essentially a copy-paste job from TransportInterface.
     fn command_response<'p>(&mut self, py: Python<'p>, filter_cmd: FilterCmdW) -> PyResult<&'p PyAny> {
@@ -253,6 +206,7 @@ impl Drop for FilterInterface {
 /// Filter layer and the Python TransportInterface wrapper.
 ///
 /// There is a weak reference to `transport_iface` so that Python GC can operate correctly.
+/*
 async fn handle_transport_cmd_resp(
     mut t_channels: TransportChannels,
     transport_iface: Weak<PyObject>,
@@ -281,9 +235,6 @@ async fn handle_transport_cmd_resp(
             _ => {} // Continue with loop
         }
 
-    }
-}
-/*
         let transport_cmdw: TransportCmdW = transport_cmd.into();
 
         // Call command_response, passing in the TransportCmd and getting a Python Future
