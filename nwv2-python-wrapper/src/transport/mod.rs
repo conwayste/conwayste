@@ -16,8 +16,8 @@ use netwaystev2::transport::{Transport, TransportCmd, TransportCmdSend, Transpor
 pub struct TransportInterface {
     transport:       Option<Transport>,
     pub cmd_tx:      TransportCmdSend,
-    pub response_rx: Arc<Mutex<TransportRspRecv>>, // Can't clone an MPSC receiver; need to share :(
-    pub notify_rx:   TransportNotifyRecv, // ... but this one doesn't need that because it's only read in non-async
+    pub response_rx: Option<Arc<Mutex<TransportRspRecv>>>, // Can't clone an MPSC receiver; need to share :(
+    pub notify_rx:   Option<TransportNotifyRecv>, // ... but this one doesn't need that because it's only read in non-async
     local_addr:      SocketAddr,
 }
 
@@ -37,8 +37,8 @@ pub fn new_transport_interface<'p>(
         Ok(TransportInterface {
             transport: Some(transport),
             cmd_tx,
-            response_rx: Arc::new(Mutex::new(response_rx)),
-            notify_rx,
+            response_rx: Some(Arc::new(Mutex::new(response_rx))),
+            notify_rx: Some(notify_rx),
             local_addr,
         })
     };
@@ -65,8 +65,11 @@ impl TransportInterface {
 
     /// Send a command and get a response
     fn command_response<'p>(&mut self, py: Python<'p>, transport_cmd: TransportCmdW) -> PyResult<&'p PyAny> {
+        if self.response_rx.is_none() {
+            return Err(PyException::new_err("This TransportInterface is no longer usable"));
+        }
         let cmd_tx = self.cmd_tx.clone();
-        let response_rx = self.response_rx.clone();
+        let response_rx = self.response_rx.as_ref().unwrap().clone(); // unwrap OK because of check at top of method
         let send_recv_fut = async move {
             let transport_cmd = transport_cmd.into();
             if let TransportCmd::SendPackets {
@@ -101,9 +104,14 @@ impl TransportInterface {
     /// Get a Vec of Transport notifications.
     /// Note: Not Python async, unlike other methods!
     fn get_notifications(&mut self) -> PyResult<Vec<TransportNoticeW>> {
+        if self.notify_rx.is_none() {
+            return Err(PyException::new_err("This TransportInterface is no longer usable"));
+        }
+
         let mut notifications = vec![];
         loop {
-            match self.notify_rx.try_recv() {
+            // unwrap on following line is OK because of check at top of method
+            match self.notify_rx.as_mut().unwrap().try_recv() {
                 Ok(notification) => {
                     notifications.push(notification.into());
                     continue;

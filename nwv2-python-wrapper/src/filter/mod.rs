@@ -79,11 +79,17 @@ impl FilterInterface {
     /// "async" on `get_notifications`, will work here.
     #[new]
     fn new(transport_iface: &mut TransportInterface, filter_mode: FilterModeW) -> Self {
+        // This causes the TransportInterface to no longer be usable, but that's OK.
+        let transport_response_rx = Arc::try_unwrap(transport_iface.response_rx.take().expect("T.I. usable"))
+            .expect("singly held Arc")
+            .into_inner();
+        let transport_notify_rx = transport_iface.notify_rx.take().expect("T.I. usable");
+
         // Create the filter.
         let (filter, filter_cmd_tx, filter_rsp_rx, filter_notice_rx) = Filter::new(
-            transport_iface.cmd_tx,
-            transport_iface.response_rx.clone(),
-            transport_iface.notify_rx,
+            transport_iface.cmd_tx.clone(),
+            transport_response_rx,
+            transport_notify_rx,
             filter_mode.into(),
         );
 
