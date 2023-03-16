@@ -2,7 +2,7 @@ use super::client_update::{ClientGame, ClientRoom};
 use super::interface::{FilterCmd, FilterMode, FilterNotice, FilterRsp, SeqNum};
 use super::ping::LatencyFilter;
 use super::sortedbuffer::SequencedMinHeap;
-use super::PingPong;
+use super::{PingPong, ServerStatus};
 use crate::common::{Endpoint, ShutdownWatcher};
 use crate::protocol::{GameUpdate, GenStateDiffPart, Packet, RequestAction, ResponseCode};
 use crate::settings::{DEFAULT_ENDPOINT_TIMEOUT_INTERVAL, DEFAULT_RETRY_INTERVAL, FILTER_CHANNEL_LEN};
@@ -209,7 +209,7 @@ impl Filter {
                                 }
                             }
                             TransportNotice::EndpointIdle { endpoint } => {
-                                if self.mode == FilterMode::Client && !self.ping_endpoints.contains_key(&endpoint) {
+                                if self.mode.is_client() && !self.ping_endpoints.contains_key(&endpoint) {
                                     // response_ack filled in later (see HACK)
                                     let action = RequestAction::KeepAlive { latest_response_ack: 0 };
                                     if let Err(e) = self.send_request_action_to_server(endpoint, action).await {
@@ -273,7 +273,7 @@ impl Filter {
                     }
                 }
                 _instant = ping_interval_stream.tick() => {
-                    if self.mode == FilterMode::Client {
+                    if self.mode.is_client() {
                         if self.ping_endpoints.keys().len() != 0 {
                             info!("[F] About to send pings to servers: {:?}", self.ping_endpoints.keys());
                         }
@@ -294,7 +294,7 @@ impl Filter {
     ) -> anyhow::Result<()> {
         if !self.per_endpoint.contains_key(&endpoint) {
             let mut valid_new_conn = false;
-            if self.mode == FilterMode::Server {
+            if self.mode.is_server() {
                 if let Packet::GetStatus { .. } = &packet {
                     valid_new_conn = true;
                 } else if let Packet::Request { action, cookie, .. } = &packet {
@@ -349,7 +349,7 @@ impl Filter {
                 match endpoint_data {
                     FilterEndpointData::OtherEndServer { .. } => {
                         return Err(anyhow!(FilterError::UnexpectedData {
-                            mode:         self.mode,
+                            mode:         self.mode.clone(),
                             invalid_data: "RequestAction".to_owned(),
                         }));
                     }
@@ -419,7 +419,7 @@ impl Filter {
                 match endpoint_data {
                     FilterEndpointData::OtherEndClient { .. } => {
                         return Err(anyhow!(FilterError::UnexpectedData {
-                            mode:         self.mode,
+                            mode:         self.mode.clone(),
                             invalid_data: "ResponseCode".to_owned(),
                         }));
                     }
@@ -508,7 +508,7 @@ impl Filter {
                 match endpoint_data {
                     FilterEndpointData::OtherEndClient { .. } => {
                         return Err(anyhow!(FilterError::UnexpectedData {
-                            mode:         self.mode,
+                            mode:         self.mode.clone(),
                             invalid_data: "Update".to_owned(),
                         }));
                     }
@@ -549,9 +549,9 @@ impl Filter {
                 server_name,
                 server_version,
             } => {
-                if self.mode == FilterMode::Server {
+                if self.mode.is_server() {
                     return Err(anyhow!(FilterError::UnexpectedData {
-                        mode:         self.mode,
+                        mode:         self.mode.clone(),
                         invalid_data: "Status".to_owned(),
                     }));
                 }
@@ -583,9 +583,9 @@ impl Filter {
                     .await?;
             }
             Packet::GetStatus { ping } => {
-                if self.mode == FilterMode::Client {
+                if self.mode.is_client() {
                     return Err(anyhow!(FilterError::UnexpectedData {
-                        mode:         self.mode,
+                        mode:         self.mode.clone(),
                         invalid_data: "GetStatus".to_owned(),
                     }));
                 }
@@ -601,15 +601,10 @@ impl Filter {
         Ok(())
     }
 
+    /// Warning: panics if not Server filter mode!
     async fn send_server_status(&mut self, endpoint: Endpoint, ping: PingPong) -> anyhow::Result<()> {
-        let packets = vec![Packet::Status {
-            pong:           ping,
-            // TODO: fix placeholder values below
-            server_version: "placeholder server version".into(),
-            player_count:   1234,
-            room_count:     12456,
-            server_name:    "placeholder server name".into(),
-        }];
+        let server_status = self.mode.server_status_mut().expect("should be server filter mode");
+        let packets = vec![server_status.to_packet(ping)];
         let packet_infos = vec![PacketSettings {
             tid:            ProcessUniqueId::new(),
             retry_interval: Duration::ZERO,
@@ -655,7 +650,7 @@ impl Filter {
                 match self.per_endpoint.get_mut(&endpoint) {
                     Some(FilterEndpointData::OtherEndServer { .. }) => {
                         return Err(anyhow!(FilterError::UnexpectedData {
-                            mode:         self.mode,
+                            mode:         self.mode.clone(),
                             invalid_data: "ResponseCodes are not sent to servers".to_owned(),
                         }));
                     }
@@ -701,7 +696,7 @@ impl Filter {
                     match self.per_endpoint.get_mut(&endpoint) {
                         Some(FilterEndpointData::OtherEndServer { .. }) => {
                             return Err(anyhow!(FilterError::UnexpectedData {
-                                mode:         self.mode,
+                                mode:         self.mode.clone(),
                                 invalid_data: "ResponseCodes are not sent to servers".to_owned(),
                             }));
                         }
@@ -743,6 +738,35 @@ impl Filter {
             }
             FilterCmd::Shutdown { graceful } => {
                 return Err(anyhow!(FilterError::ShutdownRequested { graceful }));
+            }
+            #[deny(unused_variables)]
+            FilterCmd::ChangeServerStatus {
+                server_version,
+                player_count,
+                room_count,
+                server_name,
+            } => {
+                let server_status = match self.mode.server_status_mut() {
+                    Some(server_status) => server_status,
+                    None => {
+                        return Err(anyhow!(FilterError::UnexpectedData {
+                            mode:         self.mode.clone(),
+                            invalid_data: "cannot ChangeServerStatus for a client".to_owned(),
+                        }));
+                    }
+                };
+                if let Some(server_version) = server_version {
+                    server_status.server_version = server_version.clone();
+                }
+                if let Some(player_count) = player_count {
+                    server_status.player_count = player_count;
+                }
+                if let Some(room_count) = room_count {
+                    server_status.room_count = room_count;
+                }
+                if let Some(server_name) = server_name {
+                    server_status.server_name = server_name.clone();
+                }
             }
         }
 
@@ -802,7 +826,7 @@ impl Filter {
         match self.per_endpoint.get_mut(&endpoint) {
             Some(FilterEndpointData::OtherEndClient(..)) => {
                 return Err(anyhow!(FilterError::UnexpectedData {
-                    mode:         self.mode,
+                    mode:         self.mode.clone(),
                     invalid_data: "RequestActions are not sent to clients".to_owned(),
                 }));
             }

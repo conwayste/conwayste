@@ -2,6 +2,7 @@ use std::num::Wrapping;
 
 use conway::universe::GenStateDiff;
 
+use super::ServerStatus;
 use crate::{
     common::Endpoint,
     protocol::{BroadcastChatMessage, GameUpdate, GenStateDiffPart, RequestAction, ResponseCode},
@@ -9,10 +10,44 @@ use crate::{
 
 pub type SeqNum = Wrapping<u64>;
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum FilterMode {
     Client,
-    Server,
+    Server(ServerStatus),
+}
+
+impl FilterMode {
+    pub fn is_client(&self) -> bool {
+        use FilterMode::*;
+        match self {
+            Client => true,
+            Server(_) => false,
+        }
+    }
+
+    pub fn is_server(&self) -> bool {
+        use FilterMode::*;
+        match self {
+            Client => false,
+            Server(_) => true,
+        }
+    }
+
+    pub fn server_status(&self) -> Option<&ServerStatus> {
+        use FilterMode::*;
+        match self {
+            Client => None,
+            Server(ref status) => Some(status),
+        }
+    }
+
+    pub fn server_status_mut(&mut self) -> Option<&mut ServerStatus> {
+        use FilterMode::*;
+        match self {
+            Client => None,
+            Server(ref mut status) => Some(status),
+        }
+    }
 }
 
 /// App layer sends these commands to the Filter Layer to send game events to a peer
@@ -36,6 +71,13 @@ pub enum FilterCmd {
     },
     Authenticated {
         endpoint: Endpoint,
+    },
+    ChangeServerStatus {
+        // Keep this in sync with Packet::Status variant.
+        server_version: Option<String>,
+        player_count:   Option<u64>,
+        room_count:     Option<u64>,
+        server_name:    Option<String>,
     },
     SendGenStateDiff {
         endpoints: Vec<Endpoint>,

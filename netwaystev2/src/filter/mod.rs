@@ -2,6 +2,7 @@ mod client_update;
 mod filter;
 mod interface;
 mod ping;
+mod server_status;
 mod server_update;
 mod sortedbuffer;
 
@@ -11,6 +12,7 @@ mod tests;
 pub use filter::*;
 pub use interface::*;
 pub use ping::PingPong;
+pub use server_status::ServerStatus;
 pub use sortedbuffer::SequencedMinHeap;
 
 #[cfg(test)]

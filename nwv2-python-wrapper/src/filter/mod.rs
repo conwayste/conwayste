@@ -21,7 +21,7 @@ use tokio::time::sleep;
 
 use netwaystev2::transport::{TransportCmd, TransportNotice, TransportRsp};
 use netwaystev2::{
-    filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotifyRecv, FilterRspRecv},
+    filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotifyRecv, FilterRspRecv, ServerStatus},
     transport::TransportCmdSend,
 };
 
@@ -335,7 +335,7 @@ async fn handle_transport_notification(
 */
 
 #[pyclass]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct FilterModeW {
     inner: FilterMode,
 }
@@ -348,7 +348,7 @@ impl FilterModeW {
     fn new(mode: String) -> PyResult<Self> {
         let mode = match mode.as_str() {
             "client" => FilterMode::Client,
-            "server" => FilterMode::Server,
+            "server" => FilterMode::Server(ServerStatus::default()), // TODO: allow populating server mode
             _ => {
                 return Err(PyValueError::new_err(format!(
                     "invalid mode: {}, must be client or server",
