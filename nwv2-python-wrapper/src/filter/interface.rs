@@ -56,6 +56,18 @@ impl FilterCmdW {
                     endpoint: endpointw.into(),
                 }
             }
+            "changeserverstatus" => {
+                let server_version: Option<String> = get_from_dict(&kwds, "server_version")?;
+                let player_count: Option<u64> = get_from_dict(&kwds, "player_count")?;
+                let room_count: Option<u64> = get_from_dict(&kwds, "room_count")?;
+                let server_name: Option<String> = get_from_dict(&kwds, "server_name")?;
+                FilterCmd::ChangeServerStatus {
+                    server_version,
+                    player_count,
+                    room_count,
+                    server_name,
+                }
+            }
             "sendgenstatediff" => {
                 vec_from_py! {let endpoints: Vec<Endpoint> <- [EndpointW] <- get_from_dict(&kwds, "endpoints")?};
                 let diffw: GenStateDiffPartW = get_from_dict(&kwds, "diff")?;
@@ -217,6 +229,45 @@ impl FilterNoticeW {
             }
         };
         Ok(FilterNoticeW { inner: fc })
+    }
+
+    #[getter]
+    fn get_variant(&self) -> &str {
+        use FilterNotice::*;
+        match self.inner {
+            HasGeneration { .. } => "HasGeneration",
+            NewGenStateDiff { .. } => "NewGenStateDiff",
+            PingResult { .. } => "PingResult",
+            NewGameUpdates { .. } => "NewGameUpdates",
+            NewChats { .. } => "NewChats",
+            NewRequestAction { .. } => "NewRequestAction",
+            NewResponseCode { .. } => "NewResponseCode",
+            EndpointTimeout { .. } => "EndpointTimeout",
+        }
+    }
+
+    #[getter]
+    fn get_latency(&self) -> Option<u64> {
+        match self.inner {
+            FilterNotice::PingResult { latency, .. } => latency,
+            _ => None,
+        }
+    }
+
+    #[getter]
+    fn get_server_name(&self) -> Option<&str> {
+        match self.inner {
+            FilterNotice::PingResult { ref server_name, .. } => Some(server_name),
+            _ => None,
+        }
+    }
+
+    #[getter]
+    fn get_room_count(&self) -> Option<u64> {
+        match self.inner {
+            FilterNotice::PingResult { room_count, .. } => Some(room_count),
+            _ => None,
+        }
     }
 
     #[getter]
