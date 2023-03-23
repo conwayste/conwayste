@@ -8,7 +8,7 @@ use super::interface::{
 use super::udp_codec::NetwaystePacketCodec;
 use crate::common::{Endpoint, ShutdownWatcher};
 use crate::protocol::Packet;
-use crate::settings::*;
+use crate::{settings::*, nwtrace, nwerror, nwinfo};
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -116,7 +116,7 @@ impl Transport {
         loop {
             tokio::select! {
                 Some(cmd) = self.requests.recv() => {
-                    trace!("[T<-F,C] Processing command {:?}", cmd);
+                   nwtrace!(self, "[T<-F,C] Processing command {:?}", cmd);
                     match process_transport_command(&mut self.endpoints, cmd, &mut udp_stream_send).await {
                         Ok(responses) => {
                             for response in responses {
@@ -127,21 +127,21 @@ impl Transport {
                             if let Some(err) = e.downcast_ref::<TransportCommandError>() {
                                 match err {
                                     TransportCommandError::ShutdownRequested => {
-                                        info!("[T] shutting down");
+                                       nwinfo!(self, "[T] shutting down");
                                         let phase = Phase::ShutdownComplete;
                                         phase_watch_tx.send(phase).unwrap();
                                         return Ok(());
                                     }
                                 }
                             }
-                            error!("[T] Transport command processing failed: {}", e);
+                           nwerror!(self, "[T] Transport command processing failed: {}", e);
                             return Ok(());
                         }
                     }
                 }
                 item_address_result = udp_stream_recv.select_next_some() => {
                     if let Ok((item, address)) = item_address_result {
-                        trace!("[T<-UDP] {:?}", item);
+                       nwtrace!(self, "[T<-UDP] {:?}", item);
 
                         self.endpoints.update_last_received(Endpoint(address));
                         self.notifications.send(TransportNotice::PacketDelivery{
