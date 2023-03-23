@@ -50,3 +50,6 @@ features = ["codec", "net"]
 #[dev-dependencies]
 #proptest             = "0.10"
 #tokio-test = "*"
+
+[features]
+contextual_logging = []

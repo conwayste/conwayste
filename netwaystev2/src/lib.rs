@@ -45,53 +45,122 @@ pub mod transport;
 //             UGN: Universe Generation Notice
 //
 //     Message: A variable-length sequence of Unicode characters terminated by a newline, '\n'
-
 #[macro_export(local_inner_macros)]
 macro_rules! nwtrace {
     ($self:ident, $string:tt, $($arg:tt)*) => (
-        $crate::log::trace!(std::concat!("{}", $string), $self.mode, $($arg)+)
+        if std::cfg!(feature = "contextual_logging")
+        {
+            $crate::log::trace!(std::concat!("{}", $string), $self.mode, $($arg)+)
+        }
+        else
+        {
+            $crate::log::trace!($string, $($arg)+)
+        }
     );
     ($self:ident, $string:tt) => (
-        $crate::log::trace!(std::concat!("{}", $string), $self.mode)
+        if std::cfg!(feature = "contextual_logging")
+        {
+            $crate::log::trace!(std::concat!("{}", $string), $self.mode)
+        }
+        else
+        {
+            $crate::log::trace!($string)
+        }
     )
 }
 
 #[macro_export(local_inner_macros)]
 macro_rules! nwerror {
     ($self:ident, $string:tt, $($arg:tt)*) => (
-        $crate::log::error!(std::concat!("{}", $string), $self.mode, $($arg)+)
+        if std::cfg!(feature = "contextual_logging")
+        {
+            $crate::log::error!(std::concat!("{}", $string), $self.mode, $($arg)+)
+        }
+        else
+        {
+            $crate::log::error!($string, $($arg)+)
+        }
     );
     ($self:ident, $string:tt) => (
-        $crate::log::error!(std::concat!("{}", $string), $self.mode)
+        if std::cfg!(feature = "contextual_logging")
+        {
+            $crate::log::error!(std::concat!("{}", $string), $self.mode)
+        }
+        else
+        {
+            $crate::log::error!($string)
+        }
     )
 }
 
 #[macro_export(local_inner_macros)]
 macro_rules! nwinfo {
     ($self:ident, $string:tt, $($arg:tt)*) => (
-        $crate::log::info!(std::concat!("{}", $string), $self.mode, $($arg)+)
+        if std::cfg!(feature = "contextual_logging")
+        {
+            $crate::log::info!(std::concat!("{}", $string), $self.mode, $($arg)+)
+        }
+        else
+        {
+            $crate::log::info!($string, $($arg)+)
+        }
     );
     ($self:ident, $string:tt) => (
-        $crate::log::info!(std::concat!("{}", $string), $self.mode)
+        if std::cfg!(feature = "contextual_logging")
+        {
+            $crate::log::info!(std::concat!("{}", $string), $self.mode)
+        }
+        else
+        {
+            $crate::log::info!($string)
+        }
     )
 }
 
 #[macro_export(local_inner_macros)]
 macro_rules! nwdebug {
     ($self:ident, $string:tt, $($arg:tt)*) => (
-        $crate::log::debug!(std::concat!("{}", $string), $self.mode, $($arg)+)
+        if std::cfg!(feature = "contextual_logging")
+        {
+            $crate::log::debug!(std::concat!("{}", $string), $self.mode, $($arg)+)
+        }
+        else
+        {
+            $crate::log::debug!($string, $($arg)+)
+        }
     );
     ($self:ident, $string:tt) => (
-        $crate::log::debug!(std::concat!("{}", $string), $self.mode)
+        if std::cfg!(feature = "contextual_logging")
+        {
+            $crate::log::debug!(std::concat!("{}", $string), $self.mode)
+        }
+        else
+        {
+            $crate::log::debug!($string)
+        }
     )
 }
 
 #[macro_export(local_inner_macros)]
 macro_rules! nwwarn {
     ($self:ident, $string:tt, $($arg:tt)*) => (
-        $crate::log::warn!(std::concat!("{}", $string), $self.mode, $($arg)+)
+        if std::cfg!(feature = "contextual_logging")
+        {
+            $crate::log::warn!(std::concat!("{}", $string), $self.mode, $($arg)+)
+        }
+        else
+        {
+            $crate::log::warn!($string, $($arg)+)
+        }
     );
     ($self:ident, $string:tt) => (
-        $crate::log::warn!(std::concat!("{}", $string), $self.mode)
+        if std::cfg!(feature = "contextual_logging")
+        {
+            $crate::log::warn!(std::concat!("{}", $string), $self.mode)
+        }
+        else
+        {
+            $crate::log::warn!($string)
+        }
     )
 }
