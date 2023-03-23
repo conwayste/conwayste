@@ -1,4 +1,5 @@
 use super::endpoint::TransportEndpointData;
+use super::interface::TransportMode;
 use super::interface::{
     PacketSettings,
     TransportCmd::{self, *},
@@ -61,12 +62,12 @@ pub struct Transport {
     udp_stream_recv: Fuse<SplitStream<UdpFramed<NetwaystePacketCodec>>>,
     phase_watch_tx:  Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
     phase_watch_rx:  watch::Receiver<Phase>,
-
-    endpoints: TransportEndpointData<Packet>,
+    mode:            TransportMode,
+    endpoints:       TransportEndpointData<Packet>,
 }
 
 impl Transport {
-    pub async fn new(opt_host: Option<String>, opt_port: Option<u16>) -> Result<TransportInit> {
+    pub async fn new(opt_host: Option<String>, opt_port: Option<u16>, mode: TransportMode) -> Result<TransportInit> {
         // Bind socket to UDP
         let udp_socket = bind(opt_host, opt_port).await?;
         let local_addr = udp_socket.local_addr()?;
@@ -93,6 +94,7 @@ impl Transport {
                 udp_stream_recv,
                 phase_watch_tx: Some(phase_watch_tx),
                 phase_watch_rx,
+                mode,
                 endpoints: TransportEndpointData::new(),
             },
             cmd_tx,

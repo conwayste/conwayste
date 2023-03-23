@@ -1,5 +1,6 @@
 pub mod interface;
 pub use interface::*;
+use netwaystev2::transport::TransportMode;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -28,11 +29,12 @@ pub fn new_transport_interface<'p>(
     py: Python<'p>,
     opt_host: Option<String>,
     opt_port: Option<u16>,
+    mode: TransportModeW,
 ) -> PyResult<&'p PyAny> {
     let err_mapper = |e| PyException::new_err(format!("failed to create Transport: {}", e));
     let transport_fut = async move {
         let (transport, cmd_tx, response_rx, notify_rx) =
-            Transport::new(opt_host, opt_port).await.map_err(err_mapper)?;
+            Transport::new(opt_host, opt_port, mode.into()).await.map_err(err_mapper)?;
         let local_addr = transport.local_addr();
         Ok(TransportInterface {
             transport: Some(transport),
@@ -140,5 +142,31 @@ impl TransportInterface {
             }, // run() takes this; keep borrow
                // checker happy
         )
+    }
+}
+
+#[pyclass]
+#[derive(Clone, Debug)]
+pub struct TransportModeW {
+    inner: TransportMode,
+}
+
+impl_from_and_to!(TransportModeW wraps TransportMode);
+
+#[pymethods]
+impl TransportModeW {
+    #[new]
+    fn new(mode: String) -> PyResult<Self> {
+        let mode = match mode.as_str() {
+            "client" => TransportMode::Client,
+            "server" => TransportMode::Server,
+            _ => {
+                return Err(PyValueError::new_err(format!(
+                    "invalid mode: {}, must be client or server",
+                    mode
+                )));
+            }
+        };
+        Ok(TransportModeW { inner: mode })
     }
 }

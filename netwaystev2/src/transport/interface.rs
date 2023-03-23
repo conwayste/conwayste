@@ -3,11 +3,25 @@ use crate::protocol::Packet;
 
 use snowflake::ProcessUniqueId;
 
+use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
 
 // https://serverfault.com/questions/645890/tcpdump-truncates-to-1472-bytes-useful-data-in-udp-packets-during-the-capture/645892#645892
 pub const UDP_MTU_SIZE: usize = 1472;
+
+// Used for more informative event logging
+#[derive(Debug, Clone, PartialEq)]
+pub enum TransportMode {
+    Client,
+    Server,
+}
+
+impl Display for TransportMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", if *self == TransportMode::Client { "c" } else { "s"} )
+    }
+}
 
 /// Filter layer sends these commands to the Transport Layer to manage endpoints and their packets
 #[derive(Debug, Clone)]

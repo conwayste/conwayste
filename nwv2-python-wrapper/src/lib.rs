@@ -50,6 +50,7 @@ fn nwv2_python_wrapper(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<EndpointW>()?;
     m.add_class::<ProcessUniqueIdW>()?;
     m.add_class::<PacketSettingsW>()?;
+    m.add_class::<TransportModeW>()?;
     m.add_class::<TransportInterface>()?;
     m.add_class::<TransportCmdW>()?;
     m.add_class::<TransportRspW>()?;
