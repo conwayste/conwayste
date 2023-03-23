@@ -45,3 +45,53 @@ pub mod transport;
 //             UGN: Universe Generation Notice
 //
 //     Message: A variable-length sequence of Unicode characters terminated by a newline, '\n'
+
+#[macro_export(local_inner_macros)]
+macro_rules! nwtrace {
+    ($self:ident, $string:tt, $($arg:tt)*) => (
+        $crate::log::trace!(std::concat!("{}", $string), $self.mode, $($arg)+)
+    );
+    ($self:ident, $string:tt) => (
+        $crate::log::trace!(std::concat!("{}", $string), $self.mode)
+    )
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! nwerror {
+    ($self:ident, $string:tt, $($arg:tt)*) => (
+        $crate::log::error!(std::concat!("{}", $string), $self.mode, $($arg)+)
+    );
+    ($self:ident, $string:tt) => (
+        $crate::log::error!(std::concat!("{}", $string), $self.mode)
+    )
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! nwinfo {
+    ($self:ident, $string:tt, $($arg:tt)*) => (
+        $crate::log::info!(std::concat!("{}", $string), $self.mode, $($arg)+)
+    );
+    ($self:ident, $string:tt) => (
+        $crate::log::info!(std::concat!("{}", $string), $self.mode)
+    )
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! nwdebug {
+    ($self:ident, $string:tt, $($arg:tt)*) => (
+        $crate::log::debug!(std::concat!("{}", $string), $self.mode, $($arg)+)
+    );
+    ($self:ident, $string:tt) => (
+        $crate::log::debug!(std::concat!("{}", $string), $self.mode)
+    )
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! nwwarn {
+    ($self:ident, $string:tt, $($arg:tt)*) => (
+        $crate::log::warn!(std::concat!("{}", $string), $self.mode, $($arg)+)
+    );
+    ($self:ident, $string:tt) => (
+        $crate::log::warn!(std::concat!("{}", $string), $self.mode)
+    )
+}

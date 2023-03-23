@@ -4,6 +4,7 @@ use super::ping::LatencyFilter;
 use super::sortedbuffer::SequencedMinHeap;
 use super::{PingPong, ServerStatus};
 use crate::common::{Endpoint, ShutdownWatcher};
+use crate::{nwtrace, nwerror, nwinfo, nwwarn, nwdebug};
 use crate::protocol::{GameUpdate, GenStateDiffPart, Packet, RequestAction, ResponseCode};
 use crate::settings::{DEFAULT_ENDPOINT_TIMEOUT_INTERVAL, DEFAULT_RETRY_INTERVAL, FILTER_CHANNEL_LEN};
 use crate::transport::{
@@ -161,21 +162,21 @@ impl Filter {
                     if let Some(response) = response {
                         match response {
                             TransportRsp::Accepted => {
-                                trace!("[F<-T,R] Command Accepted");
+                                nwtrace!(self, "[F<-T,R] Command Accepted");
                             }
                             TransportRsp::SendPacketsLengthMismatch => {
-                                error!("[F<-T,R] bug in filter layer! Length mismatch between parallel arrays in SendPackets command")
+                                nwerror!(self, "[F<-T,R] bug in filter layer! Length mismatch between parallel arrays in SendPackets command")
                             }
                             TransportRsp::BufferFull => {
                                 // TODO: understand if there is other action that needs to be taken besides logging
-                                error!("[F<-T,R] Transmit buffer is full");
+                                nwerror!(self, "[F<-T,R] Transmit buffer is full");
                             }
                             TransportRsp::ExceedsMtu {tid, size, mtu} => {
                                 // TODO: understand if there is other action that needs to be taken besides logging
-                                error!("[F<-T,R] Packet exceeds MTU size of {}. Tid={} and size is {}", mtu, tid, size);
+                                nwerror!(self, "[F<-T,R] Packet exceeds MTU size of {}. Tid={} and size is {}", mtu, tid, size);
                             }
                             TransportRsp::EndpointError {error} => {
-                                error!("[F<-T,R] Endpoint error: {:?}", error);
+                                nwerror!(self, "[F<-T,R] Endpoint error: {:?}", error);
                             }
                         }
                     }
@@ -187,11 +188,11 @@ impl Filter {
                                 endpoint,
                                 packet,
                             } => {
-                                trace!("[F<-T,N] For {:?}, took packet {:?}", endpoint, packet);
+                               nwtrace!(self, "[F<-T,N] For {:?}, took packet {:?}", endpoint, packet);
                                 if let Err(e) = self.process_transport_packet(endpoint, packet, &mut filter_notice_tx).await {
                                     //XXX should not return unless it's a SendError
-                                    error!("[F] packet delivery failed: {:?}", e);
-                                    error!("[F] run() exiting");
+                                   nwerror!(self, "[F] packet delivery failed: {:?}", e);
+                                   nwerror!(self, "[F] run() exiting");
                                     return;
                                 } else {
                                     // Nothing to do for Ok
@@ -200,11 +201,11 @@ impl Filter {
                             TransportNotice::EndpointTimeout {
                                 endpoint,
                             } => {
-                                info!("[F<-T,N] {:?} timed-out. Dropping.", endpoint);
+                               nwinfo!(self, "[F<-T,N] {:?} timed-out. Dropping.", endpoint);
                                 self.per_endpoint.remove(&endpoint);
                                 if let Err(_) = transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await {
-                                    error!("[F] transport cmd receiver has been dropped");
-                                    error!("[F] run() exiting");
+                                   nwerror!(self, "[F] transport cmd receiver has been dropped");
+                                   nwerror!(self, "[F] run() exiting");
                                     return;
                                 }
                             }
@@ -213,7 +214,7 @@ impl Filter {
                                     // response_ack filled in later (see HACK)
                                     let action = RequestAction::KeepAlive { latest_response_ack: 0 };
                                     if let Err(e) = self.send_request_action_to_server(endpoint, action).await {
-                                        warn!("[F] error sending KeepAlive for idle {:?}: {}", endpoint, e);
+                                       nwwarn!(self, "[F] error sending KeepAlive for idle {:?}: {}", endpoint, e);
                                     }
                                 }
                             }
@@ -222,14 +223,14 @@ impl Filter {
                 }
                 command = self.filter_cmd_rx.recv() => {
                     if let Some(command) = command {
-                        trace!("[F<-A,C] New command: {:?}", command);
+                       nwtrace!(self, "[F<-A,C] New command: {:?}", command);
 
                         if let Err(e) = self.process_filter_command(command).await {
                             if let Some(err) = e.downcast_ref::<FilterError>() {
                                 use FilterError::*;
                                 match err {
                                     ShutdownRequested{graceful} => {
-                                        info!("[F] shutting down");
+                                       nwinfo!(self, "[F] shutting down");
                                         let phase;
                                         if *graceful {
                                             phase = Phase::ShutdownComplete;
@@ -241,32 +242,32 @@ impl Filter {
                                     }
                                     EndpointNotFound{endpoint} => {
                                         if filter_rsp_tx.send(FilterRsp::NoSuchEndpoint{endpoint: *endpoint}).await.is_err() {
-                                            error!("[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
+                                           nwerror!(self, "[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
                                             return;
                                         }
                                     }
                                     UnexpectedData { mode, .. } => {
-                                        error!("[F] [{:?}] unexpected data: {}", mode, err);
+                                       nwerror!(self, "[F] [{:?}] unexpected data: {}", mode, err);
                                         // TODO: pass error to App layer
                                         if filter_rsp_tx.send(FilterRsp::Accepted).await.is_err() {
-                                            error!("[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
+                                           nwerror!(self, "[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
                                             return;
                                         }
                                     }
                                     InternalError { .. } => {
-                                        error!("[F] internal error: {}", err);
+                                       nwerror!(self, "[F] internal error: {}", err);
                                         // TODO: pass error to App layer
                                         if filter_rsp_tx.send(FilterRsp::Accepted).await.is_err() {
-                                            error!("[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
+                                           nwerror!(self, "[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
                                             return;
                                         }
                                     }
                                 }
                             }
-                            error!("[F<-A,C] command processing failed: {}", e);
+                           nwerror!(self, "[F<-A,C] command processing failed: {}", e);
                         } else {
                             if filter_rsp_tx.send(FilterRsp::Accepted).await.is_err() {
-                                error!("[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
+                               nwerror!(self, "[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
                                 return;
                             }
                         }
@@ -275,10 +276,10 @@ impl Filter {
                 _instant = ping_interval_stream.tick() => {
                     if self.mode.is_client() {
                         if self.ping_endpoints.keys().len() != 0 {
-                            info!("[F] About to send pings to servers: {:?}", self.ping_endpoints.keys());
+                           nwinfo!(self, "[F] About to send pings to servers: {:?}", self.ping_endpoints.keys());
                         }
                         if let Err(e) = self.send_pings().await {
-                            error!("[F->T,C] Failed to send pings: {}", e);
+                           nwerror!(self, "[F->T,C] Failed to send pings: {}", e);
                         }
                     }
                 }
@@ -558,7 +559,7 @@ impl Filter {
                 if !self.ping_endpoints.contains_key(&endpoint) {
                     // Not error-worthy, since a ClearPingEndpoints can happen at any time, while
                     // Status packets from servers are in flight.
-                    info!("[F<-T,N] Received Status packet from server we have not pinged (or purged from ping_endpoints)");
+                   nwinfo!(self, "[F<-T,N] Received Status packet from server we have not pinged (or purged from ping_endpoints)");
                     return Ok(());
                 }
                 let latency_filter = self.ping_endpoints.get_mut(&endpoint).unwrap(); // unwrap OK because of above check
@@ -568,7 +569,7 @@ impl Filter {
 
                 // Latency is Some(<n>) once the filter has seen enough data
                 let latency = latency_filter.get_millis();
-                info!("[F] Latency for remote server {:?} is {:?}", endpoint, latency);
+               nwinfo!(self, "[F] Latency for remote server {:?} is {:?}", endpoint, latency);
 
                 // Notify App layer of the Server information and population
                 filter_notice_tx
@@ -594,7 +595,7 @@ impl Filter {
             }
             // TODO: Add handling for Update and UpdateReply, then delete following catch-all arm!!!!!!!
             _ => {
-                error!("FIXME stub {:?}", packet);
+               nwerror!(self, "FIXME stub {:?}", packet);
             }
         }
 
@@ -610,7 +611,7 @@ impl Filter {
             retry_interval: Duration::ZERO,
         }];
 
-        info!("[F] Sending Status packet {:?} back to client {:?}", ping, endpoint);
+       nwinfo!(self, "[F] Sending Status packet {:?} back to client {:?}", ping, endpoint);
         self.transport_cmd_tx
             .send(TransportCmd::SendPackets {
                 endpoint,
@@ -723,7 +724,7 @@ impl Filter {
                 }
             }
             FilterCmd::ClearPingEndpoints => {
-                info!("[F<-A,C] clearing ping endpoints: {:?}", self.ping_endpoints.keys());
+               nwinfo!(self, "[F<-A,C] clearing ping endpoints: {:?}", self.ping_endpoints.keys());
                 // Cancel any in progress pings
                 for (endpoint, _ping_endpoint) in self.ping_endpoints.iter() {
                     let endpoint = *endpoint;
@@ -1028,7 +1029,7 @@ impl OtherEndServer {
             (None, None) => {} // No-op
             (Some(_), None) => {
                 // We previously had Some(...), but the server just sent None -- reset!
-                debug!("[F] reset game_update_seq");
+               debug!("c[F] reset game_update_seq");
                 self.game_update_seq = None;
             }
             (None, Some(_)) => {
@@ -1086,13 +1087,13 @@ impl OtherEndServer {
                         .process_game_update(endpoint, &game_updates[i], filter_notice_tx)
                         .await
                     {
-                        error!("[F] failed to process game update {:?}: {}", game_updates[i], e);
+                       error!("c[F] failed to process game update {:?}: {}", game_updates[i], e);
                     }
 
                     match &game_updates[i] {
                         GameUpdate::RoomDeleted => {
                             if i != game_updates.len() {
-                                warn!("[F] got a RoomDeleted but it wasn't the last game update; the rest will be ignored");
+                               warn!("c[F] got a RoomDeleted but it wasn't the last game update; the rest will be ignored");
                                 self.room = None;
                                 self.game_update_seq = None;
                                 break;

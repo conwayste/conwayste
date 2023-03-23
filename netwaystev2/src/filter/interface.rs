@@ -1,4 +1,4 @@
-use std::num::Wrapping;
+use std::{num::Wrapping, fmt::Display};
 
 use conway::universe::GenStateDiff;
 
@@ -14,6 +14,13 @@ pub type SeqNum = Wrapping<u64>;
 pub enum FilterMode {
     Client,
     Server(ServerStatus),
+}
+
+impl Display for FilterMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", if self.is_client() { "c" } else { "s"} )
+        //write!(f, "c")
+    }
 }
 
 impl FilterMode {
