@@ -330,9 +330,9 @@ async fn client_measure_latency_to_server() {
 
                 // The latency filter should yield a non-zero value after enough samples
                 if measurement != 0 {
-                    assert_ne!(latency, 0);
+                    assert_ne!(latency, None);
                 } else {
-                    assert_eq!(latency, measurement as u64);
+                    assert_eq!(latency, Some(measurement as u64));
                 }
             }
             _ => panic!("unexpected transport command {:?}", transport_cmd),

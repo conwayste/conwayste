@@ -4,13 +4,13 @@ use super::ping::LatencyFilter;
 use super::sortedbuffer::SequencedMinHeap;
 use super::{PingPong, ServerStatus};
 use crate::common::{Endpoint, ShutdownWatcher};
-use crate::{nwtrace, nwerror, nwinfo, nwwarn, nwdebug};
 use crate::protocol::{GameUpdate, GenStateDiffPart, Packet, RequestAction, ResponseCode};
 use crate::settings::{DEFAULT_ENDPOINT_TIMEOUT_INTERVAL, DEFAULT_RETRY_INTERVAL, FILTER_CHANNEL_LEN};
 use crate::transport::{
     PacketSettings, TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp,
     TransportRspRecv,
 };
+use crate::{nwdebug, nwerror, nwinfo, nwtrace, nwwarn};
 use anyhow::anyhow;
 use snowflake::ProcessUniqueId;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -559,7 +559,7 @@ impl Filter {
                 if !self.ping_endpoints.contains_key(&endpoint) {
                     // Not error-worthy, since a ClearPingEndpoints can happen at any time, while
                     // Status packets from servers are in flight.
-                   nwinfo!(self, "[F<-T,N] Received Status packet from server we have not pinged (or purged from ping_endpoints)");
+                    nwinfo!(self, "[F<-T,N] Received Status packet from server we have not pinged (or purged from ping_endpoints)");
                     return Ok(());
                 }
                 let latency_filter = self.ping_endpoints.get_mut(&endpoint).unwrap(); // unwrap OK because of above check
@@ -569,7 +569,7 @@ impl Filter {
 
                 // Latency is Some(<n>) once the filter has seen enough data
                 let latency = latency_filter.get_millis();
-               nwinfo!(self, "[F] Latency for remote server {:?} is {:?}", endpoint, latency);
+                nwinfo!(self, "[F] Latency for remote server {:?} is {:?}", endpoint, latency);
 
                 // Notify App layer of the Server information and population
                 filter_notice_tx
@@ -595,7 +595,7 @@ impl Filter {
             }
             // TODO: Add handling for Update and UpdateReply, then delete following catch-all arm!!!!!!!
             _ => {
-               nwerror!(self, "FIXME stub {:?}", packet);
+                nwerror!(self, "FIXME stub {:?}", packet);
             }
         }
 
@@ -611,7 +611,12 @@ impl Filter {
             retry_interval: Duration::ZERO,
         }];
 
-       nwinfo!(self, "[F] Sending Status packet {:?} back to client {:?}", ping, endpoint);
+        nwinfo!(
+            self,
+            "[F] Sending Status packet {:?} back to client {:?}",
+            ping,
+            endpoint
+        );
         self.transport_cmd_tx
             .send(TransportCmd::SendPackets {
                 endpoint,
@@ -724,7 +729,11 @@ impl Filter {
                 }
             }
             FilterCmd::ClearPingEndpoints => {
-               nwinfo!(self, "[F<-A,C] clearing ping endpoints: {:?}", self.ping_endpoints.keys());
+                nwinfo!(
+                    self,
+                    "[F<-A,C] clearing ping endpoints: {:?}",
+                    self.ping_endpoints.keys()
+                );
                 // Cancel any in progress pings
                 for (endpoint, _ping_endpoint) in self.ping_endpoints.iter() {
                     let endpoint = *endpoint;
@@ -1029,7 +1038,7 @@ impl OtherEndServer {
             (None, None) => {} // No-op
             (Some(_), None) => {
                 // We previously had Some(...), but the server just sent None -- reset!
-               debug!("c[F] reset game_update_seq");
+                debug!("c[F] reset game_update_seq");
                 self.game_update_seq = None;
             }
             (None, Some(_)) => {
@@ -1087,13 +1096,13 @@ impl OtherEndServer {
                         .process_game_update(endpoint, &game_updates[i], filter_notice_tx)
                         .await
                     {
-                       error!("c[F] failed to process game update {:?}: {}", game_updates[i], e);
+                        error!("c[F] failed to process game update {:?}: {}", game_updates[i], e);
                     }
 
                     match &game_updates[i] {
                         GameUpdate::RoomDeleted => {
                             if i != game_updates.len() {
-                               warn!("c[F] got a RoomDeleted but it wasn't the last game update; the rest will be ignored");
+                                warn!("c[F] got a RoomDeleted but it wasn't the last game update; the rest will be ignored");
                                 self.room = None;
                                 self.game_update_seq = None;
                                 break;

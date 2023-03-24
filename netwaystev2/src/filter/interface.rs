@@ -1,4 +1,4 @@
-use std::{num::Wrapping, fmt::Display};
+use std::{fmt::Display, num::Wrapping};
 
 use conway::universe::GenStateDiff;
 
@@ -18,7 +18,7 @@ pub enum FilterMode {
 
 impl Display for FilterMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", if self.is_client() { "c" } else { "s"} )
+        write!(f, "{}", if self.is_client() { "c" } else { "s" })
         //write!(f, "c")
     }
 }

@@ -8,7 +8,7 @@ use super::interface::{
 use super::udp_codec::NetwaystePacketCodec;
 use crate::common::{Endpoint, ShutdownWatcher};
 use crate::protocol::Packet;
-use crate::{settings::*, nwtrace, nwerror, nwinfo};
+use crate::{nwerror, nwinfo, nwtrace, settings::*};
 
 use std::collections::HashSet;
 use std::sync::Arc;

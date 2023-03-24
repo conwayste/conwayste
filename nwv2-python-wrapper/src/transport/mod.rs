@@ -33,8 +33,9 @@ pub fn new_transport_interface<'p>(
 ) -> PyResult<&'p PyAny> {
     let err_mapper = |e| PyException::new_err(format!("failed to create Transport: {}", e));
     let transport_fut = async move {
-        let (transport, cmd_tx, response_rx, notify_rx) =
-            Transport::new(opt_host, opt_port, mode.into()).await.map_err(err_mapper)?;
+        let (transport, cmd_tx, response_rx, notify_rx) = Transport::new(opt_host, opt_port, mode.into())
+            .await
+            .map_err(err_mapper)?;
         let local_addr = transport.local_addr();
         Ok(TransportInterface {
             transport: Some(transport),
