@@ -1,15 +1,18 @@
+#[allow(unused)] // ToDo: need this?
 use super::client_update::{ClientGame, ClientRoom};
 use super::interface::{FilterCmd, FilterMode, FilterNotice, FilterRsp, SeqNum};
 use super::ping::LatencyFilter;
 use super::sortedbuffer::SequencedMinHeap;
-use super::{PingPong, ServerStatus};
+use super::PingPong;
 use crate::common::{Endpoint, ShutdownWatcher};
+#[allow(unused)] // ToDo: need this?
 use crate::protocol::{GameUpdate, GenStateDiffPart, Packet, RequestAction, ResponseCode};
 use crate::settings::{DEFAULT_ENDPOINT_TIMEOUT_INTERVAL, DEFAULT_RETRY_INTERVAL, FILTER_CHANNEL_LEN};
 use crate::transport::{
     PacketSettings, TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp,
     TransportRspRecv,
 };
+#[allow(unused)]
 use crate::{nwdebug, nwerror, nwinfo, nwtrace, nwwarn};
 use anyhow::anyhow;
 use snowflake::ProcessUniqueId;
@@ -697,7 +700,7 @@ impl Filter {
                     })
                     .await?;
             }
-            FilterCmd::SendChats { endpoints, messages } => {
+            FilterCmd::SendChats { endpoints, messages: _ } => {
                 for endpoint in endpoints {
                     match self.per_endpoint.get_mut(&endpoint) {
                         Some(FilterEndpointData::OtherEndServer { .. }) => {
@@ -714,9 +717,12 @@ impl Filter {
                 }
             }
             // TODO: implement these
-            FilterCmd::SendGameUpdates { endpoints, updates } => {}
-            FilterCmd::Authenticated { endpoint } => {} // TODO: should probably have player_name as part of this
-            FilterCmd::SendGenStateDiff { endpoints, diff } => {}
+            FilterCmd::SendGameUpdates {
+                endpoints: _,
+                updates: _,
+            } => {}
+            FilterCmd::Authenticated { endpoint: _ } => {} // TODO: should probably have player_name as part of this
+            FilterCmd::SendGenStateDiff { endpoints: _, diff: _ } => {}
             FilterCmd::AddPingEndpoints { endpoints } => {
                 for e in endpoints {
                     // An hashmap insert for an existing key will override the value. This would obsolete any ping
@@ -743,7 +749,7 @@ impl Filter {
                 }
                 self.ping_endpoints.clear();
             }
-            FilterCmd::DropEndpoint { endpoint } => {
+            FilterCmd::DropEndpoint { endpoint: _ } => {
                 // TODO: implement this
             }
             FilterCmd::Shutdown { graceful } => {

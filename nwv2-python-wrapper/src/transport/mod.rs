@@ -25,6 +25,7 @@ pub struct TransportInterface {
 /// Create a TransportInterface.
 /// This can't be a #[new] constructor because it's Python async.
 #[pyfunction]
+#[pyo3(signature = (opt_host, opt_port, mode))]
 pub fn new_transport_interface<'p>(
     py: Python<'p>,
     opt_host: Option<String>,

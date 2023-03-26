@@ -18,7 +18,7 @@ impl_from_and_to!(BroadcastChatMessageW wraps BroadcastChatMessage);
 #[pymethods]
 impl BroadcastChatMessageW {
     #[new]
-    fn new(chat_seq: Option<u64>, player_name: String, message: String) -> Self {
+    fn new(player_name: String, message: String, chat_seq: Option<u64>) -> Self {
         let inner = BroadcastChatMessage {
             chat_seq,
             player_name,
@@ -310,7 +310,7 @@ impl_from_and_to!(GameUpdateW wraps GameUpdate);
 #[pymethods]
 impl GameUpdateW {
     #[new]
-    #[args(kwds = "**")]
+    #[pyo3(signature = (variant, **kwds))]
     fn new(variant: String, kwds: Option<HashMap<String, &PyAny>>) -> PyResult<Self> {
         let kwds = if let Some(kwds) = kwds { kwds } else { HashMap::new() };
         use GameUpdate::*;
@@ -420,7 +420,7 @@ impl_from_and_to!(UniUpdateW wraps UniUpdate);
 #[pymethods]
 impl UniUpdateW {
     #[new]
-    #[args(kwds = "**")]
+    #[pyo3(signature = (variant, **kwds))]
     fn new(variant: String, kwds: Option<HashMap<String, &PyAny>>) -> PyResult<Self> {
         let kwds = if let Some(kwds) = kwds { kwds } else { HashMap::new() };
         use UniUpdate::*;

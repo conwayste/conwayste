@@ -28,7 +28,7 @@ impl_from_and_to!(PacketW wraps Packet);
 #[pymethods]
 impl PacketW {
     #[new]
-    #[args(kwds = "**")]
+    #[pyo3(signature = (variant, **kwds))]
     fn new(variant: String, kwds: Option<HashMap<String, &PyAny>>) -> PyResult<Self> {
         let kwds = if let Some(kwds) = kwds { kwds } else { HashMap::new() };
         let packet = match variant.to_lowercase().as_str() {

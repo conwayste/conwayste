@@ -1,28 +1,14 @@
 pub mod interface;
 pub use interface::*;
 
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc, Weak,
-};
-use std::time::Duration;
+use std::sync::Arc;
 
 use pyo3::exceptions::*;
-use pyo3::gc::PyVisit;
 use pyo3::prelude::*;
-use pyo3::PyTraverseError;
-use tokio::sync::{
-    mpsc::error::{SendError, TryRecvError},
-    mpsc::{self, Receiver, Sender},
-    watch, Mutex,
-};
+use tokio::sync::{mpsc::error::TryRecvError, Mutex};
 
-use tokio::time::sleep;
-
-use netwaystev2::transport::{TransportCmd, TransportNotice, TransportRsp};
-use netwaystev2::{
-    filter::{Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotifyRecv, FilterRspRecv, ServerStatus},
-    transport::TransportCmdSend,
+use netwaystev2::filter::{
+    Filter, FilterCmd, FilterCmdSend, FilterMode, FilterNotifyRecv, FilterRspRecv, ServerStatus,
 };
 
 use crate::transport::*;
@@ -34,12 +20,7 @@ pub struct FilterInterface {
     cmd_tx:      FilterCmdSend,
     response_rx: Arc<Mutex<FilterRspRecv>>,
     notify_rx:   FilterNotifyRecv,
-    shutdown_tx: watch::Sender<()>,   // sends or closes if FilterInterface is shutdown
-    shutdown_rx: watch::Receiver<()>, // Is cloned and provided to async functions so they don't run forever
 }
-
-// TODO: reference the one in netw.../src/settings.rs
-pub const TRANSPORT_CHANNEL_LEN: usize = 1000;
 
 /// Ex:
 ///
@@ -93,23 +74,16 @@ impl FilterInterface {
             filter_mode.into(),
         );
 
-        let (shutdown_tx, shutdown_rx) = watch::channel(());
-
         FilterInterface {
-            filter: Some(filter),
-            cmd_tx: filter_cmd_tx,
+            filter:      Some(filter),
+            cmd_tx:      filter_cmd_tx,
             response_rx: Arc::new(Mutex::new(filter_rsp_rx)),
-            notify_rx: filter_notice_rx,
-            shutdown_tx,
-            shutdown_rx,
+            notify_rx:   filter_notice_rx,
         }
     }
 
     fn run<'p>(&mut self, py: Python<'p>) -> PyResult<&'p PyAny> {
         take_from_self_or_raise_exc!(mut filter <- self.filter);
-
-        let shutdown_rx = self.shutdown_rx.clone();
-        let shutdown_rx2 = self.shutdown_rx.clone();
 
         let rust_fut = async move {
             filter.run().await;
@@ -187,7 +161,6 @@ impl FilterInterface {
 impl Drop for FilterInterface {
     fn drop(&mut self) {
         let _ = self.cmd_tx.try_send(FilterCmd::Shutdown { graceful: false });
-        let _ = self.shutdown_tx.send(()); // Shutdown async worker functions.
     }
 }
 

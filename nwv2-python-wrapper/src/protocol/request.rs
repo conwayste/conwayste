@@ -18,7 +18,7 @@ impl_from_and_to!(RequestActionW wraps RequestAction);
 #[pymethods]
 impl RequestActionW {
     #[new]
-    #[args(kwds = "**")]
+    #[pyo3(signature = (variant, **kwds))]
     fn new(variant: String, kwds: Option<HashMap<String, &PyAny>>) -> PyResult<Self> {
         let kwds = if let Some(kwds) = kwds { kwds } else { HashMap::new() };
         let ra = match variant.to_lowercase().as_str() {

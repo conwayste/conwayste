@@ -20,7 +20,7 @@ impl_from_and_to!(FilterCmdW wraps FilterCmd);
 #[pymethods]
 impl FilterCmdW {
     #[new]
-    #[args(kwds = "**")]
+    #[pyo3(signature = (variant, **kwds))]
     fn new(variant: String, kwds: Option<HashMap<String, &PyAny>>) -> PyResult<Self> {
         let kwds = if let Some(kwds) = kwds { kwds } else { HashMap::new() };
         let fc = match variant.to_lowercase().as_str() {
@@ -114,7 +114,7 @@ impl_from_and_to!(FilterRspW wraps FilterRsp);
 #[pymethods]
 impl FilterRspW {
     #[new]
-    #[args(kwds = "**")]
+    #[pyo3(signature = (variant, **kwds))]
     fn new(variant: String, kwds: Option<HashMap<String, &PyAny>>) -> PyResult<Self> {
         let kwds = if let Some(kwds) = kwds { kwds } else { HashMap::new() };
         use FilterRsp::*;
@@ -149,7 +149,7 @@ impl_from_and_to!(FilterNoticeW wraps FilterNotice);
 #[pymethods]
 impl FilterNoticeW {
     #[new]
-    #[args(kwds = "**")]
+    #[pyo3(signature = (variant, **kwds))]
     fn new(variant: String, kwds: Option<HashMap<String, &PyAny>>) -> PyResult<Self> {
         let kwds = if let Some(kwds) = kwds { kwds } else { HashMap::new() };
         use FilterNotice::*;

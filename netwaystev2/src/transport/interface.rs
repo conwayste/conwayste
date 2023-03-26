@@ -88,6 +88,7 @@ pub struct PacketSettings {
     pub retry_interval: Duration,
 }
 
+#[allow(unused)] // ToDo: do we need this?
 #[derive(Debug, thiserror::Error)]
 pub enum TransportEndpointDataError {
     #[error("{endpoint:?} not found in transmit queue: {message}")]
