@@ -70,7 +70,7 @@ pub enum FilterNotice {
         gen_num:   u64,
     },
     NewGenStateDiff {
-        endpoint: Endpoint,
+        endpoint: Endpoint, // This is a server's endpoint; not much point in having this...
         diff:     GenStateDiff,
     },
     PingResult {
@@ -82,11 +82,11 @@ pub enum FilterNotice {
         player_count:   u64,
     },
     NewGameUpdates {
-        endpoint: Endpoint,
+        endpoint: Endpoint, // This is a server's endpoint; not much point in having this...
         updates:  Vec<GameUpdate>,
     },
     NewChats {
-        endpoint: Endpoint,
+        endpoint: Endpoint, // This is a server's endpoint; not much point in having this...
         messages: Vec<BroadcastChatMessage>,
     },
     NewRequestAction {
@@ -94,7 +94,7 @@ pub enum FilterNotice {
         action:   RequestAction,
     },
     NewResponseCode {
-        endpoint: Endpoint,
+        endpoint: Endpoint, // This is a server's endpoint; not much point in having this...
         code:     ResponseCode,
     },
     EndpointTimeout {
