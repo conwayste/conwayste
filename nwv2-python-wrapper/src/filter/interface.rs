@@ -4,7 +4,7 @@ use pyo3::exceptions::*;
 use pyo3::prelude::*;
 
 use crate::common::*;
-use crate::{BroadcastChatMessageW, GameUpdateW, GenStateDiffPartW, GenStateDiffW, RequestActionW, ResponseCodeW};
+use crate::{BroadcastChatMessageW, GameUpdateW, GenStateDiffW, RequestActionW, ResponseCodeW};
 use netwaystev2::common::Endpoint;
 use netwaystev2::filter::{FilterCmd, FilterNotice, FilterRsp};
 use netwaystev2::protocol::{BroadcastChatMessage, GameUpdate};
@@ -70,7 +70,7 @@ impl FilterCmdW {
             }
             "sendgenstatediff" => {
                 vec_from_py! {let endpoints: Vec<Endpoint> <- [EndpointW] <- get_from_dict(&kwds, "endpoints")?};
-                let diffw: GenStateDiffPartW = get_from_dict(&kwds, "diff")?;
+                let diffw: GenStateDiffW = get_from_dict(&kwds, "diff")?;
                 FilterCmd::SendGenStateDiff {
                     endpoints,
                     diff: diffw.into(),
