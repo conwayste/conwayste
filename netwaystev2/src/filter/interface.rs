@@ -8,55 +8,6 @@ use crate::{
     protocol::{BroadcastChatMessage, GameUpdate, GenStateDiffPart, RequestAction, ResponseCode},
 };
 
-pub type SeqNum = Wrapping<u64>;
-
-#[derive(Debug, Clone)]
-pub enum FilterMode {
-    Client,
-    Server(ServerStatus),
-}
-
-impl Display for FilterMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", if self.is_client() { "c" } else { "s" })
-        //write!(f, "c")
-    }
-}
-
-impl FilterMode {
-    pub fn is_client(&self) -> bool {
-        use FilterMode::*;
-        match self {
-            Client => true,
-            Server(_) => false,
-        }
-    }
-
-    pub fn is_server(&self) -> bool {
-        use FilterMode::*;
-        match self {
-            Client => false,
-            Server(_) => true,
-        }
-    }
-
-    pub fn server_status(&self) -> Option<&ServerStatus> {
-        use FilterMode::*;
-        match self {
-            Client => None,
-            Server(ref status) => Some(status),
-        }
-    }
-
-    pub fn server_status_mut(&mut self) -> Option<&mut ServerStatus> {
-        use FilterMode::*;
-        match self {
-            Client => None,
-            Server(ref mut status) => Some(status),
-        }
-    }
-}
-
 /// App layer sends these commands to the Filter Layer to send game events to a peer
 #[derive(Debug, Clone)]
 pub enum FilterCmd {
@@ -149,4 +100,49 @@ pub enum FilterNotice {
     EndpointTimeout {
         endpoint: Endpoint,
     },
+}
+
+pub type SeqNum = Wrapping<u64>;
+
+#[derive(Debug, Clone)]
+pub enum FilterMode {
+    Client,
+    Server(ServerStatus),
+}
+
+impl Display for FilterMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", if self.is_client() { "c" } else { "s" })
+        //write!(f, "c")
+    }
+}
+
+impl FilterMode {
+    pub fn is_client(&self) -> bool {
+        use FilterMode::*;
+        match self {
+            Client => true,
+            Server(_) => false,
+        }
+    }
+
+    pub fn is_server(&self) -> bool {
+        !self.is_client()
+    }
+
+    pub fn server_status(&self) -> Option<&ServerStatus> {
+        use FilterMode::*;
+        match self {
+            Client => None,
+            Server(ref status) => Some(status),
+        }
+    }
+
+    pub fn server_status_mut(&mut self) -> Option<&mut ServerStatus> {
+        use FilterMode::*;
+        match self {
+            Client => None,
+            Server(ref mut status) => Some(status),
+        }
+    }
 }
