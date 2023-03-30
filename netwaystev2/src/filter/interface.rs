@@ -5,7 +5,7 @@ use conway::universe::GenStateDiff;
 use super::ServerStatus;
 use crate::{
     common::Endpoint,
-    protocol::{BroadcastChatMessage, GameUpdate, GenStateDiffPart, RequestAction, ResponseCode},
+    protocol::{BroadcastChatMessage, GameUpdate, RequestAction, ResponseCode},
 };
 
 /// App layer sends these commands to the Filter Layer to send game events to a peer
@@ -39,7 +39,7 @@ pub enum FilterCmd {
     },
     SendGenStateDiff {
         endpoints: Vec<Endpoint>,
-        diff:      GenStateDiffPart,
+        diff:      GenStateDiff,
     },
     AddPingEndpoints {
         endpoints: Vec<Endpoint>,
