@@ -753,6 +753,7 @@ impl Filter {
                 // TODO: implement this
             }
             FilterCmd::Shutdown { graceful } => {
+                // Main logic is in error handling
                 return Err(anyhow!(FilterError::ShutdownRequested { graceful }));
             }
             #[deny(unused_variables)]
