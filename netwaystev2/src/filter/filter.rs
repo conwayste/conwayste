@@ -191,7 +191,7 @@ impl Filter {
                                 endpoint,
                                 packet,
                             } => {
-                               nwtrace!(self, "[F<-T,N] For {:?}, took packet {:?}", endpoint, packet);
+                                nwtrace!(self, "[F<-T,N] For {:?}, took packet {:?}", endpoint, packet);
                                 if let Err(e) = self.process_transport_packet(endpoint, packet, &mut filter_notice_tx).await {
                                     //XXX should not return unless it's a SendError
                                    nwerror!(self, "[F] packet delivery failed: {:?}", e);
@@ -204,7 +204,7 @@ impl Filter {
                             TransportNotice::EndpointTimeout {
                                 endpoint,
                             } => {
-                               nwinfo!(self, "[F<-T,N] {:?} timed-out. Dropping.", endpoint);
+                                nwinfo!(self, "[F<-T,N] {:?} timed-out. Dropping.", endpoint);
                                 self.per_endpoint.remove(&endpoint);
                                 if let Err(_) = transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await {
                                    nwerror!(self, "[F] transport cmd receiver has been dropped");
@@ -213,6 +213,7 @@ impl Filter {
                                 }
                             }
                             TransportNotice::EndpointIdle { endpoint } => {
+                                nwinfo!(self, "[F<-T,N] {:?} reported as idle; may send KeepAlive (if client and not ping endpoint)", endpoint);
                                 if self.mode.is_client() && !self.ping_endpoints.contains_key(&endpoint) {
                                     // response_ack filled in later (see HACK)
                                     let action = RequestAction::KeepAlive { latest_response_ack: 0 };

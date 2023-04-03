@@ -290,6 +290,21 @@ impl FilterNoticeW {
         }
     }
 
+    #[getter]
+    fn get_endpoint(&self) -> Option<EndpointW> {
+        use FilterNotice::*;
+        match self.inner {
+            NewGenStateDiff { endpoint, .. } => Some(endpoint.into()),
+            PingResult { endpoint, .. } => Some(endpoint.into()),
+            NewGameUpdates { endpoint, .. } => Some(endpoint.into()),
+            NewChats { endpoint, .. } => Some(endpoint.into()),
+            NewRequestAction { endpoint, .. } => Some(endpoint.into()),
+            NewResponseCode { endpoint, .. } => Some(endpoint.into()),
+            EndpointTimeout { endpoint, .. } => Some(endpoint.into()),
+            _ => None,
+        }
+    }
+
     fn __repr__(&self) -> String {
         format!("{:?}", self.inner)
     }
