@@ -11,7 +11,7 @@ path = "src/server.rs"
 [dependencies]
 base64               = "0.13.0"
 bincode              = "1.3.3"
-bytes                = "1.0.0"
+bytes                = "1.4.0"
 chrono               = "0.4.20"
 clap                 = "2"
 color-backtrace      = "0.5"
