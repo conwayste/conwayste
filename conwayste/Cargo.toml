@@ -7,7 +7,7 @@ edition = "2018"
 
 [dependencies]
 chromatica   = "1.0.1"
-chrono       = "0.4.19"
+chrono       = "0.4.20"
 color-backtrace = "0.5"
 conway       = { path = "../libconway" }
 custom_error = "1.9"
