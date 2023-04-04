@@ -9,16 +9,16 @@ name = "server"
 path = "src/server.rs"
 
 [dependencies]
-base64               = "0.13.0"
+base64               = "0.21.0"
 bincode              = "1.3.3"
-bytes                = "1.0.0"
-chrono               = "0.4.19"
+bytes                = "1.4.0"
+chrono               = "0.4.20"
 clap                 = "2"
 color-backtrace      = "0.5"
 conway               = { path = "../libconway" }
-env_logger           = "0.9.0"
+env_logger           = "0.10.0"
 futures              = "0.3"
-log                  = "0.4.14"
+log                  = "0.4.17"
 rand                 = "0.8.5"
 regex                = "1"
 reqwest              = { version = "0.11.14", default-features = false, features = ["json", "rustls-tls"] }
@@ -37,7 +37,7 @@ version = "1.7"
 features = ["full"]
 
 [dependencies.tokio-stream]
-version = "0.1.6"
+version = "0.1.12"
 
 [dependencies.tokio-util]
 version = "0.7.2"
