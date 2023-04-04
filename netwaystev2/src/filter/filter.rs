@@ -738,7 +738,7 @@ impl Filter {
             FilterCmd::ClearPingEndpoints => {
                 nwinfo!(
                     self,
-                    "[F<-A,C] clearing ping endpoints: {:?}",
+                    "[F<-A,C] clearing all ping endpoints: {:?}",
                     self.ping_endpoints.keys()
                 );
                 // Cancel any in progress pings
@@ -750,8 +750,23 @@ impl Filter {
                 }
                 self.ping_endpoints.clear();
             }
-            FilterCmd::DropEndpoint { endpoint: _ } => {
-                // TODO: implement this
+            FilterCmd::DropEndpoint { endpoint } => {
+                nwinfo!(self, "[F<-A,C] dropping endpoint: {:?}", endpoint);
+
+                // Remove the endpoint from the ping list
+                if let None = self.ping_endpoints.remove(&endpoint) {
+                    nwerror!(self, "[F<-A,C] endpoint '{:?}' not found in ping-endpoint map", endpoint)
+                }
+
+                // Remove the endpoint metadata
+                if let None = self.per_endpoint.remove(&endpoint) {
+                    nwerror!(self, "[F<-A,C] endpoint '{:?}' not found in per-endpoint map", endpoint)
+                }
+
+                // Inform the transport to drop the endpoint
+                self.transport_cmd_tx
+                    .send(TransportCmd::DropEndpoint { endpoint })
+                    .await?;
             }
             FilterCmd::Shutdown { graceful } => {
                 // Main logic is in error handling
