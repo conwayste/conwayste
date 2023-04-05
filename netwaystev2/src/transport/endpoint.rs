@@ -36,21 +36,21 @@ impl PacketInfo {
 
 /// Transport layer uses this to determine if an endpoint is still active
 struct EndpointMeta {
-    endpoint_timeout:    Duration,
-    last_receive:        Option<Instant>,
-    last_send:           Option<Instant>,
-    notified_of_timeout: bool,
-    notified_of_idle:    bool,
+    endpoint_timeout:      Duration,
+    last_receive:          Option<Instant>,
+    last_send:             Option<Instant>,
+    notified_of_timeout:   bool,
+    last_notified_of_idle: Option<Instant>,
 }
 
 impl EndpointMeta {
     pub fn new(timeout: Duration) -> Self {
         EndpointMeta {
-            endpoint_timeout:    timeout,
-            last_receive:        None,
-            last_send:           None,
-            notified_of_timeout: false,
-            notified_of_idle:    false,
+            endpoint_timeout:      timeout,
+            last_receive:          None,
+            last_send:             None,
+            notified_of_timeout:   false,
+            last_notified_of_idle: None,
         }
     }
 }
@@ -111,7 +111,6 @@ impl<P> TransportEndpointData<P> {
         }
         let meta = self.endpoint_meta.get_mut(&endpoint).unwrap(); // unwrap OK because of upsert_endpoint call above
         meta.last_receive = Some(Instant::now());
-        meta.notified_of_idle = false;
     }
 
     /// Updates the last sent time for the given endpoint. If the endpoint does not exist, a new
@@ -122,7 +121,6 @@ impl<P> TransportEndpointData<P> {
         }
         let meta = self.endpoint_meta.get_mut(&endpoint).unwrap(); // unwrap OK because of upsert_endpoint call above
         meta.last_send = Some(Instant::now());
-        meta.notified_of_idle = false;
     }
 
     /// Enqueues data packets `item` to the transmit queue for the endpoint. Each packet is assigned a transmit id (tid)
@@ -201,19 +199,37 @@ impl<P> TransportEndpointData<P> {
     }
 
     /// Collect a Vec of all endpoints needing an EndpointIdle notify.
+    /// An endpoint gets included in the list if:
+    ///
+    /// * It has been longer than DURATION since an EndpointIdle notification was sent, AND
+    ///
+    /// * (It has been longer than DURATION since the last time a packet was received from the
+    ///    remote) OR (It has been longer than DURATION since the last time a packet was sent to
+    ///    the remote.)
+    ///
+    /// Where DURATION is half the `endpoint_timeout`.
+    ///
+    /// This is intended for sending keep-alive packets. It is expected that after handling, the
+    /// caller will call `mark_endpoint_as_idle_notified` for this endpoint.
     pub fn idle_endpoints_needing_notify(&mut self) -> Vec<Endpoint> {
         let mut idle_unnotified = vec![];
         for (endpoint, endpoint_meta) in &self.endpoint_meta {
-            // Exclude endpoints that we have notified about
-            if endpoint_meta.notified_of_idle {
-                continue;
+            // Exclude endpoints we have notified about recently
+            if let Some(last_notified_of_idle) = endpoint_meta.last_notified_of_idle {
+                if Instant::now() - last_notified_of_idle < endpoint_meta.endpoint_timeout / 2 {
+                    continue;
+                }
             }
+
+            // If it's been too long since the last time a packet was received, notify.
             if let Some(last_receive) = endpoint_meta.last_receive {
                 if Instant::now() - last_receive >= endpoint_meta.endpoint_timeout / 2 {
                     idle_unnotified.push(*endpoint);
                     continue;
                 }
             }
+
+            // If it's been too long since the last time a packet was _sent_, notify.
             if let Some(last_send) = endpoint_meta.last_send {
                 if Instant::now() - last_send >= endpoint_meta.endpoint_timeout / 2 {
                     idle_unnotified.push(*endpoint);
@@ -224,17 +240,9 @@ impl<P> TransportEndpointData<P> {
     }
 
     /// Indicate that an "endpoint idle" TransportNotice for this Endpoint has been sent.
-    /// Returns whether an un-idle entry was found and marked as idle.
-    pub fn mark_endpoint_as_idle_notified(&mut self, endpoint: Endpoint) -> bool {
+    pub fn mark_endpoint_as_idle_notified(&mut self, endpoint: Endpoint) {
         if let Some(endpoint_meta) = self.endpoint_meta.get_mut(&endpoint) {
-            // Return false if already marked as idle
-            if endpoint_meta.notified_of_idle {
-                return false;
-            }
-            endpoint_meta.notified_of_idle = true;
-            true
-        } else {
-            false
+            endpoint_meta.last_notified_of_idle = Some(Instant::now());
         }
     }
 

@@ -755,7 +755,11 @@ impl Filter {
 
                 // Remove the endpoint from the ping list
                 if let None = self.ping_endpoints.remove(&endpoint) {
-                    nwerror!(self, "[F<-A,C] endpoint '{:?}' not found in ping-endpoint map", endpoint)
+                    nwerror!(
+                        self,
+                        "[F<-A,C] endpoint '{:?}' not found in ping-endpoint map",
+                        endpoint
+                    )
                 }
 
                 // Remove the endpoint metadata
