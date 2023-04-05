@@ -133,6 +133,22 @@ impl FilterRspW {
         Ok(FilterRspW { inner: fc })
     }
 
+    fn is_accepted(&self) -> bool {
+        match self.inner {
+            FilterRsp::Accepted => true,
+            _ => false,
+        }
+    }
+
+    #[getter]
+    fn get_variant(&self) -> &str {
+        use FilterRsp::*;
+        match self.inner {
+            Accepted => "Accepted",
+            NoSuchEndpoint { .. } => "NoSuchEndpoint",
+        }
+    }
+
     fn __repr__(&self) -> String {
         format!("{:?}", self.inner)
     }

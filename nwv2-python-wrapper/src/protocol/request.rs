@@ -84,6 +84,26 @@ impl RequestActionW {
         }
     }
 
+    #[getter]
+    fn get_variant(&self) -> &str {
+        use RequestAction::*;
+        match self.inner {
+            None => "None",
+            Connect { .. } => "Connect",
+            Disconnect => "Disconnect",
+            KeepAlive { .. } => "KeepAlive",
+            ListPlayers => "ListPlayers",
+            ChatMessage { .. } => "ChatMessage",
+            ListRooms => "ListRooms",
+            NewRoom { .. } => "NewRoom",
+            JoinRoom { .. } => "JoinRoom",
+            LeaveRoom => "LeaveRoom",
+            SetClientOptions { .. } => "SetClientOptions",
+            DropPattern { .. } => "DropPattern",
+            ClearArea { .. } => "ClearArea",
+        }
+    }
+
     fn __repr__(&self) -> String {
         format!("{:?}", self.inner)
     }

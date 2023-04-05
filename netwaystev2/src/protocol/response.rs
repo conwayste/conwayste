@@ -5,7 +5,6 @@ use strum_macros::{Display, EnumIter, EnumString};
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, EnumString, EnumIter, Display)]
 pub enum ResponseCode {
     // success - these are all 200 in HTTP
-    // TODO: Many of these should contain the sequence number being acknowledged
     OK, // 200 no data
     LoggedIn {
         cookie:         String,
