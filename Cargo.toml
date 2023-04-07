@@ -6,6 +6,7 @@ members = [
   "libconway",
   "dissect-netwayste",
   "nwv2-python-wrapper",
+  "nw-server",
 ]
 
 [profile.dev]
