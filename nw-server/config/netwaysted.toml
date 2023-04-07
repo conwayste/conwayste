@@ -1,0 +1,12 @@
+[server]
+name = "Open For Bidness"
+bind_host = "0.0.0.0"
+bind_port = 2016
+
+# When present, the server will register with the official Conwayste registrar
+[registry]
+public_host = "1.2.3.4"
+public_port = 2016
+
+# Point this to your own registry if you are self-hosting the registrar
+url = "https://registry.conwayste.rs"

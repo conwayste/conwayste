@@ -17,5 +17,8 @@ path = "src/netwaystectl.rs"
 
 [dependencies]
 anyhow = "1.0"
+clap = { version = "4.2.1", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.7"
 tracing = "0.1"
 tracing-subscriber = "0.3"
