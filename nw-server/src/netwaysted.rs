@@ -7,6 +7,7 @@ use toml;
 struct Config {
     server: ServerConfig,
     registry: Option<RegistryConfig>,
+    control: ControlConfig,
 }
 
 #[derive(Deserialize, Debug)]
@@ -23,6 +24,10 @@ struct RegistryConfig {
     url: String,
 }
 
+#[derive(Deserialize, Debug)]
+struct ControlConfig {
+    socket_path: String,
+}
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
