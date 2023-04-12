@@ -61,6 +61,8 @@ fn nwv2_python_wrapper(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<FilterCmdW>()?;
     m.add_class::<FilterRspW>()?;
     m.add_class::<FilterNoticeW>()?;
+    m.add_class::<AuthDecisionW>()?;
+    m.add_class::<ClientAuthFieldsW>()?;
     m.add_class::<BroadcastChatMessageW>()?;
     m.add_class::<ResponseCodeW>()?;
     m.add_class::<RoomListW>()?;

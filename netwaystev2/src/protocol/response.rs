@@ -9,6 +9,9 @@ pub enum ResponseCode {
     LoggedIn {
         cookie:         String,
         server_version: String,
+        // ToDo: should probably have player_name as part of this (allow server giving
+        // client a different name in case of collisions, reserved names, etc.). When
+        // adding it, also add to AuthDecision enum in Filter interface.
     }, // player is logged in -- (cookie, server version)
     JoinedRoom {
         room_name: String,
@@ -39,6 +42,7 @@ pub enum ResponseCode {
     }, // no equivalent in HTTP due to handling at lower (TCP) level
 
     // Misc.
+    // ToDo: need this?
     KeepAlive, // Server's heart is beating
 }
 

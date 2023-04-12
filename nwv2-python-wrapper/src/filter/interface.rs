@@ -6,7 +6,7 @@ use pyo3::prelude::*;
 use crate::common::*;
 use crate::{BroadcastChatMessageW, GameUpdateW, GenStateDiffW, RequestActionW, ResponseCodeW};
 use netwaystev2::common::Endpoint;
-use netwaystev2::filter::{FilterCmd, FilterNotice, FilterRsp};
+use netwaystev2::filter::{AuthDecision, ClientAuthFields, FilterCmd, FilterNotice, FilterRsp};
 use netwaystev2::protocol::{BroadcastChatMessage, GameUpdate};
 
 #[pyclass]
@@ -50,10 +50,12 @@ impl FilterCmdW {
                 vec_from_py! {let updates: Vec<GameUpdate> <- [GameUpdateW] <- get_from_dict(&kwds, "updates")?};
                 FilterCmd::SendGameUpdates { endpoints, updates }
             }
-            "authenticated" => {
+            "completeauthrequest" => {
                 let endpointw: EndpointW = get_from_dict(&kwds, "endpoint")?;
-                FilterCmd::Authenticated {
+                let decisionw: AuthDecisionW = get_from_dict(&kwds, "decision")?;
+                FilterCmd::CompleteAuthRequest {
                     endpoint: endpointw.into(),
+                    decision: decisionw.into(),
                 }
             }
             "changeserverstatus" => {
@@ -234,6 +236,14 @@ impl FilterNoticeW {
                     code:     codew.into(),
                 }
             }
+            "clientauthrequest" => {
+                let endpointw: EndpointW = get_from_dict(&kwds, "endpoint")?;
+                let fieldsw: ClientAuthFieldsW = get_from_dict(&kwds, "fields")?;
+                ClientAuthRequest {
+                    endpoint: endpointw.into(),
+                    fields:   fieldsw.into(),
+                }
+            }
             "endpointtimeout" => {
                 let endpointw: EndpointW = get_from_dict(&kwds, "endpoint")?;
                 EndpointTimeout {
@@ -258,6 +268,7 @@ impl FilterNoticeW {
             NewChats { .. } => "NewChats",
             NewRequestAction { .. } => "NewRequestAction",
             NewResponseCode { .. } => "NewResponseCode",
+            ClientAuthRequest { .. } => "ClientAuthRequest",
             EndpointTimeout { .. } => "EndpointTimeout",
         }
     }
@@ -282,6 +293,14 @@ impl FilterNoticeW {
     fn get_room_count(&self) -> Option<u64> {
         match self.inner {
             FilterNotice::PingResult { room_count, .. } => Some(room_count),
+            _ => None,
+        }
+    }
+
+    #[getter]
+    fn get_client_auth_fields(&self) -> Option<ClientAuthFieldsW> {
+        match self.inner {
+            FilterNotice::ClientAuthRequest { ref fields, .. } => Some(fields.clone().into()),
             _ => None,
         }
     }
@@ -316,6 +335,7 @@ impl FilterNoticeW {
             NewChats { endpoint, .. } => Some(endpoint.into()),
             NewRequestAction { endpoint, .. } => Some(endpoint.into()),
             NewResponseCode { endpoint, .. } => Some(endpoint.into()),
+            ClientAuthRequest { endpoint, .. } => Some(endpoint.into()),
             EndpointTimeout { endpoint, .. } => Some(endpoint.into()),
             _ => None,
         }
@@ -323,5 +343,81 @@ impl FilterNoticeW {
 
     fn __repr__(&self) -> String {
         format!("{:?}", self.inner)
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct AuthDecisionW {
+    inner: AuthDecision,
+}
+
+impl_from_and_to!(AuthDecisionW wraps AuthDecision);
+
+#[pymethods]
+impl AuthDecisionW {
+    #[new]
+    #[pyo3(signature = (variant, **kwds))]
+    fn new(variant: String, kwds: Option<HashMap<String, &PyAny>>) -> PyResult<Self> {
+        let kwds = if let Some(kwds) = kwds { kwds } else { HashMap::new() };
+        use AuthDecision::*;
+        let inner = match variant.to_lowercase().as_str() {
+            "loggedin" => {
+                let cookie: String = get_from_dict(&kwds, "cookie")?;
+                let server_version: String = get_from_dict(&kwds, "server_version")?;
+                LoggedIn { cookie, server_version }
+            }
+            "unauthorized" => {
+                let error_msg: String = get_from_dict(&kwds, "error_msg")?;
+                Unauthorized { error_msg }
+            }
+            _ => {
+                return Err(PyValueError::new_err(format!("invalid variant type: {}", variant)));
+            }
+        };
+        Ok(AuthDecisionW { inner })
+    }
+
+    #[getter]
+    fn get_variant(&self) -> &str {
+        use AuthDecision::*;
+        match self.inner {
+            LoggedIn { .. } => "LoggedIn",
+            Unauthorized { .. } => "Unauthorized",
+        }
+    }
+}
+
+#[pyclass]
+#[derive(Clone, Debug)]
+pub struct ClientAuthFieldsW {
+    inner: ClientAuthFields,
+}
+
+impl_from_and_to!(ClientAuthFieldsW wraps ClientAuthFields);
+
+#[pymethods]
+impl ClientAuthFieldsW {
+    #[new]
+    fn new(player_name: String, client_version: String) -> Self {
+        let inner = ClientAuthFields {
+            player_name,
+            client_version,
+        };
+        ClientAuthFieldsW { inner }
+    }
+
+    #[getter]
+    fn get_player_name(&self) -> &str {
+        &self.inner.player_name
+    }
+
+    #[getter]
+    fn get_client_version(&self) -> &str {
+        &self.inner.client_version
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
     }
 }

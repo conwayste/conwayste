@@ -6,8 +6,7 @@ extern crate log;
 use netwaystev2::common::Endpoint;
 use netwaystev2::filter::{Filter, FilterCmd, FilterMode};
 use netwaystev2::protocol::RequestAction;
-use netwaystev2::transport::Transport;
-use netwaystev2::transport::TransportCmd;
+use netwaystev2::transport::{Transport, TransportCmd, TransportMode};
 
 use anyhow::Result;
 use std::io::Write;
@@ -40,7 +39,7 @@ async fn main() -> Result<()> {
     // (one outgoing and two incoming) for communicating with it.
     let opt_port = Some(0); // 0 means OS picks the port; appropriate for client mode.
     let (mut transport, transport_cmd_tx, transport_rsp_rx, transport_notice_rx) =
-        Transport::new(None, opt_port).await?;
+        Transport::new(None, opt_port, TransportMode::Client).await?;
     let transport_shutdown_watcher = transport.get_shutdown_watcher();
     let local_addr = transport.local_addr(); // Save this for later
 

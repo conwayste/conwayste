@@ -1,6 +1,6 @@
 #[allow(unused)] // ToDo: need this?
 use super::client_update::{ClientGame, ClientRoom};
-use super::interface::{FilterCmd, FilterMode, FilterNotice, FilterRsp, SeqNum};
+use super::interface::{ClientAuthFields, FilterCmd, FilterMode, FilterNotice, FilterRsp, SeqNum};
 use super::ping::LatencyFilter;
 use super::sortedbuffer::SequencedMinHeap;
 use super::PingPong;
@@ -16,11 +16,11 @@ use crate::transport::{
 use crate::{nwdebug, nwerror, nwinfo, nwtrace, nwwarn};
 use anyhow::anyhow;
 use snowflake::ProcessUniqueId;
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::mpsc::{self, error::SendError, Receiver, Sender};
 use tokio::sync::watch;
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     num::Wrapping,
     time::{Duration, Instant},
 };
@@ -47,8 +47,22 @@ pub struct OtherEndClient {
     unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>, // Tracks outgoing Responses
 }
 
+impl OtherEndClient {
+    fn new() -> Self {
+        OtherEndClient {
+            request_actions:              SequencedMinHeap::<RequestAction>::new(),
+            last_request_sequence_seen:   None,
+            last_response_sequence_sent:  None,
+            last_request_seen_timestamp:  None,
+            last_response_sent_timestamp: None,
+            unacked_outgoing_packet_tids: VecDeque::new(),
+        }
+    }
+}
+
 pub struct OtherEndServer {
     player_name: String,
+    cookie: Option<String>,
     // Request/Response below
     response_codes: SequencedMinHeap<ResponseCode>,
     last_request_sequence_sent: Option<SeqNum>,
@@ -56,10 +70,8 @@ pub struct OtherEndServer {
     unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>, // Tracks outgoing Requests
     // Update/UpdateReply below
     room: Option<ClientRoom>,
-    update_reply_tid: Option<ProcessUniqueId>, // At most one outgoing UpdateReply at a time
-    game_update_seq: Option<u64>,              // When a player enters or leaves a room, this gets reset to None
+    game_update_seq: Option<u64>, // When a player enters or leaves a room, this gets reset to None
     server_ping: PingPong,
-    cookie: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -106,6 +118,7 @@ pub struct Filter {
     phase_watch_rx:      watch::Receiver<Phase>,
     /// Endpoints for pinging; the endpoints here aren't necessarily in `per_endpoint`
     ping_endpoints:      HashMap<Endpoint, LatencyFilter<PingPong>>,
+    auth_requests:       HashSet<Endpoint>,
 }
 
 impl Filter {
@@ -122,6 +135,7 @@ impl Filter {
 
         let per_endpoint = HashMap::new();
         let ping_endpoints = HashMap::new();
+        let auth_requests = HashSet::new();
 
         let (phase_watch_tx, phase_watch_rx) = watch::channel(Phase::Running);
 
@@ -138,6 +152,7 @@ impl Filter {
                 phase_watch_tx,
                 phase_watch_rx,
                 ping_endpoints,
+                auth_requests,
             },
             filter_cmd_tx,
             filter_rsp_rx,
@@ -171,11 +186,11 @@ impl Filter {
                                 nwerror!(self, "[F<-T,R] bug in filter layer! Length mismatch between parallel arrays in SendPackets command")
                             }
                             TransportRsp::BufferFull => {
-                                // TODO: understand if there is other action that needs to be taken besides logging
+                                // ToDo: understand if there is other action that needs to be taken besides logging
                                 nwerror!(self, "[F<-T,R] Transmit buffer is full");
                             }
                             TransportRsp::ExceedsMtu {tid, size, mtu} => {
-                                // TODO: understand if there is other action that needs to be taken besides logging
+                                // ToDo: reduce outgoing packet size and resend
                                 nwerror!(self, "[F<-T,R] Packet exceeds MTU size of {}. Tid={} and size is {}", mtu, tid, size);
                             }
                             TransportRsp::EndpointError {error} => {
@@ -193,10 +208,13 @@ impl Filter {
                             } => {
                                 nwtrace!(self, "[F<-T,N] For {:?}, took packet {:?}", endpoint, packet);
                                 if let Err(e) = self.process_transport_packet(endpoint, packet, &mut filter_notice_tx).await {
-                                    //XXX should not return unless it's a SendError
-                                   nwerror!(self, "[F] packet delivery failed: {:?}", e);
-                                   nwerror!(self, "[F] run() exiting");
-                                    return;
+                                    nwerror!(self, "[F] handling of incoming packet failed: {:?}", e);
+
+                                    // Should not return unless it's a SendError
+                                    if e.downcast_ref::<SendError<TransportCmd>>().is_some() || e.downcast_ref::<SendError<FilterNotice>>().is_some() {
+                                        nwerror!(self, "[F] run() exiting");
+                                        return;
+                                    }
                                 } else {
                                     // Nothing to do for Ok
                                 }
@@ -207,8 +225,8 @@ impl Filter {
                                 nwinfo!(self, "[F<-T,N] {:?} timed-out. Dropping.", endpoint);
                                 self.per_endpoint.remove(&endpoint);
                                 if let Err(_) = transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await {
-                                   nwerror!(self, "[F] transport cmd receiver has been dropped");
-                                   nwerror!(self, "[F] run() exiting");
+                                    nwerror!(self, "[F] transport cmd receiver has been dropped");
+                                    nwerror!(self, "[F] run() exiting");
                                     return;
                                 }
                             }
@@ -218,7 +236,7 @@ impl Filter {
                                     // response_ack filled in later (see HACK)
                                     let action = RequestAction::KeepAlive { latest_response_ack: 0 };
                                     if let Err(e) = self.send_request_action_to_server(endpoint, action).await {
-                                       nwwarn!(self, "[F] error sending KeepAlive for idle {:?}: {}", endpoint, e);
+                                        nwwarn!(self, "[F] error sending KeepAlive for idle {:?}: {}", endpoint, e);
                                     }
                                 }
                             }
@@ -227,14 +245,14 @@ impl Filter {
                 }
                 command = self.filter_cmd_rx.recv() => {
                     if let Some(command) = command {
-                       nwtrace!(self, "[F<-A,C] New command: {:?}", command);
+                        nwtrace!(self, "[F<-A,C] New command: {:?}", command);
 
                         if let Err(e) = self.process_filter_command(command).await {
                             if let Some(err) = e.downcast_ref::<FilterError>() {
                                 use FilterError::*;
                                 match err {
                                     ShutdownRequested{graceful} => {
-                                       nwinfo!(self, "[F] shutting down");
+                                        nwinfo!(self, "[F] shutting down");
                                         let phase;
                                         if *graceful {
                                             phase = Phase::ShutdownComplete;
@@ -246,32 +264,32 @@ impl Filter {
                                     }
                                     EndpointNotFound{endpoint} => {
                                         if filter_rsp_tx.send(FilterRsp::NoSuchEndpoint{endpoint: *endpoint}).await.is_err() {
-                                           nwerror!(self, "[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
+                                            nwerror!(self, "[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
                                             return;
                                         }
                                     }
                                     UnexpectedData { mode, .. } => {
-                                       nwerror!(self, "[F] [{:?}] unexpected data: {}", mode, err);
+                                        nwerror!(self, "[F] [{:?}] unexpected data: {}", mode, err);
                                         // TODO: pass error to App layer
                                         if filter_rsp_tx.send(FilterRsp::Accepted).await.is_err() {
-                                           nwerror!(self, "[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
+                                            nwerror!(self, "[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
                                             return;
                                         }
                                     }
                                     InternalError { .. } => {
-                                       nwerror!(self, "[F] internal error: {}", err);
+                                        nwerror!(self, "[F] internal error: {}", err);
                                         // TODO: pass error to App layer
                                         if filter_rsp_tx.send(FilterRsp::Accepted).await.is_err() {
-                                           nwerror!(self, "[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
+                                            nwerror!(self, "[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
                                             return;
                                         }
                                     }
                                 }
                             }
-                           nwerror!(self, "[F<-A,C] command processing failed: {}", e);
+                            nwerror!(self, "[F<-A,C] command processing failed: {}", e);
                         } else {
                             if filter_rsp_tx.send(FilterRsp::Accepted).await.is_err() {
-                               nwerror!(self, "[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
+                                nwerror!(self, "[F] run() exiting -- all receivers on FilterRsp channel have been dropped");
                                 return;
                             }
                         }
@@ -280,10 +298,10 @@ impl Filter {
                 _instant = ping_interval_stream.tick() => {
                     if self.mode.is_client() {
                         if self.ping_endpoints.keys().len() != 0 {
-                           nwinfo!(self, "[F] About to send pings to servers: {:?}", self.ping_endpoints.keys());
+                            nwinfo!(self, "[F] About to send pings to servers: {:?}", self.ping_endpoints.keys());
                         }
                         if let Err(e) = self.send_pings().await {
-                           nwerror!(self, "[F->T,C] Failed to send pings: {}", e);
+                            nwerror!(self, "[F->T,C] Failed to send pings: {}", e);
                         }
                     }
                 }
@@ -298,45 +316,39 @@ impl Filter {
         filter_notice_tx: &mut FilterNotifySend,
     ) -> anyhow::Result<()> {
         if !self.per_endpoint.contains_key(&endpoint) {
-            let mut valid_new_conn = false;
+            let mut ignore_unknown_endpoint = true;
             if self.mode.is_server() {
+                // If I am a server, ignore any incoming packets from unknown hosts other
+                // than GetStatus and Request->Connect (with no new cookie).
                 if let Packet::GetStatus { .. } = &packet {
-                    valid_new_conn = true;
-                } else if let Packet::Request { action, cookie, .. } = &packet {
-                    // Add a new endpoint record if the client connects with a `None` cookie
-                    if let RequestAction::Connect { .. } = action {
-                        if cookie.is_none() {
-                            valid_new_conn = true;
+                    ignore_unknown_endpoint = false;
+                } else if is_valid_connect_packet(&packet) {
+                    ignore_unknown_endpoint = false;
 
-                            self.per_endpoint.insert(
-                                endpoint,
-                                FilterEndpointData::OtherEndClient(OtherEndClient {
-                                    request_actions:              SequencedMinHeap::<RequestAction>::new(),
-                                    last_request_sequence_seen:   None,
-                                    last_response_sequence_sent:  None,
-                                    last_request_seen_timestamp:  None,
-                                    last_response_sent_timestamp: None,
-                                    unacked_outgoing_packet_tids: VecDeque::new(),
-                                }),
-                            );
-                            self.transport_cmd_tx
-                                .send(TransportCmd::NewEndpoint {
-                                    endpoint,
-                                    timeout: DEFAULT_ENDPOINT_TIMEOUT_INTERVAL,
-                                })
-                                .await?;
-                        }
-                    }
+                    // New client connection!
+
+                    self.per_endpoint
+                        .insert(endpoint, FilterEndpointData::OtherEndClient(OtherEndClient::new()));
+                    self.transport_cmd_tx
+                        .send(TransportCmd::NewEndpoint {
+                            endpoint,
+                            timeout: DEFAULT_ENDPOINT_TIMEOUT_INTERVAL,
+                        })
+                        .await?;
                 }
             } else {
-                // FilterMode::Client
+                // If I am a client, ignore any incoming packets from unknown hosts (servers
+                // I previously sent pings to are excluded).
                 if self.ping_endpoints.contains_key(&endpoint) {
-                    valid_new_conn = true; // This is misleading as it's not really new, nor is it really a connection.
+                    ignore_unknown_endpoint = false;
                 }
             }
 
-            if !valid_new_conn {
+            if ignore_unknown_endpoint {
                 // The connection was not accepted for this new endpoint. No need to log it.
+                if self.mode.is_server() {
+                    self.send_not_connected(endpoint).await;
+                }
                 return Ok(());
             }
         }
@@ -345,10 +357,11 @@ impl Filter {
         match packet {
             Packet::Request {
                 sequence,
-                action,
+                ref action,
                 response_ack,
-                ..
+                cookie,
             } => {
+                //XXX cookie must match, if not a Connect action
                 let client;
                 let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
                 match endpoint_data {
@@ -390,7 +403,7 @@ impl Filter {
                         .await?;
                 }
 
-                client.request_actions.add(sequence, action);
+                client.request_actions.add(sequence, action.clone());
 
                 // Loop over the heap, finding all requests which can be sent to the app layer based on their sequence number.
                 // If any are found, send them to the app layer and advance the last seen sequence number.
@@ -405,12 +418,15 @@ impl Filter {
                     .last_request_sequence_seen
                     .expect("sequence number cannot be None by this point"); // expect OK because of above check
                 while let Some(request_action) = client.request_actions.take_if_matching(expected_seq_num.0) {
-                    filter_notice_tx
-                        .send(FilterNotice::NewRequestAction {
+                    let notice = if let Some(caf) = client_auth_fields_from_connect_packet(&packet) {
+                        FilterNotice::ClientAuthRequest { endpoint, fields: caf }
+                    } else {
+                        FilterNotice::NewRequestAction {
                             endpoint,
                             action: request_action,
-                        })
-                        .await?;
+                        }
+                    };
+                    filter_notice_tx.send(notice).await?;
                     *expected_seq_num += Wrapping(1);
                 }
             }
@@ -544,8 +560,8 @@ impl Filter {
 
                 server.server_ping = ping;
 
-                // At this point, it's likely we will need a new UpdateReply packet
-                server.new_update_reply(endpoint, &mut self.transport_cmd_tx).await?;
+                // Send reply (even if unchanged)
+                server.send_update_reply(endpoint, &mut self.transport_cmd_tx).await?;
             }
             Packet::Status {
                 player_count,
@@ -597,13 +613,37 @@ impl Filter {
 
                 self.send_server_status(endpoint, ping).await?;
             }
-            // TODO: Add handling for Update and UpdateReply, then delete following catch-all arm!!!!!!!
+            // TODO: Add handling for UpdateReply (_with_ cookie validation), then delete following catch-all arm!!!!!!!
             _ => {
                 nwerror!(self, "FIXME stub {:?}", packet);
             }
         }
 
         Ok(())
+    }
+
+    async fn send_not_connected(&self, endpoint: Endpoint) {
+        let packets = vec![Packet::Response {
+            code:        ResponseCode::NotConnected {
+                error_msg: "Unknown client".into(),
+            },
+            sequence:    1,
+            request_ack: None,
+        }];
+
+        let packet_infos = vec![PacketSettings {
+            tid:            ProcessUniqueId::new(),
+            retry_interval: Duration::ZERO, // Do not retry
+        }];
+
+        let _ = self
+            .transport_cmd_tx
+            .send(TransportCmd::SendPackets {
+                endpoint,
+                packet_infos,
+                packets,
+            })
+            .await;
     }
 
     /// Warning: panics if not Server filter mode!
@@ -656,50 +696,7 @@ impl Filter {
                 self.send_request_action_to_server(endpoint, action).await?
             }
             FilterCmd::SendResponseCode { endpoint, code } => {
-                let client;
-                match self.per_endpoint.get_mut(&endpoint) {
-                    Some(FilterEndpointData::OtherEndServer { .. }) => {
-                        return Err(anyhow!(FilterError::UnexpectedData {
-                            mode:         self.mode.clone(),
-                            invalid_data: "ResponseCodes are not sent to servers".to_owned(),
-                        }));
-                    }
-                    Some(FilterEndpointData::OtherEndClient(other_end_client)) => {
-                        client = other_end_client;
-                    }
-                    None => return Err(anyhow!(FilterError::EndpointNotFound { endpoint })),
-                }
-                client.last_response_sent_timestamp = Some(Instant::now());
-
-                if let Some(ref mut sn) = client.last_response_sequence_sent {
-                    *sn += Wrapping(1u64);
-                } else {
-                    client.last_response_sequence_sent = Some(Wrapping(1));
-                }
-
-                // Unwrap ok b/c the immediate check above guarantees Some(..)
-                let sequence = client.last_response_sequence_sent.unwrap().0;
-
-                let request_ack = client.last_request_sequence_seen.map(|request_sn| request_sn.0);
-
-                let packets = vec![Packet::Response {
-                    code,
-                    sequence,
-                    request_ack,
-                }];
-
-                let packet_infos = vec![PacketSettings {
-                    tid:            ProcessUniqueId::new(),
-                    retry_interval: Duration::ZERO,
-                }];
-
-                self.transport_cmd_tx
-                    .send(TransportCmd::SendPackets {
-                        endpoint,
-                        packet_infos,
-                        packets,
-                    })
-                    .await?;
+                self.send_response_code(endpoint, code).await?;
             }
             FilterCmd::SendChats { endpoints, messages: _ } => {
                 for endpoint in endpoints {
@@ -707,7 +704,7 @@ impl Filter {
                         Some(FilterEndpointData::OtherEndServer { .. }) => {
                             return Err(anyhow!(FilterError::UnexpectedData {
                                 mode:         self.mode.clone(),
-                                invalid_data: "ResponseCodes are not sent to servers".to_owned(),
+                                invalid_data: "Chats are not sent to servers".to_owned(),
                             }));
                         }
                         Some(FilterEndpointData::OtherEndClient { .. }) => {
@@ -722,7 +719,12 @@ impl Filter {
                 endpoints: _,
                 updates: _,
             } => {}
-            FilterCmd::Authenticated { endpoint: _ } => {} // TODO: should probably have player_name as part of this
+            FilterCmd::CompleteAuthRequest { endpoint, decision } => {
+                let code: ResponseCode = decision.into();
+                //XXX save cookie to OtherEndClient and check for incoming packets
+                self.send_response_code(endpoint, code).await?;
+                self.auth_requests.remove(&endpoint);
+            }
             FilterCmd::SendGenStateDiff { endpoints: _, diff: _ } => {}
             FilterCmd::AddPingEndpoints { endpoints } => {
                 for e in endpoints {
@@ -751,21 +753,16 @@ impl Filter {
                 self.ping_endpoints.clear();
             }
             FilterCmd::DropEndpoint { endpoint } => {
-                nwinfo!(self, "[F<-A,C] dropping endpoint: {:?}", endpoint);
+                nwinfo!(self, "[F<-A,C] dropping {:?}", endpoint);
 
                 // Remove the endpoint from the ping list
-                if let None = self.ping_endpoints.remove(&endpoint) {
-                    nwerror!(
-                        self,
-                        "[F<-A,C] endpoint '{:?}' not found in ping-endpoint map",
-                        endpoint
-                    )
-                }
+                self.ping_endpoints.remove(&endpoint);
 
                 // Remove the endpoint metadata
-                if let None = self.per_endpoint.remove(&endpoint) {
-                    nwerror!(self, "[F<-A,C] endpoint '{:?}' not found in per-endpoint map", endpoint)
-                }
+                self.per_endpoint.remove(&endpoint);
+
+                // Drop auth_request data
+                self.auth_requests.remove(&endpoint);
 
                 // Inform the transport to drop the endpoint
                 self.transport_cmd_tx
@@ -918,6 +915,79 @@ impl Filter {
             .await
             .map_err(|e| anyhow!(e))
     }
+
+    async fn send_response_code(&mut self, endpoint: Endpoint, code: ResponseCode) -> anyhow::Result<()> {
+        let client;
+        match self.per_endpoint.get_mut(&endpoint) {
+            Some(FilterEndpointData::OtherEndServer { .. }) => {
+                return Err(anyhow!(FilterError::UnexpectedData {
+                    mode:         self.mode.clone(),
+                    invalid_data: "ResponseCodes are not sent to servers".to_owned(),
+                }));
+            }
+            Some(FilterEndpointData::OtherEndClient(other_end_client)) => {
+                client = other_end_client;
+            }
+            None => return Err(anyhow!(FilterError::EndpointNotFound { endpoint })),
+        }
+        client.last_response_sent_timestamp = Some(Instant::now());
+
+        if let Some(ref mut sn) = client.last_response_sequence_sent {
+            *sn += Wrapping(1u64);
+        } else {
+            client.last_response_sequence_sent = Some(Wrapping(1));
+        }
+
+        // Unwrap ok b/c the immediate check above guarantees Some(..)
+        let sequence = client.last_response_sequence_sent.unwrap().0;
+
+        let request_ack = client.last_request_sequence_seen.map(|request_sn| request_sn.0);
+
+        let packets = vec![Packet::Response {
+            code,
+            sequence,
+            request_ack,
+        }];
+
+        let packet_infos = vec![PacketSettings {
+            tid:            ProcessUniqueId::new(),
+            retry_interval: Duration::ZERO, // ToDo: figure out if no retry is OK
+        }];
+
+        self.transport_cmd_tx
+            .send(TransportCmd::SendPackets {
+                endpoint,
+                packet_infos,
+                packets,
+            })
+            .await
+            .map_err(|e| anyhow!(e))
+    }
+}
+
+fn is_valid_connect_packet(packet: &Packet) -> bool {
+    if let Packet::Request { action, cookie, .. } = packet {
+        if let RequestAction::Connect { .. } = action {
+            if cookie.is_none() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn client_auth_fields_from_connect_packet(packet: &Packet) -> Option<ClientAuthFields> {
+    if let Packet::Request { action, cookie, .. } = packet {
+        if let RequestAction::Connect { name, client_version } = action {
+            if cookie.is_none() {
+                return Some(ClientAuthFields {
+                    player_name:    name.clone(),
+                    client_version: client_version.clone(),
+                });
+            }
+        }
+    }
+    None
 }
 
 // I've deemed 'far away' to mean the half of the max value of the type.
@@ -982,15 +1052,14 @@ impl OtherEndServer {
     fn new(player_name: String) -> Self {
         OtherEndServer {
             player_name,
+            cookie: None,
             response_codes: SequencedMinHeap::<ResponseCode>::new(),
             last_request_sequence_sent: None,
             last_response_sequence_seen: None,
             unacked_outgoing_packet_tids: VecDeque::new(),
-            update_reply_tid: None,
             room: None,
             game_update_seq: None,
             server_ping: PingPong::pong(0),
-            cookie: None,
         }
     }
 
@@ -999,22 +1068,16 @@ impl OtherEndServer {
         unimplemented!();
     }
 
-    async fn new_update_reply(
+    async fn send_update_reply(
         &mut self,
         server_endpoint: Endpoint,
         transport_cmd_tx: &mut TransportCmdSend,
     ) -> anyhow::Result<()> {
-        // Drop the old one
-        if let Some(update_reply_tid) = self.update_reply_tid.take() {
-            transport_cmd_tx
-                .send(TransportCmd::DropPacket {
-                    endpoint: server_endpoint,
-                    tid:      update_reply_tid,
-                })
-                .await?;
-        }
-
-        // Send a new one
+        let cookie = self
+            .cookie
+            .as_ref()
+            .ok_or_else(|| anyhow!("No cookie so cannot send UpdateReply -- not logged in?"))?
+            .clone();
         let mut last_chat_seq = None;
         let mut last_full_gen = None;
         let mut partial_gen = None;
@@ -1026,7 +1089,7 @@ impl OtherEndServer {
             }
         }
         let packets = vec![Packet::UpdateReply {
-            cookie: "".to_owned(), //TODO: Get cookie
+            cookie,
             last_chat_seq,
             last_game_update_seq: self.game_update_seq,
             last_full_gen,
@@ -1034,11 +1097,10 @@ impl OtherEndServer {
             pong: self.server_ping,
         }];
 
-        let tid = ProcessUniqueId::new();
-        self.update_reply_tid = Some(tid);
+        // Only send once
         let packet_infos = vec![PacketSettings {
-            tid,
-            retry_interval: DEFAULT_RETRY_INTERVAL,
+            tid:            ProcessUniqueId::new(),
+            retry_interval: Duration::ZERO,
         }];
         transport_cmd_tx
             .send(TransportCmd::SendPackets {

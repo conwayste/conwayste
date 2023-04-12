@@ -27,8 +27,9 @@ pub enum FilterCmd {
         endpoints: Vec<Endpoint>,
         updates:   Vec<GameUpdate>,
     },
-    Authenticated {
+    CompleteAuthRequest {
         endpoint: Endpoint,
+        decision: AuthDecision, // Subset of ResponseCode
     },
     ChangeServerStatus {
         // Keep this in sync with Packet::Status variant.
@@ -97,6 +98,11 @@ pub enum FilterNotice {
         endpoint: Endpoint, // This is a server's endpoint; not much point in having this...
         code:     ResponseCode,
     },
+    ClientAuthRequest {
+        // At most one auth request outstanding per endpoint
+        endpoint: Endpoint,
+        fields:   ClientAuthFields,
+    },
     EndpointTimeout {
         endpoint: Endpoint,
     },
@@ -145,4 +151,33 @@ impl FilterMode {
             Server(ref mut status) => Some(status),
         }
     }
+}
+
+//XXX use
+#[derive(Debug, Clone)]
+pub enum AuthDecision {
+    LoggedIn {
+        cookie:         String,
+        server_version: String,
+    }, // player is logged in -- (cookie, server version)
+    Unauthorized {
+        error_msg: String,
+    }, // 401 not logged in
+}
+
+impl Into<ResponseCode> for AuthDecision {
+    fn into(self) -> ResponseCode {
+        use AuthDecision::*;
+        match self {
+            LoggedIn { cookie, server_version } => ResponseCode::LoggedIn { cookie, server_version },
+            Unauthorized { error_msg } => ResponseCode::Unauthorized { error_msg },
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClientAuthFields {
+    pub player_name:    String,
+    pub client_version: String,
+    // ToDo: more here; whatever Filter layer knows that would help App layer make Auth decision
 }
