@@ -117,7 +117,7 @@ impl PacketW {
         format!("{:?}", self.inner)
     }
 
-    #[pyo3(signature = (member = "\"ping_nonce\""))]
+    #[pyo3(signature = (member = "ping_nonce"))]
     fn get_status(&self, py: Python<'_>, member: &str) -> PyResult<Py<PyAny>> {
         match self.inner {
             Packet::GetStatus { ref ping } => match member {
@@ -130,7 +130,7 @@ impl PacketW {
         };
     }
 
-    #[pyo3(signature = (member = "\"pong_nonce\""))]
+    #[pyo3(signature = (member = "pong_nonce"))]
     fn status(&self, py: Python<'_>, member: &str) -> PyResult<Py<PyAny>> {
         match self.inner {
             Packet::Status {
@@ -153,7 +153,7 @@ impl PacketW {
         };
     }
 
-    #[pyo3(signature = (member = "\"sequence\""))]
+    #[pyo3(signature = (member = "sequence"))]
     fn request(&self, py: Python<'_>, member: &str) -> PyResult<Py<PyAny>> {
         match self.inner {
             Packet::Request {

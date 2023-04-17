@@ -1,6 +1,7 @@
 use std::{fmt::Display, num::Wrapping};
 
 use conway::universe::GenStateDiff;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 use super::ServerStatus;
 use crate::{
@@ -181,3 +182,11 @@ pub struct ClientAuthFields {
     pub client_version: String,
     // ToDo: more here; whatever Filter layer knows that would help App layer make Auth decision
 }
+
+// Not really interface stuff below, technically.
+pub type FilterCmdSend = Sender<FilterCmd>;
+pub type FilterCmdRecv = Receiver<FilterCmd>;
+pub type FilterRspSend = Sender<FilterRsp>;
+pub type FilterRspRecv = Receiver<FilterRsp>;
+pub type FilterNotifySend = Sender<FilterNotice>;
+pub type FilterNotifyRecv = Receiver<FilterNotice>;

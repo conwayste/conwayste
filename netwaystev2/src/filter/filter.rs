@@ -1,9 +1,8 @@
-#[allow(unused)] // ToDo: need this?
-use super::client_update::{ClientGame, ClientRoom};
 use super::interface::{ClientAuthFields, FilterCmd, FilterMode, FilterNotice, FilterRsp, SeqNum};
 use super::ping::LatencyFilter;
-use super::sortedbuffer::SequencedMinHeap;
-use super::PingPong;
+#[allow(unused)] // ToDo: need this?
+use super::{ClientRoom, FilterEndpointData, FilterError, OtherEndClient, OtherEndServer, PerEndpoint, PingPong};
+use super::{FilterCmdRecv, FilterCmdSend, FilterNotifyRecv, FilterNotifySend, FilterRspRecv, FilterRspSend};
 use crate::common::{Endpoint, ShutdownWatcher};
 #[allow(unused)] // ToDo: need this?
 use crate::protocol::{GameUpdate, GenStateDiffPart, Packet, RequestAction, ResponseCode};
@@ -16,7 +15,7 @@ use crate::transport::{
 use crate::{nwdebug, nwerror, nwinfo, nwtrace, nwwarn};
 use anyhow::anyhow;
 use snowflake::ProcessUniqueId;
-use tokio::sync::mpsc::{self, error::SendError, Receiver, Sender};
+use tokio::sync::mpsc::{self, error::SendError};
 use tokio::sync::watch;
 
 use std::{
@@ -32,69 +31,6 @@ pub(crate) enum SeqNumAdvancement {
     OutOfOrder,
     Duplicate,
 }
-
-pub enum FilterEndpointData {
-    OtherEndClient(OtherEndClient),
-    OtherEndServer(OtherEndServer),
-}
-
-pub struct OtherEndClient {
-    request_actions:              SequencedMinHeap<RequestAction>,
-    last_request_sequence_seen:   Option<SeqNum>,
-    last_response_sequence_sent:  Option<SeqNum>,
-    last_request_seen_timestamp:  Option<Instant>,
-    last_response_sent_timestamp: Option<Instant>,
-    unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>, // Tracks outgoing Responses
-}
-
-impl OtherEndClient {
-    fn new() -> Self {
-        OtherEndClient {
-            request_actions:              SequencedMinHeap::<RequestAction>::new(),
-            last_request_sequence_seen:   None,
-            last_response_sequence_sent:  None,
-            last_request_seen_timestamp:  None,
-            last_response_sent_timestamp: None,
-            unacked_outgoing_packet_tids: VecDeque::new(),
-        }
-    }
-}
-
-pub struct OtherEndServer {
-    player_name: String,
-    cookie: Option<String>,
-    // Request/Response below
-    response_codes: SequencedMinHeap<ResponseCode>,
-    last_request_sequence_sent: Option<SeqNum>,
-    last_response_sequence_seen: Option<SeqNum>,
-    unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>, // Tracks outgoing Requests
-    // Update/UpdateReply below
-    room: Option<ClientRoom>,
-    game_update_seq: Option<u64>, // When a player enters or leaves a room, this gets reset to None
-    server_ping: PingPong,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum FilterError {
-    #[error("Filter mode ({mode:?}) is not configured to receive {invalid_data}")]
-    UnexpectedData {
-        mode:         FilterMode,
-        invalid_data: String,
-    },
-    #[error("Internal Filter layer error: {problem}")]
-    InternalError { problem: String },
-    #[error("Filter does not contain an entry for the endpoint: {endpoint:?}")]
-    EndpointNotFound { endpoint: Endpoint },
-    #[error("Filter is shutting down. Graceful: {graceful}")]
-    ShutdownRequested { graceful: bool },
-}
-
-pub type FilterCmdSend = Sender<FilterCmd>;
-type FilterCmdRecv = Receiver<FilterCmd>;
-type FilterRspSend = Sender<FilterRsp>;
-pub type FilterRspRecv = Receiver<FilterRsp>;
-pub type FilterNotifySend = Sender<FilterNotice>;
-pub type FilterNotifyRecv = Receiver<FilterNotice>;
 
 pub type FilterInit = (Filter, FilterCmdSend, FilterRspRecv, FilterNotifyRecv);
 
@@ -113,7 +49,7 @@ pub struct Filter {
     filter_rsp_tx:       FilterRspSend,
     filter_notice_tx:    FilterNotifySend,
     mode:                FilterMode,
-    per_endpoint:        HashMap<Endpoint, FilterEndpointData>,
+    per_endpoint:        PerEndpoint,
     phase_watch_tx:      watch::Sender<Phase>,
     phase_watch_rx:      watch::Receiver<Phase>,
     /// Endpoints for pinging; the endpoints here aren't necessarily in `per_endpoint`
@@ -133,7 +69,7 @@ impl Filter {
         let (filter_notice_tx, filter_notice_rx): (FilterNotifySend, FilterNotifyRecv) =
             mpsc::channel(FILTER_CHANNEL_LEN);
 
-        let per_endpoint = HashMap::new();
+        let per_endpoint = PerEndpoint::new();
         let ping_endpoints = HashMap::new();
         let auth_requests = HashSet::new();
 
@@ -359,23 +295,21 @@ impl Filter {
                 sequence,
                 ref action,
                 response_ack,
-                cookie,
+                ref cookie,
             } => {
-                //XXX cookie must match, if not a Connect action
-                let client;
-                let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
-                match endpoint_data {
-                    FilterEndpointData::OtherEndServer { .. } => {
-                        return Err(anyhow!(FilterError::UnexpectedData {
-                            mode:         self.mode.clone(),
-                            invalid_data: "RequestAction".to_owned(),
-                        }));
-                    }
-                    FilterEndpointData::OtherEndClient(other_end_client) => {
-                        client = other_end_client;
+                let client = self.per_endpoint.other_end_client_ref_mut(
+                    &endpoint,
+                    &self.mode,
+                    Some("RequestAction".to_owned()),
+                )?;
+                client.last_request_seen_timestamp = Some(Instant::now());
+
+                match action {
+                    RequestAction::Connect { .. } => {} // No cookie OK here
+                    _ => {
+                        //XXX cookie must match, if not a Connect action
                     }
                 }
-                client.last_request_seen_timestamp = Some(Instant::now());
 
                 match determine_seq_num_advancement(sequence, client.last_request_sequence_seen) {
                     SeqNumAdvancement::Duplicate => {
@@ -435,19 +369,11 @@ impl Filter {
                 request_ack,
                 code,
             } => {
-                let server;
-                let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
-                match endpoint_data {
-                    FilterEndpointData::OtherEndClient { .. } => {
-                        return Err(anyhow!(FilterError::UnexpectedData {
-                            mode:         self.mode.clone(),
-                            invalid_data: "ResponseCode".to_owned(),
-                        }));
-                    }
-                    FilterEndpointData::OtherEndServer(other_end_server) => {
-                        server = other_end_server;
-                    }
-                }
+                let server = self.per_endpoint.other_end_server_ref_mut(
+                    &endpoint,
+                    &self.mode,
+                    Some("ResponseCode".to_owned()),
+                )?;
 
                 match determine_seq_num_advancement(sequence, server.last_response_sequence_seen) {
                     SeqNumAdvancement::Duplicate => {
@@ -524,19 +450,9 @@ impl Filter {
                 universe_update,
                 ping,
             } => {
-                let server;
-                let endpoint_data = self.per_endpoint.get_mut(&endpoint).unwrap();
-                match endpoint_data {
-                    FilterEndpointData::OtherEndClient { .. } => {
-                        return Err(anyhow!(FilterError::UnexpectedData {
-                            mode:         self.mode.clone(),
-                            invalid_data: "Update".to_owned(),
-                        }));
-                    }
-                    FilterEndpointData::OtherEndServer(other_end_server) => {
-                        server = other_end_server;
-                    }
-                }
+                let server =
+                    self.per_endpoint
+                        .other_end_server_ref_mut(&endpoint, &self.mode, Some("Update".to_owned()))?;
                 if let Some(ref mut room) = server.room {
                     if let Some(ref mut game) = room.game {
                         if let Some(gen_state_diff) = game.process_genstate_diff_part(universe_update)? {
@@ -700,18 +616,12 @@ impl Filter {
             }
             FilterCmd::SendChats { endpoints, messages: _ } => {
                 for endpoint in endpoints {
-                    match self.per_endpoint.get_mut(&endpoint) {
-                        Some(FilterEndpointData::OtherEndServer { .. }) => {
-                            return Err(anyhow!(FilterError::UnexpectedData {
-                                mode:         self.mode.clone(),
-                                invalid_data: "Chats are not sent to servers".to_owned(),
-                            }));
-                        }
-                        Some(FilterEndpointData::OtherEndClient { .. }) => {
-                            // TODO: send all the messages to this client
-                        }
-                        None => return Err(anyhow!(FilterError::EndpointNotFound { endpoint })),
-                    }
+                    let _client = self.per_endpoint.other_end_client_ref_mut(
+                        &endpoint,
+                        &self.mode,
+                        Some("Chats are not sent to servers".to_owned()),
+                    )?;
+                    // TODO: send all the messages to this client (rename _client to client)
                 }
             }
             // TODO: implement these
@@ -721,7 +631,13 @@ impl Filter {
             } => {}
             FilterCmd::CompleteAuthRequest { endpoint, decision } => {
                 let code: ResponseCode = decision.into();
-                //XXX save cookie to OtherEndClient and check for incoming packets
+                // ToDo: if LoggedIn and cookie is None, generate a random one (and save)
+                match code {
+                    ResponseCode::LoggedIn { ref cookie, .. } => {
+                        //XXX save cookie to OtherEndClient
+                    }
+                    _ => {}
+                }
                 self.send_response_code(endpoint, code).await?;
                 self.auth_requests.remove(&endpoint);
             }
@@ -856,19 +772,9 @@ impl Filter {
         endpoint: Endpoint,
         mut action: RequestAction,
     ) -> anyhow::Result<()> {
-        let server;
-        match self.per_endpoint.get_mut(&endpoint) {
-            Some(FilterEndpointData::OtherEndClient(..)) => {
-                return Err(anyhow!(FilterError::UnexpectedData {
-                    mode:         self.mode.clone(),
-                    invalid_data: "RequestActions are not sent to clients".to_owned(),
-                }));
-            }
-            Some(FilterEndpointData::OtherEndServer(other_end_server)) => {
-                server = other_end_server;
-            }
-            None => return Err(anyhow!(FilterError::EndpointNotFound { endpoint })),
-        }
+        let server =
+            self.per_endpoint
+                .other_end_server_ref_mut(&endpoint, &self.mode, Some("ResponseCode".to_owned()))?;
 
         if let Some(ref mut sn) = server.last_request_sequence_sent {
             *sn += Wrapping(1u64);
@@ -917,19 +823,11 @@ impl Filter {
     }
 
     async fn send_response_code(&mut self, endpoint: Endpoint, code: ResponseCode) -> anyhow::Result<()> {
-        let client;
-        match self.per_endpoint.get_mut(&endpoint) {
-            Some(FilterEndpointData::OtherEndServer { .. }) => {
-                return Err(anyhow!(FilterError::UnexpectedData {
-                    mode:         self.mode.clone(),
-                    invalid_data: "ResponseCodes are not sent to servers".to_owned(),
-                }));
-            }
-            Some(FilterEndpointData::OtherEndClient(other_end_client)) => {
-                client = other_end_client;
-            }
-            None => return Err(anyhow!(FilterError::EndpointNotFound { endpoint })),
-        }
+        let client = self.per_endpoint.other_end_client_ref_mut(
+            &endpoint,
+            &self.mode,
+            Some("ResponseCodes are not sent to servers".to_owned()),
+        )?;
         client.last_response_sent_timestamp = Some(Instant::now());
 
         if let Some(ref mut sn) = client.last_response_sequence_sent {
@@ -1045,164 +943,5 @@ fn take_tids_to_drop(
         } else {
             return tids_to_drop;
         }
-    }
-}
-
-impl OtherEndServer {
-    fn new(player_name: String) -> Self {
-        OtherEndServer {
-            player_name,
-            cookie: None,
-            response_codes: SequencedMinHeap::<ResponseCode>::new(),
-            last_request_sequence_sent: None,
-            last_response_sequence_seen: None,
-            unacked_outgoing_packet_tids: VecDeque::new(),
-            room: None,
-            game_update_seq: None,
-            server_ping: PingPong::pong(0),
-        }
-    }
-
-    fn process_match(&mut self, _room: &str, _expire_secs: u32) -> anyhow::Result<()> {
-        // TODO
-        unimplemented!();
-    }
-
-    async fn send_update_reply(
-        &mut self,
-        server_endpoint: Endpoint,
-        transport_cmd_tx: &mut TransportCmdSend,
-    ) -> anyhow::Result<()> {
-        let cookie = self
-            .cookie
-            .as_ref()
-            .ok_or_else(|| anyhow!("No cookie so cannot send UpdateReply -- not logged in?"))?
-            .clone();
-        let mut last_chat_seq = None;
-        let mut last_full_gen = None;
-        let mut partial_gen = None;
-        if let Some(ref room) = self.room {
-            last_chat_seq = room.last_chat_seq;
-            if let Some(ref game) = room.game {
-                last_full_gen = game.last_full_gen;
-                partial_gen = game.partial_gen.clone();
-            }
-        }
-        let packets = vec![Packet::UpdateReply {
-            cookie,
-            last_chat_seq,
-            last_game_update_seq: self.game_update_seq,
-            last_full_gen,
-            partial_gen,
-            pong: self.server_ping,
-        }];
-
-        // Only send once
-        let packet_infos = vec![PacketSettings {
-            tid:            ProcessUniqueId::new(),
-            retry_interval: Duration::ZERO,
-        }];
-        transport_cmd_tx
-            .send(TransportCmd::SendPackets {
-                endpoint: server_endpoint,
-                packet_infos,
-                packets,
-            })
-            .await?;
-        Ok(())
-    }
-
-    async fn process_game_updates(
-        &mut self,
-        endpoint: Endpoint,
-        game_update_seq: Option<u64>,
-        game_updates: &[GameUpdate],
-        filter_notice_tx: &FilterNotifySend,
-    ) -> anyhow::Result<()> {
-        let mut start_idx = None;
-        // We are comparing game update sequence number to what the server just sent us to decide
-        // what game updates have we already processed, what game updates we can process now, and
-        // what updates are too far ahead to be processed.
-        match (self.game_update_seq, game_update_seq) {
-            (None, None) => {} // No-op
-            (Some(_), None) => {
-                // We previously had Some(...), but the server just sent None -- reset!
-                debug!("c[F] reset game_update_seq");
-                self.game_update_seq = None;
-            }
-            (None, Some(_)) => {
-                start_idx = Some(0);
-            }
-            (Some(seen_seq), Some(recvd_seq)) => {
-                // recvd_seq is the offset of `game_updates` in the sequence that's shared
-                // between client and server.
-                // seen_seq  |  recvd_seq | meaning
-                //    5            7          can't do anything with this -- missing GameUpdate #6
-                //    5            6          start processing at index 0 in game_updates
-                //    5            5          overlap -- already got GameUpdate #5; start processing at index 1
-                //    5            1          overlap -- already got GameUpdate #5; start processing at index 5
-                if seen_seq + 1 >= recvd_seq {
-                    let i = seen_seq + 1 - recvd_seq;
-                    start_idx = if i as usize >= game_updates.len() {
-                        // All of these updates were already processed
-                        None
-                    } else {
-                        Some(i)
-                    };
-                } else {
-                    // The start of the `game_updates` server just sent us is missing one
-                    // or more that we need next -- in other words, it's too far ahead.
-                    start_idx = None;
-                }
-            }
-        }
-        if let Some(_start_idx) = start_idx {
-            if self.room.is_none() {
-                if game_updates.len() == 1 {
-                    let game_update = &game_updates[0];
-                    match game_update {
-                        GameUpdate::Match { room, expire_secs } => {
-                            self.process_match(&room, *expire_secs)?;
-                            self.game_update_seq.as_mut().map(|seq| *seq += 1);
-                            // Increment
-                        }
-                        _ => {
-                            return Err(anyhow!("we are in the lobby and got a non-Match game update"));
-                        }
-                    }
-                } else {
-                    return Err(anyhow!(
-                        "we are in the lobby and getting more than one game update at a time"
-                    ));
-                }
-            }
-
-            // Out of the game updates we got from the server, process the ones we haven't already
-            // processed.
-            for i in (_start_idx as usize)..game_updates.len() {
-                if let Some(ref mut room) = self.room {
-                    if let Err(e) = room
-                        .process_game_update(endpoint, &game_updates[i], filter_notice_tx)
-                        .await
-                    {
-                        error!("c[F] failed to process game update {:?}: {}", game_updates[i], e);
-                    }
-
-                    match &game_updates[i] {
-                        GameUpdate::RoomDeleted => {
-                            if i != game_updates.len() {
-                                warn!("c[F] got a RoomDeleted but it wasn't the last game update; the rest will be ignored");
-                                self.room = None;
-                                self.game_update_seq = None;
-                                break;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                self.game_update_seq.as_mut().map(|seq| *seq += 1); // Increment by 1 because we just handled a game update
-            }
-        }
-        Ok(())
     }
 }
