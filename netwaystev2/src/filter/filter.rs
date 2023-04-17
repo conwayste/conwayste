@@ -13,7 +13,8 @@ use crate::transport::{
 };
 #[allow(unused)]
 use crate::{nwdebug, nwerror, nwinfo, nwtrace, nwwarn};
-use anyhow::anyhow;
+#[allow(unused)]
+use anyhow::{anyhow, bail};
 use snowflake::ProcessUniqueId;
 use tokio::sync::mpsc::{self, error::SendError};
 use tokio::sync::watch;
@@ -305,7 +306,15 @@ impl Filter {
                 match action {
                     RequestAction::Connect { .. } => {} // No cookie OK here
                     _ => {
-                        //XXX cookie must match, if not a Connect action
+                        if *cookie != client.cookie {
+                            // Cookie must match, since it's not a Connect action
+                            bail!(
+                                "Expected cookie {:?} from client {:?} but received cookie {:?}",
+                                client.cookie,
+                                endpoint,
+                                *cookie
+                            );
+                        }
                     }
                 }
 
@@ -620,23 +629,27 @@ impl Filter {
                     // TODO: send all the messages to this client (rename _client to client)
                 }
             }
-            // TODO: implement these
+            // TODO: implement the following
             FilterCmd::SendGameUpdates {
                 endpoints: _,
                 updates: _,
             } => {}
             FilterCmd::CompleteAuthRequest { endpoint, decision } => {
+                let client =
+                    self.per_endpoint
+                        .other_end_client_ref_mut(&endpoint, &self.mode, Some("CompleteAuthRequest"))?;
                 let code: ResponseCode = decision.into();
-                // ToDo: if LoggedIn and cookie is None, generate a random one (and save)
                 match code {
                     ResponseCode::LoggedIn { ref cookie, .. } => {
-                        //XXX save cookie to OtherEndClient
+                        // ToDo: generate a random cookie here instead of needing it from LoggedIn
+                        client.cookie = Some(cookie.clone());
                     }
                     _ => {}
                 }
                 self.send_response_code(endpoint, code).await?;
                 self.auth_requests.remove(&endpoint);
             }
+            // TODO: implement the following
             FilterCmd::SendGenStateDiff { endpoints: _, diff: _ } => {}
             FilterCmd::AddPingEndpoints { endpoints } => {
                 for e in endpoints {
