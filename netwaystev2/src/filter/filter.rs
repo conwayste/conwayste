@@ -297,11 +297,9 @@ impl Filter {
                 response_ack,
                 ref cookie,
             } => {
-                let client = self.per_endpoint.other_end_client_ref_mut(
-                    &endpoint,
-                    &self.mode,
-                    Some("RequestAction".to_owned()),
-                )?;
+                let client =
+                    self.per_endpoint
+                        .other_end_client_ref_mut(&endpoint, &self.mode, Some("RequestAction"))?;
                 client.last_request_seen_timestamp = Some(Instant::now());
 
                 match action {
@@ -369,11 +367,9 @@ impl Filter {
                 request_ack,
                 code,
             } => {
-                let server = self.per_endpoint.other_end_server_ref_mut(
-                    &endpoint,
-                    &self.mode,
-                    Some("ResponseCode".to_owned()),
-                )?;
+                let server = self
+                    .per_endpoint
+                    .other_end_server_ref_mut(&endpoint, &self.mode, Some("ResponseCode"))?;
 
                 match determine_seq_num_advancement(sequence, server.last_response_sequence_seen) {
                     SeqNumAdvancement::Duplicate => {
@@ -450,9 +446,9 @@ impl Filter {
                 universe_update,
                 ping,
             } => {
-                let server =
-                    self.per_endpoint
-                        .other_end_server_ref_mut(&endpoint, &self.mode, Some("Update".to_owned()))?;
+                let server = self
+                    .per_endpoint
+                    .other_end_server_ref_mut(&endpoint, &self.mode, Some("Update"))?;
                 if let Some(ref mut room) = server.room {
                     if let Some(ref mut game) = room.game {
                         if let Some(gen_state_diff) = game.process_genstate_diff_part(universe_update)? {
@@ -619,7 +615,7 @@ impl Filter {
                     let _client = self.per_endpoint.other_end_client_ref_mut(
                         &endpoint,
                         &self.mode,
-                        Some("Chats are not sent to servers".to_owned()),
+                        Some("Chats are not sent to servers"),
                     )?;
                     // TODO: send all the messages to this client (rename _client to client)
                 }
@@ -772,9 +768,9 @@ impl Filter {
         endpoint: Endpoint,
         mut action: RequestAction,
     ) -> anyhow::Result<()> {
-        let server =
-            self.per_endpoint
-                .other_end_server_ref_mut(&endpoint, &self.mode, Some("ResponseCode".to_owned()))?;
+        let server = self
+            .per_endpoint
+            .other_end_server_ref_mut(&endpoint, &self.mode, Some("ResponseCode"))?;
 
         if let Some(ref mut sn) = server.last_request_sequence_sent {
             *sn += Wrapping(1u64);
@@ -826,7 +822,7 @@ impl Filter {
         let client = self.per_endpoint.other_end_client_ref_mut(
             &endpoint,
             &self.mode,
-            Some("ResponseCodes are not sent to servers".to_owned()),
+            Some("ResponseCodes are not sent to servers"),
         )?;
         client.last_response_sent_timestamp = Some(Instant::now());
 

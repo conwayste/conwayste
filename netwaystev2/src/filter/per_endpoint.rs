@@ -238,7 +238,7 @@ impl PerEndpoint {
         &mut self,
         endpoint: &Endpoint,
         filter_mode: &FilterMode,
-        invalid_data: Option<String>,
+        invalid_data: Option<&str>,
     ) -> Result<&mut OtherEndClient, FilterError> {
         let endpoint_data = self.0.get_mut(endpoint).ok_or_else(|| FilterError::EndpointNotFound {
             endpoint: endpoint.clone(),
@@ -247,7 +247,9 @@ impl PerEndpoint {
             FilterEndpointData::OtherEndServer { .. } => {
                 return Err(FilterError::UnexpectedData {
                     mode:         filter_mode.clone(),
-                    invalid_data: invalid_data.unwrap_or_else(|| "expected other end to be client".to_owned()),
+                    invalid_data: invalid_data
+                        .map(|msg| msg.into())
+                        .unwrap_or_else(|| "expected other end to be client".into()),
                 });
             }
             FilterEndpointData::OtherEndClient(ref mut client) => Ok(client),
@@ -263,7 +265,7 @@ impl PerEndpoint {
         &mut self,
         endpoint: &Endpoint,
         filter_mode: &FilterMode,
-        invalid_data: Option<String>,
+        invalid_data: Option<&str>,
     ) -> Result<&mut OtherEndServer, FilterError> {
         let endpoint_data = self.0.get_mut(endpoint).ok_or_else(|| FilterError::EndpointNotFound {
             endpoint: endpoint.clone(),
@@ -272,7 +274,9 @@ impl PerEndpoint {
             FilterEndpointData::OtherEndClient { .. } => {
                 return Err(FilterError::UnexpectedData {
                     mode:         filter_mode.clone(),
-                    invalid_data: invalid_data.unwrap_or_else(|| "expected other end to be server".to_owned()),
+                    invalid_data: invalid_data
+                        .map(|msg| msg.into())
+                        .unwrap_or_else(|| "expected other end to be server".into()),
                 });
             }
             FilterEndpointData::OtherEndServer(ref mut server) => Ok(server),
