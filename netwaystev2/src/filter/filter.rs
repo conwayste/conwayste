@@ -348,16 +348,15 @@ impl Filter {
 
                 // Loop over the heap, finding all requests which can be sent to the app layer based on their sequence number.
                 // If any are found, send them to the app layer and advance the last seen sequence number.
-                // TODO: unit test wrapping logic and deduplicate with below
-                if client.last_request_sequence_seen.is_none() {
+                // ToDo: unit test wrapping logic
+                let ref mut expected_seq_num = if let Some(request_seq) = client.last_request_sequence_seen {
+                    request_seq
+                } else {
                     // Shouldn't be possible; if we hit this, it's a bug somewhere above
                     return Err(anyhow!(FilterError::InternalError {
                         problem: "sequence number should not be None at this point".to_owned(),
                     }));
-                }
-                let ref mut expected_seq_num = client
-                    .last_request_sequence_seen
-                    .expect("sequence number cannot be None by this point"); // expect OK because of above check
+                };
                 while let Some(request_action) = client.request_actions.take_if_matching(expected_seq_num.0) {
                     let notice = if let Some(caf) = client_auth_fields_from_connect_packet(&packet) {
                         FilterNotice::ClientAuthRequest { endpoint, fields: caf }
@@ -858,7 +857,7 @@ impl Filter {
 
         let packet_infos = vec![PacketSettings {
             tid:            ProcessUniqueId::new(),
-            retry_interval: Duration::ZERO, // ToDo: figure out if no retry is OK
+            retry_interval: Duration::ZERO,
         }];
 
         self.transport_cmd_tx
