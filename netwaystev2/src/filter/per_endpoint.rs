@@ -1,10 +1,12 @@
 use std::{
     collections::{HashMap, VecDeque},
+    num::Wrapping,
     time::{Duration, Instant},
 };
 
 use anyhow::anyhow;
 use snowflake::ProcessUniqueId;
+use tokio::sync::mpsc::{error::SendError, Sender};
 
 use crate::common::Endpoint;
 use crate::protocol::{GameUpdate, Packet, RequestAction, ResponseCode};
@@ -22,30 +24,81 @@ pub(crate) enum FilterEndpointData {
     OtherEndServer(OtherEndServer),
 }
 
+/// This is the server's representation of clients connected to it.
 pub(crate) struct OtherEndClient {
+    endpoint: Endpoint,
     pub request_actions: SequencedMinHeap<RequestAction>,
     pub last_request_sequence_seen: Option<SeqNum>,
     pub last_response_sequence_sent: Option<SeqNum>,
-    pub last_request_seen_timestamp: Option<Instant>,
-    pub last_response_sent_timestamp: Option<Instant>,
-    pub unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>, // Tracks outgoing Responses
     pub cookie: Option<String>,
 }
 
 impl OtherEndClient {
-    pub fn new() -> Self {
+    pub fn new(endpoint: Endpoint) -> Self {
         OtherEndClient {
+            endpoint,
             request_actions: SequencedMinHeap::<RequestAction>::new(),
             last_request_sequence_seen: None,
             last_response_sequence_sent: None,
-            last_request_seen_timestamp: None,
-            last_response_sent_timestamp: None,
-            unacked_outgoing_packet_tids: VecDeque::new(),
             cookie: None,
         }
     }
+
+    /// The only error this can return is a send error on `transport_cmd_tx`.
+    pub async fn resend_and_drop_enqueued_response_codes(
+        &mut self,
+        transport_cmd_tx: &Sender<TransportCmd>,
+        acked_response_seq: Option<u64>,
+    ) -> Result<(), SendError<TransportCmd>> {
+        //XXX instead of canceling the resending of ResponseCodes, this should do the
+        //opposite -- resend any ResponseCodes not acked
+        //XXX call transport_cmd_tx.send directly rather than `send_response_code`
+        //XXX drop any acked ResponseCodes
+        Ok(()) //XXX
+    }
+
+    /// Send a new ResponseCode to the client. Not to be used for re-sends!
+    pub async fn send_response_code(
+        &mut self,
+        transport_cmd_tx: &Sender<TransportCmd>,
+        code: ResponseCode,
+    ) -> anyhow::Result<()> {
+        if let Some(ref mut sn) = self.last_response_sequence_sent {
+            *sn += Wrapping(1u64);
+        } else {
+            self.last_response_sequence_sent = Some(Wrapping(1));
+        }
+
+        // Unwrap ok b/c the immediate check above guarantees Some(..)
+        let sequence = self.last_response_sequence_sent.unwrap().0;
+
+        //XXX save ResponseCode on self for possible re-sending
+
+        let request_ack = self.last_request_sequence_seen.map(|request_sn| request_sn.0);
+
+        let packets = vec![Packet::Response {
+            code,
+            sequence,
+            request_ack,
+        }];
+
+        let packet_infos = vec![PacketSettings {
+            tid:            ProcessUniqueId::new(),
+            retry_interval: Duration::ZERO,
+        }];
+
+        transport_cmd_tx
+            .send(TransportCmd::SendPackets {
+                endpoint: self.endpoint,
+                packet_infos,
+                packets,
+            })
+            .await
+            .map_err(|e| anyhow!(e))
+    }
 }
 
+/// This is the client's representation of the server it is connected to.
 pub(crate) struct OtherEndServer {
     pub player_name: String,
     pub cookie: Option<String>,

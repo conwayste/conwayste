@@ -22,7 +22,7 @@ use tokio::sync::watch;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     num::Wrapping,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 #[derive(PartialEq, Debug)]
@@ -264,8 +264,10 @@ impl Filter {
 
                     // New client connection!
 
-                    self.per_endpoint
-                        .insert(endpoint, FilterEndpointData::OtherEndClient(OtherEndClient::new()));
+                    self.per_endpoint.insert(
+                        endpoint,
+                        FilterEndpointData::OtherEndClient(OtherEndClient::new(endpoint)),
+                    );
                     self.transport_cmd_tx
                         .send(TransportCmd::NewEndpoint {
                             endpoint,
@@ -301,7 +303,10 @@ impl Filter {
                 let client =
                     self.per_endpoint
                         .other_end_client_ref_mut(&endpoint, &self.mode, Some("RequestAction"))?;
-                client.last_request_seen_timestamp = Some(Instant::now());
+
+                client
+                    .resend_and_drop_enqueued_response_codes(&self.transport_cmd_tx, response_ack)
+                    .await?;
 
                 match action {
                     RequestAction::Connect { .. } => {} // No cookie OK here
@@ -331,19 +336,6 @@ impl Filter {
                     }
                 }
 
-                let mut tids_to_drop = vec![];
-                if let Some(response_ack) = response_ack {
-                    tids_to_drop = take_tids_to_drop(&mut client.unacked_outgoing_packet_tids, Wrapping(response_ack));
-                }
-                for tid_to_drop in tids_to_drop {
-                    self.transport_cmd_tx
-                        .send(TransportCmd::DropPacket {
-                            endpoint,
-                            tid: tid_to_drop,
-                        })
-                        .await?;
-                }
-
                 client.request_actions.add(sequence, action.clone());
 
                 // Loop over the heap, finding all requests which can be sent to the app layer based on their sequence number.
@@ -357,6 +349,7 @@ impl Filter {
                         problem: "sequence number should not be None at this point".to_owned(),
                     }));
                 };
+
                 while let Some(request_action) = client.request_actions.take_if_matching(expected_seq_num.0) {
                     let notice = if let Some(caf) = client_auth_fields_from_connect_packet(&packet) {
                         FilterNotice::ClientAuthRequest { endpoint, fields: caf }
@@ -615,7 +608,11 @@ impl Filter {
                 self.send_request_action_to_server(endpoint, action).await?
             }
             FilterCmd::SendResponseCode { endpoint, code } => {
-                self.send_response_code(endpoint, code).await?;
+                let client =
+                    self.per_endpoint
+                        .other_end_client_ref_mut(&endpoint, &self.mode, Some("SendResponseCode"))?;
+
+                client.send_response_code(&self.transport_cmd_tx, code).await?;
             }
             FilterCmd::SendChats { endpoints, messages: _ } => {
                 for endpoint in endpoints {
@@ -644,7 +641,7 @@ impl Filter {
                     }
                     _ => {}
                 }
-                self.send_response_code(endpoint, code).await?;
+                client.send_response_code(&self.transport_cmd_tx, code).await?;
                 self.auth_requests.remove(&endpoint);
             }
             // TODO: implement the following
@@ -817,46 +814,6 @@ impl Filter {
         let packet_infos = vec![PacketSettings {
             tid,
             retry_interval: DEFAULT_RETRY_INTERVAL,
-        }];
-
-        self.transport_cmd_tx
-            .send(TransportCmd::SendPackets {
-                endpoint,
-                packet_infos,
-                packets,
-            })
-            .await
-            .map_err(|e| anyhow!(e))
-    }
-
-    async fn send_response_code(&mut self, endpoint: Endpoint, code: ResponseCode) -> anyhow::Result<()> {
-        let client = self.per_endpoint.other_end_client_ref_mut(
-            &endpoint,
-            &self.mode,
-            Some("ResponseCodes are not sent to servers"),
-        )?;
-        client.last_response_sent_timestamp = Some(Instant::now());
-
-        if let Some(ref mut sn) = client.last_response_sequence_sent {
-            *sn += Wrapping(1u64);
-        } else {
-            client.last_response_sequence_sent = Some(Wrapping(1));
-        }
-
-        // Unwrap ok b/c the immediate check above guarantees Some(..)
-        let sequence = client.last_response_sequence_sent.unwrap().0;
-
-        let request_ack = client.last_request_sequence_seen.map(|request_sn| request_sn.0);
-
-        let packets = vec![Packet::Response {
-            code,
-            sequence,
-            request_ack,
-        }];
-
-        let packet_infos = vec![PacketSettings {
-            tid:            ProcessUniqueId::new(),
-            retry_interval: Duration::ZERO,
         }];
 
         self.transport_cmd_tx
