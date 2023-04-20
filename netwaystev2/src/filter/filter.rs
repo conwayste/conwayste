@@ -409,16 +409,15 @@ impl Filter {
 
                 // Loop over the heap, finding all responses which can be sent to the app layer based on their sequence number.
                 // If any are found, send them to the app layer and advance the last seen sequence number.
-                // TODO: unit test wrapping logic
-                if server.last_response_sequence_seen.is_none() {
+                // ToDo: unit test wrapping logic
+                let ref mut expected_seq_num = if let Some(response_seq) = server.last_response_sequence_seen {
+                    response_seq
+                } else {
                     // Shouldn't be possible; if we hit this, it's a bug somewhere above
                     return Err(anyhow!(FilterError::InternalError {
                         problem: "sequence number should not be None at this point".to_owned(),
                     }));
-                }
-                let ref mut expected_seq_num = server
-                    .last_response_sequence_seen
-                    .expect("sequence number cannot be None by this point"); // expect OK because of above check
+                };
                 while let Some(response_code) = server.response_codes.take_if_matching(expected_seq_num.0) {
                     // TODO: move response code handling into separate function
                     // When joining or leaving a room, the game_updates are reset
