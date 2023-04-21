@@ -30,6 +30,7 @@ pub(crate) struct OtherEndClient {
     pub request_actions: SequencedMinHeap<RequestAction>,
     pub last_request_sequence_seen: Option<SeqNum>,
     pub last_response_sequence_sent: Option<SeqNum>,
+    pub unacked_response_codes: VecDeque<ResponseCode>, // the back has sequence `last_response_sequence_sent`
     pub cookie: Option<String>,
 }
 
@@ -40,6 +41,7 @@ impl OtherEndClient {
             request_actions: SequencedMinHeap::<RequestAction>::new(),
             last_request_sequence_seen: None,
             last_response_sequence_sent: None,
+            unacked_response_codes: VecDeque::new(),
             cookie: None,
         }
     }
@@ -50,10 +52,47 @@ impl OtherEndClient {
         transport_cmd_tx: &Sender<TransportCmd>,
         acked_response_seq: Option<u64>,
     ) -> Result<(), SendError<TransportCmd>> {
-        //XXX instead of canceling the resending of ResponseCodes, this should do the
-        //opposite -- resend any ResponseCodes not acked
-        //XXX call transport_cmd_tx.send directly rather than `send_response_code`
-        //XXX drop any acked ResponseCodes
+        // Check if there's anything to do first; otherwise, exit early
+        if self.unacked_response_codes.is_empty() {
+            return Ok(());
+        } else if self.last_response_sequence_sent.is_none() {
+            warn!("[F] Never sent a response code before?!? Possible logic bug!");
+            return Ok(());
+        }
+
+        let last_response_sequence_sent = self.last_response_sequence_sent.unwrap(); // unwrap OK b/c above
+        let mut cur_response_seq = last_response_sequence_sent - Wrapping(self.unacked_response_codes.len() as u64 - 1);
+
+        // Somewhat dumbly written check here; not _too_ inefficient I guess.
+        let mut included = false;
+        {
+            let mut seq = cur_response_seq;
+            for _ in 0..self.unacked_response_codes.len() {
+                if let Some(acked_response_seq) = acked_response_seq {
+                    if acked_response_seq == seq.0 {
+                        included = true;
+                        break;
+                    }
+                }
+                seq += Wrapping(1);
+            }
+        }
+        if included {
+            let acked_response_seq = acked_response_seq.unwrap(); // unwrap OK because of check above
+                                                                  // Discard the acknowledged response codes
+            while !self.unacked_response_codes.is_empty() && cur_response_seq.0 != acked_response_seq {
+                self.unacked_response_codes.pop_front();
+                cur_response_seq += Wrapping(1);
+            }
+        }
+
+        if self.unacked_response_codes.is_empty() {
+            return Ok(());
+        }
+
+        // Resend everything left
+
+        //XXX call transport_cmd_tx.send with vec of Packets
         Ok(()) //XXX
     }
 
@@ -72,7 +111,8 @@ impl OtherEndClient {
         // Unwrap ok b/c the immediate check above guarantees Some(..)
         let sequence = self.last_response_sequence_sent.unwrap().0;
 
-        //XXX save ResponseCode on self for possible re-sending
+        // Save ResponseCode on self for possible re-sending
+        self.unacked_response_codes.push_front(code.clone());
 
         let request_ack = self.last_request_sequence_seen.map(|request_sn| request_sn.0);
 
