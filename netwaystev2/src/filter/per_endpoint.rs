@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
     num::Wrapping,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::anyhow;
@@ -105,17 +105,12 @@ impl OtherEndClient {
 
         // Resend everything left
         let mut packets = vec![];
-        let mut packet_infos = vec![];
         let request_ack = self.last_request_sequence_seen.map(|request_sn| request_sn.0);
-        while let Some(code) = self.unacked_response_codes.pop_front() {
+        for code in &self.unacked_response_codes {
             packets.push(Packet::Response {
-                code,
+                code: code.clone(),
                 sequence: cur_response_seq.0,
                 request_ack,
-            });
-            packet_infos.push(PacketSettings {
-                tid:            ProcessUniqueId::new(),
-                retry_interval: Duration::ZERO,
             });
             cur_response_seq += Wrapping(1);
         }
@@ -123,7 +118,7 @@ impl OtherEndClient {
         transport_cmd_tx
             .send(TransportCmd::SendPackets {
                 endpoint: self.endpoint,
-                packet_infos,
+                packet_infos: no_retry_packet_info_vec(packets.len()),
                 packets,
             })
             .await
@@ -155,15 +150,10 @@ impl OtherEndClient {
             request_ack,
         }];
 
-        let packet_infos = vec![PacketSettings {
-            tid:            ProcessUniqueId::new(),
-            retry_interval: Duration::ZERO,
-        }];
-
         transport_cmd_tx
             .send(TransportCmd::SendPackets {
                 endpoint: self.endpoint,
-                packet_infos,
+                packet_infos: no_retry_packet_info_vec(packets.len()),
                 packets,
             })
             .await
@@ -430,4 +420,17 @@ impl PerEndpoint {
     }
 
     // More methods from HashMap can be added if needed.
+}
+
+/// If no retries are needed for a series of packets, this function can be used to generate
+/// packet_infos vec for TransportCmd::SendPackets.
+fn no_retry_packet_info_vec(count: usize) -> Vec<PacketSettings> {
+    let mut packet_infos = vec![];
+    for _ in 0..count {
+        packet_infos.push(PacketSettings {
+            tid:            ProcessUniqueId::new(),
+            retry_interval: Duration::ZERO,
+        });
+    }
+    packet_infos
 }
