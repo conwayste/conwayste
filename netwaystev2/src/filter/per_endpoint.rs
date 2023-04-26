@@ -141,7 +141,7 @@ impl OtherEndClient {
         let sequence = self.last_response_sequence_sent.unwrap().0;
 
         // Save ResponseCode on self for possible re-sending
-        self.unacked_response_codes.push_front(code.clone());
+        self.unacked_response_codes.push_back(code.clone());
 
         let request_ack = self.last_request_sequence_seen.map(|request_sn| request_sn.0);
 
