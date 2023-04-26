@@ -61,15 +61,18 @@ impl OtherEndClient {
         }
 
         let last_response_sequence_sent = self.last_response_sequence_sent.unwrap(); // unwrap OK b/c above
+
+        // Get the response sequence of 0th element of unacked_response_codes
         let mut cur_response_seq = last_response_sequence_sent - Wrapping(self.unacked_response_codes.len() as u64 - 1);
 
-        // Somewhat dumbly written check here; not _too_ inefficient I guess.
+        // Somewhat dumbly written check to see if acked_response_seq in range; not _too_
+        // inefficient I guess.
         let mut included = false;
         {
             let mut seq = cur_response_seq;
             for _ in 0..self.unacked_response_codes.len() {
                 if let Some(acked_response_seq) = acked_response_seq {
-                    if acked_response_seq == seq.0 {
+                    if seq.0 == acked_response_seq {
                         included = true;
                         break;
                     }
@@ -79,9 +82,18 @@ impl OtherEndClient {
         }
         if included {
             let acked_response_seq = acked_response_seq.unwrap(); // unwrap OK because of check above
-                                                                  // Discard the acknowledged response codes
-            while !self.unacked_response_codes.is_empty() && cur_response_seq.0 != acked_response_seq {
+
+            // Discard the acknowledged response codes
+            loop {
+                if self.unacked_response_codes.is_empty() {
+                    return Ok(());
+                }
                 self.unacked_response_codes.pop_front();
+                if cur_response_seq.0 == acked_response_seq {
+                    // The element just popped had a sequence of `cur_response_seq`. If these are
+                    // equal, then it was successfully acknowledged.
+                    break;
+                }
                 cur_response_seq += Wrapping(1);
             }
         }
@@ -89,11 +101,32 @@ impl OtherEndClient {
         if self.unacked_response_codes.is_empty() {
             return Ok(());
         }
+        cur_response_seq += Wrapping(1); // Now it matches next response code to pop from front.
 
         // Resend everything left
+        let mut packets = vec![];
+        let mut packet_infos = vec![];
+        let request_ack = self.last_request_sequence_seen.map(|request_sn| request_sn.0);
+        while let Some(code) = self.unacked_response_codes.pop_front() {
+            packets.push(Packet::Response {
+                code,
+                sequence: cur_response_seq.0,
+                request_ack,
+            });
+            packet_infos.push(PacketSettings {
+                tid:            ProcessUniqueId::new(),
+                retry_interval: Duration::ZERO,
+            });
+            cur_response_seq += Wrapping(1);
+        }
 
-        //XXX call transport_cmd_tx.send with vec of Packets
-        Ok(()) //XXX
+        transport_cmd_tx
+            .send(TransportCmd::SendPackets {
+                endpoint: self.endpoint,
+                packet_infos,
+                packets,
+            })
+            .await
     }
 
     /// Send a new ResponseCode to the client. Not to be used for re-sends!
