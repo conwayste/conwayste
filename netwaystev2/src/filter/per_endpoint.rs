@@ -92,6 +92,8 @@ impl OtherEndClient {
                 if cur_response_seq.0 == acked_response_seq {
                     // The element just popped had a sequence of `cur_response_seq`. If these are
                     // equal, then it was successfully acknowledged.
+
+                    cur_response_seq += Wrapping(1); // Now it matches response code at front.
                     break;
                 }
                 cur_response_seq += Wrapping(1);
@@ -101,7 +103,6 @@ impl OtherEndClient {
         if self.unacked_response_codes.is_empty() {
             return Ok(());
         }
-        cur_response_seq += Wrapping(1); // Now it matches next response code to pop from front.
 
         // Resend everything left
         let mut packets = vec![];
