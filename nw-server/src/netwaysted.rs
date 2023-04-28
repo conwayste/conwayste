@@ -1,21 +1,21 @@
 mod config;
 use config::*;
 
-use std::path::Path;
 use std::fs::remove_file;
+use std::path::Path;
 
 use anyhow::anyhow;
 use clap::{self, Parser};
-use tokio::net::{UnixStream, UnixListener};
+use tokio::net::{UnixListener, UnixStream};
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(short, long, help="Path to netwaysted.toml file.")]
+    #[arg(short, long, help = "Path to netwaysted.toml file.")]
     config_file: String,
 
-    #[arg(long, help="Dump configuration and then exit with success return code.")]
+    #[arg(long, help = "Dump configuration and then exit with success return code.")]
     dump_config: bool,
 }
 
@@ -36,7 +36,9 @@ async fn main() -> anyhow::Result<()> {
 
 fn open_control_socket(ctrl_cfg: &ControlConfig) -> anyhow::Result<ListenerWrapper> {
     println!("Opening socket...");
-    UnixListener::bind(&ctrl_cfg.socket_path).map(|l| ListenerWrapper(l)).map_err(|e| anyhow!(e))
+    UnixListener::bind(&ctrl_cfg.socket_path)
+        .map(|l| ListenerWrapper(l))
+        .map_err(|e| anyhow!(e))
 }
 
 fn cleanup_socket(path: &Path) {
@@ -49,7 +51,9 @@ struct ListenerWrapper(UnixListener);
 impl Drop for ListenerWrapper {
     fn drop(&mut self) {
         let socket_addr = self.0.local_addr().expect("local address");
-        let path = socket_addr.as_pathname().expect("valid pathname in UnixListener socket");
+        let path = socket_addr
+            .as_pathname()
+            .expect("valid pathname in UnixListener socket");
         cleanup_socket(&path);
     }
 }

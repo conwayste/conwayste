@@ -9,7 +9,7 @@ use tokio::net::UnixStream;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[arg(short, long, help="Path to netwaysted.toml file.")]
+    #[arg(short, long, help = "Path to netwaysted.toml file.")]
     config_file: String,
 }
 
@@ -28,4 +28,3 @@ async fn connect_to_control_socket(ctrl_cfg: &ControlConfig) -> anyhow::Result<U
     println!("Connecting to socket...");
     UnixStream::connect(&ctrl_cfg.socket_path).await.map_err(|e| anyhow!(e))
 }
-

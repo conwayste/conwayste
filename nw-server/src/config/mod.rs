@@ -5,14 +5,14 @@ use toml;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
-    pub server: ServerConfig,
+    pub server:   ServerConfig,
     pub registry: Option<RegistryConfig>,
-    pub control: ControlConfig,
+    pub control:  ControlConfig,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct ServerConfig {
-    pub name: String,
+    pub name:      String,
     pub bind_host: String,
     pub bind_port: u16,
 }
@@ -21,7 +21,7 @@ pub struct ServerConfig {
 pub struct RegistryConfig {
     pub public_host: String,
     pub public_port: u16,
-    pub url: String,
+    pub url:         String,
 }
 
 #[derive(Deserialize, Debug)]
