@@ -2810,6 +2810,7 @@ dependencies = [
  "anyhow",
  "clap 4.2.1",
  "serde",
+ "tokio 1.16.1",
  "toml 0.7.3",
  "tracing",
  "tracing-subscriber",
