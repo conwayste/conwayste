@@ -12,4 +12,4 @@ public_port = 2016
 url = "https://registry.conwayste.rs"
 
 [control]
-socket_path = "/path/to/unix/socket/tbd"
+socket_path = "/tmp/netwaysted.sock"
