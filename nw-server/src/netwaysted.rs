@@ -6,9 +6,10 @@ use std::path::Path;
 
 use anyhow::anyhow;
 use clap::{self, Parser};
-use tokio::net::{UnixListener, UnixStream};
+use tokio::net::UnixListener;
+use tracing::*;
+use tracing_subscriber::FmtSubscriber;
 
-/// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -21,6 +22,12 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let subscriber = FmtSubscriber::builder()
+        // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.) will be written to stdout.
+        .with_max_level(Level::TRACE)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+
     let args = Args::parse();
 
     let toml_config = config_from_file(&args.config_file)?;
@@ -35,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn open_control_socket(ctrl_cfg: &ControlConfig) -> anyhow::Result<ListenerWrapper> {
-    println!("Opening socket...");
+    info!("Opening socket...");
     UnixListener::bind(&ctrl_cfg.socket_path)
         .map(|l| ListenerWrapper(l))
         .map_err(|e| anyhow!(e))

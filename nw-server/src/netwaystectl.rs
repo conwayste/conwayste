@@ -4,6 +4,8 @@ use config::*;
 use anyhow::anyhow;
 use clap::{self, Parser};
 use tokio::net::UnixStream;
+use tracing::*;
+use tracing_subscriber::FmtSubscriber;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -15,6 +17,12 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let subscriber = FmtSubscriber::builder()
+        // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.) will be written to stdout.
+        .with_max_level(Level::TRACE)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+
     let args = Args::parse();
 
     let toml_config = config_from_file(&args.config_file)?;
@@ -25,6 +33,6 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn connect_to_control_socket(ctrl_cfg: &ControlConfig) -> anyhow::Result<UnixStream> {
-    println!("Connecting to socket...");
+    info!("Connecting to socket...");
     UnixStream::connect(&ctrl_cfg.socket_path).await.map_err(|e| anyhow!(e))
 }
