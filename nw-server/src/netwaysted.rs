@@ -16,7 +16,7 @@ use tracing_subscriber::FmtSubscriber;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Args {
+struct DaemonArgs {
     #[arg(short, long, help = "Path to netwaysted.toml file.")]
     config_file: String,
 
@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let args = Args::parse();
+    let args = DaemonArgs::parse();
 
     let toml_config = config_from_file(&args.config_file)?;
     if args.dump_config {

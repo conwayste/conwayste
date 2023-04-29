@@ -7,15 +7,15 @@ use contract::*;
 use std::io::ErrorKind;
 
 use anyhow::anyhow;
-use clap::{self, Parser};
+use clap::{self, Args, Command, FromArgMatches};
 use tokio::net::UnixStream;
 use tracing::*;
 use tracing_subscriber::FmtSubscriber;
 
 /// Simple program to greet a person
-#[derive(Parser, Debug)]
+#[derive(Args, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Args {
+struct CtlArgs {
     #[arg(short, long, help = "Path to netwaysted.toml file.")]
     config_file: String,
 }
@@ -28,9 +28,17 @@ async fn main() -> anyhow::Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let args = Args::parse();
+    let subcommands = Command::new("netwaystectl")
+        .subcommand(Command::new("status"))
+        .subcommand(Command::new("exit")); // TODO: define other command types
+    let matches = CtlArgs::augment_args(subcommands).get_matches();
+    let ctl_args = CtlArgs::from_arg_matches(&matches)?;
 
-    let toml_config = config_from_file(&args.config_file)?;
+    if let Some((subcmd, _matches)) = matches.subcommand() {
+        debug!("Received subcommand: {}", subcmd); // TODO: send subcommand in message to server rather than merely logging it
+    }
+
+    let toml_config = config_from_file(&ctl_args.config_file)?;
 
     let sock = connect_to_control_socket(&toml_config.control).await?;
     sock.writable().await?;
