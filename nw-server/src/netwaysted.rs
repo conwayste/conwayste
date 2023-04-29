@@ -71,65 +71,67 @@ async fn run(listener: &ListenerWrapper) -> anyhow::Result<()> {
 
             new_message = listener.0.accept() => {
                 match new_message {
-                Ok((stream, _addr)) => {
-                    // Wait for the socket to be readable
-                    stream.readable().await?;
-                    info!("Control message received");
+                    Ok((stream, _addr)) => {
+                        // Wait for the socket to be readable
+                        stream.readable().await?;
+                        info!("Control message received");
 
-                    let mut response = String::new();
+                        let mut response = String::new();
 
-                    // Try to read data, this may still fail with `WouldBlock` if the readiness event is a false positive.
-                    let mut msg = vec![0; MAX_CONTROL_MESSAGE_LEN];
-                    match stream.try_read(&mut msg) {
-                        Ok(n) => {
-                            msg.truncate(n);
+                        // Try to read data
+                        // This can fail with `WouldBlock` if the readiness event is a false positive
+                        let mut msg = vec![0; MAX_CONTROL_MESSAGE_LEN];
+                        match stream.try_read(&mut msg) {
+                            Ok(n) => {
+                                msg.truncate(n);
 
-                            if let Ok(msg_as_str) = String::from_utf8(msg) {
-                                response = format!("Hello {}", msg_as_str);
-                            } else {
-                                response = "Control command must be valid UTF-8".to_owned();
+                                if let Ok(msg_as_str) = String::from_utf8(msg) {
+                                    response = format!("Hello {}", msg_as_str);
+                                } else {
+                                    response = "Control command must be valid UTF-8".to_owned();
+                                }
+                            }
+                            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                                warn!("Dropping read, would block");
+                                continue;
+                            }
+                            Err(e) => {
+                                error!("Failed to read message");
+                                server_status = Err(e.into());
                             }
                         }
-                        Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                            warn!("Dropping read, would block");
-                            continue;
-                        }
-                        Err(e) => {
-                            error!("Failed to read message");
-                            server_status = Err(e.into());
-                        }
-                    }
 
-                    if let Err(_) = server_status {
-                        // XXX: Terminate early if the read fails while server is still under development
-                        break 'main;
-                    }
-
-                    // Try to write data, this may still fail with `WouldBlock` if the readiness event is a false positive.
-                    stream.writable().await?;
-                    match stream.try_write(response.as_bytes()) {
-                        Ok(n) => {
-                            if n != response.len() {
-                                warn!("Failed to write all bytes to stream. Wrote {} of {}", n, response.len());
-                            }
-                        }
-                        Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                            warn!("Dropping write, would block");
-                            continue;
-                        }
-                        Err(e) => {
-                            error!("Failed to respond");
-                            server_status = Err(e.into());
+                        if let Err(_) = server_status {
+                            // XXX: Terminate early if the read fails while server is still under development
                             break 'main;
                         }
+
+                        // Try to write data
+                        // This can fail with `WouldBlock` if the readiness event is a false positive
+                        stream.writable().await?;
+                        match stream.try_write(response.as_bytes()) {
+                            Ok(n) => {
+                                if n != response.len() {
+                                    warn!("Failed to write all bytes to stream. Wrote {} of {}", n, response.len());
+                                }
+                            }
+                            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                                warn!("Dropping write, would block");
+                                continue;
+                            }
+                            Err(e) => {
+                                error!("Failed to respond");
+                                server_status = Err(e.into());
+                                break 'main;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        server_status = Err(anyhow!(format!("Connection failed: '{:?}'", e)));
+                        break 'main;
                     }
                 }
-                Err(e) => {
-                    server_status = Err(anyhow!(format!("Connection failed: '{:?}'", e)));
-                    break 'main;
-                }
             }
-        }
         }
     }
 
