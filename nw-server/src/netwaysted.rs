@@ -1,7 +1,9 @@
 mod config;
 use config::*;
 
-use std::fs::remove_file;
+mod contract;
+use contract::*;
+
 use std::path::Path;
 
 use anyhow::anyhow;

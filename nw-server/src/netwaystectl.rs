@@ -1,6 +1,9 @@
 mod config;
 use config::*;
 
+mod contract;
+use contract::*;
+
 use anyhow::anyhow;
 use clap::{self, Parser};
 use tokio::net::UnixStream;
