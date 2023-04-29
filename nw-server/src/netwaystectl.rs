@@ -4,6 +4,8 @@ use config::*;
 mod contract;
 use contract::*;
 
+use std::io::ErrorKind;
+
 use anyhow::anyhow;
 use clap::{self, Parser};
 use tokio::net::UnixStream;
@@ -31,8 +33,50 @@ async fn main() -> anyhow::Result<()> {
     let toml_config = config_from_file(&args.config_file)?;
 
     let sock = connect_to_control_socket(&toml_config.control).await?;
+    sock.writable().await?;
 
-    Ok(())
+    let mut return_status = Ok(());
+    let control_message = b"Sky Haussmann";
+    match sock.try_write(control_message) {
+        Ok(n) => {
+            if n != control_message.len() {
+                warn!(
+                    "Failed to write all bytes to stream. Wrote {} of {}",
+                    n,
+                    control_message.len()
+                );
+            }
+        }
+        Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
+        Err(e) => {
+            return_status = Err(e.into());
+        }
+    }
+
+    sock.readable().await?;
+
+    // Try to read data, this may still fail with `WouldBlock` if the readiness event is a false positive.
+    let mut msg = vec![0; MAX_CONTROL_MESSAGE_LEN];
+    match sock.try_read(&mut msg) {
+        Ok(n) => {
+            msg.truncate(n);
+
+            if let Ok(msg_as_str) = String::from_utf8(msg) {
+                info!("Netwayste server responded with '{}'", msg_as_str);
+            } else {
+                error!("Netwayste server response is not valid UTF-8");
+            }
+        }
+        Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+            warn!("Dropping read, would block");
+        }
+        Err(e) => {
+            error!("Failed to read message");
+            return_status = Err(e.into());
+        }
+    }
+
+    return return_status;
 }
 
 async fn connect_to_control_socket(ctrl_cfg: &ControlConfig) -> anyhow::Result<UnixStream> {

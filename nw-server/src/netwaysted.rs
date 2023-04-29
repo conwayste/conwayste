@@ -5,10 +5,12 @@ mod contract;
 use contract::*;
 
 use std::path::Path;
+use std::{fs::remove_file, io::ErrorKind};
 
 use anyhow::anyhow;
 use clap::{self, Parser};
 use tokio::net::UnixListener;
+use tokio::signal::unix::{signal, SignalKind};
 use tracing::*;
 use tracing_subscriber::FmtSubscriber;
 
@@ -40,7 +42,74 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = open_control_socket(&toml_config.control)?;
 
-    Ok(())
+    let mut return_status = Ok(());
+
+    'main: loop {
+        match listener.0.accept().await {
+            Ok((stream, _addr)) => {
+                // Wait for the socket to be readable
+                stream.readable().await?;
+                info!("Control message received");
+
+                let mut response = String::new();
+
+                // Try to read data, this may still fail with `WouldBlock` if the readiness event is a false positive.
+                let mut msg = vec![0; MAX_CONTROL_MESSAGE_LEN];
+                match stream.try_read(&mut msg) {
+                    Ok(n) => {
+                        msg.truncate(n);
+
+                        if let Ok(msg_as_str) = String::from_utf8(msg) {
+                            response = format!("Hello {}", msg_as_str);
+                        } else {
+                            response = "Control command must be valid UTF-8".to_owned();
+                        }
+                    }
+                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                        warn!("Dropping read, would block");
+                        continue;
+                    }
+                    Err(e) => {
+                        error!("Failed to read message");
+                        return_status = Err(e.into());
+                    }
+                }
+
+                if let Err(_) = return_status {
+                    // XXX: Terminate early if the read fails while server is still under development
+                    break 'main;
+                }
+
+                // Try to write data, this may still fail with `WouldBlock` if the readiness event is a false positive.
+                stream.writable().await?;
+                match stream.try_write(response.as_bytes()) {
+                    Ok(n) => {
+                        if n != response.len() {
+                            warn!("Failed to write all bytes to stream. Wrote {} of {}", n, response.len());
+                        }
+                    }
+                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                        warn!("Dropping write, would block");
+                        continue;
+                    }
+                    Err(e) => {
+                        error!("Failed to respond");
+                        return_status = Err(e.into());
+                        break 'main;
+                    }
+                }
+            }
+            Err(e) => {
+                return_status = Err(anyhow!(format!("Connection failed: '{:?}'", e)));
+                break 'main;
+            }
+        }
+    }
+
+    info!("Server exiting...");
+    drop(listener);
+
+    return return_status;
 }
 
 fn open_control_socket(ctrl_cfg: &ControlConfig) -> anyhow::Result<ListenerWrapper> {
