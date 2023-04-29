@@ -25,4 +25,4 @@ tracing-subscriber = "0.3"
 
 [dependencies.tokio]
 version = "1.4"
-features = ["sync", "net", "macros", "rt", "rt-multi-thread"]
+features = ["signal", "sync", "net", "macros", "rt", "rt-multi-thread"]
