@@ -219,6 +219,7 @@ impl ClientGame {
             }
         }
 
+        // TODO: only build the `diff` string if we already know all_parts_are_some
         let mut diff = "".to_owned();
         let mut all_parts_are_some = true;
         if let Some(entry) = self.diff_parts.get(&(gen0, gen1)) {
