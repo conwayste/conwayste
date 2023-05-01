@@ -413,20 +413,47 @@ impl Filter {
                 };
                 while let Some(response_code) = server.response_codes.take_if_matching(expected_seq_num.0) {
                     // TODO: move response code handling into separate function
-                    // When joining or leaving a room, the game_updates are reset
                     match response_code {
                         ResponseCode::JoinedRoom { .. } => {
                             server.room = Some(ClientRoom::new(server.player_name.clone()));
+                            // When joining or leaving a room, the game_updates are reset
                             server.game_update_seq = None;
                         }
                         ResponseCode::LeaveRoom => {
+                            // When joining or leaving a room, the game_updates are reset
                             server.game_update_seq = None;
                         }
                         ResponseCode::LoggedIn { ref cookie, .. } => {
                             server.cookie = Some(cookie.clone());
                         }
-                        // TODO: more variants here
-                        _ => {} // TODO: delete when we are certain all variants have been covered
+                        ResponseCode::PlayerList { ref players } => {
+                            if let Some(ref mut room) = server.room {
+                                // ToDo: move to update_player_list func on the room and make `other_layers` private again.
+                                // We are in room and just asked for player list (probably means we
+                                // just entered the room). Update room.other_players based on the
+                                // received list of player names.
+                                for player in players {
+                                    if server.player_name == *player {
+                                        // Self
+                                        continue;
+                                    }
+                                    room.other_players.entry(player.clone()).or_insert(None);
+                                }
+
+                                // Also remove any extraneous entries in other_players
+                                let mut to_remove = vec![];
+                                for name in room.other_players.keys() {
+                                    if !players.contains(name) {
+                                        to_remove.push(name.clone());
+                                    }
+                                }
+                                for name in to_remove {
+                                    room.other_players.remove(&name);
+                                }
+                            }
+                        }
+                        _ => {} // Most variants don't need any client-side state changes in the
+                                // Filter layer
                     }
 
                     // Send the ResponseCode up to the app layer

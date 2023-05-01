@@ -11,7 +11,7 @@ use conway::{BigBang, GenStateDiff, Pattern, PlayerBuilder, PlayerID, Region, Un
 pub struct ClientRoom {
     player_name:       String,   // Duplicate of player_name from OtherEndServer (parent) struct
     player_id:         PlayerID, // If player is not a lurker, must be Some(...) before the first GenStateDiff
-    other_players:     HashMap<String, PlayerID>, // Other players: player_name => player_id (None means lurker)
+    pub other_players: HashMap<String, PlayerID>, // Other players: player_name => player_id (None means lurker)
     pub game:          Option<ClientGame>,
     pub last_chat_seq: Option<u64>, // sequence number of latest chat msg. received from server
 }
