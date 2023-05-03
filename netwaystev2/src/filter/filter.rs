@@ -161,8 +161,15 @@ impl Filter {
                             } => {
                                 nwinfo!(self, "[F<-T,N] {:?} timed-out. Dropping.", endpoint);
                                 self.per_endpoint.remove(&endpoint);
-                                if let Err(_) = transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await {
+                                if transport_cmd_tx.send(TransportCmd::DropEndpoint{endpoint}).await.is_err() {
                                     nwerror!(self, "[F] transport cmd receiver has been dropped");
+                                    nwerror!(self, "[F] run() exiting");
+                                    return;
+                                }
+
+                                // Pass it up to App layer
+                                if filter_notice_tx.send(FilterNotice::EndpointTimeout{endpoint}).await.is_err() {
+                                    nwerror!(self, "[F] filter notice receiver (App layer) has been dropped");
                                     nwerror!(self, "[F] run() exiting");
                                     return;
                                 }
