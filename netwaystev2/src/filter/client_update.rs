@@ -219,18 +219,23 @@ impl ClientGame {
             }
         }
 
-        // TODO: only build the `diff` string if we already know all_parts_are_some
+        // Build the diff string if all parts are available.
         let mut diff = "".to_owned();
         let mut all_parts_are_some = true;
         if let Some(entry) = self.diff_parts.get(&(gen0, gen1)) {
             for part in entry {
-                if let Some(part_string) = part {
-                    diff.push_str(part_string);
-                } else {
+                if part.is_none() {
                     all_parts_are_some = false;
                     break;
                 }
             }
+            if all_parts_are_some {
+                for part in entry {
+                    diff.push_str(part.as_ref().unwrap());
+                }
+            }
+        } else {
+            all_parts_are_some = false;
         }
 
         if all_parts_are_some {
