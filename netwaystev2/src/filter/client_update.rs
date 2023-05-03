@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
 use std::collections::{hash_map::Entry, HashMap};
 
 use super::{FilterNotice, FilterNotifySend};
@@ -30,7 +30,7 @@ impl ClientRoom {
         server_endpoint: Endpoint,
         game_update: &GameUpdate,
         filter_notice_tx: &FilterNotifySend,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         use GameUpdate::*;
         // First, special handling for some of these
         match game_update {
@@ -120,7 +120,7 @@ impl ClientRoom {
         server_endpoint: Endpoint,
         chats: &[BroadcastChatMessage],
         filter_notice_tx: &FilterNotifySend,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         let mut to_send = vec![];
 
         // Figure out which chats are new
@@ -175,7 +175,7 @@ impl ClientRoom {
 }
 
 impl ClientGame {
-    pub fn process_genstate_diff_part(&mut self, universe_update: UniUpdate) -> Result<Option<GenStateDiff>> {
+    pub fn process_genstate_diff_part(&mut self, universe_update: UniUpdate) -> anyhow::Result<Option<GenStateDiff>> {
         let genstate_diff_part;
         match universe_update {
             UniUpdate::NoChange => return Ok(None),
