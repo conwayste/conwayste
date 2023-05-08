@@ -422,7 +422,7 @@ impl Filter {
                     // TODO: move response code handling into separate function
                     match response_code {
                         ResponseCode::JoinedRoom { .. } => {
-                            server.room = Some(ClientRoom::new(server.player_name.clone()));
+                            server.room = Some(ClientRoom::new());
                             // When joining or leaving a room, the game_updates are reset
                             server.game_update_seq = None;
                         }

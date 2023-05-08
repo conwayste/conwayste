@@ -9,8 +9,8 @@ use crate::protocol::{BroadcastChatMessage, GameUpdate, GenPartInfo, GenStateDif
 use conway::{BigBang, GenStateDiff, Pattern, PlayerBuilder, PlayerID, Region, Universe};
 
 pub struct ClientRoom {
-    player_name:       String,   // Duplicate of player_name from OtherEndServer (parent) struct
     player_id:         PlayerID, // If player is not a lurker, must be Some(...) before the first GenStateDiff
+    // ToDo: decide why we even have `other_players` in Filter layer
     pub other_players: HashMap<String, PlayerID>, // Other players: player_name => player_id (None means lurker)
     pub game:          Option<ClientGame>,
     pub last_chat_seq: Option<u64>, // sequence number of latest chat msg. received from server
@@ -20,7 +20,7 @@ pub struct ClientGame {
     player_id:         PlayerID, // Duplicate of player_id from ClientRoom
     diff_parts:        HashMap<(u32, u32), Vec<Option<String>>>,
     universe:          Universe,
-    pub last_full_gen: Option<u64>, // generation number client is currently at
+    pub last_full_gen: Option<usize>, // generation number client is currently at
     pub partial_gen:   Option<GenPartInfo>,
 }
 
@@ -28,6 +28,7 @@ impl ClientRoom {
     pub async fn process_game_update(
         &mut self,
         server_endpoint: Endpoint,
+        player_name: &String,
         game_update: &GameUpdate,
         filter_notice_tx: &FilterNotifySend,
     ) -> anyhow::Result<()> {
@@ -68,7 +69,7 @@ impl ClientRoom {
 
             PlayerList { players } => {
                 for player in players {
-                    if player.name == self.player_name {
+                    if player.name == *player_name {
                         // Hey, that's us! The game is starting or finishing, so we are likely
                         // going between None and Some(...).
                         self.change_own_player_id(player.index);
@@ -77,17 +78,30 @@ impl ClientRoom {
             }
 
             PlayerChange { player, old_name } => {
-                if old_name.is_some() {
-                    unimplemented!("player name changes not implemented"); // TODO
-                }
-                if player.name == self.player_name {
+                if let Some(ref old_name) = old_name {
+                    // Player name change
+                    if player.name == *old_name || player.name == *player_name {
+                        error!("[F] Server misbehaving: in-game player name change to or from name of self");
+                    } else {
+                        self.other_players.remove(old_name);
+                        self.other_players
+                            .insert(player.name.clone(), player.index.map(|idx| idx as usize));
+                    }
+                } else if player.name == *player_name {
                     // Hey, that's us! The game is starting or finishing, so we are likely
                     // going between None and Some(...).
                     self.change_own_player_id(player.index);
+                } else {
+                    // Not a name change, and not affecting self; just update.
+                    let maybe_idx = self
+                        .other_players
+                        .get_mut(&player.name)
+                        .ok_or_else(|| anyhow!("No entry in other_players for player name {:?}", player.name))?;
+                    *maybe_idx = player.index.map(|idx| idx as usize);
                 }
             }
             PlayerJoin { player } => {
-                if player.name == self.player_name {
+                if player.name == *player_name {
                     warn!("[F] ignoring GameUpdate::PlayerJoin for ourselves");
                 } else {
                     self.other_players
@@ -95,7 +109,7 @@ impl ClientRoom {
                 }
             }
             PlayerLeave { name } => {
-                if *name == self.player_name {
+                if *name == *player_name {
                     warn!("[F] ignoring GameUpdate::PlayerLeave for ourselves");
                 } else {
                     self.other_players.remove(name);
@@ -163,12 +177,11 @@ impl ClientRoom {
         }
     }
 
-    pub fn new(player_name: String) -> Self {
+    pub fn new() -> Self {
         ClientRoom {
-            player_name,
-            player_id: None,
+            player_id:     None,
             other_players: HashMap::new(),
-            game: None,
+            game:          None,
             last_chat_seq: None,
         }
     }
@@ -257,6 +270,8 @@ impl ClientGame {
                 // Remove all from diff_parts where gen1 <= latest_gen because they're outdated
                 self.diff_parts
                     .retain(|&(_gen0, gen1), _current_parts| gen1 as usize > latest_gen);
+
+                self.last_full_gen = Some(latest_gen);
             } else {
                 // * `Ok(None)` if the update is valid but was not applied because either:
                 //     - the generation to be applied is already present,

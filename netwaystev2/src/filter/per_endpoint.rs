@@ -208,12 +208,12 @@ impl OtherEndServer {
             .ok_or_else(|| anyhow!("No cookie so cannot send UpdateReply -- not logged in?"))?
             .clone();
         let mut last_chat_seq = None;
-        let mut last_full_gen = None;
+        let mut last_full_gen: Option<u64> = None;
         let mut partial_gen = None;
         if let Some(ref room) = self.room {
             last_chat_seq = room.last_chat_seq;
             if let Some(ref game) = room.game {
-                last_full_gen = game.last_full_gen;
+                last_full_gen = game.last_full_gen.map(|gen| gen as u64);
                 partial_gen = game.partial_gen.clone();
             }
         }
@@ -311,7 +311,7 @@ impl OtherEndServer {
             for i in (_start_idx as usize)..game_updates.len() {
                 if let Some(ref mut room) = self.room {
                     if let Err(e) = room
-                        .process_game_update(endpoint, &game_updates[i], filter_notice_tx)
+                        .process_game_update(endpoint, &self.player_name, &game_updates[i], filter_notice_tx)
                         .await
                     {
                         error!("c[F] failed to process game update {:?}: {}", game_updates[i], e);

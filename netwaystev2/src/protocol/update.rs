@@ -121,7 +121,6 @@ impl Into<Region> for NetRegion {
     }
 }
 
-// TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct PlayerInfo {
     /// Name of the player.
