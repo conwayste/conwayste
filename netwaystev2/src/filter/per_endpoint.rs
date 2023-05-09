@@ -308,6 +308,7 @@ impl OtherEndServer {
 
             // Out of the game updates we got from the server, process the ones we haven't already
             // processed.
+            let mut room_deleted = false;
             for i in (_start_idx as usize)..game_updates.len() {
                 if let Some(ref mut room) = self.room {
                     if let Err(e) = room
@@ -317,19 +318,22 @@ impl OtherEndServer {
                         error!("c[F] failed to process game update {:?}: {}", game_updates[i], e);
                     }
 
-                    match &game_updates[i] {
-                        GameUpdate::RoomDeleted => {
-                            if i != game_updates.len() {
-                                warn!("c[F] got a RoomDeleted but it wasn't the last game update; the rest will be ignored");
-                                self.room = None;
-                                self.game_update_seq = None;
-                                break;
-                            }
+                    if game_updates[i].room_was_deleted() {
+                        room_deleted = true;
+                        if i != game_updates.len() {
+                            warn!(
+                                "c[F] got a RoomDeleted but it wasn't the last game update; the rest will be ignored"
+                            );
+                            break;
                         }
-                        _ => {}
                     }
                 }
                 self.game_update_seq.as_mut().map(|seq| *seq += 1); // Increment by 1 because we just handled a game update
+            }
+
+            if room_deleted {
+                self.room = None;
+                self.game_update_seq = None;
             }
         }
         Ok(())

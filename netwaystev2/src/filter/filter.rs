@@ -559,9 +559,31 @@ impl Filter {
 
                 self.send_server_status(endpoint, ping).await?;
             }
-            // TODO: Add handling for UpdateReply (_with_ cookie validation), then delete following catch-all arm!!!!!!!
-            _ => {
-                nwerror!(self, "FIXME stub {:?}", packet);
+            Packet::UpdateReply {
+                ref cookie,
+                last_chat_seq,
+                last_game_update_seq,
+                last_full_gen,
+                ref partial_gen,
+                pong: _,
+            } => {
+                if self.mode.is_client() {
+                    return Err(anyhow!(FilterError::UnexpectedData {
+                        mode:         self.mode.clone(),
+                        invalid_data: "UpdateReply".to_owned(),
+                    }));
+                }
+
+                let client = self
+                    .per_endpoint
+                    .other_end_client_ref_mut(&endpoint, &self.mode, Some("UpdateReply"))?;
+
+                // Validate cookie
+                if client.cookie.is_none() || client.cookie.as_ref().unwrap() != cookie {
+                    return Ok(());
+                }
+
+                //XXX process all of the UpdateReply components
             }
         }
 

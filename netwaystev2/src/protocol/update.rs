@@ -128,3 +128,13 @@ pub struct PlayerInfo {
     /// Index of player in Universe; None means this player is a lurker (non-participant)
     pub index: Option<u64>,
 }
+
+impl GameUpdate {
+    /// Was the current room deleted? This is special!
+    pub fn room_was_deleted(&self) -> bool {
+        match self {
+            GameUpdate::RoomDeleted => true,
+            _ => false,
+        }
+    }
+}
