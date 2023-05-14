@@ -9,7 +9,7 @@ use snowflake::ProcessUniqueId;
 use tokio::sync::mpsc::{error::SendError, Sender};
 
 use crate::common::Endpoint;
-use crate::protocol::{GameUpdate, Packet, RequestAction, ResponseCode};
+use crate::protocol::{GameUpdate, GenPartInfo, Packet, RequestAction, ResponseCode};
 use crate::transport::{PacketSettings, TransportCmd, TransportCmdSend};
 #[allow(unused)]
 use crate::{nwdebug, nwerror, nwinfo, nwtrace, nwwarn};
@@ -44,6 +44,30 @@ impl OtherEndClient {
             unacked_response_codes: VecDeque::new(),
             cookie: None,
         }
+    }
+
+    //XXX XXX move these to server_update.rs?
+
+    pub async fn process_chat_ack(&mut self, last_chat_seq: Option<u64>) -> anyhow::Result<()> {
+        //XXX maybe remove outgoing chats from "unacked" data structure, drop Update packet (if any), and
+        // potentially send new Update packet
+        Ok(())
+    }
+
+    pub async fn process_game_update_ack(&mut self, last_game_update_seq: Option<u64>) -> anyhow::Result<()> {
+        //XXX maybe remove outgoing game updates from "unacked" data structure, drop Update packet (if any), and
+        // potentially send new Update packet
+        Ok(())
+    }
+
+    pub async fn process_gen_ack(
+        &mut self,
+        last_full_gen: Option<u64>,
+        partial_gen: Option<&GenPartInfo>,
+    ) -> anyhow::Result<()> {
+        //XXX maybe remove outgoing universe updates from "unacked" data structure, drop Update packet (if any), and
+        // potentially send new Update packet
+        Ok(())
     }
 
     /// The only error this can return is a send error on `transport_cmd_tx`.

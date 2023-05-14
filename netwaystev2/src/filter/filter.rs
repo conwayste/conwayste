@@ -583,7 +583,10 @@ impl Filter {
                     return Ok(());
                 }
 
-                //XXX process all of the UpdateReply components
+                // Process all of the UpdateReply components
+                client.process_chat_ack(last_chat_seq).await?;
+                client.process_game_update_ack(last_game_update_seq).await?;
+                client.process_gen_ack(last_full_gen, partial_gen.as_ref()).await?;
             }
         }
 
