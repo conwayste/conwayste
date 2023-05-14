@@ -361,6 +361,7 @@ impl Filter {
                     let notice = if let Some(caf) = client_auth_fields_from_connect_packet(&packet) {
                         FilterNotice::ClientAuthRequest { endpoint, fields: caf }
                     } else {
+                        client.process_request_action(&request_action);
                         FilterNotice::NewRequestAction {
                             endpoint,
                             action: request_action,

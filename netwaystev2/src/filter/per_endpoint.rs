@@ -17,7 +17,7 @@ use crate::{nwdebug, nwerror, nwinfo, nwtrace, nwwarn};
 use super::client_update::ClientRoom;
 use super::interface::{FilterMode, SeqNum};
 use super::sortedbuffer::SequencedMinHeap;
-use super::{FilterError, FilterNotifySend, PingPong};
+use super::{FilterError, FilterNotifySend, PingPong, ServerRoom};
 
 pub(crate) enum FilterEndpointData {
     OtherEndClient(OtherEndClient),
@@ -32,6 +32,8 @@ pub(crate) struct OtherEndClient {
     pub last_response_sequence_sent: Option<SeqNum>,
     pub unacked_response_codes: VecDeque<ResponseCode>, // the back has sequence `last_response_sequence_sent`
     pub cookie: Option<String>,
+    // Update/UpdateReply below
+    room: Option<ServerRoom>,
 }
 
 impl OtherEndClient {
@@ -43,10 +45,20 @@ impl OtherEndClient {
             last_response_sequence_sent: None,
             unacked_response_codes: VecDeque::new(),
             cookie: None,
+            room: None,
         }
     }
 
-    //XXX XXX move these to server_update.rs?
+    /// Update whatever client state the server-side Filter layer needs to keep track of.
+    pub fn process_request_action(&mut self, action: &RequestAction) {
+        match action {
+            RequestAction::LeaveRoom => {
+                // ToDo: more cleanup
+                self.room = None;
+            }
+            _ => {}
+        }
+    }
 
     pub async fn process_chat_ack(&mut self, last_chat_seq: Option<u64>) -> anyhow::Result<()> {
         //XXX maybe remove outgoing chats from "unacked" data structure, drop Update packet (if any), and
@@ -164,6 +176,13 @@ impl OtherEndClient {
         // Unwrap ok b/c the immediate check above guarantees Some(..)
         let sequence = self.last_response_sequence_sent.unwrap().0;
 
+        match &code {
+            ResponseCode::JoinedRoom { room_name } => {
+                self.join_room(room_name);
+            }
+            _ => {}
+        }
+
         // Save ResponseCode on self for possible re-sending
         self.unacked_response_codes.push_back(code.clone());
 
@@ -183,6 +202,12 @@ impl OtherEndClient {
             })
             .await
             .map_err(|e| anyhow!(e))
+    }
+
+    /// Create ServerRoom now that player has joined
+    pub fn join_room(&mut self, room_name: &str) {
+        let room = ServerRoom::new(room_name.into());
+        self.room = Some(room);
     }
 }
 
