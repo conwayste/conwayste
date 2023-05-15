@@ -15,6 +15,8 @@ pub mod protocol;
 mod settings;
 pub mod transport;
 
+pub use settings::DEFAULT_PORT;
+
 // This project formats log statements in according to the following format.
 //
 // Date \[Log Level\] - \[Layer Context\] Message
