@@ -2,6 +2,9 @@ use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
 
+// https://serverfault.com/questions/645890/tcpdump-truncates-to-1472-bytes-useful-data-in-udp-packets-during-the-capture/645892#645892
+pub const UDP_MTU_SIZE: usize = 1440;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Endpoint(pub SocketAddr);
 

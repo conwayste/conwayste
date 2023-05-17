@@ -3,10 +3,10 @@ use super::interface::TransportMode;
 use super::interface::{
     PacketSettings,
     TransportCmd::{self, *},
-    TransportNotice, TransportRsp, UDP_MTU_SIZE,
+    TransportNotice, TransportRsp,
 };
 use super::udp_codec::NetwaystePacketCodec;
-use crate::common::{Endpoint, ShutdownWatcher};
+use crate::common::{Endpoint, ShutdownWatcher, UDP_MTU_SIZE};
 use crate::protocol::Packet;
 use crate::{nwerror, nwinfo, nwtrace, settings::*};
 

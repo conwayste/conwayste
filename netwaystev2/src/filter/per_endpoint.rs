@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     num::Wrapping,
     time::Duration,
 };
@@ -36,6 +36,8 @@ pub(crate) struct OtherEndClient {
     room: Option<ServerRoom>,
 }
 
+type PacketIDSet = HashSet<ProcessUniqueId>;
+
 impl OtherEndClient {
     pub fn new(endpoint: Endpoint) -> Self {
         OtherEndClient {
@@ -60,23 +62,64 @@ impl OtherEndClient {
         }
     }
 
-    pub async fn process_chat_ack(&mut self, last_chat_seq: Option<u64>) -> anyhow::Result<()> {
+    //XXX method to build and send packet(s) containing all that are unacked
+
+    pub async fn process_update_reply(
+        &mut self,
+        last_chat_seq: Option<u64>,
+        last_game_update_seq: Option<u64>,
+        last_full_gen: Option<u64>,
+        partial_gen: Option<&GenPartInfo>,
+    ) -> anyhow::Result<()> {
+        let mut packets_to_drop = PacketIDSet::new();
+
+        // Process all of the UpdateReply components
+        self.process_chat_ack(last_chat_seq, &mut packets_to_drop).await?;
+        self.process_game_update_ack(last_game_update_seq, &mut packets_to_drop)
+            .await?;
+        self.process_gen_ack(last_full_gen, partial_gen, &mut packets_to_drop)
+            .await?;
+
+        //XXX drop packets
+
+        Ok(())
+    }
+
+    async fn process_chat_ack(
+        &mut self,
+        last_chat_seq: Option<u64>,
+        packets_to_drop: &mut PacketIDSet,
+    ) -> anyhow::Result<()> {
+        if last_chat_seq.is_none() {
+            return Ok(());
+        }
         //XXX maybe remove outgoing chats from "unacked" data structure, drop Update packet (if any), and
         // potentially send new Update packet
         Ok(())
     }
 
-    pub async fn process_game_update_ack(&mut self, last_game_update_seq: Option<u64>) -> anyhow::Result<()> {
+    async fn process_game_update_ack(
+        &mut self,
+        last_game_update_seq: Option<u64>,
+        packets_to_drop: &mut PacketIDSet,
+    ) -> anyhow::Result<()> {
+        if last_game_update_seq.is_none() {
+            return Ok(());
+        }
         //XXX maybe remove outgoing game updates from "unacked" data structure, drop Update packet (if any), and
         // potentially send new Update packet
         Ok(())
     }
 
-    pub async fn process_gen_ack(
+    async fn process_gen_ack(
         &mut self,
         last_full_gen: Option<u64>,
         partial_gen: Option<&GenPartInfo>,
+        packets_to_drop: &mut PacketIDSet,
     ) -> anyhow::Result<()> {
+        if last_full_gen.is_none() && partial_gen.is_none() {
+            return Ok(());
+        }
         //XXX maybe remove outgoing universe updates from "unacked" data structure, drop Update packet (if any), and
         // potentially send new Update packet
         Ok(())

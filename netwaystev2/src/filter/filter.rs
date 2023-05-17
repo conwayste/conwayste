@@ -584,10 +584,9 @@ impl Filter {
                     return Ok(());
                 }
 
-                // Process all of the UpdateReply components
-                client.process_chat_ack(last_chat_seq).await?;
-                client.process_game_update_ack(last_game_update_seq).await?;
-                client.process_gen_ack(last_full_gen, partial_gen.as_ref()).await?;
+                client
+                    .process_update_reply(last_chat_seq, last_game_update_seq, last_full_gen, partial_gen.as_ref())
+                    .await?;
             }
         }
 
