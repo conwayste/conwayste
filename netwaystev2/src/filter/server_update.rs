@@ -1,6 +1,5 @@
+use std::collections::VecDeque;
 use std::sync::Arc;
-
-use snowflake::ProcessUniqueId;
 
 use conway::GenStateDiff;
 
@@ -76,12 +75,13 @@ fn split_gen_state_diff(diff: GenStateDiff) -> anyhow::Result<Vec<Arc<GenStateDi
         .collect())
 }
 
-//XXX need this?
+/// Keep track of acked GameUpdates; Note: this does not support wrapping sequence numbers, but
+/// that should be fine.
 #[derive(Debug)]
 pub struct GameUpdateQueue {
     current_game_update_seq:     Option<u64>,
     last_acked_game_updated_seq: Option<u64>,
-    unacked_game_updates:        Vec<(u64, GameUpdate, ProcessUniqueId)>,
+    unacked_game_updates:        VecDeque<(u64, GameUpdate)>, // front is oldest; back is newest
 }
 
 impl GameUpdateQueue {
@@ -89,11 +89,66 @@ impl GameUpdateQueue {
         GameUpdateQueue {
             current_game_update_seq:     None,
             last_acked_game_updated_seq: None,
-            unacked_game_updates:        Vec::new(),
+            unacked_game_updates:        VecDeque::new(),
         }
     }
 
-    //XXX
+    pub fn push(&mut self, game_update: GameUpdate) {
+        let seq = if let Some(oldseq) = self.current_game_update_seq {
+            oldseq+1
+        } else {
+            1
+        };
+        self.current_game_update_seq = Some(seq);
+        self.unacked_game_updates.push_back((seq, game_update));
+    }
+
+    #[allow(unused)]
+    pub fn clear(&mut self) {
+        self.current_game_update_seq = None;
+        self.last_acked_game_updated_seq = None;
+        self.unacked_game_updates.clear();
+    }
+
+    #[allow(unused)]
+    pub fn len(&mut self) -> usize {
+        self.unacked_game_updates.len()
+    }
+
+    /// Get a Vec of all unacked GameUpdates, with their sequence numbers.
+    ///
+    /// Normally this call would be preceded by an ack(ack_from_client).
+    pub fn get(&self) -> Vec<(u64, GameUpdate)> {
+        self.unacked_game_updates.iter().cloned().collect()
+    }
+
+    /// Acknowledge none/some/all of these. Return true iff anything was acked.
+    ///
+    /// Normally this call would be followed with a get().
+    pub fn ack(&mut self, acked_seq: Option<u64>) -> bool {
+        let acked_seq = if let Some(acked) = acked_seq { acked } else { return false; };
+        let prev_last = self.last_acked_game_updated_seq;
+        self.last_acked_game_updated_seq=if let Some(last_acked_seq) = self.last_acked_game_updated_seq {
+            Some(std::cmp::max(acked_seq, last_acked_seq))
+        }else {
+            Some(acked_seq)
+        };
+        if prev_last != self.last_acked_game_updated_seq {
+            let mut acked_anything = false;
+            loop {
+                if let Some((seq, _)) = self.unacked_game_updates.front() {
+                    if acked_seq < *seq {
+                        break; // First unacked
+                    }
+                } else {
+                    break; // Empty
+                }
+                self.unacked_game_updates.pop_front();
+                acked_anything = true;
+            }
+            acked_anything
+        } else { false }
+    }
 }
 
 //XXX ServerGame
