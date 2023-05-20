@@ -4,6 +4,8 @@ use config::*;
 mod contract;
 use contract::*;
 
+mod room;
+
 use std::path::Path;
 use std::{fs::remove_file, io::ErrorKind};
 
