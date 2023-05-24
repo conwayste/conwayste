@@ -26,9 +26,9 @@ impl ServerRoom {
 enum SplitGSDError {
     #[error("The size of this GenStateDiff is too large ({bytes:?} bytes > {max_bytes:?}) to break up into parts for sending")]
     DiffTooLarge {
-        bytes: usize,
+        bytes:     usize,
         max_bytes: usize,
-        parts: usize,
+        parts:     usize,
     },
 }
 
@@ -57,7 +57,11 @@ fn split_gen_state_diff(diff: GenStateDiff) -> anyhow::Result<Vec<Arc<GenStateDi
             v
         });
     if pattern_parts.len() > 32 {
-        return Err(anyhow::anyhow!(SplitGSDError::DiffTooLarge{bytes, max_bytes:MAX_GSD_BYTES, parts:pattern_parts.len()}));
+        return Err(anyhow::anyhow!(SplitGSDError::DiffTooLarge {
+            bytes,
+            max_bytes: MAX_GSD_BYTES,
+            parts: pattern_parts.len()
+        }));
     }
     let total_parts = pattern_parts.len() as u8;
     Ok(pattern_parts
@@ -95,7 +99,7 @@ impl GameUpdateQueue {
 
     pub fn push(&mut self, game_update: GameUpdate) {
         let seq = if let Some(oldseq) = self.current_game_update_seq {
-            oldseq+1
+            oldseq + 1
         } else {
             1
         };
@@ -126,11 +130,15 @@ impl GameUpdateQueue {
     ///
     /// Normally this call would be followed with a get().
     pub fn ack(&mut self, acked_seq: Option<u64>) -> bool {
-        let acked_seq = if let Some(acked) = acked_seq { acked } else { return false; };
+        let acked_seq = if let Some(acked) = acked_seq {
+            acked
+        } else {
+            return false;
+        };
         let prev_last = self.last_acked_game_updated_seq;
-        self.last_acked_game_updated_seq=if let Some(last_acked_seq) = self.last_acked_game_updated_seq {
+        self.last_acked_game_updated_seq = if let Some(last_acked_seq) = self.last_acked_game_updated_seq {
             Some(std::cmp::max(acked_seq, last_acked_seq))
-        }else {
+        } else {
             Some(acked_seq)
         };
         if prev_last != self.last_acked_game_updated_seq {
@@ -147,7 +155,9 @@ impl GameUpdateQueue {
                 acked_anything = true;
             }
             acked_anything
-        } else { false }
+        } else {
+            false
+        }
     }
 }
 
