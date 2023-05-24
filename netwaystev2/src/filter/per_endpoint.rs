@@ -8,6 +8,7 @@ use anyhow::anyhow;
 use snowflake::ProcessUniqueId;
 use tokio::sync::mpsc::{error::SendError, Sender};
 
+use super::server_update::*;
 use crate::common::Endpoint;
 use crate::protocol::{GameUpdate, GenPartInfo, Packet, RequestAction, ResponseCode};
 use crate::transport::{PacketSettings, TransportCmd, TransportCmdSend};
@@ -17,7 +18,7 @@ use crate::{nwdebug, nwerror, nwinfo, nwtrace, nwwarn};
 use super::client_update::ClientRoom;
 use super::interface::{FilterMode, SeqNum};
 use super::sortedbuffer::SequencedMinHeap;
-use super::{FilterError, FilterNotifySend, PingPong, ServerRoom};
+use super::{FilterError, FilterNotifySend, PingPong};
 
 pub(crate) enum FilterEndpointData {
     OtherEndClient(OtherEndClient),

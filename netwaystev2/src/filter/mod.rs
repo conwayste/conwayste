@@ -5,7 +5,7 @@ mod interface;
 mod per_endpoint;
 mod ping;
 mod server_status;
-mod server_update;
+pub(crate) mod server_update;
 mod sortedbuffer;
 
 #[cfg(test)]
@@ -18,7 +18,6 @@ pub use interface::*;
 pub(crate) use per_endpoint::*;
 pub use ping::PingPong;
 pub use server_status::ServerStatus;
-pub(crate) use server_update::*;
 
 #[cfg(test)]
 pub(crate) use filter::{determine_seq_num_advancement, SeqNumAdvancement};
