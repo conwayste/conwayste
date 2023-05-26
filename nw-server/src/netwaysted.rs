@@ -38,7 +38,10 @@ async fn main() -> anyhow::Result<()> {
 
     let toml_config = config_from_file(&args.config_file)?;
     if args.dump_config {
-        println!("{:#?}", toml_config);
+        let toml_config_str = format!("{:#?}", toml_config);
+        for line in toml_config_str.lines() {
+            info!("{}", line);
+        }
         return Ok(());
     }
 
@@ -65,6 +68,7 @@ async fn run(listener: &ListenerWrapper) -> anyhow::Result<()> {
                 drop(listener);
                 break 'main;
             },
+
             _ = sigterm.recv() => {
                 info!("SIGTERM received, cleaning up");
                 drop(listener);
