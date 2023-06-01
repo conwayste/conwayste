@@ -318,7 +318,7 @@ impl MainState {
     }
 }
 
-impl EventHandler for MainState {
+impl EventHandler<GameError> for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
         let duration = timer::duration_to_f64(timer::delta(ctx)); // seconds
 
