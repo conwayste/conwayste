@@ -7,10 +7,12 @@ use contract::*;
 mod room;
 
 use std::path::Path;
+use std::time::Duration;
 use std::{fs::remove_file, io::ErrorKind};
 
 use anyhow::anyhow;
 use clap::{self, Parser};
+use netwaystev2::{transport::*, filter::*, app::server::*, common::*};
 use tokio::net::UnixListener;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::*;
@@ -46,20 +48,68 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let listener = open_control_socket(&toml_config.control)?;
-    let exit_status = run(&listener).await;
+    let layers = spin_up_layers(&toml_config).await.expect("Failed to create netwayste layers");
+    let exit_status = run(&listener, layers).await;
 
     info!("Server exiting...");
 
     return exit_status;
 }
 
-async fn run(listener: &ListenerWrapper) -> anyhow::Result<()> {
+async fn spin_up_layers(cfg: &Config) -> anyhow::Result<(Transport, Filter, AppServer)> {
+    // Create the lowest (Transport) layer, returning the layer itself plus three channel halves
+    // (one outgoing and two incoming) for communicating with it.
+    let (transport, transport_cmd_tx, transport_rsp_rx, transport_notice_rx) =
+        Transport::new(None, Some(cfg.server.bind_port), TransportMode::Server).await?;
+
+    // Create the three channels for communication between filter and application
+    // Join the middle filter layer to the transport
+    let (filter, filter_cmd_tx, filter_rsp_rx, filter_notice_rx) = Filter::new(
+        transport_cmd_tx.clone(),
+        transport_rsp_rx,
+        transport_notice_rx,
+        FilterMode::Client,
+    );
+
+    let ref registry = cfg.registry.as_ref().expect("Registry must be defined for networked play");
+
+    // Join the top application server layer to the filter
+    let (app_server, _unigen_cmd_rx, _unigen_rsp_tx, _unigen_notice_tx) = AppServer::new(
+        filter_cmd_tx.clone(),
+        filter_rsp_rx,
+        filter_notice_rx,
+        RegistryParams {
+            public_addr: registry.public_host.clone(),
+            registry_url: registry.url.clone()
+        },
+    );
+
+    trace!("Networking layers created with local address of {}",  transport.local_addr());
+
+    Ok((transport, filter, app_server))
+}
+
+async fn run(listener: &ListenerWrapper, (mut transport, mut filter, mut app): (Transport, Filter, AppServer)) -> anyhow::Result<()> {
     let mut server_status = Ok(());
 
     // Capture SIGTERM, and SIGINT to clean up the socket gracefully now that it's open.
     // SIGKILL (SignalKind::kill()) is not specified as there is no opportunity to clean up any system resources
-    let mut sigint = signal(SignalKind::interrupt()).unwrap();
-    let mut sigterm = signal(SignalKind::terminate()).unwrap();
+    let mut sigint = signal(SignalKind::interrupt()).expect("Could not capture SIGINT");
+    let mut sigterm = signal(SignalKind::terminate()).expect("Could not capture SIGTERM");
+
+    // TODO: Watch all layers for early termination
+    let _transport_shutdown_watcher = transport.get_shutdown_watcher();
+    let _filter_shutdown_watcher = filter.get_shutdown_watcher();
+    let _app_shutdown_watcher = app.get_shutdown_watcher();
+
+    // Start the transport's task in the background
+    tokio::spawn(async move { transport.run().await });
+
+    // Start the filter's task in the background
+    tokio::spawn(async move { filter.run().await });
+
+    // Start the app's task in the background
+    tokio::spawn(async move { app.run().await });
 
     'main: loop {
         tokio::select! {
@@ -148,7 +198,7 @@ fn open_control_socket(ctrl_cfg: &ControlConfig) -> anyhow::Result<ListenerWrapp
     info!("Opening socket...");
     UnixListener::bind(&ctrl_cfg.socket_path)
         .map(|l| ListenerWrapper(l))
-        .map_err(|e| anyhow!(e))
+        .map_err(|e| anyhow!(format!("Could not bind to socket. Check if '{}' exists and remove. Error: {}", ctrl_cfg.socket_path, e)))
 }
 
 fn cleanup_socket(path: &Path) {
