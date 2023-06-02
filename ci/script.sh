@@ -8,8 +8,7 @@ main() {
     if [[ "$TARGET" = *linux* ]]; then
         cross build --target $TARGET --release
     else
-        # don't attempt to build the dissector for windows/darwin (missing dependencies)
-        cross build --target $TARGET --release --workspace --exclude dissect-netwayste
+        cross build --target $TARGET --release --workspace
     fi
 
     if [ ! -z $DISABLE_TESTS ]; then
@@ -18,10 +17,6 @@ main() {
 
     # TODO: once submodules for openbsd support are removed (PR #145) can delete exclusions below
     EXCLUSIONS="--exclude ggez --exclude rodio"
-    if [[ "$TARGET" != *linux* ]]; then
-        # don't attempt to build the dissector for windows/darwin (missing dependencies)
-        EXCLUSIONS="$EXCLUSIONS --exclude dissect-netwayste"
-    fi
     cross test --target $TARGET --release --workspace $EXCLUSIONS
 }
 
