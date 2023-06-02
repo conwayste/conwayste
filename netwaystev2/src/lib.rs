@@ -1,7 +1,6 @@
 extern crate anyhow;
 extern crate bincode;
 extern crate conway;
-extern crate env_logger;
 #[macro_use]
 extern crate log;
 extern crate serde;
