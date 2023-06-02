@@ -12,7 +12,7 @@ use std::{fs::remove_file, io::ErrorKind};
 
 use anyhow::anyhow;
 use clap::{self, Parser};
-use netwaystev2::{transport::*, filter::*, app::server::*, common::*};
+use netwaystev2::{app::server::*, common::*, filter::*, transport::*};
 use tokio::net::UnixListener;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::*;
@@ -48,7 +48,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let listener = open_control_socket(&toml_config.control)?;
-    let layers = spin_up_layers(&toml_config).await.expect("Failed to create netwayste layers");
+    let layers = spin_up_layers(&toml_config)
+        .await
+        .expect("Failed to create netwayste layers");
     let exit_status = run(&listener, layers).await;
 
     info!("Server exiting...");
@@ -71,7 +73,10 @@ async fn spin_up_layers(cfg: &Config) -> anyhow::Result<(Transport, Filter, AppS
         FilterMode::Client,
     );
 
-    let ref registry = cfg.registry.as_ref().expect("Registry must be defined for networked play");
+    let ref registry = cfg
+        .registry
+        .as_ref()
+        .expect("Registry must be defined for networked play");
 
     // Join the top application server layer to the filter
     let (app_server, _unigen_cmd_rx, _unigen_rsp_tx, _unigen_notice_tx) = AppServer::new(
@@ -79,17 +84,23 @@ async fn spin_up_layers(cfg: &Config) -> anyhow::Result<(Transport, Filter, AppS
         filter_rsp_rx,
         filter_notice_rx,
         RegistryParams {
-            public_addr: registry.public_host.clone(),
-            registry_url: registry.url.clone()
+            public_addr:  registry.public_host.clone(),
+            registry_url: registry.url.clone(),
         },
     );
 
-    trace!("Networking layers created with local address of {}",  transport.local_addr());
+    trace!(
+        "Networking layers created with local address of {}",
+        transport.local_addr()
+    );
 
     Ok((transport, filter, app_server))
 }
 
-async fn run(listener: &ListenerWrapper, (mut transport, mut filter, mut app): (Transport, Filter, AppServer)) -> anyhow::Result<()> {
+async fn run(
+    listener: &ListenerWrapper,
+    (mut transport, mut filter, mut app): (Transport, Filter, AppServer),
+) -> anyhow::Result<()> {
     let mut server_status = Ok(());
 
     // Capture SIGTERM, and SIGINT to clean up the socket gracefully now that it's open.
@@ -198,7 +209,12 @@ fn open_control_socket(ctrl_cfg: &ControlConfig) -> anyhow::Result<ListenerWrapp
     info!("Opening socket...");
     UnixListener::bind(&ctrl_cfg.socket_path)
         .map(|l| ListenerWrapper(l))
-        .map_err(|e| anyhow!(format!("Could not bind to socket. Check if '{}' exists and remove. Error: {}", ctrl_cfg.socket_path, e)))
+        .map_err(|e| {
+            anyhow!(format!(
+                "Could not bind to socket. Check if '{}' exists and remove. Error: {}",
+                ctrl_cfg.socket_path, e
+            ))
+        })
 }
 
 fn cleanup_socket(path: &Path) {

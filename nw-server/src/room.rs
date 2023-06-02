@@ -27,7 +27,7 @@ pub enum RoomMgrError {
 
 #[derive(Default)]
 struct Room {
-    name:    String,
+    name:     String,
     player_a: Option<PlayerId>,
     player_b: Option<PlayerId>,
 }
@@ -123,7 +123,7 @@ impl RoomBlock {
 mod tests {
     use crate::room::MAX_ROOM_NAME_CHARS;
 
-    use super::{RoomBlock, ROOMS_PER_SERVER, RoomId};
+    use super::{RoomBlock, RoomId, ROOMS_PER_SERVER};
 
     #[test]
     fn test_allocate_all_rooms() {
