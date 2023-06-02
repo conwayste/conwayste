@@ -42,6 +42,7 @@ use std::net::SocketAddr;
 use std::process::exit;
 use std::time::{self, Duration, Instant};
 
+use base64::{engine::general_purpose, Engine as _};
 use chrono::Local;
 use clap::{App, Arg};
 use futures as Fut;
@@ -208,12 +209,10 @@ impl RegistryParams {
 }
 
 //////////////// Utilities ///////////////////////
-
 pub fn new_cookie() -> String {
     let mut buf = [0u8; 12];
     rand::thread_rng().fill_bytes(&mut buf);
-    let config = base64::Config::new(base64::CharacterSet::UrlSafe, false);
-    base64::encode_config(&buf, config)
+    general_purpose::URL_SAFE_NO_PAD.encode(buf)
 }
 
 /*
