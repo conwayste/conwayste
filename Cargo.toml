@@ -4,7 +4,6 @@ members = [
   "conwayste",
   "netwaystev2",
   "libconway",
-  "dissect-netwayste",
   "nwv2-python-wrapper",
   "nw-server",
 ]
