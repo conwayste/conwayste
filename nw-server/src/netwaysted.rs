@@ -73,21 +73,20 @@ async fn spin_up_layers(cfg: &Config) -> anyhow::Result<(Transport, Filter, AppS
         FilterMode::Client,
     );
 
-    let ref registry = cfg
-        .registry
-        .as_ref()
-        .expect("Registry must be defined for networked play");
+    let registry_params = cfg.registry.as_ref().map(|registry| RegistryParams {
+        public_addr:  registry.public_host.clone(),
+        registry_url: registry.url.clone(),
+    });
+
+    if registry_params.is_some() {
+        info!("This server is registering itself with the registrar");
+    } else {
+        info!("This server is private");
+    }
 
     // Join the top application server layer to the filter
-    let (app_server, _unigen_cmd_rx, _unigen_rsp_tx, _unigen_notice_tx) = AppServer::new(
-        filter_cmd_tx.clone(),
-        filter_rsp_rx,
-        filter_notice_rx,
-        RegistryParams {
-            public_addr:  registry.public_host.clone(),
-            registry_url: registry.url.clone(),
-        },
-    );
+    let (app_server, _unigen_cmd_rx, _unigen_rsp_tx, _unigen_notice_tx) =
+        AppServer::new(filter_cmd_tx.clone(), filter_rsp_rx, filter_notice_rx, registry_params);
 
     trace!(
         "Networking layers created with local address of {}",

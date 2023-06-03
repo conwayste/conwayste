@@ -40,7 +40,7 @@ pub struct AppServer {
     unigen_notice_rx: Option<UniGenNotifyRecv>,
     phase_watch_tx:   Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
     phase_watch_rx:   watch::Receiver<Phase>,
-    registry_params:  RegistryParams,
+    registry_params:  Option<RegistryParams>, // If None, then not a public server
 }
 
 impl AppServer {
@@ -48,7 +48,7 @@ impl AppServer {
         filter_cmd_tx: FilterCmdSend,
         filter_rsp_rx: FilterRspRecv,
         filter_notice_rx: FilterNotifyRecv,
-        registry_params: RegistryParams,
+        registry_params: Option<RegistryParams>,
     ) -> AppServerInit {
         let (unigen_cmd_tx, unigen_cmd_rx): (UniGenCmdSend, UniGenCmdRecv) = mpsc::channel(APP_CHANNEL_LEN);
         let (unigen_rsp_tx, unigen_rsp_rx): (UniGenRspSend, UniGenRspRecv) = mpsc::channel(APP_CHANNEL_LEN);
@@ -61,7 +61,7 @@ impl AppServer {
                 filter_cmd_tx,
                 filter_rsp_rx: Some(filter_rsp_rx),
                 filter_notice_rx: Some(filter_notice_rx),
-                unigen_cmd_tx: unigen_cmd_tx,
+                unigen_cmd_tx,
                 unigen_rsp_rx: Some(unigen_rsp_rx),
                 unigen_notice_rx: Some(unigen_notice_rx),
                 phase_watch_tx: Some(phase_watch_tx),
@@ -115,7 +115,9 @@ impl AppServer {
                     }
                 }
                 _instant = register_interval_stream.tick() => {
-                    registry::try_register(self.registry_params.clone()).await;
+                    if let Some(ref registry_params) = self.registry_params {
+                        registry::try_register(registry_params.clone()).await;
+                    }
                 }
             }
         }
