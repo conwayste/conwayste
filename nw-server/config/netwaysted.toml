@@ -9,7 +9,7 @@ public_host = "1.2.3.4"
 public_port = 2016
 
 # Point this to your own registry if you are self-hosting the registrar
-url = "https://registry.conwayste.rs"
+url = "https://registry.conwayste.rs/addServer"
 
 [control]
 socket_path = "/tmp/netwaysted.sock"

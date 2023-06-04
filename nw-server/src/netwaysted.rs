@@ -74,7 +74,7 @@ async fn spin_up_layers(cfg: &Config) -> anyhow::Result<(Transport, Filter, AppS
     );
 
     let registry_params = cfg.registry.as_ref().map(|registry| RegistryParams {
-        public_addr:  registry.public_host.clone(),
+        public_addr:  format!("{}:{}", registry.public_host, registry.public_port),
         registry_url: registry.url.clone(),
     });
 
