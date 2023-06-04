@@ -116,6 +116,7 @@ impl AppServer {
                 }
                 _instant = register_interval_stream.tick() => {
                     if let Some(ref registry_params) = self.registry_params {
+                        trace!("[A] reg: {:?}", registry_params);
                         registry::try_register(registry_params.clone()).await;
                     }
                 }

@@ -53,7 +53,7 @@ async fn main() -> anyhow::Result<()> {
         .expect("Failed to create netwayste layers");
     let exit_status = run(&listener, layers).await;
 
-    info!("Server exiting...");
+    info!("[D] Server exiting...");
 
     return exit_status;
 }
@@ -79,9 +79,9 @@ async fn spin_up_layers(cfg: &Config) -> anyhow::Result<(Transport, Filter, AppS
     });
 
     if registry_params.is_some() {
-        info!("This server is registering itself with the registrar");
+        info!("[D] This server is registering itself with the registrar");
     } else {
-        info!("This server is private");
+        info!("[D] This server is private");
     }
 
     // Join the top application server layer to the filter
@@ -89,7 +89,7 @@ async fn spin_up_layers(cfg: &Config) -> anyhow::Result<(Transport, Filter, AppS
         AppServer::new(filter_cmd_tx.clone(), filter_rsp_rx, filter_notice_rx, registry_params);
 
     trace!(
-        "Networking layers created with local address of {}",
+        "[D] Networking layers created with local address of {}",
         transport.local_addr()
     );
 
@@ -124,13 +124,13 @@ async fn run(
     'main: loop {
         tokio::select! {
             _ = sigint.recv() => {
-                info!("SIGINT received, cleaning up");
+                info!("[D] SIGINT received, cleaning up");
                 drop(listener);
                 break 'main;
             },
 
             _ = sigterm.recv() => {
-                info!("SIGTERM received, cleaning up");
+                info!("[D] SIGTERM received, cleaning up");
                 drop(listener);
                 break 'main;
             }
@@ -140,7 +140,7 @@ async fn run(
                     Ok((stream, _addr)) => {
                         // Wait for the socket to be readable
                         stream.readable().await?;
-                        info!("Control message received");
+                        info!("[D] Control message received");
 
                         let mut response = String::new();
 
@@ -158,11 +158,11 @@ async fn run(
                                 }
                             }
                             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                                warn!("Dropping read, would block");
+                                warn!("[D] Dropping read, would block");
                                 continue;
                             }
                             Err(e) => {
-                                error!("Failed to read message");
+                                error!("[D] Failed to read message");
                                 server_status = Err(e.into());
                             }
                         }
@@ -178,15 +178,15 @@ async fn run(
                         match stream.try_write(response.as_bytes()) {
                             Ok(n) => {
                                 if n != response.len() {
-                                    warn!("Failed to write all bytes to stream. Wrote {} of {}", n, response.len());
+                                    warn!("[D] Failed to write all bytes to stream. Wrote {} of {}", n, response.len());
                                 }
                             }
                             Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                                warn!("Dropping write, would block");
+                                warn!("[D] Dropping write, would block");
                                 continue;
                             }
                             Err(e) => {
-                                error!("Failed to respond");
+                                error!("[D] Failed to respond");
                                 server_status = Err(e.into());
                                 break 'main;
                             }
@@ -205,7 +205,7 @@ async fn run(
 }
 
 fn open_control_socket(ctrl_cfg: &ControlConfig) -> anyhow::Result<ListenerWrapper> {
-    info!("Opening socket...");
+    info!("[D] Opening socket...");
     UnixListener::bind(&ctrl_cfg.socket_path)
         .map(|l| ListenerWrapper(l))
         .map_err(|e| {
