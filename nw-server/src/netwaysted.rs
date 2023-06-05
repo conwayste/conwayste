@@ -15,7 +15,8 @@ use netwaystev2::{app::server::*, common::*, filter::*, transport::*};
 use tokio::net::UnixListener;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::*;
-use tracing_subscriber::FmtSubscriber;
+use tracing_log::LogTracer;
+use tracing_subscriber::{FmtSubscriber, EnvFilter};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -29,9 +30,22 @@ struct DaemonArgs {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // This enables a compatibility layer between tracing 'Event's and log 'Record's.
+    // Disables logging for crates we typically do not care about.
+    LogTracer::builder()
+        .ignore_all([   // Usage is described below for every exclusion
+            "want",     // signaling
+            "rustls",   // registrar
+            "reqwest",  // registrar
+            "mio",      // async
+            "hyper"     // registrar
+            ])
+        .init()?;
+
     let subscriber = FmtSubscriber::builder()
-        // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.) will be written to stdout.
-        .with_max_level(Level::TRACE)
+        // Use a log level of TRACE for the daemon and netwayste crate, but turn only log errors for hyper.
+        // This reduces the logging 'noise' to just the things we care about.
+        .with_env_filter(EnvFilter::new("hyper=error,netwaysted=trace,netwaystev2=trace"))
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
