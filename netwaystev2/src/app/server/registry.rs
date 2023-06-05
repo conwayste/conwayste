@@ -18,10 +18,12 @@ pub enum ServerRegistrationError {
 
 #[derive(Debug, Clone)]
 pub struct RegistryParams {
-    /// The value sent to the registrar
+    /// The IP address and UDP port the registrar will send send netwayste heartbeats to.
+    /// It takes on the format "hostname:port"
     pub public_addr: String,
 
-    /// The URL to POST our public address to
+    /// The URL to POST our public address to.
+    /// This must end in 'addServer' so that the registration is made against the correct server route
     pub registry_url: String,
 }
 

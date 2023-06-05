@@ -7,7 +7,6 @@ use contract::*;
 mod room;
 
 use std::path::Path;
-use std::time::Duration;
 use std::{fs::remove_file, io::ErrorKind};
 
 use anyhow::anyhow;
@@ -80,6 +79,7 @@ async fn spin_up_layers(cfg: &Config) -> anyhow::Result<(Transport, Filter, AppS
 
     if registry_params.is_some() {
         info!("This server is registering itself with the registrar");
+        debug!("{:#?}", registry_params.as_ref().unwrap());
     } else {
         info!("This server is private");
     }
