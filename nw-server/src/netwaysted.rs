@@ -44,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
         .init()?;
 
     let subscriber = FmtSubscriber::builder()
-        // Use a log level of TRACE for the daemon and netwayste crate, but turn only log errors for hyper.
+        // Use a log level of TRACE for the daemon and netwayste crate, but only enable errors for hyper.
         // This reduces the logging 'noise' to just the things we care about.
         .with_env_filter(EnvFilter::new("hyper=error,netwaysted=trace,netwaystev2=trace"))
         .finish();
