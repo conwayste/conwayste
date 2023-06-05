@@ -16,7 +16,7 @@ use tokio::net::UnixListener;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::*;
 use tracing_log::LogTracer;
-use tracing_subscriber::{FmtSubscriber, EnvFilter};
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -33,13 +33,14 @@ async fn main() -> anyhow::Result<()> {
     // This enables a compatibility layer between tracing 'Event's and log 'Record's.
     // Disables logging for crates we typically do not care about.
     LogTracer::builder()
-        .ignore_all([   // Usage is described below for every exclusion
-            "want",     // signaling
-            "rustls",   // registrar
-            "reqwest",  // registrar
-            "mio",      // async
-            "hyper"     // registrar
-            ])
+        .ignore_all([
+            // Usage is described below for every exclusion
+            "want",    // signaling
+            "rustls",  // registrar
+            "reqwest", // registrar
+            "mio",     // async
+            "hyper",   // registrar
+        ])
         .init()?;
 
     let subscriber = FmtSubscriber::builder()
