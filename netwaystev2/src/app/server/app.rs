@@ -76,44 +76,49 @@ impl AppServer {
 
     pub async fn run(&mut self) {
         let filter_cmd_tx = self.filter_cmd_tx.clone();
-        let filter_rsp_rx = self.filter_rsp_rx.take().unwrap();
-        let filter_notice_rx = self.filter_notice_rx.take().unwrap();
+        let filter_rsp_rx = self.filter_rsp_rx.take().expect("run() is single-use");
+        let filter_notice_rx = self.filter_notice_rx.take().expect("run() is single-use");
         tokio::pin!(filter_cmd_tx);
         tokio::pin!(filter_rsp_rx);
         tokio::pin!(filter_notice_rx);
 
-        let unigen_cmd_tx = self.unigen_cmd_tx.clone();
-        let unigen_rsp_rx = self.unigen_rsp_rx.take().unwrap();
-        let unigen_notice_rx = self.unigen_notice_rx.take().unwrap();
-        tokio::pin!(unigen_cmd_tx);
-        tokio::pin!(unigen_rsp_rx);
-        tokio::pin!(unigen_notice_rx);
+        let phase_watch_tx = self.phase_watch_tx.take().expect("run() is single-use");
+
+        // let unigen_cmd_tx = self.unigen_cmd_tx.clone();
+        // let unigen_rsp_rx = self.unigen_rsp_rx.take().unwrap();
+        // let unigen_notice_rx = self.unigen_notice_rx.take().unwrap();
+        // tokio::pin!(unigen_cmd_tx);
+        // tokio::pin!(unigen_rsp_rx);
+        // tokio::pin!(unigen_notice_rx);
 
         let mut register_interval_stream = tokio::time::interval(REGISTER_INTERVAL);
 
         loop {
             tokio::select! {
                 response = filter_rsp_rx.recv() => {
-                    if let Some(response) = response {
-                        trace!("[A<-F,R] {:?}", response);
+                    if let Some(filter_rsp)  = response {
+                        trace!("[A<-F,R] {:?}", filter_rsp);
+                        //TODO: handle filter response
+                    } else {
+                        info!("filter response channel is closed; shutting down");
+                        break;
                     }
                 }
                 notice = filter_notice_rx.recv() => {
-                    if let Some(notice) = notice {
-                        trace!("[A<-F,N] {:?}", notice);
+                    if let Some(filter_notice) = notice {
+                        trace!("[A<-F,N] {:?}", filter_notice);
+                        //TODO: handle filter notice
+                    } else {
+                        info!("filter notice channel is closed; shutting down");
+                        break;
                     }
                 }
-                response = unigen_rsp_rx.recv() => {
-                    if let Some(response) = response {
-                        trace!("[A<-F,UGR] {:?}", response);
-
-                    }
-                }
-                notice = unigen_notice_rx.recv() => {
-                    if let Some(notice) = notice {
-                        trace!("[A<-F,UGN] {:?}", notice);
-                    }
-                }
+                // response = unigen_rsp_rx.recv() => {
+                //     trace!("[A<-F,UGR] {:?}", response);
+                // }
+                // notice = unigen_notice_rx.recv() => {
+                //     trace!("[A<-F,UGN] {:?}", notice);
+                // }
                 _instant = register_interval_stream.tick() => {
                     if let Some(ref registry_params) = self.registry_params {
                         registry::try_register(registry_params.clone()).await;
@@ -121,6 +126,7 @@ impl AppServer {
                 }
             }
         }
+        let _ = phase_watch_tx.send(Phase::ShutdownComplete);
     }
 
     pub fn get_shutdown_watcher(&mut self) -> impl Future<Output = ()> + 'static {
