@@ -10,6 +10,7 @@ use std::path::Path;
 use std::{fs::remove_file, io::ErrorKind};
 
 use anyhow::{anyhow, bail};
+use bincode;
 use clap::{self, Parser};
 use netwaystev2::{app::server::*, common::*, filter::*, transport::*};
 use tokio::net::{UnixListener, UnixStream};
@@ -186,49 +187,55 @@ fn cleanup_socket(path: &Path) {
 }
 
 async fn handle_new_ctl_message(stream: &UnixStream) -> anyhow::Result<()> {
-        let response;
+    let response;
 
-        // Try to read data
-        // This can fail with `WouldBlock` if the readiness event is a false positive
-        let mut msg = vec![0; MAX_CONTROL_MESSAGE_LEN];
-        match stream.try_read(&mut msg) {
-            Ok(n) => {
-                msg.truncate(n);
+    // Try to read data
+    // This can fail with `WouldBlock` if the readiness event is a false positive
+    let mut msg = vec![0; MAX_CONTROL_MESSAGE_LEN];
+    match stream.try_read(&mut msg) {
+        Ok(n) => {
+            msg.truncate(n);
 
-                if let Ok(msg_as_str) = String::from_utf8(msg) {
-                    response = format!("Hello {}", msg_as_str);
-                } else {
-                    response = "Control command must be valid UTF-8".to_owned();
-                }
-            }
-            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                warn!("Dropping read, would block");
-                return Ok(());
-            }
-            Err(e) => {
-                error!("Failed to read control message");
-                bail!(e);
+            if let Ok(msg_as_str) = String::from_utf8(msg) {
+                let message = format!("Hello {} Boo", msg_as_str);
+                response = DaemonResponse::success(&message);
+            } else {
+                response = DaemonResponse::failure("Control command must be valid UTF-8");
             }
         }
+        Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+            warn!("Dropping read, would block");
+            return Ok(());
+        }
+        Err(e) => {
+            error!("Failed to read control message");
+            bail!(e);
+        }
+    }
 
-        // Try to write data
-        // This can fail with `WouldBlock` if the readiness event is a false positive
-        stream.writable().await?;
-        match stream.try_write(response.as_bytes()) {
-            Ok(n) => {
-                if n != response.len() {
-                    warn!("Failed to write all bytes to stream. Wrote {} of {}", n, response.len());
-                }
-            }
-            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                warn!("Dropping write, would block");
-                return Ok(());
-            }
-            Err(e) => {
-                error!("Failed to respond to control request");
-                return Err(e.into());
+    // Try to write data
+    // This can fail with `WouldBlock` if the readiness event is a false positive
+    stream.writable().await?;
+    let serialized_response = bincode::serialize(&response)?;
+    match stream.try_write(&serialized_response) {
+        Ok(n) => {
+            if n != serialized_response.len() {
+                warn!(
+                    "Failed to write all bytes to stream. Wrote {} of {}",
+                    n,
+                    serialized_response.len()
+                );
             }
         }
+        Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+            warn!("Dropping write, would block");
+            return Ok(());
+        }
+        Err(e) => {
+            error!("Failed to respond to control request");
+            return Err(e.into());
+        }
+    }
 
     Ok(())
 }

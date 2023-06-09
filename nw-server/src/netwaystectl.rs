@@ -68,12 +68,9 @@ async fn main() -> anyhow::Result<()> {
     match sock.try_read(&mut msg) {
         Ok(n) => {
             msg.truncate(n);
+            let daemon_response: DaemonResponse = bincode::deserialize(&msg)?;
 
-            if let Ok(msg_as_str) = String::from_utf8(msg) {
-                info!("Netwayste server responded with '{}'", msg_as_str);
-            } else {
-                error!("Netwayste server response is not valid UTF-8");
-            }
+            info!("({:?}) {:?}", daemon_response.status, daemon_response.message);
         }
         Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
             warn!("Dropping read, would block");
