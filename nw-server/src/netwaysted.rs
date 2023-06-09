@@ -9,10 +9,10 @@ mod room;
 use std::path::Path;
 use std::{fs::remove_file, io::ErrorKind};
 
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use clap::{self, Parser};
 use netwaystev2::{app::server::*, common::*, filter::*, transport::*};
-use tokio::net::UnixListener;
+use tokio::net::{UnixListener, UnixStream};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::*;
 use tracing_log::LogTracer;
@@ -149,62 +149,13 @@ async fn run(
                 break 'main;
             }
 
-            new_message = listener.0.accept() => {
-                match new_message {
+            new_connection = listener.0.accept() => {
+                match new_connection {
                     Ok((stream, _addr)) => {
                         // Wait for the socket to be readable
                         stream.readable().await?;
                         info!("Control message received");
-
-                        let mut response = String::new();
-
-                        // Try to read data
-                        // This can fail with `WouldBlock` if the readiness event is a false positive
-                        let mut msg = vec![0; MAX_CONTROL_MESSAGE_LEN];
-                        match stream.try_read(&mut msg) {
-                            Ok(n) => {
-                                msg.truncate(n);
-
-                                if let Ok(msg_as_str) = String::from_utf8(msg) {
-                                    response = format!("Hello {}", msg_as_str);
-                                } else {
-                                    response = "Control command must be valid UTF-8".to_owned();
-                                }
-                            }
-                            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                                warn!("Dropping read, would block");
-                                continue;
-                            }
-                            Err(e) => {
-                                error!("Failed to read message");
-                                server_status = Err(e.into());
-                            }
-                        }
-
-                        if let Err(_) = server_status {
-                            // XXX: Terminate early if the read fails while server is still under development
-                            break 'main;
-                        }
-
-                        // Try to write data
-                        // This can fail with `WouldBlock` if the readiness event is a false positive
-                        stream.writable().await?;
-                        match stream.try_write(response.as_bytes()) {
-                            Ok(n) => {
-                                if n != response.len() {
-                                    warn!("Failed to write all bytes to stream. Wrote {} of {}", n, response.len());
-                                }
-                            }
-                            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                                warn!("Dropping write, would block");
-                                continue;
-                            }
-                            Err(e) => {
-                                error!("Failed to respond");
-                                server_status = Err(e.into());
-                                break 'main;
-                            }
-                        }
+                        handle_new_ctl_message(&stream).await?;
                     }
                     Err(e) => {
                         server_status = Err(anyhow!(format!("Connection failed: '{:?}'", e)));
@@ -232,6 +183,54 @@ fn open_control_socket(ctrl_cfg: &ControlConfig) -> anyhow::Result<ListenerWrapp
 
 fn cleanup_socket(path: &Path) {
     let _ = remove_file(path);
+}
+
+async fn handle_new_ctl_message(stream: &UnixStream) -> anyhow::Result<()> {
+        let response;
+
+        // Try to read data
+        // This can fail with `WouldBlock` if the readiness event is a false positive
+        let mut msg = vec![0; MAX_CONTROL_MESSAGE_LEN];
+        match stream.try_read(&mut msg) {
+            Ok(n) => {
+                msg.truncate(n);
+
+                if let Ok(msg_as_str) = String::from_utf8(msg) {
+                    response = format!("Hello {}", msg_as_str);
+                } else {
+                    response = "Control command must be valid UTF-8".to_owned();
+                }
+            }
+            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                warn!("Dropping read, would block");
+                return Ok(());
+            }
+            Err(e) => {
+                error!("Failed to read control message");
+                bail!(e);
+            }
+        }
+
+        // Try to write data
+        // This can fail with `WouldBlock` if the readiness event is a false positive
+        stream.writable().await?;
+        match stream.try_write(response.as_bytes()) {
+            Ok(n) => {
+                if n != response.len() {
+                    warn!("Failed to write all bytes to stream. Wrote {} of {}", n, response.len());
+                }
+            }
+            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                warn!("Dropping write, would block");
+                return Ok(());
+            }
+            Err(e) => {
+                error!("Failed to respond to control request");
+                return Err(e.into());
+            }
+        }
+
+    Ok(())
 }
 
 /// Wrapper to ensure the listener socket is cleaned up when server daemon exits.
