@@ -100,8 +100,7 @@ async fn spin_up_layers(cfg: &Config) -> anyhow::Result<(Transport, Filter, AppS
     }
 
     // Join the top application server layer to the filter
-    let (app_server, _unigen_cmd_rx, _unigen_rsp_tx, _unigen_notice_tx) =
-        AppServer::new(filter_cmd_tx, filter_rsp_rx, filter_notice_rx, registry_params);
+    let app_server = AppServer::new(filter_cmd_tx, filter_rsp_rx, filter_notice_rx, registry_params);
 
     trace!(
         "Networking layers created with local address of {}",

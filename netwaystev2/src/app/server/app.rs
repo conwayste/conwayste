@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use crate::{
-    app::server::interface::{UniGenCmd, UniGenNotice, UniGenRsp},
     app::server::registry::{self, REGISTER_INTERVAL},
     filter::{FilterCmd, FilterCmdSend, FilterNotifyRecv, FilterRspRecv},
     settings::APP_CHANNEL_LEN,
@@ -22,22 +21,10 @@ enum Phase {
     ShutdownComplete,
 }
 
-type UniGenCmdSend = Sender<UniGenCmd>;
-pub type UniGenCmdRecv = Receiver<UniGenCmd>;
-pub type UniGenRspSend = Sender<UniGenRsp>;
-type UniGenRspRecv = Receiver<UniGenRsp>;
-pub type UniGenNotifySend = Sender<UniGenNotice>;
-type UniGenNotifyRecv = Receiver<UniGenNotice>;
-
-pub type AppServerInit = (AppServer, UniGenCmdRecv, UniGenRspSend, UniGenNotifySend);
-
 pub struct AppServer {
     filter_cmd_tx:    FilterCmdSend,
     filter_rsp_rx:    Option<FilterRspRecv>,
     filter_notice_rx: Option<FilterNotifyRecv>,
-    unigen_cmd_tx:    UniGenCmdSend,
-    unigen_rsp_rx:    Option<UniGenRspRecv>,
-    unigen_notice_rx: Option<UniGenNotifyRecv>,
     phase_watch_tx:   Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
     phase_watch_rx:   watch::Receiver<Phase>,
     registry_params:  Option<RegistryParams>, // If None, then not a public server
@@ -49,29 +36,17 @@ impl AppServer {
         filter_rsp_rx: FilterRspRecv,
         filter_notice_rx: FilterNotifyRecv,
         registry_params: Option<RegistryParams>,
-    ) -> AppServerInit {
-        let (unigen_cmd_tx, unigen_cmd_rx): (UniGenCmdSend, UniGenCmdRecv) = mpsc::channel(APP_CHANNEL_LEN);
-        let (unigen_rsp_tx, unigen_rsp_rx): (UniGenRspSend, UniGenRspRecv) = mpsc::channel(APP_CHANNEL_LEN);
-        let (unigen_notice_tx, unigen_notice_rx): (UniGenNotifySend, UniGenNotifyRecv) = mpsc::channel(APP_CHANNEL_LEN);
-
+    ) -> AppServer {
         let (phase_watch_tx, phase_watch_rx) = watch::channel(Phase::Running);
 
-        (
-            AppServer {
-                filter_cmd_tx,
-                filter_rsp_rx: Some(filter_rsp_rx),
-                filter_notice_rx: Some(filter_notice_rx),
-                unigen_cmd_tx,
-                unigen_rsp_rx: Some(unigen_rsp_rx),
-                unigen_notice_rx: Some(unigen_notice_rx),
-                phase_watch_tx: Some(phase_watch_tx),
-                phase_watch_rx,
-                registry_params,
-            },
-            unigen_cmd_rx,
-            unigen_rsp_tx,
-            unigen_notice_tx,
-        )
+        AppServer {
+            filter_cmd_tx,
+            filter_rsp_rx: Some(filter_rsp_rx),
+            filter_notice_rx: Some(filter_notice_rx),
+            phase_watch_tx: Some(phase_watch_tx),
+            phase_watch_rx,
+            registry_params,
+        }
     }
 
     pub async fn run(&mut self) {
@@ -83,13 +58,6 @@ impl AppServer {
         tokio::pin!(filter_notice_rx);
 
         let phase_watch_tx = self.phase_watch_tx.take().expect("run() is single-use");
-
-        // let unigen_cmd_tx = self.unigen_cmd_tx.clone();
-        // let unigen_rsp_rx = self.unigen_rsp_rx.take().unwrap();
-        // let unigen_notice_rx = self.unigen_notice_rx.take().unwrap();
-        // tokio::pin!(unigen_cmd_tx);
-        // tokio::pin!(unigen_rsp_rx);
-        // tokio::pin!(unigen_notice_rx);
 
         let mut register_interval_stream = tokio::time::interval(REGISTER_INTERVAL);
 
@@ -113,12 +81,6 @@ impl AppServer {
                         break;
                     }
                 }
-                // response = unigen_rsp_rx.recv() => {
-                //     trace!("[A<-F,UGR] {:?}", response);
-                // }
-                // notice = unigen_notice_rx.recv() => {
-                //     trace!("[A<-F,UGN] {:?}", notice);
-                // }
                 _instant = register_interval_stream.tick() => {
                     if let Some(ref registry_params) = self.registry_params {
                         registry::try_register(registry_params.clone()).await;
