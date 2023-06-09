@@ -2647,6 +2647,7 @@ name = "nw-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "clap 4.2.1",
  "indexmap",
  "netwaystev2",
