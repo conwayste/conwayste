@@ -1055,10 +1055,19 @@ impl MainState {
                 )?;
             }
 
-            // Emit a Load event on the new screen
+            // Emit a Load event and a ScreenChange event on the new screen
             if let Some(layering) = self.ui_layout.get_screen_layering_mut(new_screen) {
                 layering.emit(
                     &Event::new_load(),
+                    ggez_ctx,
+                    &mut self.config,
+                    &mut self.screen_stack,
+                    game_area_state,
+                    &mut self.static_node_ids,
+                    &mut self.viewport,
+                )?;
+                layering.emit(
+                    &Event::new_screen_change(),
                     ggez_ctx,
                     &mut self.config,
                     &mut self.screen_stack,

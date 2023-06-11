@@ -205,6 +205,7 @@ pub enum EventType {
     // child_event(). Note that a LoseFocus event will not be received after this is sent.
     ChildReleasedFocus,
     ChildRequestsFocus,
+    ScreenChange, // Emitted once after screen changed from something else
     TextEntered,
     Update,
     RequestFocus,
@@ -269,6 +270,7 @@ const BROADCASTED_EVENTS: &[EventType] = &[
     EventType::MouseMove,
     EventType::Load,
     EventType::Save,
+    EventType::ScreenChange,
 ];
 
 impl EventType {
@@ -388,6 +390,13 @@ impl Event {
     pub fn new_child_released_focus() -> Self {
         Event {
             what: EventType::ChildReleasedFocus,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_screen_change() -> Self {
+        Event {
+            what: EventType::ScreenChange,
             ..Default::default()
         }
     }

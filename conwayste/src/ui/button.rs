@@ -136,6 +136,9 @@ impl Button {
         b.on(EventType::MouseMove, Box::new(Button::mouse_move_handler))
             .unwrap(); // unwrap OK b/c not being called within handler
 
+        b.on(EventType::ScreenChange, Box::new(Button::screen_change_handler))
+            .unwrap(); // unwrap OK b/c not being called within handler
+
         b
     }
 
@@ -150,6 +153,17 @@ impl Button {
             self.dimensions.x + (button_center.x - label_center_point.x),
             self.dimensions.y + (button_center.y - label_center_point.y),
         );
+    }
+
+    /// If we switched to this screen from another one, clear the hover state.
+    fn screen_change_handler(
+        obj: &mut dyn EmitEvent,
+        _uictx: &mut UIContext,
+        _event: &Event,
+    ) -> Result<Handled, Box<dyn Error>> {
+        let button = obj.downcast_mut::<Button>().unwrap(); // unwrap OK because this will always be Button
+        button.hover = false;
+        Ok(Handled::Handled)
     }
 
     fn mouse_move_handler(

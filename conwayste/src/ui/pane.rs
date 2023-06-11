@@ -93,6 +93,10 @@ impl Pane {
             }
 
             if event_type.is_broadcast_event() {
+                if event_type == EventType::ScreenChange {
+                    // unwrap OK because not called within handler
+                    pane.on(event_type, Box::new(Pane::lose_focus_handler)).unwrap();
+                }
                 // unwrap OK because not called within handler
                 pane.on(event_type, Box::new(Pane::broadcast_handler)).unwrap();
             }
