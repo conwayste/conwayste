@@ -59,13 +59,13 @@ async fn register(reg_params: &RegistryParams) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn try_register(reg_params: RegistryParams) -> bool {
+pub async fn try_register(reg_params: RegistryParams) {
     debug!("attempting to register server with {:?}", reg_params.registry_url);
     for attempt in 1..=REGISTER_RETRIES {
         match register(&reg_params).await {
             Ok(_) => {
                 debug!("registration success!");
-                return true;
+                break;
             }
             Err(e) => {
                 warn!(
@@ -76,5 +76,4 @@ pub async fn try_register(reg_params: RegistryParams) -> bool {
         }
         TokioTime::sleep(REGISTER_RETRY_SLEEP).await;
     }
-    return false;
 }
