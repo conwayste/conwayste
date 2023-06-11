@@ -462,10 +462,6 @@ impl EventHandler<GameError> for MainState {
                                 error!("Error from layer.emit on left click: {:?}", e);
                             });
                     }
-                    MouseAction::DoubleClick => {
-                        // TODO add support
-                        error!("Please add double click support in the client update event dispatcher.");
-                    }
                 }
             }
 
@@ -1059,10 +1055,19 @@ impl MainState {
                 )?;
             }
 
-            // Emit a Load event on the new screen
+            // Emit a Load event and a ScreenChange event on the new screen
             if let Some(layering) = self.ui_layout.get_screen_layering_mut(new_screen) {
                 layering.emit(
                     &Event::new_load(),
+                    ggez_ctx,
+                    &mut self.config,
+                    &mut self.screen_stack,
+                    game_area_state,
+                    &mut self.static_node_ids,
+                    &mut self.viewport,
+                )?;
+                layering.emit(
+                    &Event::new_screen_change(),
                     ggez_ctx,
                     &mut self.config,
                     &mut self.screen_stack,
@@ -1077,6 +1082,8 @@ impl MainState {
     }
 
     // update
+    // TODO: delete all of this, for several reasons, but one reason is that it doesn't switch
+    // screens properly.
     fn receive_net_updates(&mut self) -> GameResult<()> {
         let mut net_worker_guard = self.net_worker.lock().unwrap();
         if net_worker_guard.is_none() {
@@ -1154,7 +1161,7 @@ impl MainState {
                     self.inputs.mouse_info.mousebutton = MouseButton::Other(0);
                     self.inputs.mouse_info.down_position = Point2 { x: 0.0, y: 0.0 };
                 }
-                MouseAction::Drag | MouseAction::Held | MouseAction::DoubleClick => {}
+                MouseAction::Drag | MouseAction::Held => {}
             }
         }
 

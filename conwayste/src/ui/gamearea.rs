@@ -60,25 +60,23 @@ impl fmt::Debug for GameArea {
 /// widget.
 impl GameArea {
     pub fn new() -> Self {
-        let bigbang = {
-            // we're going to have to tear this all out when this becomes a real game
-            let player0_writable = Region::new(100, 70, 34, 16);
-            let player1_writable = Region::new(0, 0, 80, 80);
+        // we're going to have to tear this all out when this becomes a real game
+        let player0_writable = Region::new(100, 70, 34, 16);
+        let player1_writable = Region::new(0, 0, 80, 80);
 
-            let player0 = PlayerBuilder::new(player0_writable);
-            let player1 = PlayerBuilder::new(player1_writable);
-            let players = vec![player0, player1];
+        let player0 = PlayerBuilder::new(player0_writable);
+        let player1 = PlayerBuilder::new(player1_writable);
+        let players = vec![player0, player1];
 
-            BigBang::new()
-                .width(UNIVERSE_WIDTH_IN_CELLS)
-                .height(UNIVERSE_HEIGHT_IN_CELLS)
-                .server_mode(true) // TODO will change to false once we get server support up
-                // Currently 'client' is technically both client and server
-                .history(HISTORY_SIZE)
-                .fog_radius(FOG_RADIUS)
-                .add_players(players)
-                .birth()
-        };
+        let bigbang = BigBang::new()
+            .width(UNIVERSE_WIDTH_IN_CELLS)
+            .height(UNIVERSE_HEIGHT_IN_CELLS)
+            .server_mode(true) // TODO will change to false once we get server support up
+            // Currently 'client' is technically both client and server
+            .history(HISTORY_SIZE)
+            .fog_radius(FOG_RADIUS)
+            .add_players(players)
+            .birth();
         let mut uni = bigbang.unwrap();
 
         init_patterns(&mut uni).unwrap();

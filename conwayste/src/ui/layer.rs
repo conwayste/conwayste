@@ -526,7 +526,7 @@ impl Layering {
             viewport,
         );
         if event.is_broadcast_event() {
-            Layering::broadcast_event(event, &mut uictx)
+            Layering::broadcast_event(event, &mut uictx, &mut self.focus_cycles)
         } else if event.is_mouse_event() {
             Layering::emit_mouse_event(event, &mut uictx, &mut self.focus_cycles[self.highest_z_order])
         } else if event.is_key_event() {
@@ -537,7 +537,16 @@ impl Layering {
         }
     }
 
-    fn broadcast_event(event: &Event, uictx: &mut UIContext) -> Result<(), Box<dyn Error>> {
+    fn broadcast_event(
+        event: &Event,
+        uictx: &mut UIContext,
+        focus_cycles: &mut Vec<FocusCycle>,
+    ) -> Result<(), Box<dyn Error>> {
+        // Special case
+        if event.what == EventType::ScreenChange {
+            clear_focus_cycles(focus_cycles);
+        }
+
         for child_id in uictx.widget_view.children_ids() {
             // Get a mutable reference to a BoxedWidget, as well as a UIContext with a view on the
             // widgets in the tree under this widget.
@@ -784,6 +793,12 @@ impl Layering {
         }
         Ok(())
     }
+}
+
+fn clear_focus_cycles(focus_cycles: &mut Vec<FocusCycle>) {
+    focus_cycles
+        .iter_mut()
+        .for_each(|focus_cycle| focus_cycle.clear_focus());
 }
 
 #[cfg(test)]

@@ -62,7 +62,6 @@ impl FocusCycle {
     }
 
     /// Clears the focus.
-    #[allow(unused)]
     pub fn clear_focus(&mut self) {
         self.index = None;
     }
