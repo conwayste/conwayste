@@ -240,13 +240,11 @@ impl Filter {
                     }
                 }
                 _instant = ping_interval_stream.tick() => {
-                    if self.mode.is_client() {
-                        if self.ping_endpoints.keys().len() != 0 {
-                            nwinfo!(self, "[F] About to send pings to servers: {:?}", self.ping_endpoints.keys());
-                        }
-                        if let Err(e) = self.send_pings().await {
-                            nwerror!(self, "[F->T,C] Failed to send pings: {}", e);
-                        }
+                    if self.ping_endpoints.keys().len() != 0 {
+                        nwinfo!(self, "[F] About to send pings to servers: {:?}", self.ping_endpoints.keys());
+                    }
+                    if let Err(e) = self.send_pings().await {
+                        nwerror!(self, "[F->T,C] Failed to send pings: {}", e);
                     }
                 }
             }
