@@ -462,10 +462,6 @@ impl EventHandler<GameError> for MainState {
                                 error!("Error from layer.emit on left click: {:?}", e);
                             });
                     }
-                    MouseAction::DoubleClick => {
-                        // TODO add support
-                        error!("Please add double click support in the client update event dispatcher.");
-                    }
                 }
             }
 
@@ -1156,7 +1152,7 @@ impl MainState {
                     self.inputs.mouse_info.mousebutton = MouseButton::Other(0);
                     self.inputs.mouse_info.down_position = Point2 { x: 0.0, y: 0.0 };
                 }
-                MouseAction::Drag | MouseAction::Held | MouseAction::DoubleClick => {}
+                MouseAction::Drag | MouseAction::Held => {}
             }
         }
 
