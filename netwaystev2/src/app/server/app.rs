@@ -1,9 +1,13 @@
-use std::time::Duration;
+use std::{
+    net::{SocketAddr, ToSocketAddrs},
+    time::Duration,
+};
 
 use crate::{
     app::server::registry::{self, REGISTER_INTERVAL},
     filter::{FilterCmd, FilterCmdSend, FilterNotifyRecv, FilterRspRecv},
     settings::APP_CHANNEL_LEN,
+    Endpoint,
 };
 
 use futures::Future;
@@ -83,7 +87,38 @@ impl AppServer {
                 }
                 _instant = register_interval_stream.tick() => {
                     if let Some(ref registry_params) = self.registry_params {
-                        registry::try_register(registry_params.clone()).await;
+                        if registry::try_register(registry_params.clone()).await {
+                            let registry_address = format!(
+                                "{}:{}",
+                                registry_params.registry_url.trim_end_matches("/addServer"),
+                                2016
+                            );
+
+                            let registry_addresses: Vec<_> = registry_address
+                                .to_socket_addrs()
+                                .expect("Unable to parse a SocketAddress from the registry public address")
+                                .collect();
+
+                            if registry_address.len() == 0 {
+                                error!(
+                                    "Failed to resolve {} to an IP address",
+                                    registry_params.registry_url
+                                );
+                                break;
+                            }
+
+                            // Result ignored because AddPingEndpoints will silently continue
+                            let _ = filter_cmd_tx
+                                .send(FilterCmd::AddPingEndpoints {
+                                    endpoints: vec![
+                                        // Pick the very first address we find since to_socket_addrs returns a list
+                                        Endpoint {
+                                            0: registry_addresses[0],
+                                        },
+                                    ],
+                                })
+                                .await;
+                        }
                     }
                 }
             }
