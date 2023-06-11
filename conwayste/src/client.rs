@@ -1077,6 +1077,8 @@ impl MainState {
     }
 
     // update
+    // TODO: delete all of this, for several reasons, but one reason is that it doesn't switch
+    // screens properly.
     fn receive_net_updates(&mut self) -> GameResult<()> {
         let mut net_worker_guard = self.net_worker.lock().unwrap();
         if net_worker_guard.is_none() {

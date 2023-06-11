@@ -136,7 +136,6 @@ impl<'a> UIContext<'a> {
     /// # Panics
     ///
     /// This will panic if the screen stack is empty, but that shouldn't ever happen.
-    #[allow(unused)]
     pub fn current_screen(&self) -> Screen {
         *self.screen_stack.last().unwrap()
     }
