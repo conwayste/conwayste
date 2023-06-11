@@ -88,6 +88,7 @@ impl AppServer {
                 _instant = register_interval_stream.tick() => {
                     if let Some(ref registry_params) = self.registry_params {
                         if registry::try_register(registry_params.clone()).await {
+                            //let registry_address = format!("{}:{}", "157.230.134.224", 2016);
                             let registry_address = format!(
                                 "{}:{}",
                                 registry_params.registry_url.trim_end_matches("/addServer"),
