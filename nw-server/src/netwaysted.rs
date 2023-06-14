@@ -79,13 +79,16 @@ async fn spin_up_layers(cfg: &Config) -> anyhow::Result<(Transport, Filter, AppS
     let (transport, transport_cmd_tx, transport_rsp_rx, transport_notice_rx) =
         Transport::new(None, Some(cfg.server.bind_port), TransportMode::Server).await?;
 
+    let mut server_status  = ServerStatus::default();
+    server_status.server_name = cfg.server.name.to_owned();
+
     // Create the three channels for communication between filter and application
     // Join the middle filter layer to the transport
     let (filter, filter_cmd_tx, filter_rsp_rx, filter_notice_rx) = Filter::new(
         transport_cmd_tx,
         transport_rsp_rx,
         transport_notice_rx,
-        FilterMode::Server(ServerStatus::default()), // TODO: use a real ServerStatus
+        FilterMode::Server(server_status),
     );
 
     let registry_params = cfg.registry.as_ref().map(|registry| RegistryParams {
