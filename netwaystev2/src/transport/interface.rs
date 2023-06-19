@@ -7,9 +7,6 @@ use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
 
-// https://serverfault.com/questions/645890/tcpdump-truncates-to-1472-bytes-useful-data-in-udp-packets-during-the-capture/645892#645892
-pub const UDP_MTU_SIZE: usize = 1440;
-
 // Used for more informative event logging
 #[derive(Debug, Clone, PartialEq)]
 pub enum TransportMode {
