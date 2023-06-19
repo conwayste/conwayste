@@ -354,7 +354,7 @@ pub(crate) struct OtherEndServer {
     pub unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>, // Tracks outgoing Requests
     // Update/UpdateReply below
     pub room: Option<ClientRoom>,
-    pub game_update_seq: Option<u64>, // When a player enters or leaves a room, this gets reset to None
+    pub game_update_seq: Option<u64>,
     pub server_ping: PingPong,
 }
 
@@ -434,12 +434,7 @@ impl OtherEndServer {
         // what game updates have we already processed, what game updates we can process now, and
         // what updates are too far ahead to be processed.
         match (self.game_update_seq, game_update_seq) {
-            (None, None) => {} // No-op
-            (Some(_), None) => {
-                // We previously had Some(...), but the server just sent None -- reset!
-                debug!("c[F] reset game_update_seq");
-                self.game_update_seq = None;
-            }
+            (_, None) => {} // No-op
             (None, Some(_)) => {
                 start_idx = Some(0);
             }
@@ -466,56 +461,58 @@ impl OtherEndServer {
                 }
             }
         }
-        if let Some(_start_idx) = start_idx {
-            if self.room.is_none() {
-                if game_updates.len() == 1 {
-                    let game_update = &game_updates[0];
-                    match game_update {
-                        GameUpdate::Match { room, expire_secs } => {
-                            self.process_match(&room, *expire_secs)?;
-                            self.game_update_seq.as_mut().map(|seq| *seq += 1);
-                            // Increment
-                        }
-                        _ => {
-                            return Err(anyhow!("we are in the lobby and got a non-Match game update"));
-                        }
-                    }
-                } else {
-                    return Err(anyhow!(
-                        "we are in the lobby and getting more than one game update at a time"
-                    ));
-                }
-            }
 
-            // Out of the game updates we got from the server, process the ones we haven't already
-            // processed.
-            let mut room_deleted = false;
-            for i in (_start_idx as usize)..game_updates.len() {
-                if let Some(ref mut room) = self.room {
-                    if let Err(e) = room
-                        .process_game_update(endpoint, &self.player_name, &game_updates[i], filter_notice_tx)
-                        .await
-                    {
-                        error!("c[F] failed to process game update {:?}: {}", game_updates[i], e);
+        let start_idx = if let Some(si) = start_idx {
+            si
+        } else {
+            return Ok(());
+        };
+        if self.room.is_none() {
+            if game_updates.len() == 1 {
+                let game_update = &game_updates[0];
+                match game_update {
+                    GameUpdate::Match { room, expire_secs } => {
+                        self.process_match(&room, *expire_secs)?;
+                        self.game_update_seq.as_mut().map(|seq| *seq += 1);
+                        // Increment
                     }
-
-                    if game_updates[i].room_was_deleted() {
-                        room_deleted = true;
-                        if i != game_updates.len() {
-                            warn!(
-                                "c[F] got a RoomDeleted but it wasn't the last game update; the rest will be ignored"
-                            );
-                            break;
-                        }
+                    _ => {
+                        return Err(anyhow!("we are in the lobby and got a non-Match game update"));
                     }
                 }
-                self.game_update_seq.as_mut().map(|seq| *seq += 1); // Increment by 1 because we just handled a game update
+            } else {
+                return Err(anyhow!(
+                    "we are in the lobby and getting more than one game update at a time"
+                ));
             }
+        }
 
-            if room_deleted {
-                self.room = None;
-                self.game_update_seq = None;
+        // Out of the game updates we got from the server, process the ones we haven't already
+        // processed.
+        let mut room_deleted = false;
+        for i in (start_idx as usize)..game_updates.len() {
+            if let Some(ref mut room) = self.room {
+                if let Err(e) = room
+                    .process_game_update(endpoint, &self.player_name, &game_updates[i], filter_notice_tx)
+                    .await
+                {
+                    error!("c[F] failed to process game update {:?}: {}", game_updates[i], e);
+                }
+
+                if game_updates[i].room_was_deleted() {
+                    room_deleted = true;
+                    if i != game_updates.len() {
+                        warn!("c[F] got a RoomDeleted but it wasn't the last game update; the rest will be ignored");
+                        break;
+                    }
+                }
             }
+            self.game_update_seq.as_mut().map(|seq| *seq += 1); // Increment by 1 because we just handled a game update
+        }
+
+        if room_deleted {
+            self.room = None;
+            self.game_update_seq = None;
         }
         Ok(())
     }
