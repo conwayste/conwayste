@@ -684,10 +684,18 @@ impl Filter {
                 }
             }
             // TODO: implement the following
-            FilterCmd::SendGameUpdates {
-                endpoints: _,
-                updates: _,
-            } => {}
+            FilterCmd::SendGameUpdates { endpoints, updates } => {
+                for endpoint in endpoints {
+                    let client = self.per_endpoint.other_end_client_ref_mut(
+                        &endpoint,
+                        &self.mode,
+                        Some("CompleteAuthRequest"),
+                    )?;
+                    client
+                        .send_game_updates(&self.transport_cmd_tx, updates.as_slice())
+                        .await?;
+                }
+            }
             FilterCmd::CompleteAuthRequest { endpoint, decision } => {
                 let client =
                     self.per_endpoint

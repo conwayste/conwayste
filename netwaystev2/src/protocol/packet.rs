@@ -27,7 +27,8 @@ pub enum Packet {
         // in a single packet, since it could exceed the MTU.
         // TODO: limit chats and game_updates based on MTU!
         chats:           Vec<BroadcastChatMessage>, // All non-acknowledged chats are sent each update
-        game_update_seq: Option<u64>, // TODO: when a player enters or leaves a room, this gets reset to None
+        game_update_seq: Option<u64>,               // None means client shouldn't do anything related
+        // to game updates for this packet.
         game_updates:    Vec<GameUpdate>, // Information pertaining to a game tick update.
         // If in lobby, only Match is allowed, and game_updates.len() should be at most 1.
         // Otherwise (if in a room), Match is not allowed.

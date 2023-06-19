@@ -13,12 +13,16 @@ use crate::protocol::{BroadcastChatMessage, GameUpdate, GenStateDiffPart};
 #[allow(unused)]
 #[derive(Debug)]
 pub struct ServerRoom {
-    room_name: String,
+    room_name:        String,
+    pub game_updates: GameUpdateQueue, // ToDo: consider removing `pub`
 }
 
 impl ServerRoom {
     pub fn new(room_name: String) -> Self {
-        ServerRoom { room_name }
+        ServerRoom {
+            room_name,
+            game_updates: GameUpdateQueue::new(),
+        }
     }
 }
 
@@ -114,9 +118,12 @@ impl GameUpdateQueue {
         self.unacked_game_updates.clear();
     }
 
-    #[allow(unused)]
     pub fn len(&mut self) -> usize {
         self.unacked_game_updates.len()
+    }
+
+    pub fn is_empty(&mut self) -> bool {
+        self.len() == 0
     }
 
     /// Get a Vec of all unacked GameUpdates, with their sequence numbers.

@@ -1,16 +1,17 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     num::Wrapping,
     time::Duration,
 };
 
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
+use bincode::serialized_size;
 use snowflake::ProcessUniqueId;
 use tokio::sync::mpsc::{error::SendError, Sender};
 
 use super::server_update::*;
-use crate::common::Endpoint;
-use crate::protocol::{GameUpdate, GenPartInfo, Packet, RequestAction, ResponseCode};
+use crate::common::{Endpoint, UDP_MTU_SIZE};
+use crate::protocol::{GameUpdate, GenPartInfo, Packet, RequestAction, ResponseCode, UniUpdate};
 use crate::transport::{PacketSettings, TransportCmd, TransportCmdSend};
 #[allow(unused)]
 use crate::{nwdebug, nwerror, nwinfo, nwtrace, nwwarn};
@@ -19,6 +20,11 @@ use super::client_update::ClientRoom;
 use super::interface::{FilterMode, SeqNum};
 use super::sortedbuffer::SequencedMinHeap;
 use super::{FilterError, FilterNotifySend, PingPong};
+
+/// Maximum size of an update packet containing GameUpdates; 90% of MTU size to account for overhead
+const MAX_GU_SIZE: u64 = UDP_MTU_SIZE as u64 * 90 / 100;
+
+const GAME_UPDATE_RETRY_INTERVAL: Duration = Duration::from_millis(200);
 
 pub(crate) enum FilterEndpointData {
     OtherEndClient(OtherEndClient),
@@ -35,9 +41,10 @@ pub(crate) struct OtherEndClient {
     pub cookie: Option<String>,
     // Update/UpdateReply below
     room: Option<ServerRoom>,
+    //lobby_game_updates: GameUpdateQueue,
+    old_room_game_updates: GameUpdateQueue, // If player in lobby and this isn't empty, send only this first
+    game_update_packet_ids: Vec<ProcessUniqueId>,
 }
-
-type PacketIDSet = HashSet<ProcessUniqueId>;
 
 impl OtherEndClient {
     pub fn new(endpoint: Endpoint) -> Self {
@@ -49,6 +56,9 @@ impl OtherEndClient {
             unacked_response_codes: VecDeque::new(),
             cookie: None,
             room: None,
+            //lobby_game_updates: GameUpdateQueue::new(),
+            old_room_game_updates: GameUpdateQueue::new(),
+            game_update_packet_ids: Vec::new(),
         }
     }
 
@@ -63,6 +73,100 @@ impl OtherEndClient {
         }
     }
 
+    /// Returns error if there is a RoomDeleted but it is not the only update in the array!
+    pub async fn send_game_updates(
+        &mut self,
+        transport_cmd_tx: &Sender<TransportCmd>,
+        new_updates: &[GameUpdate],
+    ) -> anyhow::Result<()> {
+        // This complicated logic sucks but hopefully we don't hit any crazy edge cases...
+        if new_updates.contains(&GameUpdate::RoomDeleted) {
+            if new_updates.len() == 1 {
+                // Move any remaining game updates in the room to a high priority holding place,
+                // delete the room, and add the room deletion as the last game update for this room.
+                if let Some(ref mut room) = self.room.as_mut() {
+                    std::mem::swap(&mut self.old_room_game_updates, &mut room.game_updates);
+                }
+                self.room = None;
+                self.old_room_game_updates.push(GameUpdate::RoomDeleted);
+            } else {
+                // Not ever going to implement. Not worth it
+                bail!("called with RoomDeleted and one or more other GameUpdates! Not implemented.");
+            }
+        } else {
+            // ToDo: implement support for GameUpdates in a lobby (not from old room)
+            if let Some(ref mut room) = self.room.as_mut() {
+                for update in new_updates {
+                    room.game_updates.push(update.clone());
+                }
+            } else {
+                bail!("in-lobby game updates not implemented"); // ToDo
+            }
+        }
+
+        let unacked = if self.room.is_none() && !self.old_room_game_updates.is_empty() {
+            self.old_room_game_updates.get() // Higher priority GameUpdateQueue
+        } else if let Some(ref room) = self.room.as_ref() {
+            room.game_updates.get()
+        } else {
+            warn!("Entered a room with unacked game updates from previous room :(");
+            return Ok(()); // Nothing to do
+        };
+
+        // Split up the unacked updates into multiple packets according to max. size.
+        let mut size_of_last_vec = 0;
+        let mut groups: Vec<(u64, Vec<GameUpdate>)> = vec![];
+        for (seq, update) in unacked.into_iter() {
+            let size = serialized_size(&update)?;
+            if groups.is_empty() || size_of_last_vec + size > MAX_GU_SIZE {
+                size_of_last_vec = size;
+                groups.push((seq, vec![update]));
+            } else {
+                size_of_last_vec += size;
+                groups.last_mut().unwrap().1.push(update);
+            }
+        }
+
+        // Drop old packet(s)
+        for packet_id in self.game_update_packet_ids.drain(..) {
+            transport_cmd_tx
+                .send(TransportCmd::DropPacket {
+                    endpoint: self.endpoint,
+                    tid:      packet_id,
+                })
+                .await?;
+        }
+
+        // Send the new packet(s) and save IDs for later dropping.
+        let mut packets = vec![];
+        for group in groups.into_iter() {
+            packets.push(Packet::Update {
+                chats:           vec![],
+                game_update_seq: Some(group.0),
+                game_updates:    group.1,
+                universe_update: UniUpdate::NoChange,
+                ping:            PingPong::ping(),
+            });
+        }
+        let mut packet_infos = vec![];
+        for _ in 0..packets.len() {
+            let tid = ProcessUniqueId::new();
+            packet_infos.push(PacketSettings {
+                tid,
+                retry_interval: GAME_UPDATE_RETRY_INTERVAL,
+            });
+            self.game_update_packet_ids.push(tid);
+        }
+        transport_cmd_tx
+            .send(TransportCmd::SendPackets {
+                endpoint: self.endpoint,
+                packet_infos,
+                packets,
+            })
+            .await
+            .map_err(|e| anyhow!(e))
+    }
+
     //XXX method to build and send packet(s) containing all that are unacked
 
     pub async fn process_update_reply(
@@ -72,25 +176,14 @@ impl OtherEndClient {
         last_full_gen: Option<u64>,
         partial_gen: Option<&GenPartInfo>,
     ) -> anyhow::Result<()> {
-        let mut packets_to_drop = PacketIDSet::new();
-
         // Process all of the UpdateReply components
-        self.process_chat_ack(last_chat_seq, &mut packets_to_drop).await?;
-        self.process_game_update_ack(last_game_update_seq, &mut packets_to_drop)
-            .await?;
-        self.process_gen_ack(last_full_gen, partial_gen, &mut packets_to_drop)
-            .await?;
-
-        //XXX drop packets
-
+        self.process_chat_ack(last_chat_seq).await?;
+        self.process_game_update_ack(last_game_update_seq).await?;
+        self.process_gen_ack(last_full_gen, partial_gen).await?;
         Ok(())
     }
 
-    async fn process_chat_ack(
-        &mut self,
-        last_chat_seq: Option<u64>,
-        packets_to_drop: &mut PacketIDSet,
-    ) -> anyhow::Result<()> {
+    async fn process_chat_ack(&mut self, last_chat_seq: Option<u64>) -> anyhow::Result<()> {
         if last_chat_seq.is_none() {
             return Ok(());
         }
@@ -99,11 +192,7 @@ impl OtherEndClient {
         Ok(())
     }
 
-    async fn process_game_update_ack(
-        &mut self,
-        last_game_update_seq: Option<u64>,
-        packets_to_drop: &mut PacketIDSet,
-    ) -> anyhow::Result<()> {
+    async fn process_game_update_ack(&mut self, last_game_update_seq: Option<u64>) -> anyhow::Result<()> {
         if last_game_update_seq.is_none() {
             return Ok(());
         }
@@ -116,7 +205,6 @@ impl OtherEndClient {
         &mut self,
         last_full_gen: Option<u64>,
         partial_gen: Option<&GenPartInfo>,
-        packets_to_drop: &mut PacketIDSet,
     ) -> anyhow::Result<()> {
         if last_full_gen.is_none() && partial_gen.is_none() {
             return Ok(());
