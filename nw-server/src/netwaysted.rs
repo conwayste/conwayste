@@ -79,7 +79,7 @@ async fn spin_up_layers(cfg: &Config) -> anyhow::Result<(Transport, Filter, AppS
     let (transport, transport_cmd_tx, transport_rsp_rx, transport_notice_rx) =
         Transport::new(None, Some(cfg.server.bind_port), TransportMode::Server).await?;
 
-    let mut server_status  = ServerStatus::default();
+    let mut server_status = ServerStatus::default();
     server_status.server_name = cfg.server.name.to_owned();
 
     // Create the three channels for communication between filter and application
