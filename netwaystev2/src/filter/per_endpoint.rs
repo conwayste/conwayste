@@ -99,7 +99,7 @@ impl OtherEndClient {
                 for update in new_updates {
                     room.game_updates.push(update.clone());
                 }
-            } else {
+            } else if !new_updates.is_empty() {
                 bail!("in-lobby game updates not implemented"); // ToDo
             }
         }
@@ -107,9 +107,12 @@ impl OtherEndClient {
         let unacked = if self.room.is_none() && !self.old_room_game_updates.is_empty() {
             self.old_room_game_updates.get() // Higher priority GameUpdateQueue
         } else if let Some(ref room) = self.room.as_ref() {
+            if !self.old_room_game_updates.is_empty() {
+                warn!("Entered a room with unacked game updates from previous room :(");
+            }
             room.game_updates.get()
         } else {
-            warn!("Entered a room with unacked game updates from previous room :(");
+            // In lobby, and no updates from old room
             return Ok(()); // Nothing to do
         };
 
