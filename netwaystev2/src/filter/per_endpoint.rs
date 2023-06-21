@@ -11,6 +11,7 @@ use tokio::sync::mpsc::{error::SendError, Sender};
 
 use super::server_update::*;
 use crate::common::{Endpoint, UDP_MTU_SIZE};
+use crate::filter::FilterNotice;
 use crate::protocol::{GameUpdate, GenPartInfo, Packet, RequestAction, ResponseCode, UniUpdate};
 use crate::transport::{PacketSettings, TransportCmd, TransportCmdSend};
 #[allow(unused)]
@@ -185,11 +186,15 @@ impl OtherEndClient {
         last_game_update_seq: Option<u64>,
         last_full_gen: Option<u64>,
         partial_gen: Option<&GenPartInfo>,
+        transport_cmd_tx: &Sender<TransportCmd>,
+        filter_notice_tx: &Sender<FilterNotice>,
     ) -> anyhow::Result<()> {
         // Process all of the UpdateReply components
         self.process_chat_ack(last_chat_seq).await?;
-        self.process_game_update_ack(last_game_update_seq).await?;
-        self.process_gen_ack(last_full_gen, partial_gen).await?;
+        self.process_game_update_ack(last_game_update_seq, transport_cmd_tx)
+            .await?;
+        self.process_gen_ack(last_full_gen, partial_gen, transport_cmd_tx, filter_notice_tx)
+            .await?;
         Ok(())
     }
 
@@ -202,19 +207,41 @@ impl OtherEndClient {
         Ok(())
     }
 
-    async fn process_game_update_ack(&mut self, last_game_update_seq: Option<u64>) -> anyhow::Result<()> {
+    /// Using game update sequence received from client, potentially drop and resend Update
+    /// packet(s) containing GameUpdate(s).
+    async fn process_game_update_ack(
+        &mut self,
+        last_game_update_seq: Option<u64>,
+        transport_cmd_tx: &Sender<TransportCmd>,
+    ) -> anyhow::Result<()> {
         if last_game_update_seq.is_none() {
             return Ok(());
         }
-        //XXX maybe remove outgoing game updates from "unacked" data structure, drop Update packet (if any), and
-        // potentially send new Update packet
-        Ok(())
+
+        if let Some(ref mut room) = self.room.as_mut() {
+            if !self.old_room_game_updates.is_empty() {
+                warn!(
+                    "In room, but {} game updates from old room",
+                    self.old_room_game_updates.len()
+                );
+            }
+            room.game_updates.ack(last_game_update_seq);
+        } else {
+            // In lobby, but unacked from old room -- maybe room was deleted?
+            self.old_room_game_updates.ack(last_game_update_seq);
+        }
+
+        // Calling this with empty slice to ensure any old GameUpdate-containing Update packets
+        // were dropped, and new packets are sent containing any unacked GameUpdates.
+        self.send_game_updates(transport_cmd_tx, &[]).await
     }
 
     async fn process_gen_ack(
         &mut self,
         last_full_gen: Option<u64>,
         partial_gen: Option<&GenPartInfo>,
+        transport_cmd_tx: &Sender<TransportCmd>,
+        filter_notice_tx: &Sender<FilterNotice>,
     ) -> anyhow::Result<()> {
         if last_full_gen.is_none() && partial_gen.is_none() {
             return Ok(());

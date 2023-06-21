@@ -585,7 +585,14 @@ impl Filter {
                 }
 
                 client
-                    .process_update_reply(last_chat_seq, last_game_update_seq, last_full_gen, partial_gen.as_ref())
+                    .process_update_reply(
+                        last_chat_seq,
+                        last_game_update_seq,
+                        last_full_gen,
+                        partial_gen.as_ref(),
+                        &self.transport_cmd_tx,
+                        &self.filter_notice_tx,
+                    )
                     .await?;
             }
         }
