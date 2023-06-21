@@ -74,6 +74,8 @@ impl OtherEndClient {
     }
 
     /// Returns error if there is a RoomDeleted but it is not the only update in the array!
+    ///
+    /// This can be called with an empty slice of GameUpdates.
     pub async fn send_game_updates(
         &mut self,
         transport_cmd_tx: &Sender<TransportCmd>,
@@ -104,12 +106,23 @@ impl OtherEndClient {
             }
         }
 
+        // Drop old packet(s)
+        for packet_id in self.game_update_packet_ids.drain(..) {
+            transport_cmd_tx
+                .send(TransportCmd::DropPacket {
+                    endpoint: self.endpoint,
+                    tid:      packet_id,
+                })
+                .await?;
+        }
+
         let unacked = if self.room.is_none() && !self.old_room_game_updates.is_empty() {
             self.old_room_game_updates.get() // Higher priority GameUpdateQueue
         } else if let Some(ref room) = self.room.as_ref() {
             if !self.old_room_game_updates.is_empty() {
                 warn!("Entered a room with unacked game updates from previous room :(");
             }
+            // Happy path
             room.game_updates.get()
         } else {
             // In lobby, and no updates from old room
@@ -130,14 +143,8 @@ impl OtherEndClient {
             }
         }
 
-        // Drop old packet(s)
-        for packet_id in self.game_update_packet_ids.drain(..) {
-            transport_cmd_tx
-                .send(TransportCmd::DropPacket {
-                    endpoint: self.endpoint,
-                    tid:      packet_id,
-                })
-                .await?;
+        if groups.is_empty() {
+            return Ok(());
         }
 
         // Send the new packet(s) and save IDs for later dropping.
