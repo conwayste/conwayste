@@ -66,3 +66,12 @@ pub enum ClientOptionValue {
     Str { value: String },
     List { value: Vec<ClientOptionValue> },
 }
+
+impl RequestAction {
+    pub fn is_keep_alive(&self) -> bool {
+        match *self {
+            RequestAction::KeepAlive { .. } => true,
+            _ => false,
+        }
+    }
+}
