@@ -249,20 +249,17 @@ impl<P> TransportEndpointData<P> {
     /// Requested by the Filter layer to remove an endpoint.
     /// Will report an error if the endpoint does not exist.
     pub fn drop_endpoint(&mut self, endpoint: Endpoint) -> Result<()> {
-        let mut invalid_endpoint = std::collections::HashSet::new();
         let mut error_message = String::new();
 
-        if let None = self.transmit.remove(&endpoint) {
-            invalid_endpoint.insert(endpoint);
+        if self.transmit.remove(&endpoint).is_none() {
             error_message.push_str("not found in transmit queue, ");
         }
 
-        if let None = self.endpoint_meta.remove(&endpoint) {
-            invalid_endpoint.insert(endpoint);
+        if self.endpoint_meta.remove(&endpoint).is_none() {
             error_message.push_str("not found in meta queue, ");
         }
 
-        if !invalid_endpoint.is_empty() {
+        if !error_message.is_empty() {
             Err(anyhow!(TransportEndpointDataError::EndpointDropFailed {
                 endpoint,
                 message: error_message,
