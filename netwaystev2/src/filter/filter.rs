@@ -370,12 +370,16 @@ impl Filter {
                                 action: request_action,
                             }
                         };
+                        client.app_response_seqs.push_front(expected_seq_num.0);
                         filter_notice_tx.send(notice).await?;
                     } else {
                         // If it's a KeepAlive, send a ResponseCode::OK back; no FilterNotice!
-                        client
-                            .send_response_code(&self.transport_cmd_tx, ResponseCode::OK)
-                            .await?;
+                        if client.app_response_seqs.is_empty() {
+                            client.send_keep_alive_response(&self.transport_cmd_tx).await?;
+                        } else {
+                            // Save this sequence number to `auto_response_seqs` as being a KeepAlive response code
+                            client.auto_response_seqs.push_front(expected_seq_num.0);
+                        }
                     }
                     *expected_seq_num += Wrapping(1);
                 }
@@ -698,6 +702,7 @@ impl Filter {
                     self.per_endpoint
                         .other_end_client_ref_mut(&endpoint, &self.mode, Some("SendResponseCode"))?;
 
+                client.app_response_seqs.pop_back();
                 client.send_response_code(&self.transport_cmd_tx, code).await?;
             }
             FilterCmd::SendChats { endpoints, messages: _ } => {
@@ -735,6 +740,7 @@ impl Filter {
                     }
                     _ => {}
                 }
+                client.app_response_seqs.pop_back();
                 client.send_response_code(&self.transport_cmd_tx, code).await?;
                 self.auth_requests.remove(&endpoint);
             }

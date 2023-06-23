@@ -45,6 +45,8 @@ pub(crate) struct OtherEndClient {
     //lobby_game_updates: GameUpdateQueue,
     old_room_game_updates: GameUpdateQueue, // If player in lobby and this isn't empty, send only this first
     game_update_packet_ids: Vec<ProcessUniqueId>,
+    pub auto_response_seqs: VecDeque<u64>, // Response sequences for replying to client KeepAlives with OK
+    pub app_response_seqs: VecDeque<u64>,  // Response sequences waiting on App layer to provide ResponseCodes for
 }
 
 impl OtherEndClient {
@@ -60,6 +62,8 @@ impl OtherEndClient {
             //lobby_game_updates: GameUpdateQueue::new(),
             old_room_game_updates: GameUpdateQueue::new(),
             game_update_packet_ids: Vec::new(),
+            auto_response_seqs: VecDeque::new(),
+            app_response_seqs: VecDeque::new(),
         }
     }
 
@@ -330,6 +334,21 @@ impl OtherEndClient {
             .await
     }
 
+    /// Send a ResponseCode::OK for a KeepAlive; calling this at the wrong time b0rks everything.
+    pub async fn send_keep_alive_response(&mut self, transport_cmd_tx: &Sender<TransportCmd>) -> anyhow::Result<()> {
+        if let Some(ref mut sn) = self.last_response_sequence_sent {
+            *sn += Wrapping(1u64);
+        } else {
+            self.last_response_sequence_sent = Some(Wrapping(1));
+        }
+
+        // Unwrap ok b/c the immediate check above guarantees Some(..)
+        let sequence = self.last_response_sequence_sent.unwrap().0;
+
+        self.do_send_response_code(transport_cmd_tx, ResponseCode::OK, sequence)
+            .await
+    }
+
     /// Send a new ResponseCode to the client. Not to be used for re-sends!
     pub async fn send_response_code(
         &mut self,
@@ -345,6 +364,36 @@ impl OtherEndClient {
         // Unwrap ok b/c the immediate check above guarantees Some(..)
         let sequence = self.last_response_sequence_sent.unwrap().0;
 
+        self.do_send_response_code(transport_cmd_tx, code, sequence).await?;
+        while !self.auto_response_seqs.is_empty() {
+            // unwrap OK because of logic at top of function
+            let next_seq = *self.last_response_sequence_sent.as_mut().unwrap() + Wrapping(1u64);
+            if Some(&next_seq.0) == self.app_response_seqs.back() {
+                // Must wait for App layer reply
+                break;
+            }
+            self.last_response_sequence_sent = Some(next_seq);
+            // Unwrap ok b/c the immediate check above guarantees Some(..)
+            let sequence = self.last_response_sequence_sent.unwrap().0;
+            let expected_seq = self.auto_response_seqs.pop_back().unwrap(); // unwrap OK because of while cond.
+            if expected_seq != sequence {
+                error!(
+                    "s[F] Sending OK response to KeepAlive but sequence mismatch; expected {}, actual {}",
+                    expected_seq, sequence
+                );
+            }
+            self.do_send_response_code(transport_cmd_tx, ResponseCode::OK, sequence)
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn do_send_response_code(
+        &mut self,
+        transport_cmd_tx: &Sender<TransportCmd>,
+        code: ResponseCode,
+        sequence: u64,
+    ) -> anyhow::Result<()> {
         match &code {
             ResponseCode::JoinedRoom { room_name } => {
                 self.join_room(room_name);
