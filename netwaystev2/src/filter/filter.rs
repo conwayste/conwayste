@@ -297,7 +297,13 @@ impl Filter {
                 if self.mode.is_server() {
                     self.send_not_connected(endpoint).await;
                 }
-                return Ok(());
+                // This is a rogue host sending us packets so we don't want to store data about it
+                // or receive TransportNotices for it.
+                return self
+                    .transport_cmd_tx
+                    .send(TransportCmd::DropEndpoint { endpoint })
+                    .await
+                    .map_err(|e| anyhow!(e));
             }
         }
 
