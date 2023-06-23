@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     num::Wrapping,
     time::Duration,
 };
@@ -438,6 +438,7 @@ pub(crate) struct OtherEndServer {
     pub last_request_sequence_sent: Option<SeqNum>,
     pub last_response_sequence_seen: Option<SeqNum>,
     pub unacked_outgoing_packet_tids: VecDeque<(SeqNum, ProcessUniqueId)>, // Tracks outgoing Requests
+    pub auto_request_seqs: HashSet<u64>, // Request sequences for auto-generated RequestActions (KeepAlives)
     // Update/UpdateReply below
     pub room: Option<ClientRoom>,
     pub game_update_seq: Option<u64>,
@@ -453,6 +454,7 @@ impl OtherEndServer {
             last_request_sequence_sent: None,
             last_response_sequence_seen: None,
             unacked_outgoing_packet_tids: VecDeque::new(),
+            auto_request_seqs: HashSet::new(),
             room: None,
             game_update_seq: None,
             server_ping: PingPong::pong(0),
