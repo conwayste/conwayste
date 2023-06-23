@@ -517,6 +517,13 @@ impl OtherEndServer {
         game_updates: &[GameUpdate],
         filter_notice_tx: &FilterNotifySend,
     ) -> anyhow::Result<()> {
+        let increment_game_update_seq = |_self: &mut Self| {
+            if let Some(seq) = _self.game_update_seq.as_mut() {
+                *seq += 1;
+            } else {
+                _self.game_update_seq = Some(1);
+            }
+        };
         let mut start_idx = None;
         // We are comparing game update sequence number to what the server just sent us to decide
         // what game updates have we already processed, what game updates we can process now, and
@@ -561,8 +568,7 @@ impl OtherEndServer {
                 match game_update {
                     GameUpdate::Match { room, expire_secs } => {
                         self.process_match(&room, *expire_secs)?;
-                        self.game_update_seq.as_mut().map(|seq| *seq += 1);
-                        // Increment
+                        increment_game_update_seq(self); // Just handled a game update
                     }
                     _ => {
                         return Err(anyhow!("we are in the lobby and got a non-Match game update"));
@@ -595,7 +601,7 @@ impl OtherEndServer {
                     }
                 }
             }
-            self.game_update_seq.as_mut().map(|seq| *seq += 1); // Increment by 1 because we just handled a game update
+            increment_game_update_seq(self); // Just handled a game update
         }
 
         if room_deleted {
