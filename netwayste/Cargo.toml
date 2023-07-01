@@ -12,7 +12,7 @@ path = "src/server.rs"
 base64               = "0.21.0"
 bincode              = "1.3.3"
 bytes                = "1.4.0"
-chrono               = "0.4.20"
+chrono               = "0.4.26"
 clap                 = "2"
 color-backtrace      = "0.5"
 conway               = { path = "../libconway" }
