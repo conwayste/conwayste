@@ -3,7 +3,19 @@ Python wrapper for Netwayste v2
 
 This allows interactively testing Netwayste v2 in a Jupyter notebook.
 
+## Installation
+
+Create a new virtual environment in this folder, activate it in the current terminal, and finally install `maturin`.
+
+```
+python -m venv venv
+source venv/bin/activate
+pip install maturin
+```
+
 ## Usage
+
+Activate the virtual environment created above in the current terminal, and compile the Rust parts of the `nwv2_python_wrapper` Python module.
 
 ```
 source venv/bin/activate
