@@ -130,6 +130,13 @@ pub struct PlayerInfo {
 }
 
 impl GameUpdate {
+    pub fn is_game_finish(&self) -> bool {
+        match self {
+            GameUpdate::GameFinish { .. } => true,
+            _ => false,
+        }
+    }
+
     /// Was the current room deleted? This is special!
     pub fn room_was_deleted(&self) -> bool {
         match self {

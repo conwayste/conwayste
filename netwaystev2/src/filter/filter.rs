@@ -4,6 +4,7 @@ use super::ping::LatencyFilter;
 use super::{ClientRoom, FilterEndpointData, FilterError, OtherEndClient, OtherEndServer, PerEndpoint, PingPong};
 use super::{FilterCmdRecv, FilterCmdSend, FilterNotifyRecv, FilterNotifySend, FilterRspRecv, FilterRspSend};
 use crate::common::{Endpoint, ShutdownWatcher};
+use crate::filter::server_update::split_gen_state_diff;
 #[allow(unused)] // ToDo: need this?
 use crate::protocol::{GameUpdate, GenStateDiffPart, Packet, RequestAction, ResponseCode};
 use crate::settings::{DEFAULT_ENDPOINT_TIMEOUT_INTERVAL, DEFAULT_RETRY_INTERVAL, FILTER_CHANNEL_LEN};
@@ -11,6 +12,7 @@ use crate::transport::{
     PacketSettings, TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp,
     TransportRspRecv,
 };
+
 #[allow(unused)]
 use crate::{nwdebug, nwerror, nwinfo, nwtrace, nwwarn};
 #[allow(unused)]
@@ -748,8 +750,19 @@ impl Filter {
                 client.send_response_code(&self.transport_cmd_tx, code).await?;
                 self.auth_requests.remove(&endpoint);
             }
-            // TODO: implement the following
-            FilterCmd::SendGenStateDiff { endpoints: _, diff: _ } => {}
+            FilterCmd::SendGenStateDiff { endpoints, diff } => {
+                let (gen0, gen1) = (diff.gen0, diff.gen1);
+                let parts = split_gen_state_diff(diff)?; // TODO: handle error?!?
+                for endpoint in endpoints {
+                    let client =
+                        self.per_endpoint
+                            .other_end_client_ref_mut(&endpoint, &self.mode, Some("SendGenStateDiff"))?;
+                    client.set_latest_gen(gen1);
+                    client
+                        .send_gen_state_diff(&self.transport_cmd_tx, gen0, gen1, parts.clone())
+                        .await?;
+                }
+            }
             FilterCmd::AddPingEndpoints { endpoints } => {
                 for e in endpoints {
                     // An hashmap insert for an existing key will override the value. This would obsolete any ping

@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use conway::GenStateDiff;
@@ -13,8 +13,11 @@ use crate::protocol::{BroadcastChatMessage, GameUpdate, GenStateDiffPart};
 #[allow(unused)]
 #[derive(Debug)]
 pub struct ServerRoom {
-    room_name:        String,
-    pub game_updates: GameUpdateQueue, // ToDo: consider removing `pub`
+    room_name:                 String,
+    pub game_updates:          GameUpdateQueue, // ToDo: consider removing `pub`
+    pub latest_gen:            usize,
+    pub latest_gen_client_has: usize,
+    pub unacked_gsd_parts:     HashMap<(usize, usize), Vec<Option<Arc<GenStateDiffPart>>>>, //XXX use
 }
 
 impl ServerRoom {
@@ -22,7 +25,16 @@ impl ServerRoom {
         ServerRoom {
             room_name,
             game_updates: GameUpdateQueue::new(),
+            latest_gen: 0,
+            latest_gen_client_has: 0,
+            unacked_gsd_parts: HashMap::new(),
         }
+    }
+
+    pub fn finish_game(&mut self) {
+        self.latest_gen = 0;
+        self.latest_gen_client_has = 0;
+        self.unacked_gsd_parts.clear();
     }
 }
 
@@ -42,7 +54,10 @@ const MAX_GSD_BYTES: usize = 32 * MAX_GSDP_SIZE;
 
 /// Only possible error: SplitGSDError::DiffTooLarge
 //XXX use
-fn split_gen_state_diff(diff: GenStateDiff) -> anyhow::Result<Vec<Arc<GenStateDiffPart>>> {
+/// The "ok" return type is intended to be used for unacked_gsd_parts. The Vec corresponds to how
+/// it's broken into packets. The Option allows setting to None when acked by client. The Arc is
+/// for memory efficiency.
+pub fn split_gen_state_diff(diff: GenStateDiff) -> anyhow::Result<Vec<Option<Arc<GenStateDiffPart>>>> {
     let (gen0, gen1) = (diff.gen0 as u32, diff.gen1 as u32);
     let bytes = diff.pattern.0.len();
     let pattern_parts = diff
@@ -72,13 +87,13 @@ fn split_gen_state_diff(diff: GenStateDiff) -> anyhow::Result<Vec<Arc<GenStateDi
         .into_iter()
         .enumerate()
         .map(|(i, p)| {
-            Arc::new(GenStateDiffPart {
+            Some(Arc::new(GenStateDiffPart {
                 part_number: i as u8,
                 total_parts,
                 gen0,
                 gen1,
                 pattern_part: p,
-            })
+            }))
         })
         .collect())
 }

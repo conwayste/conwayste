@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     num::Wrapping,
+    sync::Arc,
     time::Duration,
 };
 
@@ -12,7 +13,7 @@ use tokio::sync::mpsc::{error::SendError, Sender};
 use super::server_update::*;
 use crate::common::{Endpoint, UDP_MTU_SIZE};
 use crate::filter::FilterNotice;
-use crate::protocol::{GameUpdate, GenPartInfo, Packet, RequestAction, ResponseCode, UniUpdate};
+use crate::protocol::{GameUpdate, GenPartInfo, GenStateDiffPart, Packet, RequestAction, ResponseCode, UniUpdate};
 use crate::transport::{PacketSettings, TransportCmd, TransportCmdSend};
 #[allow(unused)]
 use crate::{nwdebug, nwerror, nwinfo, nwtrace, nwwarn};
@@ -39,6 +40,7 @@ pub(crate) struct OtherEndClient {
     pub last_request_sequence_seen: Option<SeqNum>,
     pub last_response_sequence_sent: Option<SeqNum>,
     pub unacked_response_codes: VecDeque<ResponseCode>, // the back has sequence `last_response_sequence_sent`
+    gen_state_packet_ids: Vec<ProcessUniqueId>,         //XXX add to this and use this for drops
     pub cookie: Option<String>,
     // Update/UpdateReply below
     room: Option<ServerRoom>,
@@ -57,6 +59,7 @@ impl OtherEndClient {
             last_request_sequence_seen: None,
             last_response_sequence_sent: None,
             unacked_response_codes: VecDeque::new(),
+            gen_state_packet_ids: vec![],
             cookie: None,
             room: None,
             //lobby_game_updates: GameUpdateQueue::new(),
@@ -86,6 +89,11 @@ impl OtherEndClient {
         transport_cmd_tx: &Sender<TransportCmd>,
         new_updates: &[GameUpdate],
     ) -> anyhow::Result<()> {
+        if new_updates.iter().any(|game_update| game_update.is_game_finish()) {
+            // Clear game-specific state.
+            self.finish_game(transport_cmd_tx).await?;
+        }
+
         // This complicated logic sucks but hopefully we don't hit any crazy edge cases...
         if new_updates.contains(&GameUpdate::RoomDeleted) {
             if new_updates.len() == 1 {
@@ -182,8 +190,6 @@ impl OtherEndClient {
             .map_err(|e| anyhow!(e))
     }
 
-    //XXX method to build and send packet(s) containing all that are unacked
-
     pub async fn process_update_reply(
         &mut self,
         last_chat_seq: Option<u64>,
@@ -240,6 +246,26 @@ impl OtherEndClient {
         self.send_game_updates(transport_cmd_tx, &[]).await
     }
 
+    pub async fn send_gen_state_diff(
+        &mut self,
+        transport_cmd_tx: &Sender<TransportCmd>,
+        gen0: usize,
+        gen1: usize,
+        diff: Vec<Option<Arc<GenStateDiffPart>>>,
+    ) -> anyhow::Result<()> {
+        if let Some(ref mut room) = self.room.as_mut() {
+            //XXX update room.unacked_gsd_parts
+            //XXX drop old
+            //XXX send
+        } else {
+            warn!(
+                "s[F<-A] attempted to send GenStateDiff to client ({:?}) not in room",
+                self.endpoint
+            );
+        }
+        Ok(())
+    }
+
     async fn process_gen_ack(
         &mut self,
         last_full_gen: Option<u64>,
@@ -247,12 +273,68 @@ impl OtherEndClient {
         transport_cmd_tx: &Sender<TransportCmd>,
         filter_notice_tx: &Sender<FilterNotice>,
     ) -> anyhow::Result<()> {
-        if last_full_gen.is_none() && partial_gen.is_none() {
-            return Ok(());
+        if let Some(ref mut room) = self.room.as_mut() {
+            if last_full_gen.is_none() && partial_gen.is_none() {
+                return Ok(());
+            }
+
+            if let Some(last_full_gen) = last_full_gen {
+                if last_full_gen as usize > room.latest_gen {
+                    bail!(
+                        "Outdated packet or client misbehaving: client reports last full gen {} but server's is {}",
+                        last_full_gen,
+                        room.latest_gen
+                    );
+                }
+                if last_full_gen as usize > room.latest_gen_client_has {
+                    filter_notice_tx
+                        .send(FilterNotice::HasGeneration {
+                            endpoints: vec![self.endpoint],
+                            gen_num:   last_full_gen,
+                        })
+                        .await?;
+                    room.latest_gen_client_has = last_full_gen as usize;
+                    self.drop_all_gen_state_diff_packets(transport_cmd_tx).await?;
+                    //XXX remove older gens from room.unacked_gsd_parts
+                    self.send_gen_state_diffs(transport_cmd_tx).await?;
+                    return Ok(()); // No point continuing on to process a partial gen update
+                } else if (last_full_gen as usize) < room.latest_gen_client_has {
+                    return Ok(()); // Old packet; don't process partial gen updates
+                }
+            }
+
+            if let Some(partial_gen) = partial_gen {
+                //XXX use partial_gen.{gen0, gen1, have_bitmask} to attempt to change a Some(..) to None in room.unacked_gsd_parts
+                //XXX if any such changes were made, drop_all_gen_state_diff_packets() and send_gen_state_diffs()
+            }
+            Ok(())
+        } else {
+            self.drop_all_gen_state_diff_packets(transport_cmd_tx).await
         }
-        //XXX maybe remove outgoing universe updates from "unacked" data structure, drop Update packet (if any), and
-        // potentially send new Update packet
+    }
+
+    async fn drop_all_gen_state_diff_packets(&mut self, transport_cmd_tx: &Sender<TransportCmd>) -> anyhow::Result<()> {
+        for packet_id in self.gen_state_packet_ids.drain(..) {
+            transport_cmd_tx
+                .send(TransportCmd::DropPacket {
+                    endpoint: self.endpoint,
+                    tid:      packet_id,
+                })
+                .await?;
+        }
         Ok(())
+    }
+
+    /// Send all GenStateDiffParts that haven't been acked yet -- with retry
+    async fn send_gen_state_diffs(&mut self, transport_cmd_tx: &Sender<TransportCmd>) -> anyhow::Result<()> {
+        //XXX
+        Ok(())
+    }
+
+    pub fn set_latest_gen(&mut self, latest_gen: usize) {
+        if let Some(ref mut room) = self.room.as_mut() {
+            room.latest_gen = latest_gen;
+        }
     }
 
     /// The only error this can return is a send error on `transport_cmd_tx`.
@@ -426,6 +508,17 @@ impl OtherEndClient {
     pub fn join_room(&mut self, room_name: &str) {
         let room = ServerRoom::new(room_name.into());
         self.room = Some(room);
+    }
+
+    pub async fn finish_game(&mut self, transport_cmd_tx: &Sender<TransportCmd>) -> anyhow::Result<()> {
+        if let Some(ref mut room) = self.room {
+            room.finish_game();
+        } else {
+            error!("s[F] Tried to finish a game but player in lobby");
+        }
+
+        // Drop any GenStateDiffParts sent previously
+        self.drop_all_gen_state_diff_packets(transport_cmd_tx).await
     }
 }
 

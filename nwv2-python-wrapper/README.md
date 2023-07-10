@@ -5,12 +5,12 @@ This allows interactively testing Netwayste v2 in a Jupyter notebook.
 
 ## Installation
 
-Create a new virtual environment in this folder, activate it in the current terminal, and finally install `maturin`.
+Create a new virtual environment in this folder, activate it in the current terminal, and finally install needed Python modules.
 
 ```
 python -m venv venv
 source venv/bin/activate
-pip install maturin
+pip install ipykernel maturin
 ```
 
 ## Usage
