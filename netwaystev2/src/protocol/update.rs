@@ -12,7 +12,6 @@ pub struct BroadcastChatMessage {
     pub message:     String, // should not contain newlines
 }
 
-// TODO: add support
 // The server doesn't have to send all GameUpdates to all clients because that would entail keeping
 // them all for the lifetime of the room, and sending that arbitrarily large list to clients upon
 // joining.
@@ -55,14 +54,12 @@ pub enum GameUpdate {
     },
 }
 
-// TODO: add support
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum UniUpdate {
     Diff { diff: GenStateDiffPart },
     NoChange,
 }
 
-// TODO: add support
 /// One or more of these can be recombined into a GenStateDiff from the conway crate.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GenStateDiffPart {
@@ -73,13 +70,13 @@ pub struct GenStateDiffPart {
     pub pattern_part: String, // concatenated together to form a Pattern
 }
 
-// TODO: add support
 /// GenPartInfo is sent in the UpdateReply to indicate which GenStateDiffParts are needed.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GenPartInfo {
     pub gen0:         u32, // zero means diff is based off the beginning of time
     pub gen1:         u32, // must be greater than last_full_gen
-    pub have_bitmask: u32, // bitmask indicating which parts for the specified diff are present; must be less than 1<<total_parts
+    pub have_bitmask: u32, // bitmask indicating which parts for the specified diff are present;
+                           // must be less than 1<<total_parts; lowest bit is for first part
 }
 
 // TODO: add support

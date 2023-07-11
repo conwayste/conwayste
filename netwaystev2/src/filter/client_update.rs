@@ -232,6 +232,8 @@ impl ClientGame {
             }
         }
 
+        //XXX update self.partial_gen (GenPartInfo)
+
         // Build the diff string if all parts are available.
         let mut diff = "".to_owned();
         let mut all_parts_are_some = true;
@@ -272,6 +274,7 @@ impl ClientGame {
                     .retain(|&(_gen0, gen1), _current_parts| gen1 as usize > latest_gen);
 
                 self.last_full_gen = Some(latest_gen);
+                self.partial_gen = None;
             } else {
                 // * `Ok(None)` if the update is valid but was not applied because either:
                 //     - the generation to be applied is already present,

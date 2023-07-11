@@ -27,6 +27,7 @@ use super::{FilterError, FilterNotifySend, PingPong};
 const MAX_GU_SIZE: u64 = UDP_MTU_SIZE as u64 * 90 / 100;
 
 const GAME_UPDATE_RETRY_INTERVAL: Duration = Duration::from_millis(200);
+const GEN_STATE_DIFF_RETRY_INTERVAL: Duration = Duration::from_millis(30);
 
 pub(crate) enum FilterEndpointData {
     OtherEndClient(OtherEndClient),
@@ -40,7 +41,7 @@ pub(crate) struct OtherEndClient {
     pub last_request_sequence_seen: Option<SeqNum>,
     pub last_response_sequence_sent: Option<SeqNum>,
     pub unacked_response_codes: VecDeque<ResponseCode>, // the back has sequence `last_response_sequence_sent`
-    gen_state_packet_ids: Vec<ProcessUniqueId>,         //XXX add to this and use this for drops
+    gen_state_packet_ids: Vec<ProcessUniqueId>,
     pub cookie: Option<String>,
     // Update/UpdateReply below
     room: Option<ServerRoom>,
@@ -254,9 +255,10 @@ impl OtherEndClient {
         diff: Vec<Option<Arc<GenStateDiffPart>>>,
     ) -> anyhow::Result<()> {
         if let Some(ref mut room) = self.room.as_mut() {
-            //XXX update room.unacked_gsd_parts
-            //XXX drop old
-            //XXX send
+            // Insert into parts, drop old packets (if any), and send new.
+            room.unacked_gsd_parts.insert((gen0, gen1), diff);
+            self.drop_all_gen_state_diff_packets(transport_cmd_tx).await?;
+            self.send_gen_state_diffs(transport_cmd_tx).await?;
         } else {
             warn!(
                 "s[F<-A] attempted to send GenStateDiff to client ({:?}) not in room",
@@ -294,18 +296,41 @@ impl OtherEndClient {
                         })
                         .await?;
                     room.latest_gen_client_has = last_full_gen as usize;
+                    // Remove any diffs where the "to" generation is the highest the client has, or lower.
+                    room.unacked_gsd_parts
+                        .retain(|(_gen0, gen1), _parts| *gen1 > last_full_gen as usize);
                     self.drop_all_gen_state_diff_packets(transport_cmd_tx).await?;
-                    //XXX remove older gens from room.unacked_gsd_parts
-                    self.send_gen_state_diffs(transport_cmd_tx).await?;
-                    return Ok(()); // No point continuing on to process a partial gen update
+                    // Return because no point continuing on to process a partial gen update
+                    return self.send_gen_state_diffs(transport_cmd_tx).await;
                 } else if (last_full_gen as usize) < room.latest_gen_client_has {
                     return Ok(()); // Old packet; don't process partial gen updates
                 }
             }
 
             if let Some(partial_gen) = partial_gen {
-                //XXX use partial_gen.{gen0, gen1, have_bitmask} to attempt to change a Some(..) to None in room.unacked_gsd_parts
-                //XXX if any such changes were made, drop_all_gen_state_diff_packets() and send_gen_state_diffs()
+                let (gen0, gen1) = (partial_gen.gen0 as usize, partial_gen.gen1 as usize);
+                if let Some(parts) = room.unacked_gsd_parts.get_mut(&(gen0, gen1)) {
+                    let mut changed = false;
+                    let mut some_count = 0;
+                    for i in 0..parts.len() {
+                        if partial_gen.have_bitmask & (1 << i) != 0 {
+                            // Client has this part
+                            parts[i] = None;
+                            changed = true;
+                        }
+                        if parts[i].is_some() {
+                            some_count += 1;
+                        }
+                    }
+                    if some_count == 0 {
+                        room.unacked_gsd_parts.remove(&(gen0, gen1));
+                        changed = true;
+                    }
+                    if changed {
+                        self.drop_all_gen_state_diff_packets(transport_cmd_tx).await?;
+                        self.send_gen_state_diffs(transport_cmd_tx).await?;
+                    }
+                }
             }
             Ok(())
         } else {
@@ -327,8 +352,44 @@ impl OtherEndClient {
 
     /// Send all GenStateDiffParts that haven't been acked yet -- with retry
     async fn send_gen_state_diffs(&mut self, transport_cmd_tx: &Sender<TransportCmd>) -> anyhow::Result<()> {
-        //XXX
-        Ok(())
+        let room = if let Some(ref room) = self.room {
+            room
+        } else {
+            return Ok(());
+        };
+        let mut packets = vec![];
+        let mut packet_infos = vec![];
+        for ((_gen0, _gen1), parts) in room.unacked_gsd_parts.iter() {
+            for part in parts.iter() {
+                if part.is_none() {
+                    continue;
+                }
+                let part = part.as_ref().unwrap(); // unwrap OK because of above check
+
+                let tid = ProcessUniqueId::new();
+                self.gen_state_packet_ids.push(tid);
+                packet_infos.push(PacketSettings {
+                    tid,
+                    retry_interval: GEN_STATE_DIFF_RETRY_INTERVAL,
+                });
+                let diff = GenStateDiffPart::clone(part);
+                packets.push(Packet::Update {
+                    chats:           vec![],
+                    game_update_seq: None,
+                    game_updates:    vec![],
+                    universe_update: UniUpdate::Diff { diff },
+                    ping:            PingPong::ping(),
+                });
+            }
+        }
+        transport_cmd_tx
+            .send(TransportCmd::SendPackets {
+                endpoint: self.endpoint,
+                packet_infos,
+                packets,
+            })
+            .await
+            .map_err(|e| anyhow!(e))
     }
 
     pub fn set_latest_gen(&mut self, latest_gen: usize) {

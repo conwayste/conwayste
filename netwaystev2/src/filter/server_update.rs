@@ -17,7 +17,7 @@ pub struct ServerRoom {
     pub game_updates:          GameUpdateQueue, // ToDo: consider removing `pub`
     pub latest_gen:            usize,
     pub latest_gen_client_has: usize,
-    pub unacked_gsd_parts:     HashMap<(usize, usize), Vec<Option<Arc<GenStateDiffPart>>>>, //XXX use
+    pub unacked_gsd_parts:     HashMap<(usize, usize), Vec<Option<Arc<GenStateDiffPart>>>>,
 }
 
 impl ServerRoom {
@@ -53,7 +53,7 @@ const MAX_GSDP_SIZE: usize = UDP_MTU_SIZE * 75 / 100;
 const MAX_GSD_BYTES: usize = 32 * MAX_GSDP_SIZE;
 
 /// Only possible error: SplitGSDError::DiffTooLarge
-//XXX use
+///
 /// The "ok" return type is intended to be used for unacked_gsd_parts. The Vec corresponds to how
 /// it's broken into packets. The Option allows setting to None when acked by client. The Arc is
 /// for memory efficiency.
@@ -182,5 +182,3 @@ impl GameUpdateQueue {
         }
     }
 }
-
-//XXX ServerGame
