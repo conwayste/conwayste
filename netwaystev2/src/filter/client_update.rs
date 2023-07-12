@@ -19,7 +19,7 @@ pub struct ClientRoom {
 pub struct ClientGame {
     player_id:         PlayerID, // Duplicate of player_id from ClientRoom
     diff_parts:        HashMap<(u32, u32), Vec<Option<String>>>,
-    universe:          Universe,
+    universe:          Universe, // Universe for validation in this layer; the ggez client has the "real" one
     pub last_full_gen: Option<usize>, // generation number client is currently at
     pub partial_gen:   Option<GenPartInfo>,
 }
@@ -232,7 +232,19 @@ impl ClientGame {
             }
         }
 
-        //XXX update self.partial_gen (GenPartInfo)
+        if let Some(parts) = self.diff_parts.get(&(gen0, gen1)) {
+            let mut gen_part_info = GenPartInfo {
+                gen0:         gen0 as u32,
+                gen1:         gen1 as u32,
+                have_bitmask: 0,
+            };
+            for (i, part) in parts.iter().enumerate() {
+                if part.is_some() {
+                    gen_part_info.have_bitmask |= 1 << i;
+                }
+            }
+            self.partial_gen = Some(gen_part_info);
+        }
 
         // Build the diff string if all parts are available.
         let mut diff = "".to_owned();

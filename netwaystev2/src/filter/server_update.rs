@@ -50,7 +50,7 @@ enum SplitGSDError {
 
 /// Maximum size of a GenStateDiffPart's pattern component; 75% of MTU size to leave room for other stuff
 const MAX_GSDP_SIZE: usize = UDP_MTU_SIZE * 75 / 100;
-const MAX_GSD_BYTES: usize = 32 * MAX_GSDP_SIZE;
+const MAX_GSD_BYTES: usize = 32 * MAX_GSDP_SIZE; // ToDo: constantize the 32 (and combine with one in client_update.rs)
 
 /// Only possible error: SplitGSDError::DiffTooLarge
 ///
