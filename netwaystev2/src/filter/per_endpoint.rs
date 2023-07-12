@@ -329,6 +329,9 @@ impl OtherEndClient {
                     if changed {
                         // ToDo: consider skipping these two calls if we sent packets recently
                         // enough that the missing GSDP packet(s) could still be in transit.
+                        // However, it might be even better to keep track of the tid for each
+                        // packet and only dropping and resending the acked parts -- this would
+                        // avoid resending packets too often.
                         self.drop_all_gen_state_diff_packets(transport_cmd_tx).await?;
                         self.send_gen_state_diffs(transport_cmd_tx).await?;
                     }
