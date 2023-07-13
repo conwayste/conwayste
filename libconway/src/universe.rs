@@ -179,7 +179,7 @@ pub struct Universe {
 pub struct GenState {
     gen_or_none:   Option<usize>, // Some(generation number) (redundant info); if None, this is an unused buffer
     cells:         BitGrid,       // 1 = cell is known to be Alive
-    wall_cells:    BitGrid,       // 1 = is a wall cell (should this just be fixed for the universe?)
+    wall_cells:    BitGrid,       // 1 = is a wall cell; consider using Rc for efficiency (reduced clones)
     known:         BitGrid,       // 1 = cell is known (always 1 if this is server)
     player_states: Vec<PlayerGenState>, // player-specific info (indexed by player_id)
 }
