@@ -43,7 +43,7 @@ pub struct GameArea {
     z_index:                usize,
     dimensions:             Rect,
     handler_data:           HandlerData,
-    pub uni:                Universe,
+    uni:                    Universe,
     game_state:             GameAreaState,
 }
 
@@ -117,6 +117,10 @@ impl GameArea {
             .unwrap();
 
         game_area
+    }
+
+    pub fn get_universe(&self) -> &Universe {
+        &self.uni
     }
 }
 

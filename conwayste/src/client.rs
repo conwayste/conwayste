@@ -998,7 +998,7 @@ impl MainState {
         // A non-mutable reference is used to draw the universe
         match GameArea::widget_from_screen_and_id(&self.ui_layout, Screen::Run, &self.static_node_ids.game_area_id) {
             Ok(gamearea) => {
-                self.draw_game_of_life(ctx, &gamearea.uni)?;
+                self.draw_game_of_life(ctx, gamearea.get_universe())?;
             }
             Err(e) => {
                 error!("failed to look up GameArea widget: {:?}", e);
