@@ -7,8 +7,8 @@ edition = "2018"
 [dependencies]
 #base64         = "0.13.0"
 #clap           = "2"
-conway         = { path = "../libconway" }
-rand           = "0.8.3"
+conway          = { path = "../libconway" }
+rand            = "0.8.3"
 #regex          = "1"
 #semver         = "0.11.0"
 #time           = "0.1"
@@ -22,6 +22,7 @@ env_logger      = "0.8.*"
 futures         = "0.3"
 lazy_static     = "1.4.0"
 log             = "0.4.*"
+lz4_flex        = "0.11.1"
 thiserror       = "1.0.*"
 snowflake       = "1.2"
 strum           = "0.23"

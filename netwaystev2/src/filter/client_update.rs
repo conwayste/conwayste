@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use lz4_flex::block::decompress_size_prepended;
 use std::collections::{hash_map::Entry, HashMap};
 
 use super::{FilterNotice, FilterNotifySend};
@@ -18,7 +19,7 @@ pub struct ClientRoom {
 
 pub struct ClientGame {
     player_id:         PlayerID, // Duplicate of player_id from ClientRoom
-    diff_parts:        HashMap<(u32, u32), Vec<Option<String>>>,
+    diff_parts:        HashMap<(u32, u32), Vec<Option<Vec<u8>>>>,
     universe:          Universe, // Universe for validation in this layer; the ggez client has the "real" one
     pub last_full_gen: Option<usize>, // generation number client is currently at
     pub partial_gen:   Option<GenPartInfo>,
@@ -246,8 +247,8 @@ impl ClientGame {
             self.partial_gen = Some(gen_part_info);
         }
 
-        // Build the diff string if all parts are available.
-        let mut diff = "".to_owned();
+        // Build the LZ4-compressed diff if all parts are available.
+        let mut compressed_diff = vec![];
         let mut all_parts_are_some = true;
         if let Some(entry) = self.diff_parts.get(&(gen0, gen1)) {
             for part in entry {
@@ -258,7 +259,7 @@ impl ClientGame {
             }
             if all_parts_are_some {
                 for part in entry {
-                    diff.push_str(part.as_ref().unwrap());
+                    compressed_diff.extend(part.as_ref().unwrap());
                 }
             }
         } else {
@@ -266,6 +267,9 @@ impl ClientGame {
         }
 
         if all_parts_are_some {
+            let diff_bytes = decompress_size_prepended(&compressed_diff)?;
+            let diff = String::from_utf8(diff_bytes)?;
+
             let genstatediff = GenStateDiff {
                 gen0:    gen0 as usize,
                 gen1:    gen1 as usize,

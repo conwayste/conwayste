@@ -4,7 +4,7 @@ use super::ping::LatencyFilter;
 use super::{ClientRoom, FilterEndpointData, FilterError, OtherEndClient, OtherEndServer, PerEndpoint, PingPong};
 use super::{FilterCmdRecv, FilterCmdSend, FilterNotifyRecv, FilterNotifySend, FilterRspRecv, FilterRspSend};
 use crate::common::{Endpoint, ShutdownWatcher};
-use crate::filter::server_update::split_gen_state_diff;
+use crate::filter::server_update::compress_and_split_gen_state_diff;
 #[allow(unused)] // ToDo: need this?
 use crate::protocol::{GameUpdate, GenStateDiffPart, Packet, RequestAction, ResponseCode};
 use crate::settings::{DEFAULT_ENDPOINT_TIMEOUT_INTERVAL, DEFAULT_RETRY_INTERVAL, FILTER_CHANNEL_LEN};
@@ -752,7 +752,7 @@ impl Filter {
             }
             FilterCmd::SendGenStateDiff { endpoints, diff } => {
                 let (gen0, gen1) = (diff.gen0, diff.gen1);
-                let parts = split_gen_state_diff(diff)?; // TODO: handle error?!?
+                let parts = compress_and_split_gen_state_diff(diff)?; // TODO: handle error?!?
                 for endpoint in endpoints {
                     let client =
                         self.per_endpoint

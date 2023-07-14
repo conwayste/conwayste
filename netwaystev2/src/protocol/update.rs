@@ -63,11 +63,11 @@ pub enum UniUpdate {
 /// One or more of these can be recombined into a GenStateDiff from the conway crate.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GenStateDiffPart {
-    pub part_number:  u8,     // zero-based but less than 32
-    pub total_parts:  u8,     // must be at least 1 but at most 32
-    pub gen0:         u32,    // zero means diff is based off the beginning of time
-    pub gen1:         u32,    // This is the generation when this diff has been applied.
-    pub pattern_part: String, // concatenated together to form a Pattern
+    pub part_number:  u8,      // zero-based but less than 32
+    pub total_parts:  u8,      // must be at least 1 but at most 32
+    pub gen0:         u32,     // zero means diff is based off the beginning of time
+    pub gen1:         u32,     // This is the generation when this diff has been applied.
+    pub pattern_part: Vec<u8>, // concatenated together and LZ4-decompressed to form a Pattern
 }
 
 /// GenPartInfo is sent in the UpdateReply to indicate which GenStateDiffParts are needed.

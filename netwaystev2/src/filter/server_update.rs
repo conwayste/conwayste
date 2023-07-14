@@ -1,6 +1,8 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
+use lz4_flex::block::compress_prepend_size;
+
 use conway::GenStateDiff;
 
 use crate::common::UDP_MTU_SIZE;
@@ -40,11 +42,11 @@ impl ServerRoom {
 
 #[derive(thiserror::Error, Debug)]
 enum SplitGSDError {
-    #[error("The size of this GenStateDiff is too large ({bytes:?} bytes > {max_bytes:?}) to break up into parts for sending")]
+    #[error("The size of this GenStateDiff is too large ({byte_length:?} bytes > {max_bytes:?}) to break up into parts for sending")]
     DiffTooLarge {
-        bytes:     usize,
-        max_bytes: usize,
-        parts:     usize,
+        byte_length: usize,
+        max_bytes:   usize,
+        parts:       usize,
     },
 }
 
@@ -57,27 +59,26 @@ const MAX_GSD_BYTES: usize = 32 * MAX_GSDP_SIZE; // ToDo: constantize the 32 (an
 /// The "ok" return type is intended to be used for unacked_gsd_parts. The Vec corresponds to how
 /// it's broken into packets. The Option allows setting to None when acked by client. The Arc is
 /// for memory efficiency.
-pub fn split_gen_state_diff(diff: GenStateDiff) -> anyhow::Result<Vec<Option<Arc<GenStateDiffPart>>>> {
+pub fn compress_and_split_gen_state_diff(diff: GenStateDiff) -> anyhow::Result<Vec<Option<Arc<GenStateDiffPart>>>> {
     let (gen0, gen1) = (diff.gen0 as u32, diff.gen1 as u32);
-    let bytes = diff.pattern.0.len();
-    let pattern_parts = diff
-        .pattern
-        .0
-        .chars()
+    let compressed_pattern = compress_prepend_size(diff.pattern.0.as_bytes());
+    let byte_length = compressed_pattern.len();
+    let pattern_parts = compressed_pattern
+        .into_iter()
         .enumerate()
-        .fold(Vec::<String>::new(), |mut v, (i, c)| {
+        .fold(Vec::<Vec<u8>>::new(), |mut v, (i, b)| {
             if i % MAX_GSDP_SIZE == 0 {
-                let mut s = String::with_capacity(256);
-                s.push(c);
-                v.push(s);
+                let mut p = Vec::with_capacity(256);
+                p.push(b);
+                v.push(p);
             } else {
-                v.last_mut().as_mut().unwrap().push(c);
+                v.last_mut().as_mut().unwrap().push(b);
             }
             v
         });
     if pattern_parts.len() > 32 {
         return Err(anyhow::anyhow!(SplitGSDError::DiffTooLarge {
-            bytes,
+            byte_length,
             max_bytes: MAX_GSD_BYTES,
             parts: pattern_parts.len()
         }));
