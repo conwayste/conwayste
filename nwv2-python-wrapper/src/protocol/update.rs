@@ -58,7 +58,7 @@ impl_from_and_to!(GenStateDiffPartW wraps GenStateDiffPart);
 #[pymethods]
 impl GenStateDiffPartW {
     #[new]
-    fn new(part_number: u8, total_parts: u8, gen0: u32, gen1: u32, pattern_part: String) -> Self {
+    fn new(part_number: u8, total_parts: u8, gen0: u32, gen1: u32, pattern_part: Vec<u8>) -> Self {
         let inner = GenStateDiffPart {
             part_number,
             total_parts,
@@ -90,7 +90,7 @@ impl GenStateDiffPartW {
     }
 
     #[getter]
-    fn get_pattern_part(&self) -> &str {
+    fn get_pattern_part(&self) -> &[u8] {
         &self.inner.pattern_part
     }
 
