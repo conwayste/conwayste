@@ -29,10 +29,10 @@ pub enum RoomMgrError {
 }
 
 #[derive(Default)]
-struct Room {
-    name:     String,
-    player_a: Option<PlayerId>,
-    player_b: Option<PlayerId>,
+pub struct Room {
+    pub name:     String,
+    pub player_a: Option<PlayerId>,
+    pub player_b: Option<PlayerId>,
 }
 
 impl Room {
@@ -121,6 +121,22 @@ impl RoomBlock {
         }
 
         Ok(())
+    }
+
+    pub fn get(&self, room_id: RoomId) -> Result<&Room> {
+        if let Some(room) = self.rid2room.get(&room_id) {
+            return Ok(room);
+        } else {
+            return Err(anyhow!(RoomMgrError::RoomIdNotFound { id: room_id }));
+        }
+    }
+
+    pub fn get_mut(&mut self, room_id: RoomId) -> Result<&mut Room> {
+        if let Some(room) = self.rid2room.get_mut(&room_id) {
+            return Ok(room);
+        } else {
+            return Err(anyhow!(RoomMgrError::RoomIdNotFound { id: room_id }));
+        }
     }
 }
 
