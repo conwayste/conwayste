@@ -3,10 +3,9 @@
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use snowflake::ProcessUniqueId;
-use tracing::*;
 
 const MAX_ROOM_NAME_CHARS: usize = 32;
-const ROOMS_PER_SERVER: usize = 3;
+const ROOMS_PER_SERVER: usize = 3; // TODO: Move to config
 const MODULE_NAME: &'static str = "Room";
 
 // XXX PlayerId is defined here just for bring up. Might be best to relocate when ready.
@@ -16,13 +15,17 @@ type RoomId = ProcessUniqueId;
 #[derive(Debug, thiserror::Error)]
 pub enum RoomMgrError {
     #[error("Failed to create a new room, the server is full")]
-    RoomBlockEmpty,
+    AllRoomsAllocated,
     #[error("A room with that name already exists: {name}")]
     RoomWithNameExists { name: String },
-    #[error("Room does not exist: {id}")]
+    #[error("Room does not exist. id={id}")]
     RoomIdNotFound { id: RoomId },
+    #[error("Room does not exist. name={name}")]
+    RoomNameNotFound { name: String},
     #[error("Invalid room name provided: {name}")]
     InvalidRoomName { name: String },
+    #[error("Internal Room Manager error")]
+    RoomMgmtError { context: String },
 }
 
 #[derive(Default)]
@@ -32,44 +35,52 @@ struct Room {
     player_b: Option<PlayerId>,
 }
 
+impl Room {
+    fn with_name(self, name: &str) -> Room {
+        Room {
+            name: name.to_owned(),
+            player_a: self.player_a,
+            player_b: self.player_b,
+        }
+    }
+}
+
 pub struct RoomBlock {
     names2rid: IndexMap<String, RoomId>,
     rid2room:  IndexMap<RoomId, Room>,
-    free_pool: Vec<Room>,
 }
 
 impl RoomBlock {
     pub fn new() -> RoomBlock {
-        let mut room_pool = Vec::<Room>::with_capacity(ROOMS_PER_SERVER);
-        for _ in 0..room_pool.capacity() {
-            room_pool.push(Room::default());
-        }
-
         RoomBlock {
             names2rid: IndexMap::new(),
             rid2room:  IndexMap::new(),
-            free_pool: room_pool,
         }
     }
 
-    pub fn count(&self) -> usize {
-        assert!(self.rid2room.len() == self.names2rid.len());
-        assert!(self.rid2room.len() == (ROOMS_PER_SERVER - self.free_pool.len()));
-
-        self.rid2room.len()
+    pub fn count(&self) -> Result<usize> {
+        if self.rid2room.len() == self.names2rid.len() {
+            Ok(self.rid2room.len())
+        } else {
+            let error = RoomMgrError::RoomMgmtError {
+                context: "Length mismatch between room IDs and room names".to_owned(),
+            };
+            error!("[{}] {}", MODULE_NAME, error);
+            Err(anyhow!(error))
+        }
     }
 
     pub fn alloc(&mut self, room_name: String) -> Result<RoomId> {
         trace!("[{}] allocating room => Name:{}", MODULE_NAME, room_name);
 
-        if room_name == "" || room_name.len() > MAX_ROOM_NAME_CHARS {
-            let error = RoomMgrError::InvalidRoomName { name: room_name };
+        if self.count()? >= ROOMS_PER_SERVER {
+            let error = RoomMgrError::AllRoomsAllocated;
             error!("[{}] {}", MODULE_NAME, error);
             return Err(anyhow!(error));
         }
 
-        if self.free_pool.is_empty() {
-            let error = RoomMgrError::RoomBlockEmpty;
+        if room_name == "" || room_name.len() > MAX_ROOM_NAME_CHARS {
+            let error = RoomMgrError::InvalidRoomName { name: room_name };
             error!("[{}] {}", MODULE_NAME, error);
             return Err(anyhow!(error));
         }
@@ -80,18 +91,14 @@ impl RoomBlock {
             return Err(anyhow!(error));
         }
 
-        // Unwrap safe because of is_empty() check
-        let mut room = self.free_pool.pop().unwrap();
-        room.name = room_name.clone();
-
         let room_id = RoomId::new();
-
         trace!("[{}] room allocated => ID:{} Name:{} ", MODULE_NAME, room_id, room_name);
 
-        // Return value ignored is okay because of contains_key() check
-        let _ = self.names2rid.insert(room_name, room_id);
+        let room = Room::default().with_name(&room_name);
 
-        // Return value ignored is okay the room ID is uniquely generated, and the room was pulled from the free pool
+        // Return value ignored is okay the room ID is uniquely generated
+        let _ = self.names2rid.insert(room_name, room_id);
+        // Return value ignored is okay because of contains_key() check
         let _ = self.rid2room.insert(room_id, room);
 
         Ok(room_id)
@@ -109,8 +116,6 @@ impl RoomBlock {
                     MODULE_NAME, room_id, room.name
                 );
             }
-
-            self.free_pool.push(Room::default());
         } else {
             return Err(anyhow!(RoomMgrError::RoomIdNotFound { id: room_id }));
         }
@@ -121,7 +126,7 @@ impl RoomBlock {
 
 #[cfg(test)]
 mod tests {
-    use crate::room::MAX_ROOM_NAME_CHARS;
+    use super::MAX_ROOM_NAME_CHARS;
 
     use super::{RoomBlock, RoomId, ROOMS_PER_SERVER};
 
@@ -135,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn test_allocation_fails_pool_empty() {
+    fn test_allocation_fails_when_full() {
         let mut rooms = RoomBlock::new();
 
         for i in 0..ROOMS_PER_SERVER {
@@ -144,7 +149,8 @@ mod tests {
             let _ = rooms.count(); // Performs a size assertion internally
         }
 
-        assert!(rooms.alloc("allocation-should-fail".into()).is_err());
+        let allocation_should_fail = rooms.alloc("allocation-should-fail".to_owned());
+        assert!(allocation_should_fail.is_err());
     }
 
     #[test]

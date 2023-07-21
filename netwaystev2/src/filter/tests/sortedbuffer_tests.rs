@@ -1,4 +1,4 @@
-use crate::filter::SequencedMinHeap;
+use crate::filter::sortedbuffer::SequencedMinHeap;
 
 #[test]
 fn seqminheap_empty_checks() {
