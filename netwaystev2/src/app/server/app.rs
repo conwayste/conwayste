@@ -3,8 +3,11 @@ use std::time::Duration;
 use crate::{
     app::server::registry::{self, REGISTER_INTERVAL},
     app::server::room::*,
-    filter::{FilterCmd, FilterCmdSend, FilterNotifyRecv, FilterRspRecv, FilterNotice},
-    protocol::RequestAction::{*, self},
+    filter::{FilterCmd, FilterCmdSend, FilterNotice, FilterNotifyRecv, FilterRspRecv},
+    protocol::{
+        RequestAction::{self, *},
+        ResponseCode,
+    },
     settings::APP_CHANNEL_LEN,
 };
 
@@ -123,47 +126,45 @@ impl AppServer {
 
     fn handle_filter_notice(&mut self, notice: FilterNotice) -> Result<()> {
         match notice {
-            FilterNotice::NewRequestAction { endpoint, action } => {
-                match action {
-                    RequestAction::None => {},
-                    RequestAction::Connect { name, client_version } => {
-                        unimplemented!();
-                    }
-                    RequestAction::Disconnect => {
-                        unimplemented!();
-                    }
-                    RequestAction::KeepAlive { latest_response_ack } => {
-                        unimplemented!();
-                    }
-                    RequestAction::DropPattern { x, y, pattern } => {
-                        unimplemented!();
-                    }
-                    RequestAction::ClearArea { x, y, w, h } => {
-                        unimplemented!();
-                    }
-                    RequestAction::ChatMessage { message } => {
-                        unimplemented!();
-                    }
-                    RequestAction::ListPlayers => {
-                        unimplemented!();
-                    }
-                    RequestAction::NewRoom { room_name } => {
-                        self.rooms.alloc(room_name)?;
-                    }
-                    RequestAction::JoinRoom { room_name } => {
-                        unimplemented!();
-                    }
-                    RequestAction::ListRooms => {
-                        unimplemented!();
-                    }
-                    RequestAction::LeaveRoom => {
-                        unimplemented!();
-                    }
-                    RequestAction::SetClientOptions { key, value } => {
-                        unimplemented!();
-                    }
+            FilterNotice::NewRequestAction { endpoint, action } => match action {
+                RequestAction::None => {}
+                RequestAction::Connect { name, client_version } => {
+                    unimplemented!();
                 }
-            }
+                RequestAction::Disconnect => {
+                    unimplemented!();
+                }
+                RequestAction::KeepAlive { latest_response_ack } => {
+                    unimplemented!();
+                }
+                RequestAction::DropPattern { x, y, pattern } => {
+                    unimplemented!();
+                }
+                RequestAction::ClearArea { x, y, w, h } => {
+                    unimplemented!();
+                }
+                RequestAction::ChatMessage { message } => {
+                    unimplemented!();
+                }
+                RequestAction::ListPlayers => {
+                    unimplemented!();
+                }
+                RequestAction::NewRoom { room_name } => {
+                    unimplemented!();
+                }
+                RequestAction::JoinRoom { room_name } => {
+                    unimplemented!();
+                }
+                RequestAction::ListRooms => {
+                    unimplemented!();
+                }
+                RequestAction::LeaveRoom => {
+                    unimplemented!();
+                }
+                RequestAction::SetClientOptions { key, value } => {
+                    unimplemented!();
+                }
+            },
             _ => {
                 unimplemented!();
             }
