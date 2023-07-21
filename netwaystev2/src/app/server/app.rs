@@ -2,10 +2,13 @@ use std::time::Duration;
 
 use crate::{
     app::server::registry::{self, REGISTER_INTERVAL},
-    filter::{FilterCmd, FilterCmdSend, FilterNotifyRecv, FilterRspRecv},
+    app::server::room::*,
+    filter::{FilterCmd, FilterCmdSend, FilterNotifyRecv, FilterRspRecv, FilterNotice},
+    protocol::RequestAction::{*, self},
     settings::APP_CHANNEL_LEN,
 };
 
+use anyhow::{anyhow, Result};
 use futures::Future;
 use tokio::sync::{
     mpsc::{self, Receiver, Sender},
@@ -28,6 +31,7 @@ pub struct AppServer {
     phase_watch_tx:   Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
     phase_watch_rx:   watch::Receiver<Phase>,
     registry_params:  Option<RegistryParams>, // If None, then not a public server
+    rooms:            RoomBlock,
 }
 
 impl AppServer {
@@ -46,6 +50,7 @@ impl AppServer {
             phase_watch_tx: Some(phase_watch_tx),
             phase_watch_rx,
             registry_params,
+            rooms: RoomBlock::new(),
         }
     }
 
@@ -75,7 +80,9 @@ impl AppServer {
                 notice = filter_notice_rx.recv() => {
                     if let Some(filter_notice) = notice {
                         trace!("[A<-F,N] {:?}", filter_notice);
-                        //TODO: handle filter notice
+                        if let Err(e) = self.handle_filter_notice(filter_notice) {
+                            error!("[A] filter notice processing failed: {}", e);
+                        }
                     } else {
                         info!("filter notice channel is closed; shutting down");
                         break;
@@ -112,5 +119,9 @@ impl AppServer {
             // Also shutdown the layer below
             let _ = filter_cmd_tx.send(FilterCmd::Shutdown { graceful: true }).await;
         }
+    }
+
+    fn handle_filter_notice(&mut self, notice: FilterNotice) -> Result<()> {
+        Ok(())
     }
 }
