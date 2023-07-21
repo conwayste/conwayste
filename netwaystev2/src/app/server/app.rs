@@ -150,7 +150,14 @@ impl AppServer {
                     unimplemented!();
                 }
                 RequestAction::NewRoom { room_name } => {
-                    unimplemented!();
+                    return self.rooms.alloc(room_name).map_or_else(
+                        |_| Ok(()),
+                        |e| {
+                            Err(anyhow!(ResponseCode::ServerError {
+                                error_msg: e.to_string(),
+                            }))
+                        },
+                    );
                 }
                 RequestAction::JoinRoom { room_name } => {
                     unimplemented!();
