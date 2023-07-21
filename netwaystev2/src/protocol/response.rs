@@ -20,8 +20,8 @@ pub enum ResponseCode {
     PlayerList {
         players: Vec<String>,
     }, // list of players in room or lobby
-    RoomList {
-        rooms: Vec<RoomList>,
+    RoomStatuses {
+        rooms: Vec<RoomStatus>,
     }, // list of rooms and their statuses
 
     // errors
@@ -47,7 +47,7 @@ pub enum ResponseCode {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct RoomList {
+pub struct RoomStatus {
     pub room_name:    String,
     pub player_count: u8,
     // TODO: add support

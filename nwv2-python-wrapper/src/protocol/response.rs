@@ -4,7 +4,7 @@ use pyo3::exceptions::*;
 use pyo3::prelude::*;
 
 use crate::common::*;
-use netwaystev2::protocol::{ResponseCode, RoomList};
+use netwaystev2::protocol::{ResponseCode, RoomStatus};
 
 #[pyclass]
 #[derive(Clone, Debug)]
@@ -37,8 +37,8 @@ impl ResponseCodeW {
                 ResponseCode::PlayerList { players }
             }
             "roomlist" => {
-                vec_from_py! {let rooms: Vec<RoomList> <- [RoomListW] <- get_from_dict(&kwds, "players")?};
-                ResponseCode::RoomList { rooms }
+                vec_from_py! {let rooms: Vec<RoomStatus> <- [RoomListW] <- get_from_dict(&kwds, "players")?};
+                ResponseCode::RoomStatuses { rooms }
             }
             "badrequest" => {
                 let error_msg: String = get_from_dict(&kwds, "error_msg")?;
@@ -76,7 +76,7 @@ impl ResponseCodeW {
             JoinedRoom { .. } => "JoinedRoom",
             LeaveRoom => "LeaveRoom",
             PlayerList { .. } => "PlayerList",
-            RoomList { .. } => "RoomList",
+            RoomStatuses { .. } => "RoomList",
             BadRequest { .. } => "BadRequest",
             Unauthorized { .. } => "Unauthorized",
             TooManyRequests { .. } => "TooManyRequests",
@@ -103,17 +103,17 @@ impl ResponseCodeW {
 #[pyclass]
 #[derive(Clone, Debug)]
 pub struct RoomListW {
-    inner: RoomList,
+    inner: RoomStatus,
 }
 
-impl Into<RoomList> for RoomListW {
-    fn into(self) -> RoomList {
+impl Into<RoomStatus> for RoomListW {
+    fn into(self) -> RoomStatus {
         self.inner
     }
 }
 
-impl From<RoomList> for RoomListW {
-    fn from(other: RoomList) -> Self {
+impl From<RoomStatus> for RoomListW {
+    fn from(other: RoomStatus) -> Self {
         RoomListW { inner: other }
     }
 }
@@ -122,7 +122,7 @@ impl From<RoomList> for RoomListW {
 impl RoomListW {
     #[new]
     fn new(room_name: String, player_count: u8, in_progress: bool) -> PyResult<Self> {
-        let inner = RoomList {
+        let inner = RoomStatus {
             room_name,
             player_count,
             in_progress,
