@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::{
     app::server::registry::{self, REGISTER_INTERVAL},
     app::server::room::*,
@@ -34,7 +32,7 @@ pub struct AppServer {
     phase_watch_tx:   Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
     phase_watch_rx:   watch::Receiver<Phase>,
     registry_params:  Option<RegistryParams>, // If None, then not a public server
-    rooms:            RoomBlock,
+    rooms:            ServerRooms,
 }
 
 impl AppServer {
@@ -53,7 +51,7 @@ impl AppServer {
             phase_watch_tx: Some(phase_watch_tx),
             phase_watch_rx,
             registry_params,
-            rooms: RoomBlock::new(),
+            rooms: ServerRooms::new(),
         }
     }
 
@@ -126,56 +124,58 @@ impl AppServer {
 
     fn handle_filter_notice(&mut self, notice: FilterNotice) -> Result<()> {
         match notice {
-            FilterNotice::NewRequestAction { endpoint, action } => match action {
-                RequestAction::None => {}
-                RequestAction::Connect { name, client_version } => {
-                    unimplemented!();
-                }
-                RequestAction::Disconnect => {
-                    unimplemented!();
-                }
-                RequestAction::KeepAlive { latest_response_ack } => {
-                    unimplemented!();
-                }
-                RequestAction::DropPattern { x, y, pattern } => {
-                    unimplemented!();
-                }
-                RequestAction::ClearArea { x, y, w, h } => {
-                    unimplemented!();
-                }
-                RequestAction::ChatMessage { message } => {
-                    unimplemented!();
-                }
-                RequestAction::ListPlayers => {
-                    unimplemented!();
-                }
-                RequestAction::NewRoom { room_name } => {
-                    return self.rooms.alloc(room_name).map_or_else(
-                        |_| Ok(()),
-                        |e| {
-                            Err(anyhow!(ResponseCode::ServerError {
-                                error_msg: e.to_string(),
-                            }))
-                        },
-                    );
-                }
-                RequestAction::JoinRoom { room_name } => {
-                    unimplemented!();
-                }
-                RequestAction::ListRooms => {
-                    unimplemented!();
-                }
-                RequestAction::LeaveRoom => {
-                    unimplemented!();
-                }
-                RequestAction::SetClientOptions { key, value } => {
-                    unimplemented!();
-                }
-            },
+            FilterNotice::NewRequestAction { endpoint, action } => {
+                let response_code = match action {
+                    RequestAction::None => ResponseCode::OK,
+                    RequestAction::Connect { name, client_version } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::Disconnect => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::KeepAlive { latest_response_ack } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::DropPattern { x, y, pattern } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::ClearArea { x, y, w, h } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::ChatMessage { message } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::ListPlayers => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::NewRoom { room_name: _ } => {
+                        // Deprecated, rooms are statically allocated with standardized names
+                        ResponseCode::BadRequest { error_msg: "NewRoom request action has been deprecated".to_owned() }
+                    }
+                    RequestAction::JoinRoom { room_name } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::ListRooms => ResponseCode::RoomStatuses {
+                        rooms: self.rooms.get_info(),
+                    },
+                    RequestAction::LeaveRoom => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::SetClientOptions { key, value } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                };
+
+                self.filter_cmd_tx.try_send(FilterCmd::SendResponseCode {
+                    endpoint,
+                    code: response_code,
+                })?;
+            }
             _ => {
                 unimplemented!();
             }
         }
+
         Ok(())
     }
 }
