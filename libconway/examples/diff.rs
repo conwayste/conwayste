@@ -1,7 +1,9 @@
+/// This generates Python code suitable for pasting into the Jupyter Notebooks in the
+/// `nwv2-python-wrapper` folder.
+
 use std::env;
 
 use rand::distributions::{Bernoulli, Distribution};
-use rand::Rng;
 
 use conway::universe::*;
 
@@ -23,10 +25,9 @@ fn main() {
         .server_mode(true)
         .history(16)
         .fog_radius(6)
-        .add_players(players)
-        .birth();
+        .add_players(players);
 
-    let mut uni = bigbang.unwrap();
+    let mut uni = bigbang.birth().unwrap();
 
     let mut rng = rand::thread_rng();
 
@@ -44,28 +45,44 @@ fn main() {
     }
 
     let mut gen0 = 0;
+    println!("gsds = [");
     for _ in 0..iterations {
         let gen1 = uni.latest_gen();
-        println!("--\nGen: {}", uni.latest_gen());
+        println!("  # --\n  # Gen: {}", uni.latest_gen());
         let gsd = uni.diff(gen0, gen1, Some(1)).expect("diff possible");
         describe_diff(gsd);
         uni.next();
         gen0 = gen1;
     }
+    println!("]\n# len(gsds) is {}", iterations);
+    describe_bigbang(&bigbang);
 }
 
 fn describe_diff(gsd: GenStateDiff) {
-    println!("Diff: {:?}", gsd);
-    println!("Pattern size: {}", gsd.pattern.0.len());
-    println!("Parts: {}", packets_per_pattern(gsd.pattern.0.len()));
+    // Print in nwv2-python-wrapper format
+    println!("  GenStateDiffW({}, {}, {:?}),", gsd.gen0, gsd.gen1, gsd.pattern.0);
+    println!("  # Pattern size (uncompressed): {}", gsd.pattern.0.len());
 }
 
+fn describe_bigbang(bigbang: &BigBang) {
+    println!("game_options = GameOptionsW(");
+    println!("  {}, {}, {}, ", bigbang.width, bigbang.height, bigbang.history);
+    println!("  [");
+    for pw in &bigbang.player_writable {
+        println!("    NetRegionW({}, {}, {}, {}),",
+                 pw.left, pw.top, pw.width, pw.height);
+    }
+    println!("  ], {}", bigbang.fog_radius);
+    println!(")\ngame_options");
+}
+
+/*
+ * Commented the following because we use compression now.
 // From netwaystev2/src/common.rs
 const UDP_MTU_SIZE: usize = 1440;
 
 // From netwaystev2/src/filter/server_update.rs
 const MAX_GSDP_SIZE: usize = UDP_MTU_SIZE * 75 / 100;
-const MAX_GSD_BYTES: usize = 32 * MAX_GSDP_SIZE; // ToDo: constantize the 32 (and combine with one in client_update.rs)
 
 fn packets_per_pattern(bytesize: usize) -> usize {
     let mut packets = bytesize / MAX_GSDP_SIZE;
@@ -75,3 +92,4 @@ fn packets_per_pattern(bytesize: usize) -> usize {
     }
     packets
 }
+*/
