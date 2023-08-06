@@ -75,9 +75,8 @@ impl GameArea {
             // Currently 'client' is technically both client and server
             .history(HISTORY_SIZE)
             .fog_radius(FOG_RADIUS)
-            .add_players(players)
-            .birth();
-        let mut uni = bigbang.unwrap();
+            .add_players(players);
+        let mut uni = bigbang.birth().unwrap();
 
         init_patterns(&mut uni).unwrap();
 
