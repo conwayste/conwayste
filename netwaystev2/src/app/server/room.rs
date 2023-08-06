@@ -38,10 +38,13 @@ impl ServerRooms {
     }
 
     pub fn get_info(&self) -> Vec<RoomStatus> {
-        self.rooms.iter().map(|r| RoomStatus {
-            in_progress: false, // TODO: Get status from session state
-            room_name: r.name.to_owned(),
-            player_count: r.player_a.map_or_else(|| 0, |_| 1) + r.player_b.map_or_else(|| 0, |_| 1),
-        }).collect()
+        self.rooms
+            .iter()
+            .map(|r| RoomStatus {
+                in_progress:  false, // TODO: Get status from session state
+                room_name:    r.name.to_owned(),
+                player_count: r.player_a.map_or_else(|| 0, |_| 1) + r.player_b.map_or_else(|| 0, |_| 1),
+            })
+            .collect()
     }
 }

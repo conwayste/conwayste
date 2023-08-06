@@ -150,7 +150,9 @@ impl AppServer {
                     },
                     RequestAction::NewRoom { room_name: _ } => {
                         // Deprecated, rooms are statically allocated with standardized names
-                        ResponseCode::BadRequest { error_msg: "NewRoom request action has been deprecated".to_owned() }
+                        ResponseCode::BadRequest {
+                            error_msg: "NewRoom request action has been deprecated".to_owned(),
+                        }
                     }
                     RequestAction::JoinRoom { room_name } => ResponseCode::ServerError {
                         error_msg: "unimplemented".to_owned(),
