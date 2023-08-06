@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use lz4_flex::block::decompress_size_prepended;
 use std::collections::{hash_map::Entry, HashMap};
 
@@ -172,6 +172,7 @@ impl ClientRoom {
     // This field is duplicated so should be saved to the ClientGame if one is in progress.
     fn change_own_player_id(&mut self, player_id: Option<u64>) {
         self.player_id = player_id.map(|idx| idx as usize);
+        info!("[F] Player ID is now {:?}", self.player_id);
         if let Some(ref mut game) = self.game {
             // Copy
             game.player_id = self.player_id;
@@ -275,6 +276,9 @@ impl ClientGame {
                 gen1:    gen1 as usize,
                 pattern: Pattern(diff),
             };
+            if self.player_id.is_none() {
+                bail!("Server misbehaving -- has not provided a player_id for us");
+            }
             let opt_gen = self.universe.apply(&genstatediff, self.player_id)?;
             if let Some(latest_gen) = opt_gen {
                 // We have a new generation in the Universe
