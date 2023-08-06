@@ -23,13 +23,13 @@ use crate::rle::{Pattern, NO_OP_CHAR};
 
 /// Builder paradigm to create `Universe` structs with default values.
 pub struct BigBang {
-    width:           usize,
-    height:          usize,
-    is_server:       bool,
-    history:         usize,
-    num_players:     usize,
-    player_writable: Vec<Region>,
-    fog_radius:      usize,
+    pub width:           usize,
+    pub height:          usize,
+    pub is_server:       bool,
+    pub history:         usize,
+    pub num_players:     usize,
+    pub player_writable: Vec<Region>,
+    pub fog_radius:      usize,
 }
 
 /// Player builder
