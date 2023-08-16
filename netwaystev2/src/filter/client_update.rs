@@ -199,15 +199,21 @@ impl ClientGame {
             }
         }
 
-        const MAX_DIFF_PARTS: u8 = 32;
+        let gen0 = genstate_diff_part.gen0;
+        let gen1 = genstate_diff_part.gen1;
+        if let Some(last_full_gen) = self.last_full_gen {
+            if last_full_gen >= gen1 as usize {
+                // This is a part of a GenStateDiff that we don't need. Discard.
+                return Ok(None);
+            }
+        }
 
+        const MAX_DIFF_PARTS: u8 = 32;
         if genstate_diff_part.total_parts > MAX_DIFF_PARTS {
             // TODO: Add a real error code via thisError
             return Err(anyhow!("Total parts exceeds limit"));
         }
 
-        let gen0 = genstate_diff_part.gen0;
-        let gen1 = genstate_diff_part.gen1;
         match self.diff_parts.entry((gen0, gen1)) {
             Entry::Vacant(entry) => {
                 let mut new_parts = vec![];
