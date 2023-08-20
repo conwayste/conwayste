@@ -16,7 +16,10 @@ use tokio::sync::{
     watch,
 };
 
-use super::registry::RegistryParams;
+use super::{
+    interface::{AppCmd, AppCmdRecv, AppCmdSend, AppRsp, AppRspRecv, AppRspSend},
+    registry::RegistryParams,
+};
 
 #[derive(Copy, Clone, Debug)]
 enum Phase {
@@ -32,6 +35,8 @@ pub struct AppServer {
     phase_watch_tx:   Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
     phase_watch_rx:   watch::Receiver<Phase>,
     registry_params:  Option<RegistryParams>, // If None, then not a public server
+    app_cmd_rx:       Option<AppCmdRecv>,
+    app_rsp_tx:       AppRspSend,
     rooms:            ServerRooms,
 }
 
@@ -41,24 +46,32 @@ impl AppServer {
         filter_rsp_rx: FilterRspRecv,
         filter_notice_rx: FilterNotifyRecv,
         registry_params: Option<RegistryParams>,
-    ) -> AppServer {
+    ) -> (AppServer, AppCmdSend, AppRspRecv) {
         let (phase_watch_tx, phase_watch_rx) = watch::channel(Phase::Running);
 
-        AppServer {
+        let (app_cmd_tx, app_cmd_rx): (AppCmdSend, AppCmdRecv) = mpsc::channel(APP_CHANNEL_LEN);
+        let (app_rsp_tx, app_rsp_rx): (AppRspSend, AppRspRecv) = mpsc::channel(APP_CHANNEL_LEN);
+
+        let app_server = AppServer {
             filter_cmd_tx,
             filter_rsp_rx: Some(filter_rsp_rx),
             filter_notice_rx: Some(filter_notice_rx),
             phase_watch_tx: Some(phase_watch_tx),
             phase_watch_rx,
             registry_params,
+            app_cmd_rx: Some(app_cmd_rx),
+            app_rsp_tx,
             rooms: ServerRooms::new(),
-        }
+        };
+
+        (app_server, app_cmd_tx, app_rsp_rx)
     }
 
     pub async fn run(&mut self) {
         let filter_cmd_tx = self.filter_cmd_tx.clone();
         let filter_rsp_rx = self.filter_rsp_rx.take().expect("run() is single-use");
         let filter_notice_rx = self.filter_notice_rx.take().expect("run() is single-use");
+        let app_cmd_rx = &mut self.app_cmd_rx.take().expect("run() is single-use");
         tokio::pin!(filter_cmd_tx);
         tokio::pin!(filter_rsp_rx);
         tokio::pin!(filter_notice_rx);
@@ -86,6 +99,24 @@ impl AppServer {
                         }
                     } else {
                         info!("filter notice channel is closed; shutting down");
+                        break;
+                    }
+                }
+                command = app_cmd_rx.recv() => {
+                    if let Some(app_cmd) = command {
+                        trace!("[A<-Cmd] {:?}", app_cmd);
+                        match self.handle_app_command(app_cmd) {
+                            Ok(app_rsp) => {
+                                if let Err(e) = self.app_rsp_tx.send(app_rsp).await {
+                                error!("[A] command reply failed: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                error!("[A] command processing failed: {}", e);
+                            }
+                        }
+                    } else {
+                        info!("app command channel is closed; shutting down");
                         break;
                     }
                 }
@@ -179,5 +210,10 @@ impl AppServer {
         }
 
         Ok(())
+    }
+
+    pub fn handle_app_command(&mut self, command: AppCmd) -> Result<AppRsp> {
+        // XXX
+        Ok(AppRsp::RoomsStatus)
     }
 }

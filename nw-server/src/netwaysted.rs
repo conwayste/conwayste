@@ -3,8 +3,7 @@ use config::*;
 
 mod contract;
 use contract::*;
-
-mod room;
+use netwaystev2::app::server::interface::{AppCmd, AppCmdSend, AppRspRecv};
 
 use std::path::Path;
 use std::{fs::remove_file, io::ErrorKind};
@@ -12,7 +11,7 @@ use std::{fs::remove_file, io::ErrorKind};
 use anyhow::{anyhow, bail};
 use bincode;
 use clap::{self, Parser};
-use netwaystev2::{app::server::*, common::*, filter::*, transport::*};
+use netwaystev2::{app::server::*, filter::*, transport::*};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::*;
@@ -63,17 +62,17 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let listener = open_control_socket(&toml_config.control)?;
-    let layers = spin_up_layers(&toml_config)
+    let (layers, app_cmd_tx, app_rsp_rx) = spin_up_layers(&toml_config)
         .await
         .expect("Failed to create netwayste layers");
-    let exit_status = run(&listener, layers).await;
+    let exit_status = run(&listener, layers, app_cmd_tx, app_rsp_rx).await;
 
     info!("Server exiting...");
 
     return exit_status;
 }
 
-async fn spin_up_layers(cfg: &Config) -> anyhow::Result<(Transport, Filter, AppServer)> {
+async fn spin_up_layers(cfg: &Config) -> anyhow::Result<((Transport, Filter, AppServer), AppCmdSend, AppRspRecv)> {
     // Create the lowest (Transport) layer, returning the layer itself plus three channel halves
     // (one outgoing and two incoming) for communicating with it.
     let (transport, transport_cmd_tx, transport_rsp_rx, transport_notice_rx) =
@@ -104,19 +103,22 @@ async fn spin_up_layers(cfg: &Config) -> anyhow::Result<(Transport, Filter, AppS
     }
 
     // Join the top application server layer to the filter
-    let app_server = AppServer::new(filter_cmd_tx, filter_rsp_rx, filter_notice_rx, registry_params);
+    let (app_server, app_cmd_tx, app_rsp_rx) =
+        AppServer::new(filter_cmd_tx, filter_rsp_rx, filter_notice_rx, registry_params);
 
     trace!(
         "Networking layers created with local address of {}",
         transport.local_addr()
     );
 
-    Ok((transport, filter, app_server))
+    Ok(((transport, filter, app_server), app_cmd_tx, app_rsp_rx))
 }
 
 async fn run(
     listener: &ListenerWrapper,
     (mut transport, mut filter, mut app): (Transport, Filter, AppServer),
+    app_cmd_tx: AppCmdSend,
+    mut app_rsp_rx: AppRspRecv,
 ) -> anyhow::Result<()> {
     let mut server_status = Ok(());
 
@@ -160,11 +162,20 @@ async fn run(
                         stream.readable().await?;
                         info!("Control message received");
                         handle_new_ctl_message(&stream).await?;
+
+                        // XXX for test
+                        app_cmd_tx.try_send(AppCmd::GetRoomsStatus)?;
                     }
                     Err(e) => {
                         server_status = Err(anyhow!(format!("Connection failed: '{:?}'", e)));
                         break 'main;
                     }
+                }
+            }
+
+            response = app_rsp_rx.recv() => {
+                if let Some(app_rsp) = response {
+                    info!("{:?}", app_rsp);
                 }
             }
         }
