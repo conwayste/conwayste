@@ -1,5 +1,7 @@
 use tokio::sync::mpsc::{Receiver, Sender};
 
+use crate::protocol::RoomStatus;
+
 #[derive(Debug, PartialEq)]
 pub enum UniGenCmd {}
 
@@ -18,7 +20,7 @@ pub enum AppCmd {
 #[derive(Debug, Clone)]
 pub enum AppRsp {
     // TODO: Add more commands to retrieve information from the app layer
-    RoomsStatus,
+    RoomsStatuses(Vec<RoomStatus>),
 }
 
 pub type AppCmdSend = Sender<AppCmd>;

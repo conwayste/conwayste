@@ -213,7 +213,10 @@ impl AppServer {
     }
 
     pub fn handle_app_command(&mut self, command: AppCmd) -> Result<AppRsp> {
-        // XXX
-        Ok(AppRsp::RoomsStatus)
+        match command {
+            AppCmd::GetRoomsStatus => {
+                Ok(AppRsp::RoomsStatuses(self.rooms.get_info()))
+            }
+        }
     }
 }

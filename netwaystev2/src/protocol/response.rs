@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumIter, EnumString};
+use tabled::Tabled;
 
 // server response codes -- mostly inspired by https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, EnumString, EnumIter, Display)]
@@ -46,7 +47,7 @@ pub enum ResponseCode {
     KeepAlive, // Server's heart is beating
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Tabled)]
 pub struct RoomStatus {
     pub room_name:    String,
     pub player_count: u8,
