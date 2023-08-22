@@ -3,7 +3,7 @@ use config::*;
 
 mod contract;
 use contract::*;
-use netwaystev2::app::server::interface::{AppCmd, AppCmdSend, AppRspRecv, AppRsp};
+use netwaystev2::app::server::interface::{AppCmd, AppCmdSend, AppRsp, AppRspRecv};
 
 use std::path::Path;
 use std::{fs::remove_file, io::ErrorKind};
@@ -12,7 +12,7 @@ use anyhow::{anyhow, bail};
 use bincode;
 use clap::{self, Parser};
 use netwaystev2::{app::server::*, filter::*, transport::*};
-use tabled::{Tabled, Table};
+use tabled::{Table, Tabled};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::*;
@@ -264,12 +264,10 @@ impl Drop for ListenerWrapper {
 impl From<AppRsp> for DaemonResponse {
     fn from(response: AppRsp) -> Self {
         match response {
-            AppRsp::RoomsStatuses(statuses) => {
-                DaemonResponse {
-                    message: Table::new(statuses).to_string(),
-                    status: DaemonStatus::Success,
-                }
-            }
+            AppRsp::RoomsStatuses(statuses) => DaemonResponse {
+                message: Table::new(statuses).to_string(),
+                status:  DaemonStatus::Success,
+            },
         }
     }
 }
