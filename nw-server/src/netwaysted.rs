@@ -3,7 +3,7 @@ use config::*;
 
 mod contract;
 use contract::*;
-use netwaystev2::app::server::interface::{AppCmd, AppCmdSend, AppRspRecv};
+use netwaystev2::app::server::interface::{AppCmd, AppCmdSend, AppRspRecv, AppRsp};
 
 use std::path::Path;
 use std::{fs::remove_file, io::ErrorKind};
@@ -12,6 +12,7 @@ use anyhow::{anyhow, bail};
 use bincode;
 use clap::{self, Parser};
 use netwaystev2::{app::server::*, filter::*, transport::*};
+use tabled::{Tabled, Table};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::*;
@@ -161,21 +162,17 @@ async fn run(
                         // Wait for the socket to be readable
                         stream.readable().await?;
                         info!("Control message received");
-                        handle_new_ctl_message(&stream).await?;
-
-                        // XXX for test
-                        app_cmd_tx.try_send(AppCmd::GetRoomsStatus)?;
+                        if let Ok(command) = handle_new_ctl_message(&stream).await {
+                            app_cmd_tx.try_send(command)?;
+                            if let Some(app_rsp) = app_rsp_rx.recv().await {
+                                send_ctl_reply(&stream, DaemonResponse::from(app_rsp)).await?;
+                            }
+                        }
                     }
                     Err(e) => {
                         server_status = Err(anyhow!(format!("Connection failed: '{:?}'", e)));
                         break 'main;
                     }
-                }
-            }
-
-            response = app_rsp_rx.recv() => {
-                if let Some(app_rsp) = response {
-                    info!("{:?}", app_rsp);
                 }
             }
         }
@@ -200,33 +197,30 @@ fn cleanup_socket(path: &Path) {
     let _ = remove_file(path);
 }
 
-async fn handle_new_ctl_message(stream: &UnixStream) -> anyhow::Result<()> {
-    let response;
-
+async fn handle_new_ctl_message(stream: &UnixStream) -> anyhow::Result<AppCmd> {
     // Try to read data
     // This can fail with `WouldBlock` if the readiness event is a false positive
     let mut msg = vec![0; MAX_CONTROL_MESSAGE_LEN];
     match stream.try_read(&mut msg) {
         Ok(n) => {
             msg.truncate(n);
+            info!("{}", String::from_utf8(msg).unwrap());
 
-            if let Ok(msg_as_str) = String::from_utf8(msg) {
-                let message = format!("Hello {} Boo", msg_as_str);
-                response = DaemonResponse::success(&message);
-            } else {
-                response = DaemonResponse::failure("Control command must be valid UTF-8");
-            }
+            // XXX convert to AppCmd
+            Ok(AppCmd::GetRoomsStatus)
         }
-        Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+        Err(e) if e.kind() == ErrorKind::WouldBlock => {
             warn!("Dropping read, would block");
-            return Ok(());
+            bail!(e);
         }
         Err(e) => {
             error!("Failed to read control message");
             bail!(e);
         }
     }
+}
 
+async fn send_ctl_reply(stream: &UnixStream, response: DaemonResponse) -> anyhow::Result<()> {
     // Try to write data
     // This can fail with `WouldBlock` if the readiness event is a false positive
     stream.writable().await?;
@@ -264,5 +258,18 @@ impl Drop for ListenerWrapper {
             .as_pathname()
             .expect("valid pathname in UnixListener socket");
         cleanup_socket(&path);
+    }
+}
+
+impl From<AppRsp> for DaemonResponse {
+    fn from(response: AppRsp) -> Self {
+        match response {
+            AppRsp::RoomsStatuses(statuses) => {
+                DaemonResponse {
+                    message: Table::new(statuses).to_string(),
+                    status: DaemonStatus::Success,
+                }
+            }
+        }
     }
 }

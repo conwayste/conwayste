@@ -70,7 +70,10 @@ async fn main() -> anyhow::Result<()> {
             msg.truncate(n);
             let daemon_response: DaemonResponse = bincode::deserialize(&msg)?;
 
-            info!("({:?}) {:?}", daemon_response.status, daemon_response.message);
+            info!("({:?})", daemon_response.status);
+            for l in daemon_response.message.lines() {
+                info!("{}", l);
+            }
         }
         Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
             warn!("Dropping read, would block");

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const MAX_CONTROL_MESSAGE_LEN: usize = 128;
+pub const MAX_CONTROL_MESSAGE_LEN: usize = 4096;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum DaemonStatus {
