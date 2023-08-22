@@ -44,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
     sock.writable().await?;
 
     let mut return_status = Ok(());
-    let control_message = b"Sky Haussmann";
+    let control_message = b"status";
     match sock.try_write(control_message) {
         Ok(n) => {
             if n != control_message.len() {

@@ -1,4 +1,5 @@
 use tokio::sync::mpsc::{Receiver, Sender};
+use anyhow::anyhow;
 
 use crate::protocol::RoomStatus;
 
@@ -15,6 +16,17 @@ pub enum UniGenNotice {}
 pub enum AppCmd {
     // TODO: Add more commands to retrieve information from the app layer
     GetRoomsStatus,
+}
+
+impl std::convert::TryFrom<String> for AppCmd {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        match value.as_str() {
+            "status" => Ok(AppCmd::GetRoomsStatus),
+            _ => Err(anyhow!("Unknown command"))
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

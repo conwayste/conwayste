@@ -12,7 +12,7 @@ use anyhow::{anyhow, bail};
 use bincode;
 use clap::{self, Parser};
 use netwaystev2::{app::server::*, filter::*, transport::*};
-use tabled::{Table, Tabled};
+use tabled::Table;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::*;
@@ -162,10 +162,15 @@ async fn run(
                         // Wait for the socket to be readable
                         stream.readable().await?;
                         info!("Control message received");
-                        if let Ok(command) = handle_new_ctl_message(&stream).await {
-                            app_cmd_tx.try_send(command)?;
-                            if let Some(app_rsp) = app_rsp_rx.recv().await {
-                                send_ctl_reply(&stream, DaemonResponse::from(app_rsp)).await?;
+                        match handle_new_ctl_message(&stream).await {
+                            Ok(command) => {
+                                app_cmd_tx.try_send(command)?;
+                                if let Some(app_rsp) = app_rsp_rx.recv().await {
+                                    send_ctl_reply(&stream, DaemonResponse::from(app_rsp)).await?;
+                                }
+                            }
+                            Err(e) => {
+                                error!("Control message processing failed: {}", e);
                             }
                         }
                     }
@@ -204,10 +209,10 @@ async fn handle_new_ctl_message(stream: &UnixStream) -> anyhow::Result<AppCmd> {
     match stream.try_read(&mut msg) {
         Ok(n) => {
             msg.truncate(n);
-            info!("{}", String::from_utf8(msg).unwrap());
+            let msg_utf8 = String::from_utf8(msg).unwrap_or("control message is not valid utf8".to_string());
+            info!("{}", msg_utf8);
 
-            // XXX convert to AppCmd
-            Ok(AppCmd::GetRoomsStatus)
+            return AppCmd::try_from(msg_utf8);
         }
         Err(e) if e.kind() == ErrorKind::WouldBlock => {
             warn!("Dropping read, would block");
