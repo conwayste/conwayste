@@ -1,5 +1,5 @@
-use tokio::sync::mpsc::{Receiver, Sender};
 use anyhow::anyhow;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::protocol::RoomStatus;
 
@@ -24,7 +24,7 @@ impl std::convert::TryFrom<String> for AppCmd {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         match value.as_str() {
             "status" => Ok(AppCmd::GetRoomsStatus),
-            _ => Err(anyhow!("Unknown command"))
+            _ => Err(anyhow!("Unknown command")),
         }
     }
 }
