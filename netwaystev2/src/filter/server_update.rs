@@ -16,7 +16,7 @@ use crate::protocol::{BroadcastChatMessage, GameUpdate, GenStateDiffPart};
 #[derive(Debug)]
 pub struct ServerRoom {
     room_name:                 String,
-    pub game_updates:          GameUpdateQueue, // ToDo: consider removing `pub`
+    pub game_updates:          UnackedQueue<GameUpdate>, // ToDo: consider removing `pub`
     pub latest_gen:            usize,
     pub latest_gen_client_has: usize,
     pub unacked_gsd_parts:     HashMap<(usize, usize), Vec<Option<Arc<GenStateDiffPart>>>>,
@@ -26,7 +26,7 @@ impl ServerRoom {
     pub fn new(room_name: String) -> Self {
         ServerRoom {
             room_name,
-            game_updates: GameUpdateQueue::new(),
+            game_updates: UnackedQueue::new(),
             latest_gen: 0,
             latest_gen_client_has: 0,
             unacked_gsd_parts: HashMap::new(),
@@ -99,54 +99,54 @@ pub fn compress_and_split_gen_state_diff(diff: GenStateDiff) -> anyhow::Result<V
         .collect())
 }
 
-/// Keep track of acked GameUpdates; Note: this does not support wrapping sequence numbers, but
-/// that should be fine.
+/// Keep track of acked GameUpdates and Chats; Note: this does not support wrapping sequence
+/// numbers, but that should be fine.
 #[derive(Debug)]
-pub struct GameUpdateQueue {
-    current_game_update_seq:     Option<u64>,
-    last_acked_game_updated_seq: Option<u64>,
-    unacked_game_updates:        VecDeque<(u64, GameUpdate)>, // front is oldest; back is newest
+pub struct UnackedQueue<T> {
+    current_seq:  Option<u64>,
+    last_ack_seq: Option<u64>,
+    unacked:      VecDeque<(u64, T)>, // front is oldest; back is newest
 }
 
-impl GameUpdateQueue {
+impl<T: Clone> UnackedQueue<T> {
     pub fn new() -> Self {
-        GameUpdateQueue {
-            current_game_update_seq:     None,
-            last_acked_game_updated_seq: None,
-            unacked_game_updates:        VecDeque::new(),
+        UnackedQueue {
+            current_seq:  None,
+            last_ack_seq: None,
+            unacked:      VecDeque::new(),
         }
     }
 
-    pub fn push(&mut self, game_update: GameUpdate) {
-        let seq = if let Some(oldseq) = self.current_game_update_seq {
+    pub fn push(&mut self, item: T) {
+        let seq = if let Some(oldseq) = self.current_seq {
             oldseq + 1
         } else {
             1
         };
-        self.current_game_update_seq = Some(seq);
-        self.unacked_game_updates.push_back((seq, game_update));
+        self.current_seq = Some(seq);
+        self.unacked.push_back((seq, item));
     }
 
     #[allow(unused)]
     pub fn clear(&mut self) {
-        self.current_game_update_seq = None;
-        self.last_acked_game_updated_seq = None;
-        self.unacked_game_updates.clear();
+        self.current_seq = None;
+        self.last_ack_seq = None;
+        self.unacked.clear();
     }
 
     pub fn len(&mut self) -> usize {
-        self.unacked_game_updates.len()
+        self.unacked.len()
     }
 
     pub fn is_empty(&mut self) -> bool {
         self.len() == 0
     }
 
-    /// Get a Vec of all unacked GameUpdates, with their sequence numbers.
+    /// Get a Vec of all unacked items, with their sequence numbers.
     ///
     /// Normally this call would be preceded by an ack(ack_from_client).
-    pub fn get(&self) -> Vec<(u64, GameUpdate)> {
-        self.unacked_game_updates.iter().cloned().collect()
+    pub fn get(&self) -> Vec<(u64, T)> {
+        self.unacked.iter().cloned().collect()
     }
 
     /// Acknowledge none/some/all of these. Return true iff anything was acked.
@@ -158,23 +158,23 @@ impl GameUpdateQueue {
         } else {
             return false;
         };
-        let prev_last = self.last_acked_game_updated_seq;
-        self.last_acked_game_updated_seq = if let Some(last_acked_seq) = self.last_acked_game_updated_seq {
+        let prev_last = self.last_ack_seq;
+        self.last_ack_seq = if let Some(last_acked_seq) = self.last_ack_seq {
             Some(std::cmp::max(acked_seq, last_acked_seq))
         } else {
             Some(acked_seq)
         };
-        if prev_last != self.last_acked_game_updated_seq {
+        if prev_last != self.last_ack_seq {
             let mut acked_anything = false;
             loop {
-                if let Some((seq, _)) = self.unacked_game_updates.front() {
+                if let Some((seq, _)) = self.unacked.front() {
                     if acked_seq < *seq {
                         break; // First unacked
                     }
                 } else {
                     break; // Empty
                 }
-                self.unacked_game_updates.pop_front();
+                self.unacked.pop_front();
                 acked_anything = true;
             }
             acked_anything

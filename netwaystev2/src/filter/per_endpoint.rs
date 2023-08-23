@@ -45,8 +45,8 @@ pub(crate) struct OtherEndClient {
     pub cookie: Option<String>,
     // Update/UpdateReply below
     room: Option<ServerRoom>,
-    //lobby_game_updates: GameUpdateQueue,
-    old_room_game_updates: GameUpdateQueue, // If player in lobby and this isn't empty, send only this first
+    //lobby_game_updates: UnackedQueue<GameUpdate>,
+    old_room_game_updates: UnackedQueue<GameUpdate>, // If player in lobby and this isn't empty, send only this first
     game_update_packet_ids: Vec<ProcessUniqueId>,
     pub auto_response_seqs: VecDeque<u64>, // Response sequences for replying to client KeepAlives with OK
     pub app_response_seqs: VecDeque<u64>,  // Response sequences waiting on App layer to provide ResponseCodes for
@@ -63,8 +63,8 @@ impl OtherEndClient {
             gen_state_packet_ids: vec![],
             cookie: None,
             room: None,
-            //lobby_game_updates: GameUpdateQueue::new(),
-            old_room_game_updates: GameUpdateQueue::new(),
+            //lobby_game_updates: UnackedQueue::new(),
+            old_room_game_updates: UnackedQueue::new(),
             game_update_packet_ids: Vec::new(),
             auto_response_seqs: VecDeque::new(),
             app_response_seqs: VecDeque::new(),
@@ -131,7 +131,7 @@ impl OtherEndClient {
         }
 
         let unacked = if self.room.is_none() && !self.old_room_game_updates.is_empty() {
-            self.old_room_game_updates.get() // Higher priority GameUpdateQueue
+            self.old_room_game_updates.get() // Higher priority UnackedQueue
         } else if let Some(ref room) = self.room.as_ref() {
             if !self.old_room_game_updates.is_empty() {
                 warn!("Entered a room with unacked game updates from previous room :(");
