@@ -4,9 +4,7 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use super::{FilterNotice, FilterNotifySend};
 use crate::common::Endpoint;
-#[allow(unused)] // ToDo: need this?
-use crate::protocol::{BroadcastChatMessage, GameUpdate, GenPartInfo, GenStateDiffPart, UniUpdate};
-#[allow(unused)] // ToDo: need this?
+use crate::protocol::{BroadcastChatMessage, GameUpdate, GenPartInfo, UniUpdate};
 use conway::{BigBang, GenStateDiff, Pattern, PlayerBuilder, PlayerID, Region, Universe};
 
 pub struct ClientRoom {

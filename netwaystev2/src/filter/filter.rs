@@ -6,7 +6,7 @@ use super::{FilterCmdRecv, FilterCmdSend, FilterNotifyRecv, FilterNotifySend, Fi
 use crate::common::{Endpoint, ShutdownWatcher};
 use crate::filter::server_update::compress_and_split_gen_state_diff;
 #[allow(unused)] // ToDo: need this?
-use crate::protocol::{GameUpdate, GenStateDiffPart, Packet, RequestAction, ResponseCode};
+use crate::protocol::{BroadcastChatMessage, GameUpdate, GenStateDiffPart, Packet, RequestAction, ResponseCode};
 use crate::settings::{DEFAULT_ENDPOINT_TIMEOUT_INTERVAL, DEFAULT_RETRY_INTERVAL, FILTER_CHANNEL_LEN};
 use crate::transport::{
     PacketSettings, TransportCmd, TransportCmdSend, TransportNotice, TransportNotifyRecv, TransportRsp,
