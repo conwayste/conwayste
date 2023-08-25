@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct BroadcastChatMessage {
     pub chat_seq:    Option<u64>, // Some(<number>) when sent to clients (starts at 0 for first
     // chat message sent to this client in this room); None when
-    // internal to server
+    // internal to server. ToDo: remove this on next protocol version.
     pub player_name: String,
     pub message:     String, // should not contain newlines
 }
@@ -47,10 +47,11 @@ pub enum GameUpdate {
     /// in that packet.
     RoomDeleted,
     /// New match. Server suggests we join this room.
-    /// NOTE: this is the only variant that can happen in a lobby.
+    /// NOTE: this is the only variant that can happen in a lobby; ToDo: unimplemented! Needs
+    /// filter layer support for lobby game updates.
     Match {
         room:        String,
-        expire_secs: u32, // TODO: think about this
+        expire_secs: u32, // ToDo: think about this
     },
 }
 
