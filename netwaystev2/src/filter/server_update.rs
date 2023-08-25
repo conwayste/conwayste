@@ -17,6 +17,7 @@ use crate::protocol::{BroadcastChatMessage, GameUpdate, GenStateDiffPart};
 pub struct ServerRoom {
     room_name:                 String,
     pub game_updates:          UnackedQueue<GameUpdate>, // ToDo: consider removing `pub`
+    chats:                     UnackedQueue<ChatMessage>,
     pub latest_gen:            usize,
     pub latest_gen_client_has: usize,
     pub unacked_gsd_parts:     HashMap<(usize, usize), Vec<Option<Arc<GenStateDiffPart>>>>,
@@ -27,6 +28,7 @@ impl ServerRoom {
         ServerRoom {
             room_name,
             game_updates: UnackedQueue::new(),
+            chats: UnackedQueue::new(),
             latest_gen: 0,
             latest_gen_client_has: 0,
             unacked_gsd_parts: HashMap::new(),
@@ -37,6 +39,23 @@ impl ServerRoom {
         self.latest_gen = 0;
         self.latest_gen_client_has = 0;
         self.unacked_gsd_parts.clear();
+    }
+}
+
+/// This is server-internal and contains all fields in BroadcastChatMessage except chat_seq.
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct ChatMessage {
+    player_name: String,
+    message:     String, // should not contain newlines
+}
+
+impl ChatMessage {
+    fn to_bcm(self, chat_seq: u64) -> BroadcastChatMessage {
+        BroadcastChatMessage {
+            chat_seq:    Some(chat_seq),
+            player_name: self.player_name,
+            message:     self.message,
+        }
     }
 }
 

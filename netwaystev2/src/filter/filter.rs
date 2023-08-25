@@ -711,24 +711,20 @@ impl Filter {
                 client.app_response_seqs.pop_back();
                 client.send_response_code(&self.transport_cmd_tx, code).await?;
             }
-            FilterCmd::SendChats { endpoints, messages: _ } => {
+            FilterCmd::SendChats { endpoints, messages } => {
                 for endpoint in endpoints {
-                    let _client = self.per_endpoint.other_end_client_ref_mut(
-                        &endpoint,
-                        &self.mode,
-                        Some("Chats are not sent to servers"),
-                    )?;
-                    // TODO: send all the messages to this client (rename _client to client)
+                    let client =
+                        self.per_endpoint
+                            .other_end_client_ref_mut(&endpoint, &self.mode, Some("SendChats"))?;
+                    client.send_chats(&self.transport_cmd_tx, messages.as_slice()).await?;
                 }
             }
             // TODO: implement the following
             FilterCmd::SendGameUpdates { endpoints, updates } => {
                 for endpoint in endpoints {
-                    let client = self.per_endpoint.other_end_client_ref_mut(
-                        &endpoint,
-                        &self.mode,
-                        Some("SendGameUpdates"),
-                    )?;
+                    let client =
+                        self.per_endpoint
+                            .other_end_client_ref_mut(&endpoint, &self.mode, Some("SendGameUpdates"))?;
                     client
                         .send_game_updates(&self.transport_cmd_tx, updates.as_slice())
                         .await?;

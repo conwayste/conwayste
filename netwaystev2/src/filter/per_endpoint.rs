@@ -13,7 +13,9 @@ use tokio::sync::mpsc::{error::SendError, Sender};
 use super::server_update::*;
 use crate::common::{Endpoint, UDP_MTU_SIZE};
 use crate::filter::FilterNotice;
-use crate::protocol::{GameUpdate, GenPartInfo, GenStateDiffPart, Packet, RequestAction, ResponseCode, UniUpdate};
+use crate::protocol::{
+    BroadcastChatMessage, GameUpdate, GenPartInfo, GenStateDiffPart, Packet, RequestAction, ResponseCode, UniUpdate,
+};
 use crate::transport::{PacketSettings, TransportCmd, TransportCmdSend};
 #[allow(unused)]
 use crate::{nwdebug, nwerror, nwinfo, nwtrace, nwwarn};
@@ -82,9 +84,21 @@ impl OtherEndClient {
         }
     }
 
+    //XXX add comment like send_game_updates
+    pub async fn send_chats(
+        &mut self,
+        transport_cmd_tx: &Sender<TransportCmd>,
+        new_chats: &[BroadcastChatMessage],
+    ) -> anyhow::Result<()> {
+        //XXX
+        Ok(())
+    }
+
     /// Returns error if there is a RoomDeleted but it is not the only update in the array!
     ///
-    /// This can be called with an empty slice of GameUpdates.
+    /// This can be called with an empty slice of GameUpdates, which ensures any old
+    /// GameUpdate-containing Update packets are dropped, and that new packets are sent containing
+    /// any unacked GameUpdates.
     pub async fn send_game_updates(
         &mut self,
         transport_cmd_tx: &Sender<TransportCmd>,

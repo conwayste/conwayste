@@ -22,7 +22,7 @@ pub enum FilterCmd {
     },
     SendChats {
         endpoints: Vec<Endpoint>,
-        messages:  Vec<BroadcastChatMessage>,
+        messages:  Vec<BroadcastChatMessage>, // chat_seq is ignored
     },
     SendGameUpdates {
         endpoints: Vec<Endpoint>,
