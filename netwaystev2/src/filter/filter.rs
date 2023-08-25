@@ -727,7 +727,7 @@ impl Filter {
                     let client = self.per_endpoint.other_end_client_ref_mut(
                         &endpoint,
                         &self.mode,
-                        Some("CompleteAuthRequest"),
+                        Some("SendGameUpdates"),
                     )?;
                     client
                         .send_game_updates(&self.transport_cmd_tx, updates.as_slice())
