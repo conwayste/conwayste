@@ -370,7 +370,9 @@ impl Filter {
                         let notice = if let Some(caf) = client_auth_fields_from_connect_packet(&packet) {
                             FilterNotice::ClientAuthRequest { endpoint, fields: caf }
                         } else {
-                            client.process_request_action(&request_action);
+                            client
+                                .process_request_action(&request_action, &self.transport_cmd_tx)
+                                .await?;
                             FilterNotice::NewRequestAction {
                                 endpoint,
                                 action: request_action,

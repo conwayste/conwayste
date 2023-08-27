@@ -35,6 +35,22 @@ impl ServerRoom {
         }
     }
 
+    pub fn push_chat(&mut self, bcm: BroadcastChatMessage) {
+        self.chats.push(bcm.into());
+    }
+
+    pub fn get_chats(&mut self) -> Vec<BroadcastChatMessage> {
+        self.chats
+            .get()
+            .into_iter()
+            .map(|(seq, chat)| chat.to_bcm(seq))
+            .collect()
+    }
+
+    pub fn ack_chats(&mut self, last_chat_seq: Option<u64>) -> bool {
+        self.chats.ack(last_chat_seq)
+    }
+
     pub fn finish_game(&mut self) {
         self.latest_gen = 0;
         self.latest_gen_client_has = 0;
@@ -55,6 +71,15 @@ impl ChatMessage {
             chat_seq:    Some(chat_seq),
             player_name: self.player_name,
             message:     self.message,
+        }
+    }
+}
+
+impl From<BroadcastChatMessage> for ChatMessage {
+    fn from(bcm: BroadcastChatMessage) -> Self {
+        ChatMessage {
+            player_name: bcm.player_name,
+            message:     bcm.message,
         }
     }
 }

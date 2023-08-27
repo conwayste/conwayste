@@ -25,10 +25,14 @@ use super::interface::{FilterMode, SeqNum};
 use super::sortedbuffer::SequencedMinHeap;
 use super::{FilterError, FilterNotifySend, PingPong};
 
-/// Maximum size of an update packet containing GameUpdates; 90% of MTU size to account for overhead
+/// Maximum total size of GameUpdates in one Update packet; 90% of MTU size to account for overhead
 const MAX_GU_SIZE: u64 = UDP_MTU_SIZE as u64 * 90 / 100;
 
+/// Maximum total size of BroadcastChatMessages in one Update packet; 90% of MTU size to account for overhead
+const MAX_CHAT_SIZE: u64 = UDP_MTU_SIZE as u64 * 90 / 100;
+
 const GAME_UPDATE_RETRY_INTERVAL: Duration = Duration::from_millis(200);
+const CHAT_RETRY_INTERVAL: Duration = Duration::from_millis(500);
 const GEN_STATE_DIFF_RETRY_INTERVAL: Duration = Duration::from_millis(30);
 
 pub(crate) enum FilterEndpointData {
@@ -50,6 +54,7 @@ pub(crate) struct OtherEndClient {
     //lobby_game_updates: UnackedQueue<GameUpdate>,
     old_room_game_updates: UnackedQueue<GameUpdate>, // If player in lobby and this isn't empty, send only this first
     game_update_packet_ids: Vec<ProcessUniqueId>,
+    chat_packet_ids: Vec<ProcessUniqueId>,
     pub auto_response_seqs: VecDeque<u64>, // Response sequences for replying to client KeepAlives with OK
     pub app_response_seqs: VecDeque<u64>,  // Response sequences waiting on App layer to provide ResponseCodes for
 }
@@ -68,32 +73,112 @@ impl OtherEndClient {
             //lobby_game_updates: UnackedQueue::new(),
             old_room_game_updates: UnackedQueue::new(),
             game_update_packet_ids: Vec::new(),
+            chat_packet_ids: Vec::new(),
             auto_response_seqs: VecDeque::new(),
             app_response_seqs: VecDeque::new(),
         }
     }
 
     /// Update whatever client state the server-side Filter layer needs to keep track of.
-    pub fn process_request_action(&mut self, action: &RequestAction) {
+    ///
+    /// Should not return any error other than a fatal one (either fatal only for client, or for
+    /// entire server).
+    pub async fn process_request_action(
+        &mut self,
+        action: &RequestAction,
+        transport_cmd_tx: &Sender<TransportCmd>,
+    ) -> anyhow::Result<()> {
         match action {
             RequestAction::LeaveRoom => {
-                // ToDo: more cleanup
-                self.room = None;
+                self.leave_room(transport_cmd_tx).await?;
             }
             _ => {}
         }
+        Ok(())
     }
 
-    //XXX add comment like send_game_updates
+    /// Send chats if in a room; it is an error to attempt to send chats in the lobby. Any previous
+    /// unacked Update packets containing BroadcastChatMessages are dropped, and new ones are sent,
+    /// respecting the assumed MTU.
+    ///
+    /// This can be called with an empty slice, which ensures any old
+    /// BroadcastChatMessage-containing Update packets are dropped, and that new packets are sent
+    /// containing any unacked BroadcastChatMessages. This is a no-op if in lobby.
     pub async fn send_chats(
         &mut self,
         transport_cmd_tx: &Sender<TransportCmd>,
         new_chats: &[BroadcastChatMessage],
     ) -> anyhow::Result<()> {
-        //XXX
+        self.drop_chat_packets(transport_cmd_tx).await?;
+        if let Some(ref mut room) = self.room.as_mut() {
+            for chat in new_chats {
+                room.push_chat(chat.clone());
+            }
+            let unacked = room.get_chats();
+
+            // Split up the unacked updates into multiple packets according to max. size.
+            let mut size_of_last_vec = 0;
+            let mut groups: Vec<Vec<BroadcastChatMessage>> = vec![];
+            for chat in unacked.into_iter() {
+                let size = serialized_size(&chat)?;
+                if groups.is_empty() || size_of_last_vec + size > MAX_CHAT_SIZE {
+                    size_of_last_vec = size;
+                    groups.push(vec![chat]);
+                } else {
+                    size_of_last_vec += size;
+                    groups.last_mut().unwrap().push(chat); // Unwrap OK because of .is_empty check above
+                }
+            }
+
+            let packets: Vec<_> = groups
+                .into_iter()
+                .map(|chats| Packet::Update {
+                    chats,
+                    game_update_seq: None,
+                    game_updates: vec![],
+                    universe_update: UniUpdate::NoChange,
+                    ping: PingPong::ping(),
+                })
+                .collect();
+            let mut packet_infos = vec![];
+            for _ in 0..packets.len() {
+                let tid = ProcessUniqueId::new();
+                packet_infos.push(PacketSettings {
+                    tid,
+                    retry_interval: CHAT_RETRY_INTERVAL,
+                });
+                self.chat_packet_ids.push(tid);
+            }
+            transport_cmd_tx
+                .send(TransportCmd::SendPackets {
+                    endpoint: self.endpoint,
+                    packet_infos,
+                    packets,
+                })
+                .await
+                .map_err(|e| anyhow!(e))
+        } else if !new_chats.is_empty() {
+            bail!("in-lobby chats are not implemented");
+        } else {
+            // In lobby and no chats requested to be sent.
+            Ok(())
+        }
+    }
+
+    pub async fn drop_chat_packets(&mut self, transport_cmd_tx: &Sender<TransportCmd>) -> anyhow::Result<()> {
+        for packet_id in self.chat_packet_ids.drain(..) {
+            transport_cmd_tx
+                .send(TransportCmd::DropPacket {
+                    endpoint: self.endpoint,
+                    tid:      packet_id,
+                })
+                .await?;
+        }
         Ok(())
     }
 
+    /// Send GameUpdates.
+    ///
     /// Returns error if there is a RoomDeleted but it is not the only update in the array!
     ///
     /// This can be called with an empty slice of GameUpdates, which ensures any old
@@ -117,7 +202,7 @@ impl OtherEndClient {
                 if let Some(ref mut room) = self.room.as_mut() {
                     std::mem::swap(&mut self.old_room_game_updates, &mut room.game_updates);
                 }
-                self.room = None;
+                self.leave_room(transport_cmd_tx).await?;
                 self.old_room_game_updates.push(GameUpdate::RoomDeleted);
             } else {
                 // Not ever going to implement. Not worth it
@@ -167,7 +252,7 @@ impl OtherEndClient {
                 groups.push((seq, vec![update]));
             } else {
                 size_of_last_vec += size;
-                groups.last_mut().unwrap().1.push(update);
+                groups.last_mut().unwrap().1.push(update); // Unwrap OK because of .is_empty check above
             }
         }
 
@@ -215,7 +300,7 @@ impl OtherEndClient {
         filter_notice_tx: &Sender<FilterNotice>,
     ) -> anyhow::Result<()> {
         // Process all of the UpdateReply components
-        self.process_chat_ack(last_chat_seq).await?;
+        self.process_chat_ack(last_chat_seq, transport_cmd_tx).await?;
         self.process_game_update_ack(last_game_update_seq, transport_cmd_tx)
             .await?;
         self.process_gen_ack(last_full_gen, partial_gen, transport_cmd_tx, filter_notice_tx)
@@ -223,13 +308,23 @@ impl OtherEndClient {
         Ok(())
     }
 
-    async fn process_chat_ack(&mut self, last_chat_seq: Option<u64>) -> anyhow::Result<()> {
+    async fn process_chat_ack(
+        &mut self,
+        last_chat_seq: Option<u64>,
+        transport_cmd_tx: &Sender<TransportCmd>,
+    ) -> anyhow::Result<()> {
         if last_chat_seq.is_none() {
             return Ok(());
         }
-        //XXX maybe remove outgoing chats from "unacked" data structure, drop Update packet (if any), and
-        // potentially send new Update packet
-        Ok(())
+
+        if let Some(ref mut room) = self.room.as_mut() {
+            room.ack_chats(last_chat_seq);
+
+            self.send_chats(transport_cmd_tx, &[]).await
+        } else {
+            self.drop_chat_packets(transport_cmd_tx).await?;
+            Ok(())
+        }
     }
 
     /// Using game update sequence received from client, potentially drop and resend Update
@@ -588,6 +683,17 @@ impl OtherEndClient {
     pub fn join_room(&mut self, room_name: &str) {
         let room = ServerRoom::new(room_name.into());
         self.room = Some(room);
+    }
+
+    pub async fn leave_room(&mut self, transport_cmd_tx: &Sender<TransportCmd>) -> anyhow::Result<()> {
+        if self.room.is_none() {
+            return Ok(());
+        }
+
+        self.finish_game(transport_cmd_tx).await?;
+        self.drop_chat_packets(transport_cmd_tx).await?;
+        self.room = None;
+        Ok(())
     }
 
     pub async fn finish_game(&mut self, transport_cmd_tx: &Sender<TransportCmd>) -> anyhow::Result<()> {
