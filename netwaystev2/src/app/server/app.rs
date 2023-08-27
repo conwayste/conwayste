@@ -1,6 +1,6 @@
 use crate::{
     app::server::registry::{self, REGISTER_INTERVAL},
-    app::server::room::*,
+    app::server::rooms::{Room, ServerRooms},
     filter::{FilterCmd, FilterCmdSend, FilterNotice, FilterNotifyRecv, FilterRspRecv},
     protocol::{
         RequestAction::{self, *},
