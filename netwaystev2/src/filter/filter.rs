@@ -447,6 +447,7 @@ impl Filter {
                             server.game_update_seq = None;
                         }
                         ResponseCode::LeaveRoom => {
+                            server.room = None;
                             // When joining or leaving a room, the game_updates are reset
                             server.game_update_seq = None;
                         }
