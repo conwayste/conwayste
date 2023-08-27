@@ -34,10 +34,13 @@ pub struct AppServer {
     filter_notice_rx: Option<FilterNotifyRecv>,
     phase_watch_tx:   Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
     phase_watch_rx:   watch::Receiver<Phase>,
-    registry_params:  Option<RegistryParams>, // If None, then not a public server
     app_cmd_rx:       Option<AppCmdRecv>,
     app_rsp_tx:       AppRspSend,
-    rooms:            ServerRooms,
+
+    registry_params: Option<RegistryParams>, // If None, then server is privately hosted
+
+    // Game Data
+    rooms: ServerRooms,
 }
 
 impl AppServer {
@@ -214,7 +217,9 @@ impl AppServer {
 
     pub fn handle_app_command(&mut self, command: AppCmd) -> Result<AppRsp> {
         match command {
-            AppCmd::GetRoomsStatus => Ok(AppRsp::RoomsStatuses(self.rooms.get_info())),
+            AppCmd::GetStatus => Ok(AppRsp::Status {
+                rooms: self.rooms.get_info(),
+            }),
         }
     }
 }

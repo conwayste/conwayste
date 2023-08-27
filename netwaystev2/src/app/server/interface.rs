@@ -15,7 +15,7 @@ pub enum UniGenNotice {}
 #[derive(Debug, Clone)]
 pub enum AppCmd {
     // TODO: Add more commands to retrieve information from the app layer
-    GetRoomsStatus,
+    GetStatus,
 }
 
 impl std::convert::TryFrom<String> for AppCmd {
@@ -23,7 +23,7 @@ impl std::convert::TryFrom<String> for AppCmd {
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         match value.as_str() {
-            "status" => Ok(AppCmd::GetRoomsStatus),
+            "status" => Ok(AppCmd::GetStatus),
             _ => Err(anyhow!("Unknown command")),
         }
     }
@@ -32,7 +32,7 @@ impl std::convert::TryFrom<String> for AppCmd {
 #[derive(Debug, Clone)]
 pub enum AppRsp {
     // TODO: Add more commands to retrieve information from the app layer
-    RoomsStatuses(Vec<RoomStatus>),
+    Status { rooms: Vec<RoomStatus> },
 }
 
 pub type AppCmdSend = Sender<AppCmd>;

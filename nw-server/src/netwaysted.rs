@@ -164,9 +164,12 @@ async fn run(
                         info!("Control message received");
                         match handle_new_ctl_message(&stream).await {
                             Ok(command) => {
+                                // Reach out to the app layer
                                 app_cmd_tx.try_send(command)?;
+                                // and wait for a reply.
                                 if let Some(app_rsp) = app_rsp_rx.recv().await {
-                                    send_ctl_reply(&stream, DaemonResponse::from(app_rsp)).await?;
+                                    // Transform the app layer reply into the message field of a daemon response
+                                    send_daemon_response(&stream, DaemonResponse::from(app_rsp)).await?;
                                 }
                             }
                             Err(e) => {
@@ -225,7 +228,7 @@ async fn handle_new_ctl_message(stream: &UnixStream) -> anyhow::Result<AppCmd> {
     }
 }
 
-async fn send_ctl_reply(stream: &UnixStream, response: DaemonResponse) -> anyhow::Result<()> {
+async fn send_daemon_response(stream: &UnixStream, response: DaemonResponse) -> anyhow::Result<()> {
     // Try to write data
     // This can fail with `WouldBlock` if the readiness event is a false positive
     stream.writable().await?;
@@ -269,7 +272,7 @@ impl Drop for ListenerWrapper {
 impl From<AppRsp> for DaemonResponse {
     fn from(response: AppRsp) -> Self {
         match response {
-            AppRsp::RoomsStatuses(statuses) => DaemonResponse {
+            AppRsp::Status(statuses) => DaemonResponse {
                 message: Table::new(statuses).to_string(),
                 status:  DaemonStatus::Success,
             },
