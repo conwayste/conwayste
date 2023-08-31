@@ -47,7 +47,7 @@ pub(crate) struct OtherEndClient {
     pub last_request_sequence_seen: Option<SeqNum>,
     pub last_response_sequence_sent: Option<SeqNum>,
     pub unacked_response_codes: VecDeque<ResponseCode>, // the back has sequence `last_response_sequence_sent`
-    gen_state_packet_ids: Vec<ProcessUniqueId>,
+    gen_state_packet_ids: GenStatePacketIds,
     pub cookie: Option<String>,
     // Update/UpdateReply below
     room: Option<ServerRoom>,
@@ -67,7 +67,7 @@ impl OtherEndClient {
             last_request_sequence_seen: None,
             last_response_sequence_sent: None,
             unacked_response_codes: VecDeque::new(),
-            gen_state_packet_ids: vec![],
+            gen_state_packet_ids: GenStatePacketIds::new(endpoint),
             cookie: None,
             room: None,
             //lobby_game_updates: UnackedQueue::new(),
@@ -361,20 +361,43 @@ impl OtherEndClient {
         transport_cmd_tx: &Sender<TransportCmd>,
         gen0: usize,
         gen1: usize,
-        diff: Vec<Option<Arc<GenStateDiffPart>>>,
+        parts: Vec<Arc<GenStateDiffPart>>,
     ) -> anyhow::Result<()> {
         if let Some(ref mut room) = self.room.as_mut() {
-            // Insert into parts, drop old packets (if any), and send new.
-            room.unacked_gsd_parts.insert((gen0, gen1), diff);
-            self.drop_all_gen_state_diff_packets(transport_cmd_tx).await?;
-            self.send_gen_state_diffs(transport_cmd_tx).await?;
+            room.add_unacked_gen_state_diff((gen0, gen1), parts.len());
+
+            let mut packets = vec![];
+            let mut packet_infos = vec![];
+            for (part_no, part) in parts.iter().enumerate() {
+                let tid = self.gen_state_packet_ids.add(gen0, gen1, part_no);
+                packet_infos.push(PacketSettings {
+                    tid,
+                    retry_interval: GEN_STATE_DIFF_RETRY_INTERVAL,
+                });
+                let diff = GenStateDiffPart::clone(part);
+                packets.push(Packet::Update {
+                    chats:           vec![],
+                    game_update_seq: None,
+                    game_updates:    vec![],
+                    universe_update: UniUpdate::Diff { diff },
+                    ping:            PingPong::ping(),
+                });
+            }
+            transport_cmd_tx
+                .send(TransportCmd::SendPackets {
+                    endpoint: self.endpoint,
+                    packet_infos,
+                    packets,
+                })
+                .await
+                .map_err(|e| anyhow!(e))
         } else {
             warn!(
                 "s[F<-A] attempted to send GenStateDiff to client ({:?}) not in room",
                 self.endpoint
             );
+            Ok(())
         }
-        Ok(())
     }
 
     async fn process_gen_ack(
@@ -408,9 +431,11 @@ impl OtherEndClient {
                     // Remove any diffs where the "to" generation is the highest the client has, or lower.
                     room.unacked_gsd_parts
                         .retain(|(_gen0, gen1), _parts| *gen1 > last_full_gen as usize);
-                    self.drop_all_gen_state_diff_packets(transport_cmd_tx).await?;
                     // Return because no point continuing on to process a partial gen update
-                    return self.send_gen_state_diffs(transport_cmd_tx).await;
+                    return self
+                        .gen_state_packet_ids
+                        .drop_gen_and_earlier(last_full_gen as usize, transport_cmd_tx)
+                        .await;
                 } else if (last_full_gen as usize) < room.latest_gen_client_has {
                     return Ok(()); // Old packet; don't process partial gen updates
                 }
@@ -419,91 +444,33 @@ impl OtherEndClient {
             if let Some(partial_gen) = partial_gen {
                 let (gen0, gen1) = (partial_gen.gen0 as usize, partial_gen.gen1 as usize);
                 if let Some(parts) = room.unacked_gsd_parts.get_mut(&(gen0, gen1)) {
-                    let mut changed = false;
+                    let total_parts = parts.len();
                     let mut some_count = 0;
-                    for i in 0..parts.len() {
+                    for i in 0..total_parts {
                         if partial_gen.have_bitmask & (1 << i) != 0 {
                             // Client has this part
-                            parts[i] = None;
-                            changed = true;
+                            parts[i] = WasAcked::Acked;
+                            self.gen_state_packet_ids
+                                .drop_part(gen0, gen1, i, transport_cmd_tx)
+                                .await?;
                         }
-                        if parts[i].is_some() {
+                        if parts[i].is_unacked() {
                             some_count += 1;
                         }
                     }
                     if some_count == 0 {
                         room.unacked_gsd_parts.remove(&(gen0, gen1));
-                        changed = true;
-                    }
-                    if changed {
-                        // ToDo: consider skipping these two calls if we sent packets recently
-                        // enough that the missing GSDP packet(s) could still be in transit.
-                        // However, it might be even better to keep track of the tid for each
-                        // packet and only dropping and resending the acked parts -- this would
-                        // avoid resending packets too often.
-                        self.drop_all_gen_state_diff_packets(transport_cmd_tx).await?;
-                        self.send_gen_state_diffs(transport_cmd_tx).await?;
+                        self.gen_state_packet_ids
+                            .drop_diff(gen0, gen1, total_parts, transport_cmd_tx)
+                            .await?;
                     }
                 }
             }
             Ok(())
         } else {
-            self.drop_all_gen_state_diff_packets(transport_cmd_tx).await
+            // No room
+            self.gen_state_packet_ids.drop_all(transport_cmd_tx).await
         }
-    }
-
-    async fn drop_all_gen_state_diff_packets(&mut self, transport_cmd_tx: &Sender<TransportCmd>) -> anyhow::Result<()> {
-        for packet_id in self.gen_state_packet_ids.drain(..) {
-            transport_cmd_tx
-                .send(TransportCmd::DropPacket {
-                    endpoint: self.endpoint,
-                    tid:      packet_id,
-                })
-                .await?;
-        }
-        Ok(())
-    }
-
-    /// Send all GenStateDiffParts that haven't been acked yet -- with retry
-    async fn send_gen_state_diffs(&mut self, transport_cmd_tx: &Sender<TransportCmd>) -> anyhow::Result<()> {
-        let room = if let Some(ref room) = self.room {
-            room
-        } else {
-            return Ok(());
-        };
-        let mut packets = vec![];
-        let mut packet_infos = vec![];
-        for ((_gen0, _gen1), parts) in room.unacked_gsd_parts.iter() {
-            for part in parts.iter() {
-                if part.is_none() {
-                    continue;
-                }
-                let part = part.as_ref().unwrap(); // unwrap OK because of above check
-
-                let tid = ProcessUniqueId::new();
-                self.gen_state_packet_ids.push(tid);
-                packet_infos.push(PacketSettings {
-                    tid,
-                    retry_interval: GEN_STATE_DIFF_RETRY_INTERVAL,
-                });
-                let diff = GenStateDiffPart::clone(part);
-                packets.push(Packet::Update {
-                    chats:           vec![],
-                    game_update_seq: None,
-                    game_updates:    vec![],
-                    universe_update: UniUpdate::Diff { diff },
-                    ping:            PingPong::ping(),
-                });
-            }
-        }
-        transport_cmd_tx
-            .send(TransportCmd::SendPackets {
-                endpoint: self.endpoint,
-                packet_infos,
-                packets,
-            })
-            .await
-            .map_err(|e| anyhow!(e))
     }
 
     pub fn set_latest_gen(&mut self, latest_gen: usize) {
@@ -704,7 +671,101 @@ impl OtherEndClient {
         }
 
         // Drop any GenStateDiffParts sent previously
-        self.drop_all_gen_state_diff_packets(transport_cmd_tx).await
+        self.gen_state_packet_ids.drop_all(transport_cmd_tx).await
+    }
+}
+
+/// Keeps tracked of unacked packets for all the GenStateDiffParts
+struct GenStatePacketIds {
+    endpoint: Endpoint,
+    tids:     HashMap<(usize, usize, usize), ProcessUniqueId>, // gen0, gen1, part#
+}
+
+impl GenStatePacketIds {
+    fn new(endpoint: Endpoint) -> Self {
+        GenStatePacketIds {
+            endpoint,
+            tids: HashMap::new(),
+        }
+    }
+
+    fn add(&mut self, gen0: usize, gen1: usize, part_no: usize) -> ProcessUniqueId {
+        let tid = ProcessUniqueId::new();
+        self.tids.insert((gen0, gen1, part_no), tid);
+        tid
+    }
+
+    /// Drop all parts used to produce this generation or any earlier generation.
+    async fn drop_gen_and_earlier(
+        &mut self,
+        gen1: usize,
+        transport_cmd_tx: &Sender<TransportCmd>,
+    ) -> anyhow::Result<()> {
+        let mut drop_tids = vec![];
+        self.tids.retain(|(_, element_gen1, _), tid| {
+            if *element_gen1 > gen1 {
+                true
+            } else {
+                drop_tids.push(*tid);
+                false
+            }
+        });
+        for tid in drop_tids.into_iter() {
+            transport_cmd_tx
+                .send(TransportCmd::DropPacket {
+                    endpoint: self.endpoint,
+                    tid,
+                })
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn drop_part(
+        &mut self,
+        gen0: usize,
+        gen1: usize,
+        part_no: usize,
+        transport_cmd_tx: &Sender<TransportCmd>,
+    ) -> anyhow::Result<bool> {
+        if let Some(tid) = self.tids.remove(&(gen0, gen1, part_no)) {
+            transport_cmd_tx
+                .send(TransportCmd::DropPacket {
+                    endpoint: self.endpoint,
+                    tid,
+                })
+                .await
+                .map(|_| true)
+                .map_err(|e| anyhow!(e))
+        } else {
+            Ok(false)
+        }
+    }
+
+    async fn drop_diff(
+        &mut self,
+        gen0: usize,
+        gen1: usize,
+        total_parts: usize,
+        transport_cmd_tx: &Sender<TransportCmd>,
+    ) -> anyhow::Result<bool> {
+        let mut retval = false;
+        for part_no in 0..total_parts {
+            retval = retval || self.drop_part(gen0, gen1, part_no, transport_cmd_tx).await?;
+        }
+        Ok(retval)
+    }
+
+    async fn drop_all(&mut self, transport_cmd_tx: &Sender<TransportCmd>) -> anyhow::Result<()> {
+        for (_, tid) in self.tids.drain() {
+            transport_cmd_tx
+                .send(TransportCmd::DropPacket {
+                    endpoint: self.endpoint,
+                    tid,
+                })
+                .await?;
+        }
+        Ok(())
     }
 }
 

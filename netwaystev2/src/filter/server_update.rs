@@ -12,7 +12,6 @@ use crate::protocol::{BroadcastChatMessage, GameUpdate, GenStateDiffPart};
 // Most of OtherEndClient stuff should live here
 
 /// Filter Layer's server-side representation of a room for a particular client.
-#[allow(unused)]
 #[derive(Debug)]
 pub struct ServerRoom {
     room_name:                 String,
@@ -20,7 +19,7 @@ pub struct ServerRoom {
     chats:                     UnackedQueue<ChatMessage>,
     pub latest_gen:            usize,
     pub latest_gen_client_has: usize,
-    pub unacked_gsd_parts:     HashMap<(usize, usize), Vec<Option<Arc<GenStateDiffPart>>>>,
+    pub unacked_gsd_parts:     HashMap<(usize, usize), Vec<WasAcked>>,
 }
 
 impl ServerRoom {
@@ -33,6 +32,11 @@ impl ServerRoom {
             latest_gen_client_has: 0,
             unacked_gsd_parts: HashMap::new(),
         }
+    }
+
+    pub fn add_unacked_gen_state_diff(&mut self, (gen0, gen1): (usize, usize), total_parts: usize) {
+        let unacked_gsdp = (0..total_parts).map(|_| WasAcked::UnAcked).collect();
+        self.unacked_gsd_parts.insert((gen0, gen1), unacked_gsdp);
     }
 
     pub fn push_chat(&mut self, bcm: BroadcastChatMessage) {
@@ -51,10 +55,29 @@ impl ServerRoom {
         self.chats.ack(last_chat_seq)
     }
 
+    /// Finish the game and cleanup stuff.
+    ///
+    /// Important: callers must also call gen_state_packet_ids.drop_all()
     pub fn finish_game(&mut self) {
         self.latest_gen = 0;
         self.latest_gen_client_has = 0;
         self.unacked_gsd_parts.clear();
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum WasAcked {
+    Acked,
+    UnAcked,
+}
+
+impl WasAcked {
+    pub fn is_unacked(self) -> bool {
+        use WasAcked::*;
+        match self {
+            Acked => false,
+            UnAcked => true,
+        }
     }
 }
 
@@ -100,10 +123,8 @@ const MAX_GSD_BYTES: usize = 32 * MAX_GSDP_SIZE; // ToDo: constantize the 32 (an
 
 /// Only possible error: SplitGSDError::DiffTooLarge
 ///
-/// The "ok" return type is intended to be used for unacked_gsd_parts. The Vec corresponds to how
-/// it's broken into packets. The Option allows setting to None when acked by client. The Arc is
-/// for memory efficiency.
-pub fn compress_and_split_gen_state_diff(diff: GenStateDiff) -> anyhow::Result<Vec<Option<Arc<GenStateDiffPart>>>> {
+/// The Vec corresponds to how it's broken into packets. The Arc is for memory efficiency.
+pub fn compress_and_split_gen_state_diff(diff: GenStateDiff) -> anyhow::Result<Vec<Arc<GenStateDiffPart>>> {
     let (gen0, gen1) = (diff.gen0 as u32, diff.gen1 as u32);
     let compressed_pattern = compress_prepend_size(diff.pattern.0.as_bytes());
     let byte_length = compressed_pattern.len();
@@ -132,13 +153,13 @@ pub fn compress_and_split_gen_state_diff(diff: GenStateDiff) -> anyhow::Result<V
         .into_iter()
         .enumerate()
         .map(|(i, p)| {
-            Some(Arc::new(GenStateDiffPart {
+            Arc::new(GenStateDiffPart {
                 part_number: i as u8,
                 total_parts,
                 gen0,
                 gen1,
                 pattern_part: p,
-            }))
+            })
         })
         .collect())
 }
