@@ -363,9 +363,8 @@ impl AuthDecisionW {
         use AuthDecision::*;
         let inner = match variant.to_lowercase().as_str() {
             "loggedin" => {
-                let cookie: String = get_from_dict(&kwds, "cookie")?;
                 let server_version: String = get_from_dict(&kwds, "server_version")?;
-                LoggedIn { cookie, server_version }
+                LoggedIn { server_version }
             }
             "unauthorized" => {
                 let error_msg: String = get_from_dict(&kwds, "error_msg")?;
