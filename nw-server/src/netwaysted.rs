@@ -272,8 +272,8 @@ impl Drop for ListenerWrapper {
 impl From<AppRsp> for DaemonResponse {
     fn from(response: AppRsp) -> Self {
         match response {
-            AppRsp::Status(statuses) => DaemonResponse {
-                message: Table::new(statuses).to_string(),
+            AppRsp::Status { rooms } => DaemonResponse {
+                message: Table::new(rooms).to_string(),
                 status:  DaemonStatus::Success,
             },
         }

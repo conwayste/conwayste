@@ -1,6 +1,8 @@
 use std::{fmt::Display, num::Wrapping};
 
+use base64::{engine::general_purpose, Engine as _};
 use conway::universe::GenStateDiff;
+use rand::RngCore;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use super::ServerStatus;
@@ -99,6 +101,7 @@ pub enum FilterNotice {
         endpoint: Endpoint, // This is a server's endpoint; not much point in having this...
         code:     ResponseCode,
     },
+    /// Client is seeking authorization; The app layer must authenticate or deny.
     ClientAuthRequest {
         // At most one auth request outstanding per endpoint
         endpoint: Endpoint,
@@ -157,20 +160,26 @@ impl FilterMode {
 //XXX use
 #[derive(Debug, Clone)]
 pub enum AuthDecision {
-    LoggedIn {
-        cookie:         String,
-        server_version: String,
-    }, // player is logged in -- (cookie, server version)
-    Unauthorized {
-        error_msg: String,
-    }, // 401 not logged in
+    LoggedIn { server_version: String }, // player is logged in
+    Unauthorized { error_msg: String },  // 401 not logged in
 }
 
 impl Into<ResponseCode> for AuthDecision {
     fn into(self) -> ResponseCode {
         use AuthDecision::*;
+
+        fn new_cookie() -> String {
+            let mut buf = [0u8; 12];
+            rand::thread_rng().fill_bytes(&mut buf);
+            general_purpose::URL_SAFE_NO_PAD.encode(buf)
+        }
+
+        // There should only be a single location for when AuthDecision is turned into a ResponseCode, so we are
+        // hedging our bets on permitting the side effect of cookie generation each time we do this in this context.
+        let cookie = new_cookie();
+
         match self {
-            LoggedIn { cookie, server_version } => ResponseCode::LoggedIn { cookie, server_version },
+            LoggedIn { server_version } => ResponseCode::LoggedIn { cookie, server_version },
             Unauthorized { error_msg } => ResponseCode::Unauthorized { error_msg },
         }
     }

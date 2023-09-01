@@ -1,18 +1,15 @@
 use anyhow::{anyhow, Result};
-use snowflake::ProcessUniqueId;
 
+use crate::app::server::players::Player;
 use crate::protocol::RoomStatus;
 
-const ROOMS_PER_SERVER: usize = 3; // TODO: Move to config
-
-// XXX PlayerId is defined here just for bring up. Might be best to relocate when ready.
-type PlayerId = ProcessUniqueId;
+pub const ROOMS_PER_SERVER: usize = 3; // TODO: Move to config
 
 #[derive(Default)]
 pub struct Room {
     pub name:     String,
-    pub player_a: Option<PlayerId>,
-    pub player_b: Option<PlayerId>,
+    pub player_a: Option<Player>,
+    pub player_b: Option<Player>,
 }
 
 impl Room {
@@ -43,7 +40,7 @@ impl ServerRooms {
             .map(|r| RoomStatus {
                 in_progress:  false, // TODO: Get status from session state
                 room_name:    r.name.to_owned(),
-                player_count: r.player_a.map_or_else(|| 0, |_| 1) + r.player_b.map_or_else(|| 0, |_| 1),
+                player_count: r.player_a.as_ref().iter().chain(r.player_b.as_ref().iter()).count() as u8,
             })
             .collect()
     }

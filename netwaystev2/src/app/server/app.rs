@@ -1,12 +1,15 @@
+use std::collections::HashSet;
+
 use crate::{
     app::server::registry::{self, REGISTER_INTERVAL},
     app::server::rooms::{Room, ServerRooms},
-    filter::{FilterCmd, FilterCmdSend, FilterNotice, FilterNotifyRecv, FilterRspRecv},
+    filter::{AuthDecision, ClientAuthFields, FilterCmd, FilterCmdSend, FilterNotice, FilterNotifyRecv, FilterRspRecv},
     protocol::{
         RequestAction::{self, *},
         ResponseCode,
     },
-    settings::APP_CHANNEL_LEN,
+    settings::{APP_CHANNEL_LEN, VERSION},
+    Endpoint,
 };
 
 use anyhow::{anyhow, Result};
@@ -18,6 +21,7 @@ use tokio::sync::{
 
 use super::{
     interface::{AppCmd, AppCmdRecv, AppCmdSend, AppRsp, AppRspRecv, AppRspSend},
+    players::{MAX_PLAYER_NAME_LEN, PLAYERS_PER_SERVER},
     registry::RegistryParams,
 };
 
@@ -41,6 +45,9 @@ pub struct AppServer {
 
     // Game Data
     rooms: ServerRooms,
+
+    // Used for fast player uniqueness checks
+    player_names: HashSet<String>,
 }
 
 impl AppServer {
@@ -65,6 +72,7 @@ impl AppServer {
             app_cmd_rx: Some(app_cmd_rx),
             app_rsp_tx,
             rooms: ServerRooms::new(),
+            player_names: HashSet::new(),
         };
 
         (app_server, app_cmd_tx, app_rsp_rx)
@@ -97,7 +105,7 @@ impl AppServer {
                 notice = filter_notice_rx.recv() => {
                     if let Some(filter_notice) = notice {
                         trace!("[A<-F,N] {:?}", filter_notice);
-                        if let Err(e) = self.handle_filter_notice(filter_notice) {
+                        if let Err(e) = self.handle_filter_notice(filter_notice).await {
                             error!("[A] filter notice processing failed: {}", e);
                         }
                     } else {
@@ -156,7 +164,7 @@ impl AppServer {
         }
     }
 
-    fn handle_filter_notice(&mut self, notice: FilterNotice) -> Result<()> {
+    async fn handle_filter_notice(&mut self, notice: FilterNotice) -> Result<()> {
         match notice {
             FilterNotice::NewRequestAction { endpoint, action } => {
                 let response_code = match action {
@@ -202,10 +210,18 @@ impl AppServer {
                     },
                 };
 
-                self.filter_cmd_tx.try_send(FilterCmd::SendResponseCode {
-                    endpoint,
-                    code: response_code,
-                })?;
+                self.filter_cmd_tx
+                    .send(FilterCmd::SendResponseCode {
+                        endpoint,
+                        code: response_code,
+                    })
+                    .await?;
+            }
+            FilterNotice::ClientAuthRequest { endpoint, fields } => {
+                let decision = self.authenticate_request(endpoint, fields);
+                self.filter_cmd_tx
+                    .send(FilterCmd::CompleteAuthRequest { endpoint, decision })
+                    .await?;
             }
             _ => {
                 unimplemented!();
@@ -220,6 +236,30 @@ impl AppServer {
             AppCmd::GetStatus => Ok(AppRsp::Status {
                 rooms: self.rooms.get_info(),
             }),
+        }
+    }
+
+    fn authenticate_request(&self, endpoint: Endpoint, fields: ClientAuthFields) -> AuthDecision {
+        // Check name uniqueness
+        // Check player limit
+
+        if self.player_names.len() > PLAYERS_PER_SERVER {
+            AuthDecision::Unauthorized {
+                error_msg: format!("Server is at maximum capacity: {PLAYERS_PER_SERVER}"),
+            }
+        } else if self.player_names.contains(&fields.player_name) {
+            let player_name = fields.player_name;
+            AuthDecision::Unauthorized {
+                error_msg: format!("A player already exists with that name: {player_name}"),
+            }
+        } else if fields.player_name.len() > MAX_PLAYER_NAME_LEN {
+            AuthDecision::Unauthorized {
+                error_msg: format!("The requested player name exceeds the maximum length of {MAX_PLAYER_NAME_LEN}"),
+            }
+        } else {
+            AuthDecision::LoggedIn {
+                server_version: VERSION.into(),
+            }
         }
     }
 }

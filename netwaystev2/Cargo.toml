@@ -5,10 +5,9 @@ authors = ["Aaron Miller <aaron.miller04@gmail.com>", "manghi <manghirs@gmail.co
 edition = "2018"
 
 [dependencies]
-#base64         = "0.13.0"
+base64          = "0.21.0"
 #clap           = "2"
 conway          = { path = "../libconway" }
-rand            = "0.8.3"
 #regex          = "1"
 #semver         = "0.11.0"
 #time           = "0.1"
@@ -24,11 +23,12 @@ indexmap        = "1.9.3"
 lazy_static     = "1.4.0"
 log             = "0.4.*"
 lz4_flex        = "0.11.1"
-tabled          = "0.14.0"
-thiserror       = "1.0.*"
+rand            = "0.8.5"
 snowflake       = "1.2"
 strum           = "0.23"
 strum_macros    = "0.23"
+tabled          = "0.14.0"
+thiserror       = "1.0.*"
 
 [dependencies.reqwest]
 version = "0.11"
