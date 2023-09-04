@@ -157,7 +157,6 @@ impl FilterMode {
     }
 }
 
-//XXX use
 #[derive(Debug, Clone)]
 pub enum AuthDecision {
     LoggedIn { server_version: String }, // player is logged in
