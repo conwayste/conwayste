@@ -152,7 +152,7 @@ impl Checkbox {
     }
 
     fn click_handler(obj: &mut dyn EmitEvent, _uictx: &mut UIContext, _evt: &Event) -> Result<Handled, Box<dyn Error>> {
-        let mut checkbox = obj.downcast_mut::<Checkbox>().unwrap();
+        let checkbox = obj.downcast_mut::<Checkbox>().unwrap();
 
         // toggle
         checkbox.enabled = !checkbox.enabled;

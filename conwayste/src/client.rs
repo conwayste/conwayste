@@ -47,7 +47,6 @@ mod constants;
 #[macro_use]
 mod error;
 mod input;
-mod network;
 mod ui;
 mod uilayout;
 mod video;
@@ -58,7 +57,6 @@ use log::LevelFilter;
 
 use conway::grids::CharGrid;
 use conway::universe::{BigBang, CellState, PlayerBuilder, Region, Universe};
-use netwayste::net::NetwaysteEvent;
 
 use ggez::conf;
 use ggez::event::*;
@@ -74,7 +72,6 @@ use std::env;
 use std::error::Error;
 use std::io::Write; // For env logger
 use std::path;
-use std::sync::{Arc, Mutex};
 
 use std::time::Instant;
 
@@ -113,7 +110,6 @@ struct MainState {
     viewport:           viewport::GridView,
     intro_viewport:     viewport::GridView,
     inputs:             input::InputManager,
-    net_worker:         Arc<Mutex<Option<network::ConwaysteNetWorker>>>,
     recvd_first_resize: bool, // work around an apparent ggez bug where the first resize event is bogus
 
     // if Some(...), dragging doesn't draw anything
@@ -151,7 +147,6 @@ impl ColorSettings {
 
 fn get_text_entered_handler(
     mut chatbox_pub_handle: ChatboxPublishHandle,
-    net_worker: Arc<Mutex<Option<network::ConwaysteNetWorker>>>,
 ) -> Handler {
     Box::new(
         move |_obj: &mut dyn EmitEvent, uictx: &mut UIContext, evt: &Event| -> Result<Handled, Box<dyn Error>> {
@@ -164,9 +159,6 @@ fn get_text_entered_handler(
 
             chatbox_pub_handle.add_message(msg);
 
-            if let Some(ref mut netwayste) = *(net_worker.lock().unwrap()) {
-                netwayste.try_send(NetwaysteEvent::ChatMessage(text.clone()));
-            }
             Ok(Handled::NotHandled)
         },
     )
@@ -269,9 +261,6 @@ impl MainState {
         };
 
         // Add textfield handler
-        // TODO: Chatbox gets a handle to Some(ClientNetWorker) to receive network messages. The
-        // underlying implementation may change.
-        let net_worker = Arc::new(Mutex::new(None));
         let chatbox_pub_handle = {
             let chatbox_id = static_node_ids.chatbox_id.clone();
             let w = ui_layout
@@ -282,7 +271,7 @@ impl MainState {
             let chatbox = w.downcast_ref::<Chatbox>().unwrap(); // unwrap OK because we know this ID is for a Chatbox
             chatbox.new_handle()
         };
-        let text_entered_handler = get_text_entered_handler(chatbox_pub_handle, net_worker.clone());
+        let text_entered_handler = get_text_entered_handler(chatbox_pub_handle);
         {
             let textfield_id = static_node_ids.chatbox_tf_id.clone();
             let w = ui_layout
@@ -305,7 +294,6 @@ impl MainState {
             viewport: viewport,
             intro_viewport: intro_viewport,
             inputs: input::InputManager::new(),
-            net_worker,
             recvd_first_resize: false,
             current_intro_duration: 0.0,
             ui_layout: ui_layout,
@@ -321,8 +309,6 @@ impl MainState {
 impl EventHandler<GameError> for MainState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
         let duration = timer::duration_to_f64(timer::delta(ctx)); // seconds
-
-        self.receive_net_updates()?;
 
         let screen = self.get_current_screen();
 
@@ -1075,77 +1061,6 @@ impl MainState {
                     &mut self.static_node_ids,
                     &mut self.viewport,
                 )?;
-            }
-        }
-
-        Ok(())
-    }
-
-    // update
-    // TODO: delete all of this, for several reasons, but one reason is that it doesn't switch
-    // screens properly.
-    fn receive_net_updates(&mut self) -> GameResult<()> {
-        let mut net_worker_guard = self.net_worker.lock().unwrap();
-        if net_worker_guard.is_none() {
-            return Ok(());
-        }
-
-        let mut incoming_messages = vec![];
-
-        let net_worker = net_worker_guard.as_mut().unwrap();
-        for e in net_worker.try_receive().into_iter() {
-            match e {
-                NetwaysteEvent::LoggedIn(server_version) => {
-                    info!("Logged in! Server version: v{}", server_version);
-                    self.screen_stack.push(Screen::ServerList); // XXX
-                                                                // do other stuff
-                    net_worker.try_send(NetwaysteEvent::List);
-                    net_worker.try_send(NetwaysteEvent::JoinRoom("general".to_owned()));
-                }
-                NetwaysteEvent::JoinedRoom(room_name) => {
-                    println!("Joined Room: {}", room_name);
-                    self.screen_stack.push(Screen::InRoom); // XXX
-                }
-                NetwaysteEvent::PlayerList(list) => {
-                    println!("PlayerList: {:?}", list);
-                }
-                NetwaysteEvent::RoomList(list) => {
-                    println!("RoomList: {:?}", list);
-                }
-                NetwaysteEvent::UniverseUpdate => {
-                    println!("Universe update");
-                }
-                NetwaysteEvent::ChatMessages(msgs) => {
-                    for m in msgs {
-                        let msg = format!("{}: {}", m.0, m.1);
-                        println!("{:?}", m); // print to stdout for dbg
-
-                        incoming_messages.push(msg);
-                    }
-                }
-                NetwaysteEvent::LeftRoom => {
-                    println!("Left Room");
-                }
-                NetwaysteEvent::BadRequest(error) => {
-                    println!("Server responded with Bad Request: {:?}", error);
-                }
-                NetwaysteEvent::ServerError(error) => {
-                    println!("Server encountered an error: {:?}", error);
-                }
-                _ => {
-                    panic!(
-                        "Development panic: Unexpected NetwaysteEvent during netwayste receive update: {:?}",
-                        e
-                    );
-                }
-            }
-        }
-
-        let id = self.static_node_ids.chatbox_id.clone();
-        for msg in incoming_messages {
-            match Chatbox::widget_from_screen_and_id_mut(&mut self.ui_layout, Screen::Run, &id) {
-                Ok(cb) => cb.add_message(msg),
-                Err(e) => error!("Could not add message to Chatbox on network message receive: {:?}", e),
             }
         }
 
