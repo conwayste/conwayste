@@ -1,0 +1,265 @@
+use std::collections::HashSet;
+
+use crate::{
+    app::server::registry::{self, REGISTER_INTERVAL},
+    app::server::rooms::{Room, ServerRooms},
+    filter::{AuthDecision, ClientAuthFields, FilterCmd, FilterCmdSend, FilterNotice, FilterNotifyRecv, FilterRspRecv},
+    protocol::{
+        RequestAction::{self, *},
+        ResponseCode,
+    },
+    settings::{APP_CHANNEL_LEN, VERSION},
+    Endpoint,
+};
+
+use anyhow::{anyhow, Result};
+use futures::Future;
+use tokio::sync::{
+    mpsc::{self, Receiver, Sender},
+    watch,
+};
+
+use super::{
+    interface::{AppCmd, AppCmdRecv, AppCmdSend, AppRsp, AppRspRecv, AppRspSend},
+    players::{MAX_PLAYER_NAME_LEN, PLAYERS_PER_SERVER},
+    registry::RegistryParams,
+};
+
+#[derive(Copy, Clone, Debug)]
+enum Phase {
+    Running,
+    ShutdownInProgress,
+    ShutdownComplete,
+}
+
+pub struct AppServer {
+    filter_cmd_tx:    FilterCmdSend,
+    filter_rsp_rx:    Option<FilterRspRecv>,
+    filter_notice_rx: Option<FilterNotifyRecv>,
+    phase_watch_tx:   Option<watch::Sender<Phase>>, // Temp. holding place. This is only Some(...) between new() and run() calls
+    phase_watch_rx:   watch::Receiver<Phase>,
+    app_cmd_rx:       Option<AppCmdRecv>,
+    app_rsp_tx:       AppRspSend,
+
+    registry_params: Option<RegistryParams>, // If None, then server is privately hosted
+
+    // Game Data
+    rooms: ServerRooms,
+
+    // Used for fast player uniqueness checks
+    player_names: HashSet<String>,
+}
+
+impl AppServer {
+    pub fn new(
+        filter_cmd_tx: FilterCmdSend,
+        filter_rsp_rx: FilterRspRecv,
+        filter_notice_rx: FilterNotifyRecv,
+        registry_params: Option<RegistryParams>,
+    ) -> (AppServer, AppCmdSend, AppRspRecv) {
+        let (phase_watch_tx, phase_watch_rx) = watch::channel(Phase::Running);
+
+        let (app_cmd_tx, app_cmd_rx): (AppCmdSend, AppCmdRecv) = mpsc::channel(APP_CHANNEL_LEN);
+        let (app_rsp_tx, app_rsp_rx): (AppRspSend, AppRspRecv) = mpsc::channel(APP_CHANNEL_LEN);
+
+        let app_server = AppServer {
+            filter_cmd_tx,
+            filter_rsp_rx: Some(filter_rsp_rx),
+            filter_notice_rx: Some(filter_notice_rx),
+            phase_watch_tx: Some(phase_watch_tx),
+            phase_watch_rx,
+            registry_params,
+            app_cmd_rx: Some(app_cmd_rx),
+            app_rsp_tx,
+            rooms: ServerRooms::new(),
+            player_names: HashSet::new(),
+        };
+
+        (app_server, app_cmd_tx, app_rsp_rx)
+    }
+
+    pub async fn run(&mut self) {
+        let filter_cmd_tx = self.filter_cmd_tx.clone();
+        let filter_rsp_rx = self.filter_rsp_rx.take().expect("run() is single-use");
+        let filter_notice_rx = self.filter_notice_rx.take().expect("run() is single-use");
+        let app_cmd_rx = &mut self.app_cmd_rx.take().expect("run() is single-use");
+        tokio::pin!(filter_cmd_tx);
+        tokio::pin!(filter_rsp_rx);
+        tokio::pin!(filter_notice_rx);
+
+        let phase_watch_tx = self.phase_watch_tx.take().expect("run() is single-use");
+
+        let mut register_interval_stream = tokio::time::interval(REGISTER_INTERVAL);
+
+        loop {
+            tokio::select! {
+                response = filter_rsp_rx.recv() => {
+                    if let Some(filter_rsp)  = response {
+                        trace!("[A<-F,R] {:?}", filter_rsp);
+                        //TODO: handle filter response
+                    } else {
+                        info!("filter response channel is closed; shutting down");
+                        break;
+                    }
+                }
+                notice = filter_notice_rx.recv() => {
+                    if let Some(filter_notice) = notice {
+                        trace!("[A<-F,N] {:?}", filter_notice);
+                        if let Err(e) = self.handle_filter_notice(filter_notice).await {
+                            error!("[A] filter notice processing failed: {}", e);
+                        }
+                    } else {
+                        info!("filter notice channel is closed; shutting down");
+                        break;
+                    }
+                }
+                command = app_cmd_rx.recv() => {
+                    if let Some(app_cmd) = command {
+                        trace!("[A<-Cmd] {:?}", app_cmd);
+                        match self.handle_app_command(app_cmd) {
+                            Ok(app_rsp) => {
+                                if let Err(e) = self.app_rsp_tx.send(app_rsp).await {
+                                error!("[A] command reply failed: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                error!("[A] command processing failed: {}", e);
+                            }
+                        }
+                    } else {
+                        info!("app command channel is closed; shutting down");
+                        break;
+                    }
+                }
+                _instant = register_interval_stream.tick() => {
+                    if let Some(ref registry_params) = self.registry_params {
+                        registry::try_register(registry_params.clone()).await;
+                    }
+                }
+            }
+        }
+        let _ = phase_watch_tx.send(Phase::ShutdownComplete);
+    }
+
+    pub fn get_shutdown_watcher(&mut self) -> impl Future<Output = ()> + 'static {
+        let mut phase_watch_rx = self.phase_watch_rx.clone();
+        let filter_cmd_tx = self.filter_cmd_tx.clone();
+        async move {
+            loop {
+                let phase = *phase_watch_rx.borrow();
+                match phase {
+                    Phase::ShutdownComplete => {
+                        break;
+                    }
+                    _ => {}
+                }
+                if phase_watch_rx.changed().await.is_err() {
+                    // channel closed
+                    trace!("[A] phase watch channel was dropped");
+                    break;
+                }
+            }
+            // Also shutdown the layer below
+            let _ = filter_cmd_tx.send(FilterCmd::Shutdown { graceful: true }).await;
+        }
+    }
+
+    async fn handle_filter_notice(&mut self, notice: FilterNotice) -> Result<()> {
+        match notice {
+            FilterNotice::NewRequestAction { endpoint, action } => {
+                let response_code = match action {
+                    RequestAction::None => ResponseCode::OK,
+                    RequestAction::Connect { name, client_version } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::Disconnect => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::KeepAlive { latest_response_ack } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::DropPattern { x, y, pattern } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::ClearArea { x, y, w, h } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::ChatMessage { message } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::ListPlayers => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::NewRoom { room_name: _ } => {
+                        // Deprecated, rooms are statically allocated with standardized names
+                        ResponseCode::BadRequest {
+                            error_msg: "NewRoom request action has been deprecated".to_owned(),
+                        }
+                    }
+                    RequestAction::JoinRoom { room_name } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::ListRooms => ResponseCode::RoomStatuses {
+                        rooms: self.rooms.get_info(),
+                    },
+                    RequestAction::LeaveRoom => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                    RequestAction::SetClientOptions { key, value } => ResponseCode::ServerError {
+                        error_msg: "unimplemented".to_owned(),
+                    },
+                };
+
+                self.filter_cmd_tx
+                    .send(FilterCmd::SendResponseCode {
+                        endpoint,
+                        code: response_code,
+                    })
+                    .await?;
+            }
+            FilterNotice::ClientAuthRequest { endpoint, fields } => {
+                let decision = self.authenticate_request(endpoint, fields);
+                self.filter_cmd_tx
+                    .send(FilterCmd::CompleteAuthRequest { endpoint, decision })
+                    .await?;
+            }
+            _ => {
+                unimplemented!();
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn handle_app_command(&mut self, command: AppCmd) -> Result<AppRsp> {
+        match command {
+            AppCmd::GetStatus => Ok(AppRsp::Status {
+                rooms: self.rooms.get_info(),
+            }),
+        }
+    }
+
+    fn authenticate_request(&self, endpoint: Endpoint, fields: ClientAuthFields) -> AuthDecision {
+        // Check name uniqueness
+        // Check player limit
+
+        if self.player_names.len() > PLAYERS_PER_SERVER {
+            AuthDecision::Unauthorized {
+                error_msg: format!("Server is at maximum capacity: {PLAYERS_PER_SERVER}"),
+            }
+        } else if self.player_names.contains(&fields.player_name) {
+            let player_name = fields.player_name;
+            AuthDecision::Unauthorized {
+                error_msg: format!("A player already exists with that name: {player_name}"),
+            }
+        } else if fields.player_name.len() > MAX_PLAYER_NAME_LEN {
+            AuthDecision::Unauthorized {
+                error_msg: format!("The requested player name exceeds the maximum length of {MAX_PLAYER_NAME_LEN}"),
+            }
+        } else {
+            AuthDecision::LoggedIn {
+                server_version: VERSION.into(),
+            }
+        }
+    }
+}

@@ -2,10 +2,13 @@
 
 members = [
   "conwayste",
-  "netwayste",
+  "netwaystev2",
   "libconway",
+  "nwv2-python-wrapper",
+  "nw-server",
 ]
+
+resolver = "2"
 
 [profile.dev]
 opt-level = 2
-

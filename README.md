@@ -43,9 +43,21 @@ The Conwayste client and server compile and run right out of the box. Skip direc
 
 ## Linux
 
-On Linux, the ALSA development files are required. These are provided as part of the `libasound2-dev` package on Debian and Ubuntu distributions and `alsa-lib-devel` on Fedora. For any other distribution, please refer to your package manager and/or compile them from source.
+### Debian/Ubuntu
 
-Also install OpenSSL development files with `openssl-dev` or `openssl-devel` (depending on your distro).
+```
+sudo apt install build-essential pkg-config libasound2-dev libudev-dev
+```
+
+### Fedora (possibly incomplete/outdated)
+
+```
+sudo dnf install alsa-lib-devel
+```
+
+### Other
+
+Please refer to your package manager for dependencies.
 
 ## OpenBSD
 
@@ -63,7 +75,7 @@ export LIBCLANG_PATH=/usr/local/lib
 Please clone this repository, and build the client and server using `cargo`. The build may take several minutes to complete, depending on your system specs.
 
 ```
-$ git clone https://github.com/conwayste/conwayste --recurse-submodules
+$ git clone https://github.com/conwayste/conwayste
 $ cd conwayste/
 ```
 

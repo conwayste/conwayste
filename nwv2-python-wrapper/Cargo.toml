@@ -1,0 +1,29 @@
+[package]
+name = "nwv2-python-wrapper"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "nwv2_python_wrapper"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3         = { version = "0.18", features = ["extension-module"] }
+pyo3-asyncio = { version = "0.18", features = ["tokio-runtime"] }
+futures-util = "0.3.8"
+snowflake    = "1.2"
+conway       = { path = "../libconway" }
+env_logger      = "0.8.*"
+log             = "0.4.*"
+chrono          = "0.4.19"
+
+[dependencies.netwaystev2]
+# This is what it wraps!
+path = "../netwaystev2"
+features = ["contextual_logging"]
+
+# from netwaystev2
+[dependencies.tokio]
+version = "1.16"
+features = ["sync", "net", "macros", "rt", "rt-multi-thread", "test-util", "signal"]

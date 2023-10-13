@@ -17,7 +17,6 @@
 
 #[macro_use]
 extern crate log;
-extern crate env_logger;
 #[macro_use]
 extern crate custom_error;
 
@@ -27,6 +26,8 @@ pub mod rle;
 pub mod universe;
 
 pub use error::{ConwayError, ConwayResult};
+pub use rle::Pattern;
+pub use universe::{BigBang, GenStateDiff, PlayerBuilder, PlayerID, Region, Universe};
 
 pub use grids::Rotation;
 

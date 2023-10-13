@@ -43,7 +43,7 @@ pub struct GameArea {
     z_index:                usize,
     dimensions:             Rect,
     handler_data:           HandlerData,
-    pub uni:                Universe,
+    uni:                    Universe,
     game_state:             GameAreaState,
 }
 
@@ -75,9 +75,8 @@ impl GameArea {
             // Currently 'client' is technically both client and server
             .history(HISTORY_SIZE)
             .fog_radius(FOG_RADIUS)
-            .add_players(players)
-            .birth();
-        let mut uni = bigbang.unwrap();
+            .add_players(players);
+        let mut uni = bigbang.birth().unwrap();
 
         init_patterns(&mut uni).unwrap();
 
@@ -117,6 +116,10 @@ impl GameArea {
             .unwrap();
 
         game_area
+    }
+
+    pub fn get_universe(&self) -> &Universe {
+        &self.uni
     }
 }
 
